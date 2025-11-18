@@ -19,6 +19,8 @@ const Dashboard = () => {
   const pppoeActive = pppoeActiveData?.data || [];
   const totalActiveUsers = hotspotActive.length + pppoeActive.length;
 
+  const systemData = systemInfo?.data?.[0];
+
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
     if (!isConnected) {
@@ -34,9 +36,9 @@ const Dashboard = () => {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const cpuLoad = systemInfo?.data?.[0]?.['cpu-load'] || 0;
-  const totalMemory = systemInfo?.data?.[0]?.['total-memory'] || 0;
-  const freeMemory = systemInfo?.data?.[0]?.['free-memory'] || 0;
+  const cpuLoad = systemData?.['cpu-load'] || '0';
+  const totalMemory = parseInt(systemData?.['total-memory'] || '0');
+  const freeMemory = parseInt(systemData?.['free-memory'] || '0');
   const usedMemory = totalMemory - freeMemory;
   const memoryPercent = totalMemory > 0 ? Math.round((usedMemory / totalMemory) * 100) : 0;
 
@@ -173,7 +175,7 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Uptime</p>
                   <h3 className="text-2xl font-bold mt-2">
-                    {loadingSystem ? "..." : (systemInfo?.data?.[0]?.uptime || "N/A")}
+                    {loadingSystem ? "..." : (systemData?.uptime || "N/A")}
                   </h3>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -222,27 +224,27 @@ const Dashboard = () => {
             <CardContent>
               {loadingSystem ? (
                 <p className="text-muted-foreground">Cargando...</p>
-              ) : systemInfo?.data?.[0] ? (
+              ) : systemData ? (
                 <div className="space-y-3">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Versión:</span>
-                    <span className="text-sm font-medium">{systemInfo.data[0].version}</span>
+                    <span className="text-sm font-medium">{systemData.version}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Placa:</span>
-                    <span className="text-sm font-medium">{systemInfo.data[0]['board-name']}</span>
+                    <span className="text-sm font-medium">{systemData['board-name']}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">CPU:</span>
-                    <span className="text-sm font-medium">{systemInfo.data[0]['cpu']}</span>
+                    <span className="text-sm font-medium">{systemData['cpu']}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Núcleos CPU:</span>
-                    <span className="text-sm font-medium">{systemInfo.data[0]['cpu-count']}</span>
+                    <span className="text-sm font-medium">{systemData['cpu-count']}</span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-sm text-muted-foreground">Arquitectura:</span>
-                    <span className="text-sm font-medium">{systemInfo.data[0]['architecture-name']}</span>
+                    <span className="text-sm font-medium">{systemData['architecture-name']}</span>
                   </div>
                 </div>
               ) : (
