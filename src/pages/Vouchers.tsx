@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Ticket, Plus, Trash2, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { generateVouchers, getVouchers, deleteVoucher } from "@/lib/mikrotik";
-import { useVouchers } from "@/hooks/useMikrotikData";
+import { useVouchers, useHotspotProfiles } from "@/hooks/useMikrotikData";
 import { PrintVouchersDialog } from "@/components/vouchers/PrintVouchersDialog";
 
 const Vouchers = () => {
@@ -20,6 +20,8 @@ const Vouchers = () => {
   const [selectedVouchers, setSelectedVouchers] = useState<Set<string>>(new Set());
   
   const { data: vouchers, isLoading, refetch } = useVouchers();
+  const { data: hotspotProfilesData } = useHotspotProfiles();
+  const hotspotProfiles = (hotspotProfilesData as any[]) || [];
 
   const toggleVoucherSelection = (id: string) => {
     const newSelection = new Set(selectedVouchers);
@@ -133,12 +135,15 @@ const Vouchers = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="default">default</SelectItem>
-                      <SelectItem value="1hora">1 hora</SelectItem>
-                      <SelectItem value="3horas">3 horas</SelectItem>
-                      <SelectItem value="1dia">1 día</SelectItem>
-                      <SelectItem value="1semana">1 semana</SelectItem>
-                      <SelectItem value="1mes">1 mes</SelectItem>
+                      {hotspotProfiles.length > 0 ? (
+                        hotspotProfiles.map((profile: any) => (
+                          <SelectItem key={profile[".id"]} value={profile.name}>
+                            {profile.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="default">default</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

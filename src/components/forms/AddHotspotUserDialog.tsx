@@ -17,7 +17,7 @@ export const AddHotspotUserDialog = ({ onSuccess }: AddHotspotUserDialogProps) =
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { data: hotspotProfilesData } = useHotspotProfiles();
-  const hotspotProfiles = hotspotProfilesData?.data || [];
+  const hotspotProfiles = (hotspotProfilesData as any[]) || [];
   
   const [formData, setFormData] = useState({
     name: "",
