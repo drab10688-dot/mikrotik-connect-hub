@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { addPPPoEUser } from "@/lib/mikrotik";
+import { usePPPoEProfiles } from "@/hooks/useMikrotikData";
 
 interface AddPPPoEUserDialogProps {
   onSuccess: () => void;
@@ -15,14 +16,14 @@ interface AddPPPoEUserDialogProps {
 export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { data: pppoeProfilesData } = usePPPoEProfiles();
+  const pppoeProfiles = pppoeProfilesData?.data || [];
+  
   const [formData, setFormData] = useState({
     name: "",
     password: "",
     service: "pppoe",
     profile: "default",
-    localAddress: "",
-    remoteAddress: "",
-    comment: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,9 +39,6 @@ export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
         password: "",
         service: "pppoe",
         profile: "default",
-        localAddress: "",
-        remoteAddress: "",
-        comment: "",
       });
       onSuccess();
     } catch (error: any) {
@@ -109,47 +107,24 @@ export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
 
             <div className="space-y-2">
               <Label htmlFor="profile">Perfil</Label>
-              <Input
-                id="profile"
-                value={formData.profile}
-                onChange={(e) => setFormData({ ...formData, profile: e.target.value })}
-                placeholder="default"
-              />
+              <Select value={formData.profile} onValueChange={(value) => setFormData({ ...formData, profile: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pppoeProfiles.length > 0 ? (
+                    pppoeProfiles.map((profile: any) => (
+                      <SelectItem key={profile[".id"]} value={profile.name}>
+                        {profile.name}
+                        {profile["rate-limit"] && ` - ${profile["rate-limit"]}`}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="default">default</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="localAddress">Dirección IP Local</Label>
-              <Input
-                id="localAddress"
-                value={formData.localAddress}
-                onChange={(e) => setFormData({ ...formData, localAddress: e.target.value })}
-                placeholder="10.0.0.1"
-              />
-              <p className="text-xs text-muted-foreground">IP del servidor PPPoE</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="remoteAddress">Dirección IP Remota</Label>
-              <Input
-                id="remoteAddress"
-                value={formData.remoteAddress}
-                onChange={(e) => setFormData({ ...formData, remoteAddress: e.target.value })}
-                placeholder="10.0.0.100"
-              />
-              <p className="text-xs text-muted-foreground">IP asignada al cliente</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="comment">Comentario</Label>
-            <Input
-              id="comment"
-              value={formData.comment}
-              onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
-              placeholder="Cliente residencial - Plan 10MB"
-            />
           </div>
 
           <div className="flex gap-2 justify-end">

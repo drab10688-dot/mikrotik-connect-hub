@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { addHotspotUser } from "@/lib/mikrotik";
+import { useHotspotProfiles } from "@/hooks/useMikrotikData";
 
 interface AddHotspotUserDialogProps {
   onSuccess: () => void;
@@ -15,11 +16,13 @@ interface AddHotspotUserDialogProps {
 export const AddHotspotUserDialog = ({ onSuccess }: AddHotspotUserDialogProps) => {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { data: hotspotProfilesData } = useHotspotProfiles();
+  const hotspotProfiles = hotspotProfilesData?.data || [];
+  
   const [formData, setFormData] = useState({
     name: "",
     password: "",
     profile: "default",
-    limit: "",
   });
 
   const generateRandomCredentials = () => {
@@ -36,7 +39,7 @@ export const AddHotspotUserDialog = ({ onSuccess }: AddHotspotUserDialogProps) =
       await addHotspotUser(formData);
       toast.success("Usuario hotspot creado exitosamente");
       setOpen(false);
-      setFormData({ name: "", password: "", profile: "default", limit: "" });
+      setFormData({ name: "", password: "", profile: "default" });
       onSuccess();
     } catch (error: any) {
       toast.error(error.message || "Error al crear usuario");
@@ -100,27 +103,18 @@ export const AddHotspotUserDialog = ({ onSuccess }: AddHotspotUserDialogProps) =
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">default</SelectItem>
-                <SelectItem value="1hora">1 hora</SelectItem>
-                <SelectItem value="3horas">3 horas</SelectItem>
-                <SelectItem value="1dia">1 día</SelectItem>
-                <SelectItem value="1semana">1 semana</SelectItem>
-                <SelectItem value="1mes">1 mes</SelectItem>
+                {hotspotProfiles.length > 0 ? (
+                  hotspotProfiles.map((profile: any) => (
+                    <SelectItem key={profile[".id"]} value={profile.name}>
+                      {profile.name}
+                      {profile["rate-limit"] && ` - ${profile["rate-limit"]}`}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="default">default</SelectItem>
+                )}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="limit">Límite de Tiempo (opcional)</Label>
-            <Input
-              id="limit"
-              value={formData.limit}
-              onChange={(e) => setFormData({ ...formData, limit: e.target.value })}
-              placeholder="1d 2h 30m"
-            />
-            <p className="text-xs text-muted-foreground">
-              Formato: 1d = 1 día, 2h = 2 horas, 30m = 30 minutos
-            </p>
           </div>
 
           <div className="flex gap-2 justify-end">
