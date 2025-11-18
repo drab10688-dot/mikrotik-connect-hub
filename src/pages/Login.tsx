@@ -41,7 +41,13 @@ const Login = () => {
       }
     } catch (error: any) {
       console.error("Connection error:", error);
-      toast.error(error.message || "Error al conectar con el router");
+      const errorMessage = error.message || "Error al conectar con el router";
+      
+      // Mostrar el error completo en toast multilínea
+      toast.error("Error de conexión", {
+        description: errorMessage,
+        duration: 8000,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -148,13 +154,23 @@ const Login = () => {
 
               <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 p-4 mt-4">
                 <p className="text-sm text-amber-800 dark:text-amber-200 font-medium mb-2">
-                  ⚠️ Requisitos de conexión:
+                  ⚠️ Requisitos para {formData.version === "v6" ? "RouterOS v6" : "RouterOS v7"}:
                 </p>
-                <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1 ml-4">
-                  <li>• Habilitar servicio API: <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">/ip service enable api</code></li>
-                  <li>• Permitir acceso en firewall desde tu IP</li>
-                  <li>• Puerto {formData.version === "v6" ? "8728 (o 8729 SSL)" : "80 (o 443 HTTPS)"} accesible desde internet</li>
-                </ul>
+                {formData.version === "v6" ? (
+                  <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1 ml-4">
+                    <li>• Habilitar API: <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">/ip service set api disabled=no</code></li>
+                    <li>• Puerto 8728 (o 8729 para SSL)</li>
+                    <li>• Abrir puerto en firewall</li>
+                    <li>• ⭐ Versión recomendada (más estable)</li>
+                  </ul>
+                ) : (
+                  <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1 ml-4">
+                    <li>• Habilitar servicio web: <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">/ip service set www disabled=no</code></li>
+                    <li>• Para HTTPS: <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">/ip service set www-ssl disabled=no</code></li>
+                    <li>• Puerto 80 (HTTP) o 443 (HTTPS)</li>
+                    <li>• Si no conecta, cambia a v6</li>
+                  </ul>
+                )}
               </div>
 
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground pt-4">
