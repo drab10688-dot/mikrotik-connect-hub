@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -42,14 +43,17 @@ export const Sidebar = () => {
   return (
     <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 flex flex-col border-r border-sidebar-border">
       <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
-            <Router className="w-6 h-6 text-primary-foreground" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
+              <Router className="w-6 h-6 text-primary-foreground" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">MikroTik</h2>
+              <p className="text-xs text-sidebar-foreground/70">{host}</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-bold text-lg">MikroTik</h2>
-            <p className="text-xs text-sidebar-foreground/70">{host}</p>
-          </div>
+          <NotificationCenter />
         </div>
         <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground">
           RouterOS {version.toUpperCase()}

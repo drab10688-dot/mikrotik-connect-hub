@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Users, Wifi, Activity, HardDrive, Ticket, Settings } from "lucide-react";
 import { useSystemResources, useHotspotActiveUsers } from "@/hooks/useMikrotikData";
+import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -70,6 +71,11 @@ const Dashboard = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Panel de administración MikroTik</p>
+        </div>
+
+        {/* System Alerts */}
+        <div className="mb-8">
+          <SystemAlerts />
         </div>
 
         {/* Stats Cards */}
