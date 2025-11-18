@@ -77,32 +77,105 @@ export default function VoucherInventory() {
     }
   };
 
-  const handlePrintVoucher = (voucher: any) => {
+  const handlePrintVoucher = async (voucher: any) => {
+    const selectedDevice = mikrotikDevices?.find(d => d.id === selectedMikrotik);
+    const hotspotUrl = selectedDevice?.hotspot_url || 'http://192.168.88.1/login';
+
+    // Generar QR code
+    const qrCanvas = document.createElement('canvas');
+    const QRCode = (await import('qrcode')).default;
+    
+    const qrContent = hotspotUrl.includes('?') 
+      ? `${hotspotUrl}&username=${voucher.code}&password=${voucher.password}`
+      : `${hotspotUrl}?username=${voucher.code}&password=${voucher.password}`;
+    
+    await QRCode.toCanvas(qrCanvas, qrContent, { width: 200 });
+    const qrDataUrl = qrCanvas.toDataURL();
+
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-
-    // Obtener la URL del hotspot del dispositivo seleccionado
-    const selectedDevice = mikrotikDevices?.find(d => d.id === selectedMikrotik);
-    const hotspotUrl = selectedDevice?.hotspot_url;
 
     const content = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Imprimir Voucher</title>
+          <title>Voucher - ${voucher.code}</title>
           <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: 'Courier New', monospace;
+              width: 80mm;
+              padding: 10mm;
+              background: white;
+            }
+            .ticket { text-align: center; }
+            .logo { max-width: 60mm; margin: 5mm auto; }
+            .business-name { font-size: 18px; font-weight: bold; margin: 5mm 0; }
+            .title { font-size: 16px; font-weight: bold; margin: 3mm 0; border-top: 2px dashed #000; border-bottom: 2px dashed #000; padding: 3mm 0; }
+            .qr-code { margin: 5mm auto; }
+            .qr-code img { width: 50mm; height: 50mm; }
+            .credentials { margin: 5mm 0; text-align: left; }
+            .credential-item { margin: 3mm 0; padding: 2mm; background: #f5f5f5; border-radius: 2mm; }
+            .label { font-weight: bold; font-size: 10px; }
+            .value { font-size: 14px; word-break: break-all; }
+            .instructions { margin-top: 5mm; padding-top: 3mm; border-top: 1px dashed #666; font-size: 10px; text-align: left; }
+            .instructions ol { margin-left: 5mm; }
+            .instructions li { margin: 2mm 0; }
             @media print {
               @page { margin: 0; size: 80mm auto; }
-              body { margin: 0; padding: 0; }
+              body { margin: 0; padding: 10mm; }
             }
           </style>
         </head>
         <body>
-          <div id="print-content"></div>
+          <div class="ticket">
+            ${logo ? `<img src="${logo}" alt="Logo" class="logo">` : ''}
+            <div class="business-name">${businessName}</div>
+            <div class="title">VOUCHER DE ACCESO WiFi</div>
+            
+            <div class="qr-code">
+              <img src="${qrDataUrl}" alt="QR Code" />
+            </div>
+            
+            <div class="credentials">
+              <div class="credential-item">
+                <div class="label">USUARIO:</div>
+                <div class="value">${voucher.code}</div>
+              </div>
+              <div class="credential-item">
+                <div class="label">CONTRASEÑA:</div>
+                <div class="value">${voucher.password}</div>
+              </div>
+              <div class="credential-item">
+                <div class="label">PERFIL:</div>
+                <div class="value">${voucher.profile}</div>
+              </div>
+              ${voucher.expires_at ? `
+              <div class="credential-item">
+                <div class="label">VÁLIDO HASTA:</div>
+                <div class="value">${new Date(voucher.expires_at).toLocaleString()}</div>
+              </div>
+              ` : ''}
+            </div>
+
+            <div class="instructions">
+              <strong>Instrucciones de conexión:</strong>
+              <ol>
+                <li>Conecta tu dispositivo a la red WiFi</li>
+                <li>Escanea el código QR o abre tu navegador</li>
+                <li>Ingresa usuario y contraseña</li>
+                <li>¡Disfruta de tu conexión!</li>
+              </ol>
+            </div>
+          </div>
           <script>
             window.onload = () => {
-              window.print();
-              window.onafterprint = () => window.close();
+              setTimeout(() => {
+                window.print();
+              }, 500);
+            };
+            window.onafterprint = () => {
+              window.close();
             };
           </script>
         </body>
@@ -110,20 +183,7 @@ export default function VoucherInventory() {
     `;
 
     printWindow.document.write(content);
-    
-    const printContent = printWindow.document.getElementById('print-content');
-    if (printContent) {
-      const ticketComponent = (
-        <PrintVoucherTicket
-          voucher={voucher}
-          businessName={businessName}
-          logo={logo}
-          showInstructions={true}
-          hotspotUrl={hotspotUrl}
-        />
-      );
-      printContent.innerHTML = ticketComponent.toString();
-    }
+    printWindow.document.close();
   };
 
   return (
