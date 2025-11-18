@@ -3,14 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Wifi, Activity, HardDrive, Ticket, Settings } from "lucide-react";
-import { useSystemResources, useHotspotActiveUsers } from "@/hooks/useMikrotikData";
+import { Badge } from "@/components/ui/badge";
+import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown } from "lucide-react";
+import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { SystemAlerts } from "@/components/notifications/SystemAlerts";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { data: systemInfo, isLoading: loadingSystem } = useSystemResources();
-  const { data: activeUsers, isLoading: loadingUsers } = useHotspotActiveUsers();
+  const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
+  const { data: pppoeActiveData, isLoading: loadingPPPoE } = usePPPoEActive();
+
+  const hotspotActive = hotspotActiveData?.data || [];
+  const pppoeActive = pppoeActiveData?.data || [];
+  const totalActiveUsers = hotspotActive.length + pppoeActive.length;
 
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
@@ -27,11 +34,18 @@ const Dashboard = () => {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const cpuLoad = systemInfo?.[0]?.['cpu-load'] || 0;
-  const totalMemory = systemInfo?.[0]?.['total-memory'] || 0;
-  const freeMemory = systemInfo?.[0]?.['free-memory'] || 0;
+  const cpuLoad = systemInfo?.data?.[0]?.['cpu-load'] || 0;
+  const totalMemory = systemInfo?.data?.[0]?.['total-memory'] || 0;
+  const freeMemory = systemInfo?.data?.[0]?.['free-memory'] || 0;
   const usedMemory = totalMemory - freeMemory;
   const memoryPercent = totalMemory > 0 ? Math.round((usedMemory / totalMemory) * 100) : 0;
+
+  const formatUptime = (seconds: number) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${days}d ${hours}h ${minutes}m`;
+  };
 
   const quickActions = [
     {
@@ -84,10 +98,13 @@ const Dashboard = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Usuarios Activos</p>
+                  <p className="text-sm font-medium text-muted-foreground">Total Activos</p>
                   <h3 className="text-3xl font-bold mt-2">
-                    {loadingUsers ? "..." : (activeUsers?.length || 0)}
+                    {loadingHotspot || loadingPPPoE ? "..." : totalActiveUsers}
                   </h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {hotspotActive.length} Hotspot + {pppoeActive.length} PPPoE
+                  </p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                   <Users className="w-6 h-6 text-blue-500" />
@@ -137,7 +154,7 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Uptime</p>
                   <h3 className="text-2xl font-bold mt-2">
-                    {loadingSystem ? "..." : (systemInfo?.[0]?.uptime || "N/A")}
+                    {loadingSystem ? "..." : (systemInfo?.data?.[0]?.uptime || "N/A")}
                   </h3>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -186,27 +203,27 @@ const Dashboard = () => {
             <CardContent>
               {loadingSystem ? (
                 <p className="text-muted-foreground">Cargando...</p>
-              ) : systemInfo?.[0] ? (
+              ) : systemInfo?.data?.[0] ? (
                 <div className="space-y-3">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Versión:</span>
-                    <span className="text-sm font-medium">{systemInfo[0].version}</span>
+                    <span className="text-sm font-medium">{systemInfo.data[0].version}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Placa:</span>
-                    <span className="text-sm font-medium">{systemInfo[0]['board-name']}</span>
+                    <span className="text-sm font-medium">{systemInfo.data[0]['board-name']}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">CPU:</span>
-                    <span className="text-sm font-medium">{systemInfo[0]['cpu']}</span>
+                    <span className="text-sm font-medium">{systemInfo.data[0]['cpu']}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Núcleos CPU:</span>
-                    <span className="text-sm font-medium">{systemInfo[0]['cpu-count']}</span>
+                    <span className="text-sm font-medium">{systemInfo.data[0]['cpu-count']}</span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-sm text-muted-foreground">Arquitectura:</span>
-                    <span className="text-sm font-medium">{systemInfo[0]['architecture-name']}</span>
+                    <span className="text-sm font-medium">{systemInfo.data[0]['architecture-name']}</span>
                   </div>
                 </div>
               ) : (
@@ -217,32 +234,91 @@ const Dashboard = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Usuarios Activos</CardTitle>
-              <CardDescription>Conexiones hotspot activas</CardDescription>
+              <CardTitle>Usuarios Hotspot Activos</CardTitle>
+              <CardDescription>Conexiones hotspot en tiempo real</CardDescription>
             </CardHeader>
             <CardContent>
-              {loadingUsers ? (
+              {loadingHotspot ? (
                 <p className="text-muted-foreground">Cargando...</p>
-              ) : activeUsers && activeUsers.length > 0 ? (
+              ) : hotspotActive.length > 0 ? (
                 <div className="space-y-2">
-                  {activeUsers.slice(0, 5).map((user: any, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="font-medium text-sm">{user.user || 'Sin nombre'}</p>
-                        <p className="text-xs text-muted-foreground">{user.address || 'Sin IP'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">{user.uptime || '0s'}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {activeUsers.length > 5 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>IP</TableHead>
+                        <TableHead>Perfil</TableHead>
+                        <TableHead className="text-right">Tiempo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {hotspotActive.slice(0, 5).map((user: any, index: number) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">{user.user || 'Sin nombre'}</TableCell>
+                          <TableCell>{user.address || 'Sin IP'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{user.profile || 'default'}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right text-xs">{user.uptime || '0s'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {hotspotActive.length > 5 && (
                     <Button 
                       variant="ghost" 
                       className="w-full mt-2"
                       onClick={() => navigate("/users")}
                     >
-                      Ver todos ({activeUsers.length})
+                      Ver todos ({hotspotActive.length})
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No hay usuarios activos</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Usuarios PPPoE Activos</CardTitle>
+              <CardDescription>Conexiones PPPoE en tiempo real</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingPPPoE ? (
+                <p className="text-muted-foreground">Cargando...</p>
+              ) : pppoeActive.length > 0 ? (
+                <div className="space-y-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>IP Local</TableHead>
+                        <TableHead>Perfil</TableHead>
+                        <TableHead className="text-right">Tiempo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pppoeActive.slice(0, 5).map((user: any, index: number) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">{user.name || 'Sin nombre'}</TableCell>
+                          <TableCell>{user['local-address'] || 'Sin IP'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{user.profile || 'default'}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right text-xs">{user.uptime || '0s'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {pppoeActive.length > 5 && (
+                    <Button 
+                      variant="ghost" 
+                      className="w-full mt-2"
+                      onClick={() => navigate("/ppp")}
+                    >
+                      Ver todos ({pppoeActive.length})
                     </Button>
                   )}
                 </div>

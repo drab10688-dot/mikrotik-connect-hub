@@ -11,11 +11,15 @@ import { toast } from "sonner";
 import { deleteHotspotProfile, deletePPPoEProfile } from "@/lib/mikrotik";
 import { AddHotspotProfileDialog } from "@/components/forms/AddHotspotProfileDialog";
 import { AddPPPoEProfileDialog } from "@/components/forms/AddPPPoEProfileDialog";
+import { Sidebar } from "@/components/dashboard/Sidebar";
 
 export default function Profiles() {
   const [searchTerm, setSearchTerm] = useState("");
-  const { data: hotspotProfiles, isLoading: loadingHotspot, refetch: refetchHotspot } = useHotspotProfiles();
-  const { data: pppoeProfiles, isLoading: loadingPPPoE, refetch: refetchPPPoE } = usePPPoEProfiles();
+  const { data: hotspotProfilesData, isLoading: loadingHotspot, refetch: refetchHotspot } = useHotspotProfiles();
+  const { data: pppoeProfilesData, isLoading: loadingPPPoE, refetch: refetchPPPoE } = usePPPoEProfiles();
+
+  const hotspotProfiles = hotspotProfilesData?.data || [];
+  const pppoeProfiles = pppoeProfilesData?.data || [];
 
   const handleDeleteHotspotProfile = async (id: string, name: string) => {
     if (!window.confirm(`¿Estás seguro de eliminar el perfil "${name}"?`)) return;
@@ -41,22 +45,25 @@ export default function Profiles() {
     }
   };
 
-  const filteredHotspotProfiles = hotspotProfiles?.filter((profile: any) =>
+  const filteredHotspotProfiles = hotspotProfiles.filter((profile: any) =>
     profile.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredPPPoEProfiles = pppoeProfiles?.filter((profile: any) =>
+  const filteredPPPoEProfiles = pppoeProfiles.filter((profile: any) =>
     profile.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Gestión de Perfiles</h1>
-          <p className="text-muted-foreground">Configura límites de velocidad, tiempo de sesión y cuotas de datos</p>
-        </div>
-      </div>
+    <div className="flex min-h-screen w-full bg-background">
+      <Sidebar />
+      <div className="flex-1 p-8 ml-64">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Gestión de Perfiles</h1>
+              <p className="text-muted-foreground">Configura límites de velocidad, tiempo de sesión y cuotas de datos</p>
+            </div>
+          </div>
 
       <Tabs defaultValue="hotspot" className="space-y-4">
         <TabsList>
@@ -96,7 +103,7 @@ export default function Profiles() {
             <CardContent>
               {loadingHotspot ? (
                 <div className="text-center py-8 text-muted-foreground">Cargando perfiles...</div>
-              ) : filteredHotspotProfiles?.length === 0 ? (
+              ) : filteredHotspotProfiles.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">No se encontraron perfiles</div>
               ) : (
                 <Table>
@@ -110,7 +117,7 @@ export default function Profiles() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredHotspotProfiles?.map((profile: any) => (
+                    {filteredHotspotProfiles.map((profile: any) => (
                       <TableRow key={profile[".id"]}>
                         <TableCell className="font-medium">{profile.name}</TableCell>
                         <TableCell>
@@ -160,7 +167,7 @@ export default function Profiles() {
             <CardContent>
               {loadingPPPoE ? (
                 <div className="text-center py-8 text-muted-foreground">Cargando perfiles...</div>
-              ) : filteredPPPoEProfiles?.length === 0 ? (
+              ) : filteredPPPoEProfiles.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">No se encontraron perfiles</div>
               ) : (
                 <Table>
@@ -174,7 +181,7 @@ export default function Profiles() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredPPPoEProfiles?.map((profile: any) => (
+                    {filteredPPPoEProfiles.map((profile: any) => (
                       <TableRow key={profile[".id"]}>
                         <TableCell className="font-medium">{profile.name}</TableCell>
                         <TableCell>
@@ -206,6 +213,8 @@ export default function Profiles() {
           </Card>
         </TabsContent>
       </Tabs>
+        </div>
+      </div>
     </div>
   );
 }
