@@ -31,6 +31,25 @@ export const callMikroTikFunction = async (
     throw new Error("No hay credenciales de MikroTik guardadas");
   }
 
+  // Si es v6, usar la API binaria
+  if (credentials.version === "v6") {
+    const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      body: {
+        host: credentials.host,
+        username: credentials.username,
+        password: credentials.password,
+        port: parseInt(credentials.port),
+        command: params.command || functionName,
+        params: params.params || {},
+      },
+    });
+
+    if (error) throw error;
+    if (!data.success) throw new Error(data.error);
+    return data.data;
+  }
+
+  // Para v7, usar REST API
   const { data, error } = await supabase.functions.invoke(functionName, {
     body: {
       ...credentials,
@@ -46,6 +65,24 @@ export const callMikroTikFunction = async (
 };
 
 export const testMikroTikConnection = async (credentials: MikroTikCredentials) => {
+  // Si es v6, usar la API binaria
+  if (credentials.version === "v6") {
+    const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      body: {
+        host: credentials.host,
+        username: credentials.username,
+        password: credentials.password,
+        port: parseInt(credentials.port),
+        command: "/system/resource/print",
+        params: {},
+      },
+    });
+
+    if (error) throw error;
+    return { success: true, data: data.data };
+  }
+
+  // Para v7, usar REST API
   const { data, error } = await supabase.functions.invoke("mikrotik-connect", {
     body: {
       ...credentials,
@@ -58,6 +95,12 @@ export const testMikroTikConnection = async (credentials: MikroTikCredentials) =
 };
 
 export const getHotspotUsers = async () => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-users", {
+      command: "hotspot-users",
+    });
+  }
   return await callMikroTikFunction("mikrotik-hotspot-users", {
     action: "list",
   });
@@ -69,6 +112,17 @@ export const addHotspotUser = async (userData: {
   profile?: string;
   limit?: string;
 }) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-user-add", {
+      command: "hotspot-user-add",
+      params: {
+        name: userData.name,
+        password: userData.password,
+        profile: userData.profile || "default",
+      },
+    });
+  }
   return await callMikroTikFunction("mikrotik-hotspot-users", {
     action: "add",
     userData,
@@ -76,6 +130,15 @@ export const addHotspotUser = async (userData: {
 };
 
 export const removeHotspotUser = async (userId: string) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-user-remove", {
+      command: "hotspot-user-remove",
+      params: {
+        ".id": userId,
+      },
+    });
+  }
   return await callMikroTikFunction("mikrotik-hotspot-users", {
     action: "remove",
     userId,
@@ -83,6 +146,18 @@ export const removeHotspotUser = async (userId: string) => {
 };
 
 export const getSystemInfo = async (type: string = "resources") => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    const commandMap: Record<string, string> = {
+      "resources": "system-resource",
+      "interfaces": "interfaces",
+      "ppp": "ppp",
+      "hotspot-active": "hotspot-active",
+    };
+    return await callMikroTikFunction(commandMap[type] || "system-resource", {
+      command: commandMap[type] || "system-resource",
+    });
+  }
   return await callMikroTikFunction("mikrotik-system-info", {
     type,
   });
