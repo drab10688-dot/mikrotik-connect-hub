@@ -24,7 +24,7 @@ const Dashboard = () => {
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
     if (!isConnected) {
-      navigate("/");
+      navigate("/settings");
     }
   }, [navigate]);
 
