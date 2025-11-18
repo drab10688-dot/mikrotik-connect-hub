@@ -17,8 +17,13 @@ const Login = () => {
     username: "",
     password: "",
     port: "8728",
-    version: "v7"
+    version: "v6"
   });
+
+  const handleVersionChange = (value: string) => {
+    const defaultPort = value === "v6" ? "8728" : "80";
+    setFormData({ ...formData, version: value, port: defaultPort });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,15 +79,20 @@ const Login = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="version">Versión de RouterOS</Label>
-                <Select value={formData.version} onValueChange={(value) => setFormData({ ...formData, version: value })}>
+                <Select value={formData.version} onValueChange={handleVersionChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona versión" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="v6">RouterOS v6</SelectItem>
-                    <SelectItem value="v7">RouterOS v7</SelectItem>
+                    <SelectItem value="v6">RouterOS v6 (API binaria - Puerto 8728/8729)</SelectItem>
+                    <SelectItem value="v7">RouterOS v7 (REST API - Puerto 80/443)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {formData.version === "v6" 
+                    ? "API binaria: Puerto 8728 (sin TLS) o 8729 (con TLS)"
+                    : "REST API: Puerto 80 (HTTP) o 443 (HTTPS)"}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
