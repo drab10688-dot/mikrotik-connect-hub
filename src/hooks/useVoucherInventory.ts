@@ -43,7 +43,17 @@ export const useVoucherInventory = (mikrotikId?: string) => {
   // Generate vouchers mutation
   const generateVouchersMutation = useMutation({
     mutationFn: async (params: GenerateVouchersParams) => {
+      // Obtener credenciales del MikroTik
+      const { data: mikrotikDevice, error: deviceError } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .eq('id', params.mikrotikId)
+        .single();
+
+      if (deviceError) throw deviceError;
+
       const vouchersToCreate = [];
+      const mikrotikUsers = [];
 
       for (let i = 0; i < params.count; i++) {
         // Generate unique code (8 chars uppercase + numbers)
@@ -77,8 +87,51 @@ export const useVoucherInventory = (mikrotikId?: string) => {
           expires_at: expiresAt.toISOString(),
           price: params.price || 0,
         });
+
+        mikrotikUsers.push({
+          username: code,
+          password: password,
+          profile: params.profile,
+          validity: params.validity,
+        });
       }
 
+      // Crear usuarios en MikroTik usando la función edge
+      const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
+      
+      for (const user of mikrotikUsers) {
+        try {
+          const { error: mikrotikError } = await supabase.functions.invoke(functionName, {
+            body: {
+              host: mikrotikDevice.host,
+              username: mikrotikDevice.username,
+              password: mikrotikDevice.password,
+              port: mikrotikDevice.port,
+              command: mikrotikDevice.version === 'v7' ? undefined : 'hotspot-user-add',
+              action: mikrotikDevice.version === 'v7' ? 'add' : undefined,
+              userData: mikrotikDevice.version === 'v7' ? {
+                name: user.username,
+                password: user.password,
+                profile: user.profile,
+                comment: `Voucher ${new Date().toISOString()}`,
+              } : {
+                name: user.username,
+                password: user.password,
+                profile: user.profile,
+                comment: `Voucher ${new Date().toISOString()}`,
+              },
+            },
+          });
+
+          if (mikrotikError) {
+            console.error('Error creando usuario en MikroTik:', mikrotikError);
+          }
+        } catch (error) {
+          console.error('Error al llamar función MikroTik:', error);
+        }
+      }
+
+      // Guardar en Supabase
       const { data, error } = await supabase
         .from('vouchers')
         .insert(vouchersToCreate)
