@@ -98,16 +98,35 @@ const Dashboard = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Activos</p>
+                  <p className="text-sm font-medium text-muted-foreground">Hotspot Activos</p>
                   <h3 className="text-3xl font-bold mt-2">
-                    {loadingHotspot || loadingPPPoE ? "..." : totalActiveUsers}
+                    {loadingHotspot ? "..." : hotspotActive.length}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {hotspotActive.length} Hotspot + {pppoeActive.length} PPPoE
+                    Usuarios conectados
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-500" />
+                  <Wifi className="w-6 h-6 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">PPPoE Activos</p>
+                  <h3 className="text-3xl font-bold mt-2">
+                    {loadingPPPoE ? "..." : pppoeActive.length}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Conexiones activas
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <Users className="w-6 h-6 text-green-500" />
                 </div>
               </div>
             </CardContent>
