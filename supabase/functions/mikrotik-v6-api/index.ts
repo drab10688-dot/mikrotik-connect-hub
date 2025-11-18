@@ -271,6 +271,30 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/active/print');
         break;
 
+      case 'hotspot-profiles':
+        result = await api.executeCommand('/ip/hotspot/user/profile/print');
+        break;
+
+      case 'hotspot-profile-add':
+        result = await api.executeCommand('/ip/hotspot/user/profile/add', params);
+        break;
+
+      case 'hotspot-profile-delete':
+        result = await api.executeCommand('/ip/hotspot/user/profile/remove', params);
+        break;
+
+      case 'pppoe-profiles':
+        result = await api.executeCommand('/ppp/profile/print');
+        break;
+
+      case 'pppoe-profile-add':
+        result = await api.executeCommand('/ppp/profile/add', params);
+        break;
+
+      case 'pppoe-profile-delete':
+        result = await api.executeCommand('/ppp/profile/remove', params);
+        break;
+
       default:
         // Permitir comandos personalizados
         result = await api.executeCommand(command, params || {});

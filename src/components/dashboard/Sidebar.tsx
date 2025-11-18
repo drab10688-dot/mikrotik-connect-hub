@@ -7,7 +7,8 @@ import {
   Activity,
   Settings,
   LogOut,
-  Router
+  Router,
+  ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -18,6 +19,7 @@ const menuItems = [
   { icon: Users, label: "Usuarios Hotspot", path: "/users" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: Activity, label: "Vouchers Hotspot", path: "/vouchers" },
+  { icon: ShieldCheck, label: "Perfiles", path: "/profiles" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
 
