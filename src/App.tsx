@@ -8,6 +8,7 @@ import Users from "./pages/Users";
 import Ppp from "./pages/Ppp";
 import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
+import Diagnostics from "./pages/Diagnostics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
         <Route path="/ppp" element={<Ppp />} />
         <Route path="/traffic" element={<Traffic />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/diagnostics" element={<Diagnostics />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
