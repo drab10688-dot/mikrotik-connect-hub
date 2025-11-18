@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { useSystemResources } from "@/hooks/useMikrotikData";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -29,7 +30,10 @@ const menuItems = [
 export const Sidebar = () => {
   const navigate = useNavigate();
   const host = localStorage.getItem("mikrotik_host") || "";
-  const version = localStorage.getItem("mikrotik_version") || "v7";
+  const { data: systemInfo } = useSystemResources();
+  
+  const systemData = systemInfo?.data?.[0];
+  const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
   const handleLogout = () => {
     localStorage.removeItem("mikrotik_connected");
@@ -56,7 +60,7 @@ export const Sidebar = () => {
           <NotificationCenter />
         </div>
         <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground">
-          RouterOS {version.toUpperCase()}
+          RouterOS {version}
         </div>
       </div>
 
