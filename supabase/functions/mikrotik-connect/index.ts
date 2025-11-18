@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     const actualPort = port || (useTls ? 443 : 80);
 
     const config: MikroTikConfig = {
-      host: `${host}:${actualPort}`,
+      host: host,
       username,
       password,
       port: actualPort,
