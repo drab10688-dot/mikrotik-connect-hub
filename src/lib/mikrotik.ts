@@ -170,6 +170,12 @@ export const getSystemInfo = async (type: string = "resources") => {
 };
 
 export const getPPPoEUsers = async () => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("ppp-secrets", {
+      command: "ppp-secrets",
+    });
+  }
   return await callMikroTikFunction("mikrotik-pppoe", {
     action: "list",
   });
@@ -184,6 +190,13 @@ export const addPPPoEUser = async (userData: {
   remoteAddress?: string;
   comment?: string;
 }) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("ppp-secret-add", {
+      command: "ppp-secret-add",
+      params: userData,
+    });
+  }
   return await callMikroTikFunction("mikrotik-pppoe", {
     action: "add",
     userData,
@@ -191,6 +204,13 @@ export const addPPPoEUser = async (userData: {
 };
 
 export const removePPPoEUser = async (userId: string) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("ppp-secret-remove", {
+      command: "ppp-secret-remove",
+      params: { ".id": userId },
+    });
+  }
   return await callMikroTikFunction("mikrotik-pppoe", {
     action: "remove",
     userData: { id: userId },
@@ -198,12 +218,39 @@ export const removePPPoEUser = async (userId: string) => {
 };
 
 export const getPPPoEActive = async () => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("ppp-active", {
+      command: "ppp-active",
+    });
+  }
   return await callMikroTikFunction("mikrotik-pppoe", {
     action: "active",
   });
 };
 
 export const generateVouchers = async (count: number, profile?: string) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    // Para v6, generamos vouchers directamente con hotspot users
+    const vouchers = [];
+    for (let i = 0; i < count; i++) {
+      const username = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const password = Math.random().toString(36).substring(2, 10).toUpperCase();
+      
+      await callMikroTikFunction("hotspot-user-add", {
+        command: "hotspot-user-add",
+        params: {
+          name: username,
+          password: password,
+          profile: profile || "default",
+          comment: `Voucher ${new Date().toISOString()}`,
+        },
+      });
+      vouchers.push({ username, password, profile: profile || "default" });
+    }
+    return vouchers;
+  }
   return await callMikroTikFunction("mikrotik-vouchers", {
     action: "generate",
     count,
@@ -212,12 +259,28 @@ export const generateVouchers = async (count: number, profile?: string) => {
 };
 
 export const getVouchers = async () => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    // Para v6, los vouchers son usuarios hotspot
+    return await callMikroTikFunction("hotspot-users", {
+      command: "hotspot-users",
+    });
+  }
   return await callMikroTikFunction("mikrotik-vouchers", {
     action: "list",
   });
 };
 
 export const deleteVoucher = async (voucherId: string) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-user-remove", {
+      command: "hotspot-user-remove",
+      params: {
+        ".id": voucherId,
+      },
+    });
+  }
   return await callMikroTikFunction("mikrotik-vouchers", {
     action: "delete",
     voucherData: { id: voucherId },
