@@ -255,6 +255,22 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ip/hotspot/user/remove', params);
         break;
 
+      case 'ppp-secrets':
+        result = await api.executeCommand('/ppp/secret/print');
+        break;
+
+      case 'ppp-secret-add':
+        result = await api.executeCommand('/ppp/secret/add', params);
+        break;
+
+      case 'ppp-secret-remove':
+        result = await api.executeCommand('/ppp/secret/remove', params);
+        break;
+
+      case 'ppp-active':
+        result = await api.executeCommand('/ppp/active/print');
+        break;
+
       default:
         // Permitir comandos personalizados
         result = await api.executeCommand(command, params || {});
