@@ -255,10 +255,25 @@ Deno.serve(async (req) => {
       api.close();
     }
 
+    const errorMessage = (error as Error).message || 'Error desconocido';
+    let userFriendlyError = errorMessage;
+
+    // Mensajes más descriptivos para errores comunes
+    if (errorMessage.includes('Connection refused') || errorMessage.includes('ECONNREFUSED')) {
+      userFriendlyError = 'No se puede conectar al router. Verifica que:\n' +
+        '1. El servicio API esté habilitado (/ip service enable api)\n' +
+        '2. El puerto 8728 (o 8729) esté abierto en el firewall\n' +
+        '3. La IP y puerto sean correctos';
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+      userFriendlyError = 'Tiempo de espera agotado. El router no responde. Verifica la conectividad de red.';
+    } else if (errorMessage.includes('Login failed')) {
+      userFriendlyError = 'Usuario o contraseña incorrectos.';
+    }
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: (error as Error).message || 'Error al ejecutar comando en MikroTik v6',
+        error: userFriendlyError,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
