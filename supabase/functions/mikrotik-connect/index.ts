@@ -104,10 +104,28 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in mikrotik-connect:', error);
     
+    const errorMsg = (error as Error).message || 'Error al conectar con MikroTik';
+    let userMessage = errorMsg;
+    
+    // Detectar tipo de error y dar mensaje específico
+    if (errorMsg.includes('Connection refused') || errorMsg.includes('ECONNREFUSED')) {
+      userMessage = 'No se puede conectar al router. Para RouterOS v7:\n\n' +
+        '1. Habilita el servicio web: /ip service set www-ssl disabled=no\n' +
+        '2. O usa HTTP: /ip service set www disabled=no\n' +
+        '3. Verifica firewall: permite acceso a puertos 80 o 443\n' +
+        '4. Prueba con la IP local primero si estás conectado directamente';
+    } else if (errorMsg.includes('HandshakeFailure') || errorMsg.includes('SSL')) {
+      userMessage = 'Error SSL/TLS. Prueba con HTTP (puerto 80) en lugar de HTTPS.\n' +
+        'En el router: /ip service set www disabled=no';
+    } else if (errorMsg.includes('timeout') || errorMsg.includes('AbortError')) {
+      userMessage = 'Timeout de conexión. Verifica que el router esté accesible desde internet.';
+    }
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: (error as Error).message || 'Error al conectar con MikroTik',
+        error: userMessage,
+        technicalError: errorMsg,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
