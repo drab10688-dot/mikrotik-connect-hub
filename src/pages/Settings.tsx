@@ -9,22 +9,38 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
 import { saveMikroTikCredentials } from "@/lib/mikrotik";
 import { Router, Wifi } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { user, isSuperAdmin, isAdmin } = useAuth();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
 
   const { data: devices, isLoading } = useQuery({
-    queryKey: ['mikrotik-devices-select'],
+    queryKey: ['mikrotik-devices-select', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .order('name');
+      if (isSuperAdmin) {
+        // Super admins see all devices
+        const { data, error } = await supabase
+          .from('mikrotik_devices')
+          .select('*')
+          .order('name');
 
-      if (error) throw error;
-      return data;
+        if (error) throw error;
+        return data;
+      } else if (isAdmin) {
+        // Regular admins only see assigned devices
+        const { data, error } = await supabase
+          .from('user_mikrotik_access')
+          .select('mikrotik_devices(*)')
+          .eq('user_id', user?.id);
+
+        if (error) throw error;
+        return data.map((access: any) => access.mikrotik_devices).filter(Boolean);
+      }
+      return [];
     },
+    enabled: !!user,
   });
 
   const handleConnect = () => {
@@ -62,16 +78,36 @@ export default function Settings() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Dispositivo MikroTik</CardTitle>
-              <CardDescription>Selecciona un router</CardDescription>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Router className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>Dispositivo MikroTik</CardTitle>
+                  <CardDescription>
+                    {isSuperAdmin 
+                      ? 'Selecciona cualquier router para gestionar'
+                      : 'Selecciona uno de tus routers asignados'
+                    }
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? (
-                <div className="text-center py-8">Cargando...</div>
-              ) : !devices?.length ? (
+                <div className="text-center py-8">Cargando dispositivos...</div>
+              ) : !devices || devices.length === 0 ? (
                 <div className="text-center py-8">
                   <Wifi className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No hay dispositivos configurados</p>
+                  <p className="text-muted-foreground">
+                    {isAdmin 
+                      ? 'No tienes dispositivos MikroTik asignados'
+                      : 'No hay dispositivos MikroTik configurados'
+                    }
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Contacta al administrador
+                  </p>
                 </div>
               ) : (
                 <>
@@ -87,6 +123,30 @@ export default function Settings() {
                       ))}
                     </SelectContent>
                   </Select>
+
+                  {selectedDevice && (
+                    <div className="p-4 bg-muted rounded-lg space-y-2">
+                      {(() => {
+                        const device = devices.find(d => d.id === selectedDevice);
+                        return device ? (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Host:</span>
+                              <span className="font-medium">{device.host}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Puerto:</span>
+                              <span className="font-medium">{device.port}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Versión:</span>
+                              <span className="font-medium">{device.version}</span>
+                            </div>
+                          </>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
 
                   <Button onClick={handleConnect} className="w-full" disabled={!selectedDevice}>
                     <Router className="h-4 w-4 mr-2" />
