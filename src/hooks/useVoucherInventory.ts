@@ -101,6 +101,13 @@ export const useVoucherInventory = (mikrotikId?: string) => {
       
       for (const user of mikrotikUsers) {
         try {
+          const userParams = {
+            name: user.username,
+            password: user.password,
+            profile: user.profile,
+            comment: `Voucher ${new Date().toISOString()}`,
+          };
+
           const { error: mikrotikError } = await supabase.functions.invoke(functionName, {
             body: {
               host: mikrotikDevice.host,
@@ -109,17 +116,8 @@ export const useVoucherInventory = (mikrotikId?: string) => {
               port: mikrotikDevice.port,
               command: mikrotikDevice.version === 'v7' ? undefined : 'hotspot-user-add',
               action: mikrotikDevice.version === 'v7' ? 'add' : undefined,
-              userData: mikrotikDevice.version === 'v7' ? {
-                name: user.username,
-                password: user.password,
-                profile: user.profile,
-                comment: `Voucher ${new Date().toISOString()}`,
-              } : {
-                name: user.username,
-                password: user.password,
-                profile: user.profile,
-                comment: `Voucher ${new Date().toISOString()}`,
-              },
+              params: mikrotikDevice.version === 'v6' ? userParams : undefined,
+              userData: mikrotikDevice.version === 'v7' ? userParams : undefined,
             },
           });
 
