@@ -15,7 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 export default function MikrotikDevices() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isSuperAdmin, isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -27,16 +27,39 @@ export default function MikrotikDevices() {
   });
 
   const { data: devices, isLoading } = useQuery({
-    queryKey: ['mikrotik-devices'],
+    queryKey: ['mikrotik-devices', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('mikrotik_devices')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
+      
+      // Super admins see all devices, regular users see only their own
+      if (isSuperAdmin) {
+        // Super admins see all
+      } else if (isAdmin) {
+        // Admins see assigned devices
+        const { data: accessData, error: accessError } = await supabase
+          .from('user_mikrotik_access')
+          .select('mikrotik_id')
+          .eq('user_id', user?.id);
+        
+        if (accessError) throw accessError;
+        const mikrotikIds = accessData.map(a => a.mikrotik_id);
+        
+        if (mikrotikIds.length === 0) return [];
+        
+        query = query.in('id', mikrotikIds);
+      } else {
+        // Regular users see their own devices
+        query = query.eq('created_by', user?.id);
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
       return data;
     },
+    enabled: !!user,
   });
 
   const createDeviceMutation = useMutation({
@@ -104,9 +127,14 @@ export default function MikrotikDevices() {
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Dispositivos MikroTik</h1>
+              <h1 className="text-3xl font-bold">
+                {isSuperAdmin ? 'Dispositivos MikroTik' : 'Mis Dispositivos MikroTik'}
+              </h1>
               <p className="text-muted-foreground">
-                Gestiona las conexiones a routers MikroTik
+                {isSuperAdmin 
+                  ? 'Gestiona todas las conexiones a routers MikroTik'
+                  : 'Gestiona tus conexiones a routers MikroTik'
+                }
               </p>
             </div>
             <Dialog open={open} onOpenChange={setOpen}>
