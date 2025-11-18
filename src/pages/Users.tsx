@@ -8,6 +8,7 @@ import { Search, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useHotspotUsers } from "@/hooks/useMikrotikData";
 import { removeHotspotUser } from "@/lib/mikrotik";
+import { AddHotspotUserDialog } from "@/components/forms/AddHotspotUserDialog";
 
 const Users = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -64,6 +65,7 @@ const Users = () => {
                 <CardDescription>Usuarios del hotspot de MikroTik</CardDescription>
               </div>
               <div className="flex gap-2">
+                <AddHotspotUserDialog onSuccess={refetch} />
                 <Button onClick={handleExport} variant="outline">
                   <Download className="w-4 h-4 mr-2" />
                   Exportar
