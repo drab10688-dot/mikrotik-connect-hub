@@ -28,6 +28,9 @@ export const Sidebar = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("mikrotik_connected");
+    localStorage.removeItem("mikrotik_config");
+    localStorage.removeItem("mikrotik_host");
+    localStorage.removeItem("mikrotik_version");
     toast.info("Desconectado del router");
     navigate("/");
   };

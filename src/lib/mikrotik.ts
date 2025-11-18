@@ -10,6 +10,9 @@ export interface MikroTikCredentials {
 
 export const saveMikroTikCredentials = (credentials: MikroTikCredentials) => {
   localStorage.setItem("mikrotik_config", JSON.stringify(credentials));
+  localStorage.setItem("mikrotik_connected", "true");
+  localStorage.setItem("mikrotik_host", credentials.host);
+  localStorage.setItem("mikrotik_version", credentials.version);
 };
 
 export const getMikroTikCredentials = (): MikroTikCredentials | null => {
@@ -19,6 +22,9 @@ export const getMikroTikCredentials = (): MikroTikCredentials | null => {
 
 export const clearMikroTikCredentials = () => {
   localStorage.removeItem("mikrotik_config");
+  localStorage.removeItem("mikrotik_connected");
+  localStorage.removeItem("mikrotik_host");
+  localStorage.removeItem("mikrotik_version");
 };
 
 export const callMikroTikFunction = async (
