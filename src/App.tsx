@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import Ppp from "./pages/Ppp";
 import Vouchers from "./pages/Vouchers";
+import VoucherInventory from "./pages/VoucherInventory";
 import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
@@ -34,6 +35,7 @@ const App = () => (
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
         <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
         <Route path="/vouchers" element={<ProtectedRoute><Vouchers /></ProtectedRoute>} />
+        <Route path="/voucher-inventory" element={<ProtectedRoute><VoucherInventory /></ProtectedRoute>} />
         <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
         <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
