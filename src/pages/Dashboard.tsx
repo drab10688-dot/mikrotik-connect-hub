@@ -15,11 +15,11 @@ const Dashboard = () => {
   const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
   const { data: pppoeActiveData, isLoading: loadingPPPoE } = usePPPoEActive();
 
-  const hotspotActive = hotspotActiveData?.data || [];
-  const pppoeActive = pppoeActiveData?.data || [];
+  const hotspotActive = (hotspotActiveData as any[]) || [];
+  const pppoeActive = (pppoeActiveData as any[]) || [];
   const totalActiveUsers = hotspotActive.length + pppoeActive.length;
 
-  const systemData = systemInfo?.data?.[0];
+  const systemData = (systemInfo as any[])?.[0];
 
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
