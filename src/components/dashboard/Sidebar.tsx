@@ -32,7 +32,7 @@ export const Sidebar = () => {
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   
-  const systemData = systemInfo?.data?.[0];
+  const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
   const handleLogout = () => {
