@@ -11,19 +11,25 @@ interface PrintVoucherTicketProps {
   businessName?: string;
   logo?: string;
   showInstructions?: boolean;
+  hotspotUrl?: string;
 }
 
 export const PrintVoucherTicket = ({ 
   voucher, 
   businessName = "WiFi Service",
   logo,
-  showInstructions = true 
+  showInstructions = true,
+  hotspotUrl
 }: PrintVoucherTicketProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (canvasRef.current) {
-      const qrData = `Usuario: ${voucher.code}\nContraseña: ${voucher.password}`;
+      // Generar código QR con URL del hotspot si está disponible, sino solo credenciales
+      const qrData = hotspotUrl 
+        ? `${hotspotUrl}?username=${encodeURIComponent(voucher.code)}&password=${encodeURIComponent(voucher.password)}`
+        : `Usuario: ${voucher.code}\nContraseña: ${voucher.password}`;
+      
       QRCode.toCanvas(canvasRef.current, qrData, {
         width: 200,
         margin: 1,
@@ -33,7 +39,7 @@ export const PrintVoucherTicket = ({
         },
       });
     }
-  }, [voucher]);
+  }, [voucher, hotspotUrl]);
 
   return (
     <div className="voucher-ticket" style={{

@@ -19,6 +19,7 @@ export type Database = {
           created_at: string | null
           created_by: string
           host: string
+          hotspot_url: string | null
           id: string
           name: string
           password: string
@@ -31,6 +32,7 @@ export type Database = {
           created_at?: string | null
           created_by: string
           host: string
+          hotspot_url?: string | null
           id?: string
           name: string
           password: string
@@ -43,6 +45,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string
           host?: string
+          hotspot_url?: string | null
           id?: string
           name?: string
           password?: string

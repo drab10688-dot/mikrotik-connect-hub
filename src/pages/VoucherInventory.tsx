@@ -81,6 +81,10 @@ export default function VoucherInventory() {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    // Obtener la URL del hotspot del dispositivo seleccionado
+    const selectedDevice = mikrotikDevices?.find(d => d.id === selectedMikrotik);
+    const hotspotUrl = selectedDevice?.hotspot_url;
+
     const content = `
       <!DOCTYPE html>
       <html>
@@ -115,6 +119,7 @@ export default function VoucherInventory() {
           businessName={businessName}
           logo={logo}
           showInstructions={true}
+          hotspotUrl={hotspotUrl}
         />
       );
       printContent.innerHTML = ticketComponent.toString();

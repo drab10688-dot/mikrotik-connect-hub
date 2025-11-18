@@ -11,15 +11,19 @@ interface VoucherTicketProps {
   logo?: string;
   businessName?: string;
   showInstructions?: boolean;
+  hotspotUrl?: string;
 }
 
-export const VoucherTicket = ({ voucher, logo, businessName = "MikroTik Hotspot", showInstructions = true }: VoucherTicketProps) => {
+export const VoucherTicket = ({ voucher, logo, businessName = "MikroTik Hotspot", showInstructions = true, hotspotUrl }: VoucherTicketProps) => {
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (qrCanvasRef.current) {
-      // Generar código QR con las credenciales
-      const qrData = `Usuario: ${voucher.name}\nContraseña: ${voucher.password}`;
+      // Generar código QR con URL del hotspot si está disponible, sino solo credenciales
+      const qrData = hotspotUrl 
+        ? `${hotspotUrl}?username=${encodeURIComponent(voucher.name)}&password=${encodeURIComponent(voucher.password)}`
+        : `Usuario: ${voucher.name}\nContraseña: ${voucher.password}`;
+      
       QRCode.toCanvas(qrCanvasRef.current, qrData, {
         width: 200,
         margin: 1,
@@ -29,7 +33,7 @@ export const VoucherTicket = ({ voucher, logo, businessName = "MikroTik Hotspot"
         },
       });
     }
-  }, [voucher]);
+  }, [voucher, hotspotUrl]);
 
   return (
     <div className="voucher-ticket">

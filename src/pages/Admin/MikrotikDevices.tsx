@@ -24,6 +24,7 @@ export default function MikrotikDevices() {
     password: '',
     port: 8728,
     version: 'v6',
+    hotspot_url: 'http://192.168.88.1/login',
   });
 
   const { data: devices, isLoading } = useQuery({
@@ -84,6 +85,7 @@ export default function MikrotikDevices() {
         password: '',
         port: 8728,
         version: 'v6',
+        hotspot_url: 'http://192.168.88.1/login',
       });
     },
     onError: (error: any) => {
@@ -223,6 +225,18 @@ export default function MikrotikDevices() {
                         </Select>
                       </div>
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hotspot_url">URL del Portal Hotspot</Label>
+                      <Input
+                        id="hotspot_url"
+                        placeholder="http://192.168.88.1/login"
+                        value={formData.hotspot_url}
+                        onChange={(e) => setFormData({ ...formData, hotspot_url: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Esta URL se usará en el código QR de los vouchers para acceso directo
+                      </p>
+                    </div>
                   </div>
                   <DialogFooter>
                     <Button type="submit" disabled={createDeviceMutation.isPending}>
@@ -258,6 +272,7 @@ export default function MikrotikDevices() {
                       <TableHead>Host</TableHead>
                       <TableHead>Puerto</TableHead>
                       <TableHead>Versión</TableHead>
+                      <TableHead>URL Hotspot</TableHead>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Acciones</TableHead>
                     </TableRow>
@@ -269,6 +284,9 @@ export default function MikrotikDevices() {
                         <TableCell>{device.host}</TableCell>
                         <TableCell>{device.port}</TableCell>
                         <TableCell>{device.version}</TableCell>
+                        <TableCell className="max-w-xs truncate text-xs">
+                          {device.hotspot_url || 'No configurada'}
+                        </TableCell>
                         <TableCell>
                           {new Date(device.created_at).toLocaleDateString('es-ES')}
                         </TableCell>
