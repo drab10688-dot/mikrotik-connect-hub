@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { useVoucherInventory } from '@/hooks/useVoucherInventory';
-import { useHotspotProfiles } from '@/hooks/useMikrotikData';
 import { VoucherInventoryCard } from '@/components/vouchers/VoucherInventoryCard';
 import { VoucherTable } from '@/components/vouchers/VoucherTable';
 import { PrintVoucherTicket } from '@/components/vouchers/PrintVoucherTicket';
@@ -37,8 +36,41 @@ export default function VoucherInventory() {
     },
   });
 
-  const { data: profilesData } = useHotspotProfiles();
-  const profiles = (profilesData as any[]) || [];
+  // Obtener perfiles directamente del dispositivo seleccionado
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['hotspot-profiles', selectedMikrotik],
+    queryFn: async () => {
+      if (!selectedMikrotik) return [];
+      
+      const { data: device } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .eq('id', selectedMikrotik)
+        .single();
+      
+      if (!device) return [];
+      
+      const functionName = device.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: {
+          host: device.host,
+          username: device.username,
+          password: device.password,
+          port: device.port,
+          command: device.version === 'v7' ? undefined : 'hotspot-profile',
+          action: device.version === 'v7' ? 'list-profiles' : undefined,
+        },
+      });
+      
+      if (error) {
+        console.error('Error obteniendo perfiles:', error);
+        return [];
+      }
+      
+      return data?.data || [];
+    },
+    enabled: !!selectedMikrotik,
+  });
 
   const {
     vouchers,
