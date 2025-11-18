@@ -18,8 +18,8 @@ export default function Profiles() {
   const { data: hotspotProfilesData, isLoading: loadingHotspot, refetch: refetchHotspot } = useHotspotProfiles();
   const { data: pppoeProfilesData, isLoading: loadingPPPoE, refetch: refetchPPPoE } = usePPPoEProfiles();
 
-  const hotspotProfiles = hotspotProfilesData?.data || [];
-  const pppoeProfiles = pppoeProfilesData?.data || [];
+  const hotspotProfiles = (hotspotProfilesData as any[]) || [];
+  const pppoeProfiles = (pppoeProfilesData as any[]) || [];
 
   const handleDeleteHotspotProfile = async (id: string, name: string) => {
     if (!window.confirm(`¿Estás seguro de eliminar el perfil "${name}"?`)) return;
