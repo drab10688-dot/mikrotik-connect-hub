@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Wifi, Shield, Router } from "lucide-react";
 import { toast } from "sonner";
+import { saveMikroTikCredentials, testMikroTikConnection } from "@/lib/mikrotik";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -23,15 +24,22 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate connection
-    setTimeout(() => {
+    try {
+      const result = await testMikroTikConnection(formData);
+      
+      if (result.success) {
+        saveMikroTikCredentials(formData);
+        toast.success("Conectado exitosamente a MikroTik");
+        navigate("/dashboard");
+      } else {
+        toast.error(result.error || "Error al conectar");
+      }
+    } catch (error: any) {
+      console.error("Connection error:", error);
+      toast.error(error.message || "Error al conectar con el router");
+    } finally {
       setIsLoading(false);
-      toast.success("Conectado exitosamente a MikroTik");
-      localStorage.setItem("mikrotik_connected", "true");
-      localStorage.setItem("mikrotik_host", formData.host);
-      localStorage.setItem("mikrotik_version", formData.version);
-      navigate("/dashboard");
-    }, 1500);
+    }
   };
 
   return (

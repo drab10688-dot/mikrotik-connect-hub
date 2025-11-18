@@ -1,0 +1,10 @@
+project_id = "qybuufofocxsctwnpwon"
+
+[functions.mikrotik-connect]
+verify_jwt = false
+
+[functions.mikrotik-hotspot-users]
+verify_jwt = false
+
+[functions.mikrotik-system-info]
+verify_jwt = false
