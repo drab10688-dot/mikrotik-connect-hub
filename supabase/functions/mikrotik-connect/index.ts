@@ -15,7 +15,7 @@ interface MikroTikConfig {
 
 async function connectToMikroTik(config: MikroTikConfig) {
   const protocol = config.useTls ? 'https' : 'http';
-  const url = `${protocol}://${config.host}/rest/system/resource`;
+  const url = `${protocol}://${config.host}:${config.port}/rest/system/resource`;
   
   const authString = btoa(`${config.username}:${config.password}`);
   

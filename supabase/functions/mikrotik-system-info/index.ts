@@ -13,7 +13,7 @@ interface MikroTikConfig {
 
 async function mikrotikRequest(config: MikroTikConfig, path: string) {
   const protocol = config.useTls ? 'https' : 'http';
-  const url = `${protocol}://${config.host}${path}`;
+  const url = `${protocol}://${config.host}:${config.port}${path}`;
   
   const authString = btoa(`${config.username}:${config.password}`);
   
