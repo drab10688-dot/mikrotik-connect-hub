@@ -1,101 +1,103 @@
-import { Sidebar } from "@/components/dashboard/Sidebar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
+import { saveMikroTikCredentials } from "@/lib/mikrotik";
+import { Router, Wifi } from "lucide-react";
 
-const Settings = () => {
-  const handleSave = () => {
-    toast.success("Configuración guardada correctamente");
+export default function Settings() {
+  const navigate = useNavigate();
+  const [selectedDevice, setSelectedDevice] = useState<string>("");
+
+  const { data: devices, isLoading } = useQuery({
+    queryKey: ['mikrotik-devices-select'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const handleConnect = () => {
+    if (!selectedDevice) {
+      toast.error("Selecciona un dispositivo MikroTik");
+      return;
+    }
+
+    const device = devices?.find(d => d.id === selectedDevice);
+    if (!device) return;
+
+    saveMikroTikCredentials({
+      host: device.host,
+      username: device.username,
+      password: device.password,
+      port: device.port.toString(),
+      version: device.version,
+    });
+
+    toast.success(`Conectado a ${device.name}`);
+    navigate("/dashboard");
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="ml-64 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Configuración</h1>
-          <p className="text-muted-foreground">Ajusta las preferencias del sistema</p>
-        </div>
-
-        <div className="space-y-6 max-w-2xl">
-          <Card>
-            <CardHeader>
-              <CardTitle>Conexión al Router</CardTitle>
-              <CardDescription>Configuración de la conexión a MikroTik</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="host">Host / IP del Router</Label>
-                <Input id="host" defaultValue={localStorage.getItem("mikrotik_host") || ""} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="api-port">Puerto API</Label>
-                <Input id="api-port" defaultValue="8728" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="timeout">Timeout (segundos)</Label>
-                <Input id="timeout" type="number" defaultValue="10" />
-              </div>
-            </CardContent>
-          </Card>
+      <div className="flex-1 p-8 ml-64">
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold">Configuración</h1>
+            <p className="text-muted-foreground">
+              Selecciona el dispositivo MikroTik
+            </p>
+          </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Hotspot</CardTitle>
-              <CardDescription>Configuración del sistema de hotspot</CardDescription>
+              <CardTitle>Dispositivo MikroTik</CardTitle>
+              <CardDescription>Selecciona un router</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Auto-generar usuarios</Label>
-                  <p className="text-sm text-muted-foreground">Crear usuarios automáticamente al iniciar sesión</p>
+              {isLoading ? (
+                <div className="text-center py-8">Cargando...</div>
+              ) : !devices?.length ? (
+                <div className="text-center py-8">
+                  <Wifi className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No hay dispositivos configurados</p>
                 </div>
-                <Switch />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Notificaciones de conexión</Label>
-                  <p className="text-sm text-muted-foreground">Recibir alertas cuando un usuario se conecta</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="prefix">Prefijo de usuarios</Label>
-                <Input id="prefix" defaultValue="user_" />
-              </div>
+              ) : (
+                <>
+                  <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un dispositivo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {devices.map((device: any) => (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.name} ({device.host})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button onClick={handleConnect} className="w-full" disabled={!selectedDevice}>
+                    <Router className="h-4 w-4 mr-2" />
+                    Conectar
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Monitor de Tráfico</CardTitle>
-              <CardDescription>Configuración del monitoreo de red</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Actualización automática</Label>
-                  <p className="text-sm text-muted-foreground">Refrescar estadísticas en tiempo real</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="refresh">Intervalo de actualización (segundos)</Label>
-                <Input id="refresh" type="number" defaultValue="5" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Button onClick={handleSave} className="w-full">
-            Guardar Cambios
-          </Button>
         </div>
       </div>
     </div>
   );
-};
-
-export default Settings;
+}

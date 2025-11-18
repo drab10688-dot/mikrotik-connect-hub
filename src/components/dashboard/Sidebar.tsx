@@ -16,6 +16,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { useSystemResources } from "@/hooks/useMikrotikData";
+import { AdminMenu } from "./AdminMenu";
+import { useAuth } from "@/hooks/useAuth";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -29,19 +31,21 @@ const menuItems = [
 
 export const Sidebar = () => {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut();
     localStorage.removeItem("mikrotik_connected");
     localStorage.removeItem("mikrotik_config");
     localStorage.removeItem("mikrotik_host");
     localStorage.removeItem("mikrotik_version");
-    toast.info("Desconectado del router");
-    navigate("/");
+    toast.info("Sesión cerrada exitosamente");
+    navigate("/login");
   };
 
   return (
@@ -64,7 +68,7 @@ export const Sidebar = () => {
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {menuItems.map((item) => (
           <NavLink
             key={item.path}
@@ -82,6 +86,10 @@ export const Sidebar = () => {
             <span>{item.label}</span>
           </NavLink>
         ))}
+        
+        <div className="pt-4 mt-4 border-t border-sidebar-border">
+          <AdminMenu />
+        </div>
       </nav>
 
       <div className="p-4 border-t border-sidebar-border">
@@ -91,7 +99,7 @@ export const Sidebar = () => {
           onClick={handleLogout}
         >
           <LogOut className="w-5 h-5 mr-3" />
-          Desconectar
+          Cerrar Sesión
         </Button>
       </div>
     </div>
