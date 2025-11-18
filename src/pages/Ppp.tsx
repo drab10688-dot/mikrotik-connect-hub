@@ -8,6 +8,7 @@ import { Search, Trash2, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { usePPPoEUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { removePPPoEUser } from "@/lib/mikrotik";
+import { AddPPPoEUserDialog } from "@/components/forms/AddPPPoEUserDialog";
 
 const Ppp = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -96,6 +97,7 @@ const Ppp = () => {
                 <CardDescription>Lista de secretos y credenciales PPPoE</CardDescription>
               </div>
               <div className="flex gap-2">
+                <AddPPPoEUserDialog onSuccess={refetchUsers} />
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                   <Input

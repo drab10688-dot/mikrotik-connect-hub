@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ticket, Plus, Trash2, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { generateVouchers, getVouchers, deleteVoucher } from "@/lib/mikrotik";
@@ -12,6 +13,7 @@ import { useVouchers } from "@/hooks/useMikrotikData";
 const Vouchers = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [voucherCount, setVoucherCount] = useState("10");
+  const [voucherProfile, setVoucherProfile] = useState("default");
   const [isGenerating, setIsGenerating] = useState(false);
   
   const { data: vouchers, isLoading, refetch } = useVouchers();
@@ -19,7 +21,7 @@ const Vouchers = () => {
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
-      await generateVouchers(parseInt(voucherCount));
+      await generateVouchers(parseInt(voucherCount), voucherProfile);
       toast.success(`${voucherCount} vouchers generados exitosamente`);
       refetch();
     } catch (error: any) {
@@ -98,6 +100,22 @@ const Vouchers = () => {
                     value={voucherCount}
                     onChange={(e) => setVoucherCount(e.target.value)}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="profile">Perfil</Label>
+                  <Select value={voucherProfile} onValueChange={setVoucherProfile}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">default</SelectItem>
+                      <SelectItem value="1hora">1 hora</SelectItem>
+                      <SelectItem value="3horas">3 horas</SelectItem>
+                      <SelectItem value="1dia">1 día</SelectItem>
+                      <SelectItem value="1semana">1 semana</SelectItem>
+                      <SelectItem value="1mes">1 mes</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Button 
                   onClick={handleGenerate} 
