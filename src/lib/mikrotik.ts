@@ -162,3 +162,58 @@ export const getSystemInfo = async (type: string = "resources") => {
     type,
   });
 };
+
+export const getPPPoEUsers = async () => {
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "list",
+  });
+};
+
+export const addPPPoEUser = async (userData: {
+  name: string;
+  password: string;
+  service?: string;
+  profile?: string;
+  localAddress?: string;
+  remoteAddress?: string;
+  comment?: string;
+}) => {
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "add",
+    userData,
+  });
+};
+
+export const removePPPoEUser = async (userId: string) => {
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "remove",
+    userData: { id: userId },
+  });
+};
+
+export const getPPPoEActive = async () => {
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "active",
+  });
+};
+
+export const generateVouchers = async (count: number, profile?: string) => {
+  return await callMikroTikFunction("mikrotik-vouchers", {
+    action: "generate",
+    count,
+    voucherData: { profile },
+  });
+};
+
+export const getVouchers = async () => {
+  return await callMikroTikFunction("mikrotik-vouchers", {
+    action: "list",
+  });
+};
+
+export const deleteVoucher = async (voucherId: string) => {
+  return await callMikroTikFunction("mikrotik-vouchers", {
+    action: "delete",
+    voucherData: { id: voucherId },
+  });
+};

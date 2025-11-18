@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.network-diagnostics]
 verify_jwt = false
+
+[functions.mikrotik-vouchers]
+verify_jwt = false
+
+[functions.mikrotik-pppoe]
+verify_jwt = false
