@@ -5,18 +5,39 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Ticket, Plus, Trash2, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { generateVouchers, getVouchers, deleteVoucher } from "@/lib/mikrotik";
 import { useVouchers } from "@/hooks/useMikrotikData";
+import { PrintVouchersDialog } from "@/components/vouchers/PrintVouchersDialog";
 
 const Vouchers = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [voucherCount, setVoucherCount] = useState("10");
   const [voucherProfile, setVoucherProfile] = useState("default");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedVouchers, setSelectedVouchers] = useState<Set<string>>(new Set());
   
   const { data: vouchers, isLoading, refetch } = useVouchers();
+
+  const toggleVoucherSelection = (id: string) => {
+    const newSelection = new Set(selectedVouchers);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else {
+      newSelection.add(id);
+    }
+    setSelectedVouchers(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedVouchers.size === filteredVouchers.length) {
+      setSelectedVouchers(new Set());
+    } else {
+      setSelectedVouchers(new Set(filteredVouchers.map((v: any) => v[".id"])));
+    }
+  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -36,6 +57,10 @@ const Vouchers = () => {
       await deleteVoucher(id);
       toast.success("Voucher eliminado");
       refetch();
+      // Remover de la selección si estaba seleccionado
+      const newSelection = new Set(selectedVouchers);
+      newSelection.delete(id);
+      setSelectedVouchers(newSelection);
     } catch (error: any) {
       toast.error(error.message || "Error al eliminar voucher");
     }
@@ -160,20 +185,32 @@ const Vouchers = () => {
               <div className="flex items-center justify-between">
                 <CardTitle>Lista de Vouchers</CardTitle>
                 <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder="Buscar..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9 w-64"
+                  {selectedVouchers.size > 0 && (
+                    <PrintVouchersDialog 
+                      vouchers={filteredVouchers.filter((v: any) => selectedVouchers.has(v[".id"]))} 
                     />
-                  </div>
+                  )}
                   <Button variant="outline" onClick={handleExport}>
                     <Download className="w-4 h-4 mr-2" />
                     Exportar
                   </Button>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 mt-4">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder="Buscar..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                {selectedVouchers.size > 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    {selectedVouchers.size} seleccionado(s)
+                  </span>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -181,6 +218,12 @@ const Vouchers = () => {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b bg-muted/50">
+                      <th className="w-12 p-4">
+                        <Checkbox
+                          checked={selectedVouchers.size === filteredVouchers.length && filteredVouchers.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </th>
                       <th className="text-left p-4 font-medium">Usuario</th>
                       <th className="text-left p-4 font-medium">Contraseña</th>
                       <th className="text-left p-4 font-medium">Perfil</th>
@@ -191,19 +234,25 @@ const Vouchers = () => {
                   <tbody>
                     {isLoading ? (
                       <tr>
-                        <td colSpan={5} className="text-center p-8 text-muted-foreground">
+                        <td colSpan={6} className="text-center p-8 text-muted-foreground">
                           Cargando vouchers...
                         </td>
                       </tr>
                     ) : filteredVouchers.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center p-8 text-muted-foreground">
+                        <td colSpan={6} className="text-center p-8 text-muted-foreground">
                           No hay vouchers disponibles
                         </td>
                       </tr>
                     ) : (
                       filteredVouchers.map((voucher: any) => (
                         <tr key={voucher[".id"]} className="border-b hover:bg-muted/50">
+                          <td className="p-4">
+                            <Checkbox
+                              checked={selectedVouchers.has(voucher[".id"])}
+                              onCheckedChange={() => toggleVoucherSelection(voucher[".id"])}
+                            />
+                          </td>
                           <td className="p-4 font-mono text-sm">{voucher.name}</td>
                           <td className="p-4 font-mono text-sm">{voucher.password}</td>
                           <td className="p-4">{voucher.profile || "default"}</td>
