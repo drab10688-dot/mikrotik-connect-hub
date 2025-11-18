@@ -58,7 +58,7 @@ export default function HotspotProfiles() {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profile',
+          command: device.version === 'v7' ? undefined : 'hotspot-profiles',
           action: device.version === 'v7' ? 'list-profiles' : undefined,
         },
       });
@@ -98,7 +98,7 @@ export default function HotspotProfiles() {
           port: device.port,
           command: device.version === 'v7' ? undefined : 'hotspot-profile-add',
           action: device.version === 'v7' ? 'add-profile' : undefined,
-          profileData,
+          params: profileData,
         },
       });
       
@@ -133,9 +133,9 @@ export default function HotspotProfiles() {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profile-remove',
+          command: device.version === 'v7' ? undefined : 'hotspot-profile-delete',
           action: device.version === 'v7' ? 'remove-profile' : undefined,
-          profileData: { '.id': profileId },
+          params: { '.id': profileId },
         },
       });
       

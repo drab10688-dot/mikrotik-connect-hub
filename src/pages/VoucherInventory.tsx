@@ -57,7 +57,7 @@ export default function VoucherInventory() {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profile',
+          command: device.version === 'v7' ? undefined : 'hotspot-profiles',
           action: device.version === 'v7' ? 'list-profiles' : undefined,
         },
       });
