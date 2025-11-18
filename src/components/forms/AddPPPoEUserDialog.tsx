@@ -17,7 +17,7 @@ export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { data: pppoeProfilesData } = usePPPoEProfiles();
-  const pppoeProfiles = pppoeProfilesData?.data || [];
+  const pppoeProfiles = (pppoeProfilesData as any[]) || [];
   
   const [formData, setFormData] = useState({
     name: "",
