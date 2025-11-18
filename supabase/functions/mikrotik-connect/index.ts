@@ -14,30 +14,54 @@ interface MikroTikConfig {
 }
 
 async function connectToMikroTik(config: MikroTikConfig) {
-  const protocol = config.useTls ? 'https' : 'http';
-  const url = `${protocol}://${config.host}:${config.port}/rest/system/resource`;
-  
-  const authString = btoa(`${config.username}:${config.password}`);
-  
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/json',
-      },
-    });
+  const attempts = [
+    { port: config.port, useTls: config.port === 443 || config.port === 8729 },
+    { port: 443, useTls: true },
+    { port: 80, useTls: false },
+    { port: 8729, useTls: true },
+    { port: 8728, useTls: false },
+  ];
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  let lastError: Error | null = null;
+
+  for (const attempt of attempts) {
+    const protocol = attempt.useTls ? 'https' : 'http';
+    const url = `${protocol}://${config.host}:${attempt.port}/rest/system/resource`;
+    
+    console.log(`Trying ${config.host}:${attempt.port} (${protocol})`);
+    
+    const authString = btoa(`${config.username}:${config.password}`);
+    
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(`Success on port ${attempt.port}`);
+      return { success: true, data, port: attempt.port };
+    } catch (error) {
+      lastError = error as Error;
+      console.log(`Failed on port ${attempt.port}: ${lastError.message}`);
+      continue;
     }
-
-    const data = await response.json();
-    return { success: true, data };
-  } catch (error) {
-    console.error('MikroTik connection error:', error);
-    throw error;
   }
+
+  throw lastError || new Error('All connection attempts failed');
 }
 
 Deno.serve(async (req) => {
@@ -50,8 +74,8 @@ Deno.serve(async (req) => {
 
     console.log(`Attempting to connect to MikroTik at ${host}:${port} (${version})`);
 
-    const useTls = port === 443;
-    const actualPort = port || (useTls ? 443 : 80);
+    const useTls = port === 443 || port === 8729;
+    const actualPort = port || 80;
 
     const config: MikroTikConfig = {
       host: host,
@@ -63,13 +87,14 @@ Deno.serve(async (req) => {
 
     const result = await connectToMikroTik(config);
 
-    console.log('Successfully connected to MikroTik');
+    console.log(`Successfully connected to MikroTik on port ${result.port}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Conectado exitosamente',
+        message: `Conectado exitosamente en puerto ${result.port}`,
         data: result.data,
+        port: result.port,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -1,11 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { getSystemInfo, getHotspotUsers } from "@/lib/mikrotik";
+import { 
+  getSystemInfo, 
+  getHotspotUsers,
+  getPPPoEUsers,
+  getPPPoEActive,
+  getVouchers,
+} from "@/lib/mikrotik";
 
 export const useSystemResources = () => {
   return useQuery({
     queryKey: ["system-resources"],
     queryFn: () => getSystemInfo("resources"),
-    refetchInterval: 5000, // Actualizar cada 5 segundos
+    refetchInterval: 5000,
   });
 };
 
@@ -38,5 +44,29 @@ export const usePPPConnections = () => {
     queryKey: ["ppp-connections"],
     queryFn: () => getSystemInfo("ppp"),
     refetchInterval: 5000,
+  });
+};
+
+export const usePPPoEUsers = () => {
+  return useQuery({
+    queryKey: ["pppoe-users"],
+    queryFn: () => getPPPoEUsers(),
+    refetchInterval: 10000,
+  });
+};
+
+export const usePPPoEActive = () => {
+  return useQuery({
+    queryKey: ["pppoe-active"],
+    queryFn: () => getPPPoEActive(),
+    refetchInterval: 5000,
+  });
+};
+
+export const useVouchers = () => {
+  return useQuery({
+    queryKey: ["vouchers"],
+    queryFn: () => getVouchers(),
+    refetchInterval: 10000,
   });
 };
