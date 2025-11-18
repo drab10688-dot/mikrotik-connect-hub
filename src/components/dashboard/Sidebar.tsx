@@ -16,8 +16,8 @@ import { toast } from "sonner";
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Users, label: "Usuarios Hotspot", path: "/users" },
-  { icon: Wifi, label: "Gestión PPP", path: "/ppp" },
-  { icon: Activity, label: "Monitor Tráfico", path: "/traffic" },
+  { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
+  { icon: Activity, label: "Vouchers Hotspot", path: "/vouchers" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
 
