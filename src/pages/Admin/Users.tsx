@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { UserPlus, Shield, Trash2 } from 'lucide-react';
 
 export default function UsersAdmin() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -100,6 +102,10 @@ export default function UsersAdmin() {
                 Administra usuarios y sus roles en el sistema
               </p>
             </div>
+            <Button onClick={() => navigate('/admin/register-user')}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Registrar Usuario
+            </Button>
           </div>
 
           <Card>
