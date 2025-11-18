@@ -33,43 +33,25 @@ export default function RegisterUser() {
     setIsLoading(true);
 
     try {
-      // Registrar el usuario
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-          },
+      // Obtener el token de sesión actual
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('No hay sesión activa');
+      }
+
+      // Llamar a la edge function para crear el usuario
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: formData.email,
+          password: formData.password,
+          fullName: formData.fullName,
+          role: formData.role,
         },
       });
 
-      if (authError) throw authError;
-
-      if (!authData.user) {
-        throw new Error('No se pudo crear el usuario');
-      }
-
-      // Crear el perfil del usuario
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: authData.user.id,
-          email: formData.email,
-          full_name: formData.fullName,
-        });
-
-      if (profileError) throw profileError;
-
-      // Asignar el rol al usuario
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: authData.user.id,
-          role: formData.role,
-        });
-
-      if (roleError) throw roleError;
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
 
       toast.success('Usuario registrado exitosamente');
       
@@ -80,6 +62,12 @@ export default function RegisterUser() {
         fullName: '',
         role: 'user',
       });
+
+      // Esperar un momento y redirigir
+      setTimeout(() => {
+        navigate('/admin/users');
+      }, 1500);
+
     } catch (error: any) {
       console.error('Error al registrar usuario:', error);
       toast.error(error.message || 'Error al registrar usuario');
