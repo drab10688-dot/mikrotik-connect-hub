@@ -18,13 +18,31 @@ export default function UsersAdmin() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
-      const { data: profiles, error } = await supabase
+      // Primero obtener los perfiles
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('*, user_roles(role)')
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return profiles;
+      if (profilesError) throw profilesError;
+
+      // Luego obtener los roles de cada usuario
+      const usersWithRoles = await Promise.all(
+        profiles.map(async (profile) => {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', profile.user_id)
+            .single();
+
+          return {
+            ...profile,
+            user_roles: roleData ? [roleData] : []
+          };
+        })
+      );
+
+      return usersWithRoles;
     },
   });
 
