@@ -23,7 +23,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Users, label: "Usuarios Hotspot", path: "/users" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
-  { icon: Activity, label: "Vouchers Hotspot", path: "/vouchers" },
+  { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },
   { icon: ShieldCheck, label: "Perfiles", path: "/profiles" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Settings, label: "Configuración", path: "/settings" },
