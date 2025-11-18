@@ -37,8 +37,17 @@ export default function Settings() {
 
         if (error) throw error;
         return data.map((access: any) => access.mikrotik_devices).filter(Boolean);
+      } else {
+        // Regular users see their own devices
+        const { data, error } = await supabase
+          .from('mikrotik_devices')
+          .select('*')
+          .eq('created_by', user?.id)
+          .order('name');
+
+        if (error) throw error;
+        return data;
       }
-      return [];
     },
     enabled: !!user,
   });
@@ -87,7 +96,9 @@ export default function Settings() {
                   <CardDescription>
                     {isSuperAdmin 
                       ? 'Selecciona cualquier router para gestionar'
-                      : 'Selecciona uno de tus routers asignados'
+                      : isAdmin
+                      ? 'Selecciona uno de tus routers asignados'
+                      : 'Selecciona uno de tus routers'
                     }
                   </CardDescription>
                 </div>
@@ -100,13 +111,15 @@ export default function Settings() {
                 <div className="text-center py-8">
                   <Wifi className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">
-                    {isAdmin 
+                    {isSuperAdmin
+                      ? 'No hay dispositivos MikroTik configurados'
+                      : isAdmin 
                       ? 'No tienes dispositivos MikroTik asignados'
-                      : 'No hay dispositivos MikroTik configurados'
+                      : 'No has creado dispositivos MikroTik aún'
                     }
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Contacta al administrador
+                    {isSuperAdmin || !isAdmin ? 'Ve a Dispositivos MikroTik para crear uno' : 'Contacta al administrador'}
                   </p>
                 </div>
               ) : (
