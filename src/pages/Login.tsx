@@ -21,8 +21,10 @@ const Login = () => {
   });
 
   const handleVersionChange = (value: string) => {
-    const defaultPort = value === "v6" ? "8728" : "80";
-    setFormData({ ...formData, version: value, port: defaultPort });
+    // Sugerir puerto por defecto solo si el campo está vacío
+    const suggestedPort = value === "v6" ? "8728" : "80";
+    const newPort = formData.port === "" ? suggestedPort : formData.port;
+    setFormData({ ...formData, version: value, port: newPort });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -119,11 +121,14 @@ const Login = () => {
                   <Input
                     id="port"
                     type="text"
-                    placeholder="8728"
+                    placeholder={formData.version === "v6" ? "8728" : "80"}
                     value={formData.port}
                     onChange={(e) => setFormData({ ...formData, port: e.target.value })}
                     required
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Puertos comunes: {formData.version === "v6" ? "8728, 8729" : "80, 443, 8080"}
+                  </p>
                 </div>
               </div>
 
