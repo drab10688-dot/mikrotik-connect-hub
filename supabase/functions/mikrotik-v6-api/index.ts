@@ -113,29 +113,50 @@ class MikroTikAPI {
   private async readResponse(): Promise<{ type: string; data: Record<string, string> }> {
     if (!this.conn) throw new Error('Not connected');
 
+    // Helpers locales para lectura robusta
+    const readExact = async (n: number): Promise<Uint8Array> => {
+      if (!this.conn) throw new Error('Not connected');
+      const buf = new Uint8Array(n);
+      let readTotal = 0;
+      while (readTotal < n) {
+        const chunk = await this.conn.read(buf.subarray(readTotal));
+        if (chunk === null) throw new Error('Connection closed');
+        readTotal += chunk;
+      }
+      return buf;
+    };
+
+    const readLengthPrefix = async (): Promise<number> => {
+      const first = await readExact(1);
+      const fb = first[0];
+      let needed = 1;
+      if ((fb & 0x80) === 0) needed = 1;
+      else if ((fb & 0xC0) === 0x80) needed = 2;
+      else if ((fb & 0xE0) === 0xC0) needed = 3;
+      else if ((fb & 0xF0) === 0xE0) needed = 4;
+      else needed = 5;
+
+      let raw = first;
+      if (needed > 1) {
+        const rest = await readExact(needed - 1);
+        raw = new Uint8Array(needed);
+        raw.set(first, 0);
+        raw.set(rest, 1);
+      }
+      const { length } = this.decodeLength(raw, 0);
+      return length;
+    };
+
     const result: Record<string, string> = {};
     let type = '';
 
     while (true) {
-      // Leer tamaño de la palabra
-      const lengthBuffer = new Uint8Array(5);
-      await this.conn.read(lengthBuffer);
-      
-      const { length, bytesRead } = this.decodeLength(lengthBuffer, 0);
-      
+      const length = await readLengthPrefix();
       if (length === 0) break; // Fin de la sentencia
-      
-      // Leer la palabra
-      const wordBuffer = new Uint8Array(length);
-      let totalRead = 0;
-      while (totalRead < length) {
-        const n = await this.conn.read(wordBuffer.subarray(totalRead));
-        if (n === null) throw new Error('Connection closed');
-        totalRead += n;
-      }
-      
+
+      const wordBuffer = await readExact(length);
       const word = new TextDecoder().decode(wordBuffer);
-      
+
       if (word.startsWith('!')) {
         type = word;
       } else if (word.startsWith('=')) {
