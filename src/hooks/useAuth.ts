@@ -46,10 +46,25 @@ export const useAuth = () => {
         .eq('user_id', userId)
         .order('role', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      setRole(data?.role ?? null);
+      
+      // If no role exists, create a default 'user' role
+      if (!data) {
+        const { error: insertError } = await supabase
+          .from('user_roles')
+          .insert({ user_id: userId, role: 'user' });
+        
+        if (!insertError) {
+          setRole('user');
+        } else {
+          console.error('Error creating default role:', insertError);
+          setRole(null);
+        }
+      } else {
+        setRole(data.role);
+      }
     } catch (error) {
       console.error('Error fetching user role:', error);
       setRole(null);
