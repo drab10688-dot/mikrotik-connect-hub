@@ -286,3 +286,100 @@ export const deleteVoucher = async (voucherId: string) => {
     voucherData: { id: voucherId },
   });
 };
+
+// Profiles Management
+export const getHotspotProfiles = async () => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-profiles", {
+      command: "hotspot-profiles",
+    });
+  }
+  return await callMikroTikFunction("mikrotik-hotspot-users", {
+    action: "profiles",
+  });
+};
+
+export const addHotspotProfile = async (profileData: any) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-profile-add", {
+      command: "hotspot-profile-add",
+      params: profileData,
+    });
+  }
+  return await callMikroTikFunction("mikrotik-hotspot-users", {
+    action: "profile-add",
+    profileData,
+  });
+};
+
+export const updateHotspotProfile = async (id: string, profileData: any) => {
+  return await callMikroTikFunction("mikrotik-hotspot-users", {
+    action: "profile-update",
+    id,
+    profileData,
+  });
+};
+
+export const deleteHotspotProfile = async (id: string) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("hotspot-profile-delete", {
+      command: "hotspot-profile-delete",
+      params: { id },
+    });
+  }
+  return await callMikroTikFunction("mikrotik-hotspot-users", {
+    action: "profile-delete",
+    id,
+  });
+};
+
+export const getPPPoEProfiles = async () => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("pppoe-profiles", {
+      command: "pppoe-profiles",
+    });
+  }
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "profiles",
+  });
+};
+
+export const addPPPoEProfile = async (profileData: any) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("pppoe-profile-add", {
+      command: "pppoe-profile-add",
+      params: profileData,
+    });
+  }
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "profile-add",
+    profileData,
+  });
+};
+
+export const updatePPPoEProfile = async (id: string, profileData: any) => {
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "profile-update",
+    id,
+    profileData,
+  });
+};
+
+export const deletePPPoEProfile = async (id: string) => {
+  const credentials = getMikroTikCredentials();
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction("pppoe-profile-delete", {
+      command: "pppoe-profile-delete",
+      params: { id },
+    });
+  }
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: "profile-delete",
+    id,
+  });
+};

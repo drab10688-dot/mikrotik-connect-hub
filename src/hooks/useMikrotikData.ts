@@ -70,3 +70,25 @@ export const useVouchers = () => {
     refetchInterval: 10000,
   });
 };
+
+export const useHotspotProfiles = () => {
+  return useQuery({
+    queryKey: ["hotspot-profiles"],
+    queryFn: async () => {
+      const { getHotspotProfiles } = await import("@/lib/mikrotik");
+      return getHotspotProfiles();
+    },
+    refetchInterval: 30000,
+  });
+};
+
+export const usePPPoEProfiles = () => {
+  return useQuery({
+    queryKey: ["pppoe-profiles"],
+    queryFn: async () => {
+      const { getPPPoEProfiles } = await import("@/lib/mikrotik");
+      return getPPPoEProfiles();
+    },
+    refetchInterval: 30000,
+  });
+};

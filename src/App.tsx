@@ -10,6 +10,7 @@ import Vouchers from "./pages/Vouchers";
 import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
+import Profiles from "./pages/Profiles";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
         <Route path="/users" element={<Users />} />
         <Route path="/ppp" element={<Ppp />} />
         <Route path="/vouchers" element={<Vouchers />} />
+        <Route path="/profiles" element={<Profiles />} />
         <Route path="/traffic" element={<Traffic />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/diagnostics" element={<Diagnostics />} />
