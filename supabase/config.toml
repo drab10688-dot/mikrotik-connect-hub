@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.mikrotik-v6-api]
 verify_jwt = false
+
+[functions.network-diagnostics]
+verify_jwt = false

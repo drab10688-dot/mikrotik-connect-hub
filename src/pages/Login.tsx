@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Wifi, Shield, Router } from "lucide-react";
+import { Wifi, Shield, Router, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { saveMikroTikCredentials, testMikroTikConnection } from "@/lib/mikrotik";
 
@@ -160,6 +160,18 @@ const Login = () => {
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground pt-4">
                 <Shield className="w-4 h-4" />
                 <span>Conexión segura vía API</span>
+              </div>
+
+              <div className="pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate("/diagnostics")}
+                >
+                  <Activity className="w-4 h-4 mr-2" />
+                  Herramientas de Diagnóstico
+                </Button>
               </div>
             </form>
           </CardContent>
