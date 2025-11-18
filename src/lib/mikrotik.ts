@@ -327,7 +327,7 @@ export const deleteHotspotProfile = async (id: string) => {
   if (credentials?.version === "v6") {
     return await callMikroTikFunction("hotspot-profile-delete", {
       command: "hotspot-profile-delete",
-      params: { id },
+      params: { ".id": id },
     });
   }
   return await callMikroTikFunction("mikrotik-hotspot-users", {
@@ -375,7 +375,7 @@ export const deletePPPoEProfile = async (id: string) => {
   if (credentials?.version === "v6") {
     return await callMikroTikFunction("pppoe-profile-delete", {
       command: "pppoe-profile-delete",
-      params: { id },
+      params: { ".id": id },
     });
   }
   return await callMikroTikFunction("mikrotik-pppoe", {

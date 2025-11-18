@@ -29,10 +29,10 @@ export const AddPPPoEProfileDialog = ({ onSuccess }: AddPPPoEProfileDialogProps)
     try {
       await addPPPoEProfile({
         name: formData.name,
-        rateLimit: formData.rateLimit,
-        localAddress: formData.localAddress,
-        remoteAddress: formData.remoteAddress,
-        sessionTimeout: formData.sessionTimeout,
+        "rate-limit": formData.rateLimit,
+        "local-address": formData.localAddress,
+        "remote-address": formData.remoteAddress,
+        "session-timeout": formData.sessionTimeout,
       });
       toast.success("Perfil PPPoE creado exitosamente");
       setOpen(false);

@@ -29,10 +29,10 @@ export const AddHotspotProfileDialog = ({ onSuccess }: AddHotspotProfileDialogPr
     try {
       await addHotspotProfile({
         name: formData.name,
-        rateLimit: formData.rateLimit,
-        sessionTimeout: formData.sessionTimeout,
-        idleTimeout: formData.idleTimeout,
-        sharedUsers: formData.sharedUsers,
+        "rate-limit": formData.rateLimit,
+        "session-timeout": formData.sessionTimeout,
+        "idle-timeout": formData.idleTimeout,
+        "shared-users": formData.sharedUsers,
       });
       toast.success("Perfil Hotspot creado exitosamente");
       setOpen(false);
