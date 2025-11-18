@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import Ppp from "./pages/Ppp";
+import Vouchers from "./pages/Vouchers";
 import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
@@ -23,6 +24,7 @@ const App = () => (
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/users" element={<Users />} />
         <Route path="/ppp" element={<Ppp />} />
+        <Route path="/vouchers" element={<Vouchers />} />
         <Route path="/traffic" element={<Traffic />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/diagnostics" element={<Diagnostics />} />
