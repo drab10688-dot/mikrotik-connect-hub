@@ -14,6 +14,7 @@ import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
 import Profiles from "./pages/Profiles";
+import HotspotProfiles from "./pages/HotspotProfiles";
 import Reports from "./pages/Reports";
 import UsersAdmin from "./pages/Admin/Users";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
@@ -37,7 +38,8 @@ const App = () => (
         <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
         <Route path="/vouchers" element={<ProtectedRoute><Vouchers /></ProtectedRoute>} />
         <Route path="/voucher-inventory" element={<ProtectedRoute><VoucherInventory /></ProtectedRoute>} />
-        <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
+          <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
+          <Route path="/hotspot-profiles" element={<ProtectedRoute><HotspotProfiles /></ProtectedRoute>} />
         <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

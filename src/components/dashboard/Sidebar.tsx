@@ -9,7 +9,8 @@ import {
   LogOut,
   Router,
   ShieldCheck,
-  BarChart3
+  BarChart3,
+  Ticket
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -24,7 +25,8 @@ const menuItems = [
   { icon: Users, label: "Usuarios Hotspot", path: "/users" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },
-  { icon: ShieldCheck, label: "Perfiles", path: "/profiles" },
+  { icon: Ticket, label: "Perfiles Hotspot", path: "/hotspot-profiles" },
+  { icon: ShieldCheck, label: "Perfiles PPPoE", path: "/profiles" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
