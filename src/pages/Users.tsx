@@ -4,27 +4,48 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Trash2, Edit, Download } from "lucide-react";
+import { Search, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
+import { useHotspotUsers } from "@/hooks/useMikrotikData";
+import { removeHotspotUser } from "@/lib/mikrotik";
 
 const Users = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const { data: users, isLoading, refetch } = useHotspotUsers();
 
-  const users = [
-    { id: 1, username: "user_001", password: "abc123", profile: "1_HORA", status: "unused", created: "2024-01-15" },
-    { id: 2, username: "user_002", password: "def456", profile: "3_HORAS", status: "active", created: "2024-01-15" },
-    { id: 3, username: "user_003", password: "ghi789", profile: "1_DIA", status: "unused", created: "2024-01-16" },
-    { id: 4, username: "user_004", password: "jkl012", profile: "1_SEMANA", status: "expired", created: "2024-01-10" },
-    { id: 5, username: "user_005", password: "mno345", profile: "1_MES", status: "active", created: "2024-01-14" },
-  ];
-
-  const handleDelete = (id: number) => {
-    toast.success("Usuario eliminado correctamente");
+  const handleDelete = async (userId: string) => {
+    try {
+      await removeHotspotUser(userId);
+      toast.success("Usuario eliminado correctamente");
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || "Error al eliminar usuario");
+    }
   };
 
-  const handleGenerate = () => {
-    toast.success("Generando vouchers...");
+  const handleExport = () => {
+    if (!users) return;
+    
+    const csv = [
+      ["Usuario", "Perfil", "Dirección", "Límite"].join(","),
+      ...users.map((u: any) => 
+        [u.name, u.profile || "default", u.address || "-", u["limit-uptime"] || "-"].join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hotspot-users-${new Date().toISOString()}.csv`;
+    a.click();
+    toast.success("Usuarios exportados");
   };
+
+  const filteredUsers = users?.filter((u: any) => 
+    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.profile?.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -32,7 +53,7 @@ const Users = () => {
       <div className="ml-64 p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Usuarios Hotspot</h1>
-          <p className="text-muted-foreground">Gestiona los usuarios y vouchers del hotspot</p>
+          <p className="text-muted-foreground">Gestiona los usuarios del hotspot</p>
         </div>
 
         <Card className="mb-6">
@@ -40,14 +61,10 @@ const Users = () => {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Lista de Usuarios</CardTitle>
-                <CardDescription>Usuarios creados para el hotspot de MikroTik</CardDescription>
+                <CardDescription>Usuarios del hotspot de MikroTik</CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleGenerate}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Generar Usuarios
-                </Button>
-                <Button variant="outline">
+                <Button onClick={handleExport} variant="outline">
                   <Download className="w-4 h-4 mr-2" />
                   Exportar
                 </Button>
@@ -72,45 +89,52 @@ const Users = () => {
                 <thead className="bg-muted/50">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Usuario</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Contraseña</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Perfil</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Estado</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Creado</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Dirección</th>
                     <th className="px-4 py-3 text-center text-sm font-medium text-foreground">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 text-sm font-medium">{user.username}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground font-mono">{user.password}</td>
-                      <td className="px-4 py-3 text-sm">
-                        <Badge variant="outline">{user.profile}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        {user.status === "active" && (
-                          <Badge className="bg-success/10 text-success border-success/20">Activo</Badge>
-                        )}
-                        {user.status === "unused" && (
-                          <Badge className="bg-warning/10 text-warning border-warning/20">Sin usar</Badge>
-                        )}
-                        {user.status === "expired" && (
-                          <Badge className="bg-destructive/10 text-destructive border-destructive/20">Expirado</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{user.created}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button variant="ghost" size="sm">
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(user.id)}>
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        Cargando usuarios...
                       </td>
                     </tr>
-                  ))}
+                  ) : filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        No hay usuarios registrados
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((user: any) => (
+                      <tr key={user[".id"]} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 text-sm font-medium">{user.name}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{user.profile || "default"}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={user.disabled ? "destructive" : "default"}>
+                            {user.disabled ? "Deshabilitado" : "Activo"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
+                          {user.address || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(user[".id"])}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
