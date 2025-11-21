@@ -11,6 +11,7 @@ import { saveMikroTikCredentials } from "@/lib/mikrotik";
 import { Router, Wifi } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
+import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -216,6 +217,10 @@ export default function Settings() {
                         const device = devices.find(d => d.id === selectedDevice);
                         return device ? (
                           <>
+                            <div className="flex items-center justify-between mb-3 pb-2 border-b">
+                              <span className="text-sm font-medium">Información del Dispositivo</span>
+                              <EditDeviceDialog device={device} />
+                            </div>
                             <div className="flex justify-between text-sm">
                               <span className="text-muted-foreground">Host:</span>
                               <span className="font-medium">{device.host}</span>
