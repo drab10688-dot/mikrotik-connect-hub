@@ -129,7 +129,7 @@ const SimpleQueues = () => {
       if (error) throw error;
       
       // Si se seleccionó una address list, agregar la IP a esa lista
-      if (formData.addressList) {
+      if (formData.addressList && formData.addressList !== "none") {
         try {
           // Si seleccionó "nueva lista", usar "Morosos" como nombre
           const listName = formData.addressList === "__nuevo__" ? "Morosos" : formData.addressList;
@@ -338,7 +338,7 @@ const SimpleQueues = () => {
                             <SelectValue placeholder="Seleccionar lista (ej: Morosos)" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Ninguna</SelectItem>
+                            <SelectItem value="none">Ninguna</SelectItem>
                             {addressLists?.map((list: string) => (
                               <SelectItem key={list} value={list}>
                                 {list}
