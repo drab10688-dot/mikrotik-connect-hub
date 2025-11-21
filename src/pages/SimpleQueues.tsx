@@ -52,8 +52,17 @@ const SimpleQueues = () => {
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
+      // Limpiar y validar valores
+      const uploadValue = formData.upload.trim();
+      const downloadValue = formData.download.trim();
+      
+      if (!uploadValue || !downloadValue) {
+        toast.error("Los límites de upload y download son requeridos");
+        return;
+      }
+      
       // Formatear max-limit correctamente: upload/download
-      const maxLimit = `${formData.upload}/${formData.download}`;
+      const maxLimit = `${uploadValue}/${downloadValue}`;
       
       const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
@@ -64,10 +73,10 @@ const SimpleQueues = () => {
           command: device.version === "v7" ? undefined : "simple-queue-add",
           action: device.version === "v7" ? "add-queue" : undefined,
           params: {
-            name: formData.name,
-            target: formData.target,
+            name: formData.name.trim(),
+            target: formData.target.trim(),
             "max-limit": maxLimit,
-            comment: formData.comment || undefined,
+            comment: formData.comment?.trim() || undefined,
           },
         },
       });
