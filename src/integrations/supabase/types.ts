@@ -24,6 +24,7 @@ export type Database = {
           name: string
           password: string
           port: number
+          status: string
           updated_at: string | null
           username: string
           version: string
@@ -37,6 +38,7 @@ export type Database = {
           name: string
           password: string
           port?: number
+          status?: string
           updated_at?: string | null
           username: string
           version?: string
@@ -50,6 +52,7 @@ export type Database = {
           name?: string
           password?: string
           port?: number
+          status?: string
           updated_at?: string | null
           username?: string
           version?: string
