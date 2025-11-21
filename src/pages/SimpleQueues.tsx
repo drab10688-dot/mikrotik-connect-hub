@@ -635,13 +635,20 @@ const SimpleQueues = () => {
                           <td className="p-4 text-sm">{queue["max-limit"] || "-"}</td>
                           <td className="p-4">
                             <div className="flex gap-2">
-                              <Badge variant={isDisabled ? "secondary" : "default"}>
-                                {isDisabled ? "Desactivado" : "Activo"}
-                              </Badge>
-                              {isSuspended && (
+                              {isSuspended ? (
                                 <Badge variant="destructive" className="flex items-center gap-1">
                                   <Ban className="w-3 h-3" />
                                   Usuario Moroso
+                                </Badge>
+                              ) : (
+                                <Badge variant="default" className="flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Activo
+                                </Badge>
+                              )}
+                              {isDisabled && (
+                                <Badge variant="secondary">
+                                  Desactivado
                                 </Badge>
                               )}
                             </div>
