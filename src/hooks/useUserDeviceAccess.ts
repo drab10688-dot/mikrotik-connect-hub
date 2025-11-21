@@ -11,11 +11,10 @@ export const useUserDeviceAccess = () => {
       if (!user) return [];
 
       if (isSuperAdmin) {
-        // Super admins see all active devices
+        // Super admins see all devices
         const { data, error } = await supabase
           .from('mikrotik_devices')
           .select('*')
-          .eq('status', 'active')
           .order('name');
 
         if (error) throw error;
@@ -31,12 +30,11 @@ export const useUserDeviceAccess = () => {
         if (error) throw error;
         return data.map((access: any) => access.mikrotik_devices).filter(Boolean);
       } else {
-        // Regular users see their own active devices
+        // Regular users see their own devices (both active and pending)
         const { data, error } = await supabase
           .from('mikrotik_devices')
           .select('*')
           .eq('created_by', user?.id)
-          .eq('status', 'active')
           .order('name');
 
         if (error) throw error;
