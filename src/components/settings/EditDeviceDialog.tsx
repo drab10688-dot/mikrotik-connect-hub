@@ -157,7 +157,6 @@ export const EditDeviceDialog = ({ device }: EditDeviceDialogProps) => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="v6">v6 (API)</SelectItem>
-                    <SelectItem value="v7">v7 (REST)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
