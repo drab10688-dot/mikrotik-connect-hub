@@ -205,6 +205,30 @@ export default function UsersAdmin() {
     });
   };
 
+  const toggleDeviceStatusMutation = useMutation({
+    mutationFn: async ({ deviceId, newStatus }: { deviceId: string; newStatus: string }) => {
+      const { error } = await supabase
+        .from('mikrotik_devices')
+        .update({ status: newStatus })
+        .eq('id', deviceId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-all'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-select'] });
+      toast.success('Estado del dispositivo actualizado');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Error al actualizar estado del dispositivo');
+    },
+  });
+
+  const handleToggleDeviceStatus = (deviceId: string, newStatus: string) => {
+    toggleDeviceStatusMutation.mutate({ deviceId, newStatus });
+  };
+
   const deleteDeviceMutation = useMutation({
     mutationFn: async (deviceId: string) => {
       // Primero eliminar todos los accesos de usuarios a este dispositivo
@@ -421,7 +445,7 @@ export default function UsersAdmin() {
                                       <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
                                     )
                                   ) : (
-                                    // Regular user view: show created devices with status
+                                    // Regular user view: show created devices with management controls
                                     createdDevices.length > 0 ? (
                                       <div className="grid gap-2">
                                         {createdDevices.map((device: any) => {
@@ -434,16 +458,33 @@ export default function UsersAdmin() {
                                                 <p className="font-medium">{device.name}</p>
                                                 <p className="text-sm text-muted-foreground">{device.host}</p>
                                               </div>
-                                              <Badge 
-                                                variant="outline" 
-                                                className={
-                                                  device.status === 'active' 
-                                                    ? "bg-green-500/10 text-green-500 border-green-500/20"
-                                                    : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-                                                }
-                                              >
-                                                {device.status === 'active' ? 'Activo' : 'Pendiente'}
-                                              </Badge>
+                                              <div className="flex gap-2 items-center">
+                                                {device.status === 'active' ? (
+                                                  <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={() => handleToggleDeviceStatus(device.id, 'pending')}
+                                                  >
+                                                    Desactivar
+                                                  </Button>
+                                                ) : (
+                                                  <Button
+                                                    variant="default"
+                                                    size="sm"
+                                                    onClick={() => handleToggleDeviceStatus(device.id, 'active')}
+                                                  >
+                                                    Activar
+                                                  </Button>
+                                                )}
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
+                                                  title="Eliminar dispositivo"
+                                                >
+                                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                              </div>
                                             </div>
                                           );
                                         })}
