@@ -17,7 +17,8 @@ const SimpleQueues = () => {
   const [formData, setFormData] = useState({
     name: "",
     target: "",
-    "max-limit": "",
+    upload: "",
+    download: "",
     comment: "",
   });
 
@@ -51,6 +52,9 @@ const SimpleQueues = () => {
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
+      // Formatear max-limit correctamente: upload/download
+      const maxLimit = `${formData.upload}/${formData.download}`;
+      
       const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
           host: device.host,
@@ -62,7 +66,7 @@ const SimpleQueues = () => {
           params: {
             name: formData.name,
             target: formData.target,
-            "max-limit": formData["max-limit"],
+            "max-limit": maxLimit,
             comment: formData.comment || undefined,
           },
         },
@@ -72,7 +76,7 @@ const SimpleQueues = () => {
       
       toast.success("Cola agregada exitosamente");
       setIsDialogOpen(false);
-      setFormData({ name: "", target: "", "max-limit": "", comment: "" });
+      setFormData({ name: "", target: "", upload: "", download: "", comment: "" });
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Error al agregar cola");
@@ -187,15 +191,29 @@ const SimpleQueues = () => {
                           required
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="max-limit">Max Limit *</Label>
-                        <Input
-                          id="max-limit"
-                          value={formData["max-limit"]}
-                          onChange={(e) => setFormData({ ...formData, "max-limit": e.target.value })}
-                          placeholder="5M/5M (upload/download)"
-                          required
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="upload">Upload Limit *</Label>
+                          <Input
+                            id="upload"
+                            value={formData.upload}
+                            onChange={(e) => setFormData({ ...formData, upload: e.target.value })}
+                            placeholder="5M"
+                            required
+                          />
+                          <p className="text-xs text-muted-foreground">Ej: 1M, 5M, 10M</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="download">Download Limit *</Label>
+                          <Input
+                            id="download"
+                            value={formData.download}
+                            onChange={(e) => setFormData({ ...formData, download: e.target.value })}
+                            placeholder="10M"
+                            required
+                          />
+                          <p className="text-xs text-muted-foreground">Ej: 1M, 5M, 10M</p>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="comment">Comentario</Label>
