@@ -267,7 +267,10 @@ const SimpleQueues = () => {
         throw error;
       }
       
-      toast.success(`IP agregada a la lista "${finalListName}"`);
+      // Forzar actualización inmediata de los datos
+      await Promise.all([refetch(), refetchAddressLists()]);
+      
+      toast.success(`Usuario bloqueado - IP agregada a "${finalListName}"`);
     } catch (error: any) {
       console.error("Error al agregar a address-list:", error);
       
@@ -678,6 +681,30 @@ const SimpleQueues = () => {
                           <td className="p-4 text-sm text-muted-foreground">{queue.comment || "-"}</td>
                           <td className="p-4 text-right">
                             <div className="flex gap-1 justify-end">
+                              {!isSuspended && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleAddToAddressList(queue, "Morosos")}
+                                  title="Bloquear por morosidad"
+                                  className="text-red-600 border-red-600 hover:bg-red-50"
+                                >
+                                  <Ban className="w-4 h-4 mr-1" />
+                                  Bloquear
+                                </Button>
+                              )}
+                              {isSuspended && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemoveFromAddressList(queue)}
+                                  title="Reactivar servicio"
+                                  className="text-green-600 border-green-600 hover:bg-green-50"
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Reactivar
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -701,18 +728,6 @@ const SimpleQueues = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
-                                  {isSuspended && (
-                                    <>
-                                      <DropdownMenuItem
-                                        onClick={() => handleRemoveFromAddressList(queue)}
-                                        className="text-green-600"
-                                      >
-                                        <ListX className="w-4 h-4 mr-2" />
-                                        Reactivar servicio
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                    </>
-                                  )}
                                   <div className="px-2 py-1.5 text-sm font-semibold">
                                     Agregar a lista:
                                   </div>
