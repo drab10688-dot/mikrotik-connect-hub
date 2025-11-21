@@ -326,9 +326,9 @@ export default function UsersAdmin() {
                       const hasCreatedDevices = createdDevices.length > 0;
                       const hasActiveCreatedDevices = createdDevices.filter(d => d.status === 'active').length > 0;
                       
-                      // For admins: show if there are devices in the system
+                      // For admins: show if they have assigned or created devices
                       // For regular users: show only if they have active created devices
-                      const shouldShowDevices = isAdminRole ? (devices && devices.length > 0) : hasActiveCreatedDevices;
+                      const shouldShowDevices = isAdminRole ? (hasAssignedDevices || hasCreatedDevices) : hasActiveCreatedDevices;
                       
                       return (
                         <Fragment key={user.id}>
@@ -403,58 +403,94 @@ export default function UsersAdmin() {
                                     {isAdminRole ? 'Acceso a Dispositivos' : 'Mis Dispositivos'}
                                   </h4>
                                   {isAdminRole ? (
-                                    // Admin view: show all devices with toggle buttons
-                                    devices && devices.length > 0 ? (
+                                    // Admin view: show assigned and created devices with toggle buttons
+                                    userDevices.length > 0 || createdDevices.length > 0 ? (
                                       <div className="grid gap-2">
-                                         {devices.map((device: any) => {
-                                           const hasAccess = getUserDeviceAccess(user.user_id, device.id);
-                                           const isCreator = device.created_by === user.user_id;
-                                           
-                                           return (
-                                             <div
-                                               key={device.id}
-                                               className="flex items-center justify-between p-3 bg-background rounded-lg border"
-                                             >
-                                               <div className="flex-1">
-                                                 <p className="font-medium">{device.name}</p>
-                                                 <p className="text-sm text-muted-foreground">{device.host}</p>
-                                               </div>
-                                               <div className="flex gap-2">
-                                                 {hasAccess ? (
-                                                   <Button
-                                                     variant="destructive"
-                                                     size="sm"
-                                                     onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                                   >
-                                                     Desactivar
-                                                   </Button>
-                                                 ) : (
-                                                   <Button
-                                                     variant="default"
-                                                     size="sm"
-                                                     onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                                   >
-                                                     Activar
-                                                   </Button>
-                                                 )}
-                                                 {isCreator && (
-                                                   <Button
-                                                     variant="ghost"
-                                                     size="sm"
-                                                     onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
-                                                     title="Eliminar dispositivo"
-                                                   >
-                                                     <Trash2 className="h-4 w-4 text-destructive" />
-                                                   </Button>
-                                                 )}
-                                               </div>
-                                             </div>
-                                           );
-                                         })}
-                                       </div>
-                                     ) : (
-                                       <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
-                                     )
+                                        {/* Show assigned devices */}
+                                        {userDevices.map((access: any) => {
+                                          const device = devices?.find(d => d.id === access.mikrotik_id);
+                                          if (!device) return null;
+                                          const isCreator = device.created_by === user.user_id;
+                                          
+                                          return (
+                                            <div
+                                              key={device.id}
+                                              className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                            >
+                                              <div className="flex-1">
+                                                <p className="font-medium">{device.name}</p>
+                                                <p className="text-sm text-muted-foreground">{device.host}</p>
+                                              </div>
+                                              <div className="flex gap-2">
+                                                <Button
+                                                  variant="destructive"
+                                                  size="sm"
+                                                  onClick={() => handleToggleAccess(user.user_id, device.id, true)}
+                                                >
+                                                  Desactivar
+                                                </Button>
+                                                {isCreator && (
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
+                                                    title="Eliminar dispositivo"
+                                                  >
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                        
+                                        {/* Show created devices that are not assigned */}
+                                        {createdDevices
+                                          .filter((device: any) => !userDevices.some(a => a.mikrotik_id === device.id))
+                                          .map((device: any) => {
+                                            return (
+                                              <div
+                                                key={device.id}
+                                                className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                              >
+                                                <div className="flex-1">
+                                                  <p className="font-medium">{device.name}</p>
+                                                  <p className="text-sm text-muted-foreground">{device.host}</p>
+                                                </div>
+                                                <div className="flex gap-2 items-center">
+                                                  {device.status === 'active' ? (
+                                                    <Button
+                                                      variant="destructive"
+                                                      size="sm"
+                                                      onClick={() => handleToggleDeviceStatus(device.id, 'pending')}
+                                                    >
+                                                      Desactivar
+                                                    </Button>
+                                                  ) : (
+                                                    <Button
+                                                      variant="default"
+                                                      size="sm"
+                                                      onClick={() => handleToggleDeviceStatus(device.id, 'active')}
+                                                    >
+                                                      Activar
+                                                    </Button>
+                                                  )}
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
+                                                    title="Eliminar dispositivo"
+                                                  >
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground">No hay dispositivos asignados</p>
+                                    )
                                    ) : (
                                      // Regular user view: show only active created devices with management controls
                                      createdDevices.filter((d: any) => d.status === 'active').length > 0 ? (
