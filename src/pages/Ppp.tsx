@@ -5,16 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Trash2, Activity, Ban, CheckCircle } from "lucide-react";
+import { Search, Trash2, Activity, Ban, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { usePPPoEUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
-import { removePPPoEUser, togglePPPoEUser } from "@/lib/mikrotik";
+import { removePPPoEUser, togglePPPoEUser, disconnectPPPoEUser } from "@/lib/mikrotik";
 import { AddPPPoEUserDialog } from "@/components/forms/AddPPPoEUserDialog";
 
 const Ppp = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const { data: pppUsers, isLoading: loadingUsers, refetch: refetchUsers } = usePPPoEUsers();
-  const { data: activeConnections, isLoading: loadingActive } = usePPPoEActive();
+  const { data: activeConnections, isLoading: loadingActive, refetch: refetchActive } = usePPPoEActive();
 
   const handleDelete = async (userId: string) => {
     try {
@@ -33,6 +33,16 @@ const Ppp = () => {
       refetchUsers();
     } catch (error: any) {
       toast.error(error.message || "Error al modificar usuario");
+    }
+  };
+
+  const handleDisconnect = async (connectionId: string) => {
+    try {
+      await disconnectPPPoEUser(connectionId);
+      toast.success("Conexión PPPoE desconectada");
+      refetchActive();
+    } catch (error: any) {
+      toast.error(error.message || "Error al desconectar");
     }
   };
 
@@ -138,20 +148,19 @@ const Ppp = () => {
                         <th className="text-left p-4 font-medium">Perfil</th>
                         <th className="text-left p-4 font-medium">IP Local</th>
                         <th className="text-left p-4 font-medium">IP Remota</th>
-                        <th className="text-left p-4 font-medium">Estado</th>
                         <th className="text-right p-4 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loadingUsers ? (
                         <tr>
-                          <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                          <td colSpan={6} className="text-center p-8 text-muted-foreground">
                             Cargando usuarios...
                           </td>
                         </tr>
                       ) : filteredUsers.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                          <td colSpan={6} className="text-center p-8 text-muted-foreground">
                             No hay usuarios PPPoE configurados
                           </td>
                         </tr>
@@ -160,8 +169,15 @@ const Ppp = () => {
                           const isDisabled = user.disabled === "true" || user.disabled === true;
                           
                           return (
-                            <tr key={user[".id"]} className="border-b hover:bg-muted/50">
-                              <td className="p-4 font-medium">{user.name}</td>
+                            <tr key={user[".id"]} className={`border-b hover:bg-muted/50 ${isDisabled ? 'opacity-50' : ''}`}>
+                              <td className="p-4 font-medium">
+                                {user.name}
+                                {isDisabled && (
+                                  <Badge variant="secondary" className="ml-2 text-xs">
+                                    Desactivado
+                                  </Badge>
+                                )}
+                              </td>
                               <td className="p-4 text-sm text-muted-foreground">
                                 {user.service || "any"}
                               </td>
@@ -173,11 +189,6 @@ const Ppp = () => {
                               </td>
                               <td className="p-4 text-sm font-mono">
                                 {user["remote-address"] || "-"}
-                              </td>
-                              <td className="p-4">
-                                <Badge variant={isDisabled ? "secondary" : "default"}>
-                                  {isDisabled ? "Desactivado" : "Activo"}
-                                </Badge>
                               </td>
                               <td className="p-4 text-right">
                                 <div className="flex gap-1 justify-end">
@@ -220,18 +231,20 @@ const Ppp = () => {
                         <th className="text-left p-4 font-medium">Dirección</th>
                         <th className="text-left p-4 font-medium">Tiempo Activo</th>
                         <th className="text-left p-4 font-medium">Servicio</th>
+                        <th className="text-left p-4 font-medium">Estado</th>
+                        <th className="text-right p-4 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loadingActive ? (
                         <tr>
-                          <td colSpan={4} className="text-center p-8 text-muted-foreground">
+                          <td colSpan={6} className="text-center p-8 text-muted-foreground">
                             Cargando conexiones...
                           </td>
                         </tr>
                       ) : !activeConnections || activeConnections.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="text-center p-8 text-muted-foreground">
+                          <td colSpan={6} className="text-center p-8 text-muted-foreground">
                             No hay conexiones activas
                           </td>
                         </tr>
@@ -249,6 +262,21 @@ const Ppp = () => {
                               </td>
                               <td className="p-4 text-sm text-muted-foreground">
                                 {conn.service || "pppoe"}
+                              </td>
+                              <td className="p-4">
+                                <Badge variant="default" className="bg-green-500">
+                                  Activo
+                                </Badge>
+                              </td>
+                              <td className="p-4 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDisconnect(conn[".id"])}
+                                  title="Desconectar"
+                                >
+                                  <XCircle className="w-4 h-4 text-destructive" />
+                                </Button>
                               </td>
                             </tr>
                           ))

@@ -279,6 +279,10 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/active/print');
         break;
 
+      case 'ppp-active-remove':
+        result = await api.executeCommand('/ppp/active/remove', params);
+        break;
+
       case 'hotspot-profiles':
         result = await api.executeCommand('/ip/hotspot/user/profile/print');
         break;
