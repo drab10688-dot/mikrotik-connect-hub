@@ -25,8 +25,6 @@ const AddressList = () => {
     comment: "",
   });
 
-  const commonLists = ["blocked", "allowed", "whitelist", "blacklist", "custom"];
-
   const { data: addresses, isLoading, refetch } = useQuery({
     queryKey: ["address-list"],
     queryFn: async () => {
@@ -51,12 +49,68 @@ const AddressList = () => {
     refetchInterval: 10000,
   });
 
+  // Obtener listas únicas del MikroTik
+  const availableLists = Array.from(
+    new Set((addresses || []).map((addr: any) => addr.list).filter(Boolean))
+  ).sort();
+
+  const expandIPRange = (input: string): string[] => {
+    const lines = input.split("\n").filter(line => line.trim());
+    const expandedIPs: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // Detectar si es un rango (formato: IP1 - IP2 o IP1-IP2)
+      const rangeMatch = trimmed.match(/^(\d+\.\d+\.\d+\.\d+)\s*-\s*(\d+\.\d+\.\d+\.\d+)$/);
+      
+      if (rangeMatch) {
+        const [, startIP, endIP] = rangeMatch;
+        const startParts = startIP.split('.').map(Number);
+        const endParts = endIP.split('.').map(Number);
+        
+        // Validar que sean del mismo segmento de red (mismos primeros 3 octetos)
+        if (startParts[0] === endParts[0] && 
+            startParts[1] === endParts[1] && 
+            startParts[2] === endParts[2]) {
+          
+          const start = startParts[3];
+          const end = endParts[3];
+          
+          if (start <= end && end <= 255) {
+            for (let i = start; i <= end; i++) {
+              expandedIPs.push(`${startParts[0]}.${startParts[1]}.${startParts[2]}.${i}`);
+            }
+          } else {
+            expandedIPs.push(trimmed); // Si el rango es inválido, agregar como está
+          }
+        } else {
+          expandedIPs.push(trimmed); // Si no es el mismo segmento, agregar como está
+        }
+      } else {
+        // No es un rango, agregar la IP individual
+        expandedIPs.push(trimmed);
+      }
+    }
+
+    return expandedIPs;
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!formData.list.trim()) {
+      toast.error("Debes seleccionar o escribir una lista");
+      return;
+    }
+
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      const addressList = formData.addresses.split("\n").filter(addr => addr.trim());
+      
+      // Expandir rangos si está en modo bloque
+      const addressList = isBulkMode 
+        ? expandIPRange(formData.addresses)
+        : formData.addresses.split("\n").filter(addr => addr.trim());
       
       if (addressList.length === 0) {
         toast.error("Ingresa al menos una dirección");
@@ -100,6 +154,7 @@ const AddressList = () => {
       
       setIsDialogOpen(false);
       setFormData({ addresses: "", list: "", comment: "" });
+      setIsBulkMode(false);
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Error al agregar dirección");
@@ -287,37 +342,71 @@ const AddressList = () => {
                            id="addresses"
                            value={formData.addresses}
                            onChange={(e) => setFormData({ ...formData, addresses: e.target.value })}
-                           placeholder={isBulkMode ? "192.168.1.100\n192.168.1.101\n192.168.1.102" : "192.168.1.100"}
+                           placeholder={isBulkMode ? "192.168.100.2\n192.168.100.3\no un rango:\n192.168.100.2 - 192.168.100.60" : "192.168.1.100"}
                            rows={isBulkMode ? 6 : 2}
                            required
                          />
-                         <Button
-                           type="button"
-                           variant="outline"
-                           size="sm"
-                           onClick={() => setIsBulkMode(!isBulkMode)}
-                         >
-                           {isBulkMode ? "Modo Simple" : "Modo Bloque"}
-                         </Button>
+                         <div className="flex items-center justify-between">
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={() => setIsBulkMode(!isBulkMode)}
+                           >
+                             {isBulkMode ? "Modo Simple" : "Modo Bloque"}
+                           </Button>
+                           {isBulkMode && (
+                             <span className="text-xs text-muted-foreground">
+                               Formato rango: 192.168.100.2 - 192.168.100.60
+                             </span>
+                           )}
+                         </div>
                        </div>
                        <div className="space-y-2">
                          <Label htmlFor="list">Lista *</Label>
-                         <Select
-                           value={formData.list}
-                           onValueChange={(value) => setFormData({ ...formData, list: value })}
-                           required
-                         >
-                           <SelectTrigger>
-                             <SelectValue placeholder="Selecciona una lista" />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {commonLists.map((list) => (
-                               <SelectItem key={list} value={list}>
-                                 {list}
+                         {availableLists.length > 0 ? (
+                           <Select
+                             value={formData.list}
+                             onValueChange={(value) => {
+                               if (value === "__custom__") {
+                                 setFormData({ ...formData, list: "" });
+                               } else {
+                                 setFormData({ ...formData, list: value });
+                               }
+                             }}
+                           >
+                             <SelectTrigger>
+                               <SelectValue placeholder="Selecciona una lista" />
+                             </SelectTrigger>
+                             <SelectContent>
+                               {availableLists.map((list: string) => (
+                                 <SelectItem key={list} value={list}>
+                                   {list}
+                                 </SelectItem>
+                               ))}
+                               <SelectItem value="__custom__">
+                                 + Crear nueva lista
                                </SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
+                             </SelectContent>
+                           </Select>
+                         ) : (
+                           <Input
+                             id="list"
+                             value={formData.list}
+                             onChange={(e) => setFormData({ ...formData, list: e.target.value })}
+                             placeholder="Nombre de la lista (ej: blocked, allowed)"
+                             required
+                           />
+                         )}
+                         {formData.list && !availableLists.includes(formData.list) && availableLists.length > 0 && (
+                           <Input
+                             id="custom-list"
+                             value={formData.list}
+                             onChange={(e) => setFormData({ ...formData, list: e.target.value })}
+                             placeholder="Nombre de la nueva lista"
+                             required
+                           />
+                         )}
                        </div>
                        <div className="space-y-2">
                          <Label htmlFor="comment">Comentario</Label>
