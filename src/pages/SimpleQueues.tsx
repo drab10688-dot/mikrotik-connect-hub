@@ -3,7 +3,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Plus, Ban, CheckCircle, ListX } from "lucide-react";
+import { Search, Trash2, Plus, Ban, CheckCircle, ListPlus, ListX } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const SimpleQueues = () => {
@@ -432,8 +433,46 @@ const SimpleQueues = () => {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Colas Simples</CardTitle>
+                <CardDescription>Control de ancho de banda por usuario/IP</CardDescription>
               </div>
               <div className="flex gap-2">
+                {selectedQueues.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary">
+                        <ListPlus className="w-4 h-4 mr-2" />
+                        Agregar {selectedQueues.length} a lista
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <div className="px-2 py-1.5 text-sm font-semibold">
+                        Agregar seleccionados a:
+                      </div>
+                      <DropdownMenuSeparator />
+                      {addressLists && addressLists.length > 0 ? (
+                        addressLists.map((list: string) => (
+                          <DropdownMenuItem
+                            key={list}
+                            onClick={() => handleBulkAddToList(list)}
+                          >
+                            {list}
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <DropdownMenuItem disabled>
+                          No hay listas disponibles
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAddToList("__nuevo__")}
+                        className="text-primary"
+                      >
+                        + Nueva lista: Morosos
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
                     <Button>
@@ -591,23 +630,21 @@ const SimpleQueues = () => {
                               }}
                             />
                           </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{queue.name}</span>
-                              {isSuspended && (
-                                <Badge variant="destructive" className="flex items-center gap-1">
-                                  <Ban className="w-3 h-3" />
-                                  Moroso
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
+                          <td className="p-4 font-medium">{queue.name}</td>
                           <td className="p-4 font-mono text-sm">{queue.target}</td>
                           <td className="p-4 text-sm">{queue["max-limit"] || "-"}</td>
                           <td className="p-4">
-                            <Badge variant={isDisabled ? "secondary" : "default"}>
-                              {isDisabled ? "Desactivado" : "Activo"}
-                            </Badge>
+                            <div className="flex gap-2">
+                              <Badge variant={isDisabled ? "secondary" : "default"}>
+                                {isDisabled ? "Desactivado" : "Activo"}
+                              </Badge>
+                              {isSuspended && (
+                                <Badge variant="destructive" className="flex items-center gap-1">
+                                  <Ban className="w-3 h-3" />
+                                  Usuario Moroso
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">{queue.comment || "-"}</td>
                           <td className="p-4 text-right">
@@ -624,16 +661,56 @@ const SimpleQueues = () => {
                                   <Ban className="w-4 h-4 text-orange-500" />
                                 )}
                               </Button>
-                              {isSuspended && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleRemoveFromAddressList(queue)}
-                                  title="Reactivar servicio (quitar de lista)"
-                                >
-                                  <ListX className="w-4 h-4 text-green-500" />
-                                </Button>
-                              )}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Gestionar Address List"
+                                  >
+                                    <ListPlus className="w-4 h-4 text-orange-500" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56">
+                                  {isSuspended && (
+                                    <>
+                                      <DropdownMenuItem
+                                        onClick={() => handleRemoveFromAddressList(queue)}
+                                        className="text-green-600"
+                                      >
+                                        <ListX className="w-4 h-4 mr-2" />
+                                        Reactivar servicio
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                    </>
+                                  )}
+                                  <div className="px-2 py-1.5 text-sm font-semibold">
+                                    Agregar a lista:
+                                  </div>
+                                  <DropdownMenuSeparator />
+                                  {addressLists && addressLists.length > 0 ? (
+                                    addressLists.map((list: string) => (
+                                      <DropdownMenuItem
+                                        key={list}
+                                        onClick={() => handleAddToAddressList(queue, list)}
+                                      >
+                                        {list}
+                                      </DropdownMenuItem>
+                                    ))
+                                  ) : (
+                                    <DropdownMenuItem disabled>
+                                      No hay listas disponibles
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleAddToAddressList(queue, "__nuevo__")}
+                                    className="text-primary"
+                                  >
+                                    + Nueva lista: Morosos
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                               <Button
                                 variant="ghost"
                                 size="sm"
