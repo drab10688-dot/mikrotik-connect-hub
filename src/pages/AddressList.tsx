@@ -119,10 +119,11 @@ const AddressList = () => {
 
       let successCount = 0;
       let errorCount = 0;
+      let duplicateCount = 0;
 
       for (const address of addressList) {
         try {
-          const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+          const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
               host: device.host,
               username: device.username,
@@ -139,14 +140,34 @@ const AddressList = () => {
           });
 
           if (error) throw error;
-          successCount++;
-        } catch {
-          errorCount++;
+          
+          // Verificar si el error es por entrada duplicada
+          if (data && !data.success && data.error && 
+              (data.error.includes("already have such entry") || 
+               data.error.includes("already exists"))) {
+            duplicateCount++;
+          } else if (!data || data.success) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (err: any) {
+          // Verificar si el error es por entrada duplicada
+          const errorMsg = err?.message || "";
+          if (errorMsg.includes("already have such entry") || 
+              errorMsg.includes("already exists")) {
+            duplicateCount++;
+          } else {
+            errorCount++;
+          }
         }
       }
 
       if (successCount > 0) {
         toast.success(`${successCount} dirección(es) agregada(s) exitosamente`);
+      }
+      if (duplicateCount > 0) {
+        toast.info(`${duplicateCount} dirección(es) ya existían`);
       }
       if (errorCount > 0) {
         toast.error(`${errorCount} dirección(es) fallaron`);
