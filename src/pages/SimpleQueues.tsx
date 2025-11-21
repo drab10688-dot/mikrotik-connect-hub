@@ -254,7 +254,17 @@ const SimpleQueues = () => {
       // Usar "Morosos" si seleccionó crear nueva lista
       const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
       
-      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      // Verificar si la IP ya está en la lista
+      const alreadyInList = addressListEntries?.some((entry: any) => 
+        entry.address === queue.target && entry.list.toLowerCase() === finalListName.toLowerCase()
+      );
+
+      if (alreadyInList) {
+        toast.info(`Esta IP ya está en la lista "${finalListName}"`);
+        return;
+      }
+      
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
           host: device.host,
           username: device.username,
@@ -269,10 +279,19 @@ const SimpleQueues = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Manejar el error específico de entrada duplicada
+        if (error.message && error.message.includes("already have such entry")) {
+          toast.warning(`Esta IP ya existe en la lista "${finalListName}"`);
+        } else {
+          throw error;
+        }
+        return;
+      }
       
       toast.success(`IP agregada a la lista "${finalListName}"`);
     } catch (error: any) {
+      console.error("Error al agregar a address-list:", error);
       toast.error(error.message || "Error al agregar a address-list");
     }
   };
@@ -321,29 +340,61 @@ const SimpleQueues = () => {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
       
+      let added = 0;
+      let skipped = 0;
+
       for (const queueId of selectedQueues) {
         const queue = queues?.find((q: any) => q[".id"] === queueId);
         if (!queue) continue;
 
-        await supabase.functions.invoke("mikrotik-v6-api", {
-          body: {
-            host: device.host,
-            username: device.username,
-            password: device.password,
-            port: device.port,
-            command: "address-list-add",
-            params: {
-              list: finalListName,
-              address: queue.target,
-              comment: `Suspensión: ${queue.name}${queue.comment ? ' - ' + queue.comment : ''}`,
+        // Verificar si ya está en la lista
+        const alreadyInList = addressListEntries?.some((entry: any) => 
+          entry.address === queue.target && entry.list.toLowerCase() === finalListName.toLowerCase()
+        );
+
+        if (alreadyInList) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+            body: {
+              host: device.host,
+              username: device.username,
+              password: device.password,
+              port: device.port,
+              command: "address-list-add",
+              params: {
+                list: finalListName,
+                address: queue.target,
+                comment: `Suspensión: ${queue.name}${queue.comment ? ' - ' + queue.comment : ''}`,
+              },
             },
-          },
-        });
+          });
+
+          if (!error || !error.message?.includes("already have such entry")) {
+            added++;
+          } else {
+            skipped++;
+          }
+        } catch (err) {
+          console.error("Error adding IP:", err);
+          skipped++;
+        }
       }
       
-      toast.success(`${selectedQueues.length} IPs agregadas a "${finalListName}"`);
+      if (added > 0 && skipped > 0) {
+        toast.success(`${added} IPs agregadas a "${finalListName}" (${skipped} ya existían)`);
+      } else if (added > 0) {
+        toast.success(`${added} IPs agregadas a "${finalListName}"`);
+      } else {
+        toast.info(`Todas las IPs ya estaban en "${finalListName}"`);
+      }
+      
       setSelectedQueues([]);
     } catch (error: any) {
+      console.error("Error al agregar en bloque:", error);
       toast.error(error.message || "Error al agregar en bloque");
     }
   };
