@@ -11,29 +11,32 @@ export const useUserDeviceAccess = () => {
       if (!user) return [];
 
       if (isSuperAdmin) {
-        // Super admins see all devices
+        // Super admins see all active devices
         const { data, error } = await supabase
           .from('mikrotik_devices')
           .select('*')
+          .eq('status', 'active')
           .order('name');
 
         if (error) throw error;
         return data;
       } else if (isAdmin) {
-        // Regular admins only see assigned devices
+        // Regular admins only see assigned active devices
         const { data, error } = await supabase
           .from('user_mikrotik_access')
           .select('mikrotik_devices(*)')
-          .eq('user_id', user?.id);
+          .eq('user_id', user?.id)
+          .eq('mikrotik_devices.status', 'active');
 
         if (error) throw error;
         return data.map((access: any) => access.mikrotik_devices).filter(Boolean);
       } else {
-        // Regular users see their own devices
+        // Regular users see their own active devices
         const { data, error } = await supabase
           .from('mikrotik_devices')
           .select('*')
           .eq('created_by', user?.id)
+          .eq('status', 'active')
           .order('name');
 
         if (error) throw error;

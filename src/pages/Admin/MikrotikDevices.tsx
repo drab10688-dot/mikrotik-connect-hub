@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/dashboard/Sidebar';
-import { Plus, Trash2, Server } from 'lucide-react';
+import { Plus, Trash2, Server, CheckCircle, XCircle, Clock, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function MikrotikDevices() {
   const queryClient = useQueryClient();
@@ -55,12 +57,63 @@ export default function MikrotikDevices() {
         query = query.eq('created_by', user?.id);
       }
       
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data: devicesData, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      
+      // Fetch user profiles for each device
+      if (devicesData && devicesData.length > 0) {
+        const userIds = [...new Set(devicesData.map(d => d.created_by))];
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', userIds);
+        
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+        
+        return devicesData.map(device => ({
+          ...device,
+          profile: profilesMap.get(device.created_by)
+        }));
+      }
+      
+      return devicesData;
     },
     enabled: !!user,
+  });
+
+  const { data: pendingDevices, isLoading: loadingPending } = useQuery({
+    queryKey: ['mikrotik-devices-pending', user?.id],
+    queryFn: async () => {
+      if (!isSuperAdmin) return [];
+      
+      const { data: devicesData, error } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Fetch user profiles for each device
+      if (devicesData && devicesData.length > 0) {
+        const userIds = [...new Set(devicesData.map(d => d.created_by))];
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', userIds);
+        
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+        
+        return devicesData.map(device => ({
+          ...device,
+          profile: profilesMap.get(device.created_by)
+        }));
+      }
+      
+      return devicesData;
+    },
+    enabled: !!user && isSuperAdmin,
   });
 
   const createDeviceMutation = useMutation({
@@ -76,7 +129,14 @@ export default function MikrotikDevices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
-      toast.success('MikroTik agregado exitosamente');
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending'] });
+      if (isSuperAdmin) {
+        toast.success('MikroTik agregado exitosamente');
+      } else {
+        toast.success('MikroTik enviado para aprobación', {
+          description: 'El administrador revisará y activará tu dispositivo pronto'
+        });
+      }
       setOpen(false);
       setFormData({
         name: '',
@@ -93,6 +153,29 @@ export default function MikrotikDevices() {
     },
   });
 
+  const updateDeviceStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: 'active' | 'rejected' }) => {
+      const { error } = await supabase
+        .from('mikrotik_devices')
+        .update({ status })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending'] });
+      toast.success(
+        variables.status === 'active' 
+          ? 'Dispositivo activado exitosamente' 
+          : 'Dispositivo rechazado'
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Error al actualizar dispositivo');
+    },
+  });
+
   const deleteDeviceMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -104,6 +187,7 @@ export default function MikrotikDevices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending'] });
       toast.success('MikroTik eliminado exitosamente');
     },
     onError: (error: any) => {
@@ -120,6 +204,28 @@ export default function MikrotikDevices() {
     if (window.confirm(`¿Estás seguro de eliminar el MikroTik "${name}"?`)) {
       deleteDeviceMutation.mutate(id);
     }
+  };
+
+  const handleApprove = (id: string) => {
+    updateDeviceStatusMutation.mutate({ id, status: 'active' });
+  };
+
+  const handleReject = (id: string) => {
+    if (window.confirm('¿Estás seguro de rechazar este dispositivo?')) {
+      updateDeviceStatusMutation.mutate({ id, status: 'rejected' });
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const config = {
+      active: { label: 'Activo', variant: 'default' as const },
+      pending: { label: 'Pendiente', variant: 'secondary' as const },
+      rejected: { label: 'Rechazado', variant: 'destructive' as const },
+    };
+    
+    const { label, variant } = config[status as keyof typeof config] || config.pending;
+    
+    return <Badge variant={variant}>{label}</Badge>;
   };
 
   return (
@@ -248,64 +354,264 @@ export default function MikrotikDevices() {
             </Dialog>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>MikroTiks Configurados</CardTitle>
-              <CardDescription>
-                Lista de dispositivos MikroTik registrados en el sistema
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="text-center py-8">Cargando dispositivos...</div>
-              ) : !devices || devices.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No hay dispositivos MikroTik configurados</p>
-                  <p className="text-sm">Agrega uno para comenzar</p>
+{isSuperAdmin && pendingDevices && pendingDevices.length > 0 && (
+            <Card className="border-orange-500/50">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-orange-500" />
+                  <CardTitle>Dispositivos Pendientes de Aprobación</CardTitle>
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Host</TableHead>
-                      <TableHead>Puerto</TableHead>
-                      <TableHead>Versión</TableHead>
-                      <TableHead>URL Hotspot</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {devices.map((device: any) => (
-                      <TableRow key={device.id}>
-                        <TableCell className="font-medium">{device.name}</TableCell>
-                        <TableCell>{device.host}</TableCell>
-                        <TableCell>{device.port}</TableCell>
-                        <TableCell>{device.version}</TableCell>
-                        <TableCell className="max-w-xs truncate text-xs">
-                          {device.hotspot_url || 'No configurada'}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(device.created_at).toLocaleDateString('es-ES')}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(device.id, device.name)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
+                <CardDescription>
+                  Revisa y aprueba los dispositivos creados por usuarios
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingPending ? (
+                  <div className="text-center py-8">Cargando dispositivos pendientes...</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Host</TableHead>
+                        <TableHead>Puerto</TableHead>
+                        <TableHead>Versión</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Acciones</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingDevices.map((device: any) => (
+                        <TableRow key={device.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {device.profile?.full_name || 'Sin nombre'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {device.profile?.email}
+                                </p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">{device.name}</TableCell>
+                          <TableCell>{device.host}</TableCell>
+                          <TableCell>{device.port}</TableCell>
+                          <TableCell>{device.version}</TableCell>
+                          <TableCell>
+                            {new Date(device.created_at).toLocaleDateString('es-ES')}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleApprove(device.id)}
+                                disabled={updateDeviceStatusMutation.isPending}
+                              >
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleReject(device.id)}
+                                disabled={updateDeviceStatusMutation.isPending}
+                              >
+                                <XCircle className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Tabs defaultValue="active" className="w-full">
+            <TabsList>
+              <TabsTrigger value="active">Dispositivos Activos</TabsTrigger>
+              {isSuperAdmin && <TabsTrigger value="all">Todos los Estados</TabsTrigger>}
+            </TabsList>
+            
+            <TabsContent value="active">
+              <Card>
+                <CardHeader>
+                  <CardTitle>MikroTiks Configurados</CardTitle>
+                  <CardDescription>
+                    Lista de dispositivos MikroTik activos en el sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="text-center py-8">Cargando dispositivos...</div>
+                  ) : !devices || devices.filter((d: any) => d.status === 'active').length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No hay dispositivos MikroTik activos</p>
+                      <p className="text-sm">Agrega uno para comenzar</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {isSuperAdmin && <TableHead>Usuario</TableHead>}
+                          <TableHead>Nombre</TableHead>
+                          <TableHead>Host</TableHead>
+                          <TableHead>Puerto</TableHead>
+                          <TableHead>Versión</TableHead>
+                          <TableHead>URL Hotspot</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {devices.filter((d: any) => d.status === 'active').map((device: any) => (
+                          <TableRow key={device.id}>
+                            {isSuperAdmin && (
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4 text-muted-foreground" />
+                                  <div>
+                                    <p className="text-sm">
+                                      {device.profile?.full_name || 'Sin nombre'}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {device.profile?.email}
+                                    </p>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            )}
+                            <TableCell className="font-medium">{device.name}</TableCell>
+                            <TableCell>{device.host}</TableCell>
+                            <TableCell>{device.port}</TableCell>
+                            <TableCell>{device.version}</TableCell>
+                            <TableCell className="max-w-xs truncate text-xs">
+                              {device.hotspot_url || 'No configurada'}
+                            </TableCell>
+                            <TableCell>
+                              {new Date(device.created_at).toLocaleDateString('es-ES')}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(device.id, device.name)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {isSuperAdmin && (
+              <TabsContent value="all">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Todos los Dispositivos</CardTitle>
+                    <CardDescription>
+                      Lista completa de dispositivos con todos los estados
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoading ? (
+                      <div className="text-center py-8">Cargando dispositivos...</div>
+                    ) : !devices || devices.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No hay dispositivos MikroTik configurados</p>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Usuario</TableHead>
+                            <TableHead>Nombre</TableHead>
+                            <TableHead>Host</TableHead>
+                            <TableHead>Estado</TableHead>
+                            <TableHead>Puerto</TableHead>
+                            <TableHead>Versión</TableHead>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {devices.map((device: any) => (
+                            <TableRow key={device.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4 text-muted-foreground" />
+                                  <div>
+                                    <p className="text-sm">
+                                      {device.profile?.full_name || 'Sin nombre'}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {device.profile?.email}
+                                    </p>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-medium">{device.name}</TableCell>
+                              <TableCell>{device.host}</TableCell>
+                              <TableCell>{getStatusBadge(device.status)}</TableCell>
+                              <TableCell>{device.port}</TableCell>
+                              <TableCell>{device.version}</TableCell>
+                              <TableCell>
+                                {new Date(device.created_at).toLocaleDateString('es-ES')}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  {device.status === 'pending' && (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleApprove(device.id)}
+                                        disabled={updateDeviceStatusMutation.isPending}
+                                      >
+                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleReject(device.id)}
+                                        disabled={updateDeviceStatusMutation.isPending}
+                                      >
+                                        <XCircle className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDelete(device.id, device.name)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+          </Tabs>
         </div>
       </div>
     </div>
