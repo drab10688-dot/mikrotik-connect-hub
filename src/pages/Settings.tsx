@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { saveMikroTikCredentials } from "@/lib/mikrotik";
 import { Router, Wifi } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -40,12 +41,12 @@ export default function Settings() {
         if (error) throw error;
         return data.map((access: any) => access.mikrotik_devices).filter(Boolean);
       } else {
-        // Regular users see their own active devices
+        // Regular users see their own devices (active and pending)
         const { data, error } = await supabase
           .from('mikrotik_devices')
           .select('*')
           .eq('created_by', user?.id)
-          .eq('status', 'active')
+          .in('status', ['active', 'pending'])
           .order('name');
 
         if (error) throw error;
@@ -128,11 +129,14 @@ export default function Settings() {
       <Sidebar />
       <div className="flex-1 p-8 ml-64">
         <div className="max-w-2xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold">Configuración</h1>
-            <p className="text-muted-foreground">
-              Selecciona el dispositivo MikroTik
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Configuración</h1>
+              <p className="text-muted-foreground">
+                Selecciona el dispositivo MikroTik
+              </p>
+            </div>
+            {!isAdmin && <AddDeviceDialog />}
           </div>
 
           <Card>
@@ -169,7 +173,7 @@ export default function Settings() {
                     }
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {isSuperAdmin || !isAdmin ? 'Ve a Dispositivos MikroTik para crear uno' : 'Contacta al administrador'}
+                    {isSuperAdmin || !isAdmin ? 'Agrega un dispositivo usando el botón de arriba' : 'Contacta al administrador'}
                   </p>
                   {!isSuperAdmin && !isAdmin && (
                     <p className="text-xs text-orange-600 mt-4 bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg inline-block">
@@ -179,6 +183,14 @@ export default function Settings() {
                 </div>
               ) : (
                 <>
+                  {!isSuperAdmin && !isAdmin && devices.some((d: any) => d.status === 'pending') && (
+                    <div className="p-3 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-800 mb-4">
+                      <p className="text-sm text-orange-600 dark:text-orange-400">
+                        Tienes {devices.filter((d: any) => d.status === 'pending').length} dispositivo(s) esperando aprobación del administrador
+                      </p>
+                    </div>
+                  )}
+                  
                   <Select value={selectedDevice} onValueChange={setSelectedDevice}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona un dispositivo" />
@@ -191,8 +203,8 @@ export default function Settings() {
                           disabled={device.status !== 'active'}
                         >
                           {device.name} ({device.host})
-                          {device.status === 'pending' && ' - Pendiente'}
-                          {device.status === 'rejected' && ' - Rechazado'}
+                          {device.status === 'pending' && ' - 🕐 Pendiente'}
+                          {device.status === 'rejected' && ' - ❌ Rechazado'}
                         </SelectItem>
                       ))}
                     </SelectContent>
