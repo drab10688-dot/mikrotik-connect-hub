@@ -456,43 +456,58 @@ const SimpleQueues = () => {
                 <CardTitle>Colas Simples</CardTitle>
                 <CardDescription>Control de ancho de banda por usuario/IP</CardDescription>
               </div>
-              <div className="flex gap-2">
-                {selectedQueues.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="secondary">
-                        <ListPlus className="w-4 h-4 mr-2" />
-                        Agregar {selectedQueues.length} a Morosos
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 bg-popover z-50">
-                      <div className="px-2 py-1.5 text-sm font-semibold">
-                        Agregar seleccionados a:
-                      </div>
-                      <DropdownMenuSeparator />
-                      {addressLists && addressLists.length > 0 ? (
-                        addressLists.map((list: string) => (
-                          <DropdownMenuItem
-                            key={list}
-                            onClick={() => handleBulkAddToList(list)}
-                          >
-                            {list}
+              <div className="flex gap-2 items-center">
+                {selectedQueues.length > 0 ? (
+                  <>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg border border-primary/20">
+                      <CheckCircle className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-medium text-primary">
+                        {selectedQueues.length} seleccionado{selectedQueues.length !== 1 ? 's' : ''} - Elige una address list para bloquear
+                      </span>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="secondary">
+                          <ListPlus className="w-4 h-4 mr-2" />
+                          Agregar a Lista
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56 bg-popover z-50">
+                        <div className="px-2 py-1.5 text-sm font-semibold">
+                          Agregar seleccionados a:
+                        </div>
+                        <DropdownMenuSeparator />
+                        {addressLists && addressLists.length > 0 ? (
+                          addressLists.map((list: string) => (
+                            <DropdownMenuItem
+                              key={list}
+                              onClick={() => handleBulkAddToList(list)}
+                            >
+                              {list}
+                            </DropdownMenuItem>
+                          ))
+                        ) : (
+                          <DropdownMenuItem disabled>
+                            No hay listas disponibles
                           </DropdownMenuItem>
-                        ))
-                      ) : (
-                        <DropdownMenuItem disabled>
-                          No hay listas disponibles
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleBulkAddToList("__nuevo__")}
+                          className="text-primary"
+                        >
+                          + Nueva lista: Morosos
                         </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleBulkAddToList("__nuevo__")}
-                        className="text-primary"
-                      >
-                        + Nueva lista: Morosos
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg">
+                    <Ban className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Selecciona colas con el checkbox para bloquear en lote
+                    </span>
+                  </div>
                 )}
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
