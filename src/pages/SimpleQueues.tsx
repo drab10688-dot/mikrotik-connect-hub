@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SimpleQueues = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -20,6 +21,7 @@ const SimpleQueues = () => {
     upload: "",
     download: "",
     comment: "",
+    addressList: "",
   });
 
   const { data: queues, isLoading, refetch } = useQuery({
@@ -44,6 +46,32 @@ const SimpleQueues = () => {
       return allQueues.filter((q: any) => q.dynamic !== "true" && q.dynamic !== true);
     },
     refetchInterval: 10000,
+  });
+
+  // Obtener address lists disponibles del MikroTik
+  const { data: addressLists } = useQuery({
+    queryKey: ["address-lists"],
+    queryFn: async () => {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+        body: {
+          host: device.host,
+          username: device.username,
+          password: device.password,
+          port: device.port,
+          command: "address-list-print",
+        },
+      });
+
+      if (error) throw error;
+      
+      // Extraer nombres únicos de las address lists
+      const lists = data.data || [];
+      const uniqueLists = [...new Set(lists.map((item: any) => item.list))].filter(Boolean);
+      return uniqueLists;
+    },
+    refetchInterval: 30000,
   });
 
   const validateBandwidth = (value: string): boolean => {
@@ -100,9 +128,43 @@ const SimpleQueues = () => {
 
       if (error) throw error;
       
-      toast.success("Cola agregada exitosamente");
+      // Si se seleccionó una address list, agregar la IP a esa lista
+      if (formData.addressList) {
+        try {
+          // Si seleccionó "nueva lista", usar "Morosos" como nombre
+          const listName = formData.addressList === "__nuevo__" ? "Morosos" : formData.addressList;
+          
+          const { error: addressError } = await supabase.functions.invoke("mikrotik-v6-api", {
+            body: {
+              host: device.host,
+              username: device.username,
+              password: device.password,
+              port: device.port,
+              command: "address-list-add",
+              params: {
+                list: listName,
+                address: formData.target.trim(),
+                comment: `Suspensión: ${formData.name.trim()}`,
+              },
+            },
+          });
+
+          if (addressError) {
+            console.error("Error al agregar a address-list:", addressError);
+            toast.warning("Cola creada pero no se pudo agregar a la lista de direcciones");
+          } else {
+            toast.success("Cola agregada y dirección suspendida exitosamente");
+          }
+        } catch (addressListError) {
+          console.error("Error al agregar a address-list:", addressListError);
+          toast.warning("Cola creada pero no se pudo agregar a la lista de direcciones");
+        }
+      } else {
+        toast.success("Cola agregada exitosamente");
+      }
+      
       setIsDialogOpen(false);
-      setFormData({ name: "", target: "", upload: "", download: "", comment: "" });
+      setFormData({ name: "", target: "", upload: "", download: "", comment: "", addressList: "" });
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Error al agregar cola");
@@ -265,6 +327,29 @@ const SimpleQueues = () => {
                           onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
                           placeholder="Descripción opcional"
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="addressList">Agregar a Address List (Opcional)</Label>
+                        <Select
+                          value={formData.addressList}
+                          onValueChange={(value) => setFormData({ ...formData, addressList: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar lista (ej: Morosos)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Ninguna</SelectItem>
+                            {addressLists?.map((list: string) => (
+                              <SelectItem key={list} value={list}>
+                                {list}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="__nuevo__">+ Nueva lista: Morosos</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Al seleccionar una lista, la IP se agregará automáticamente para suspensión
+                        </p>
                       </div>
                       <div className="flex gap-2 justify-end">
                         <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
