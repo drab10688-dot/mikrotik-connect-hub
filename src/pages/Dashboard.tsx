@@ -10,6 +10,7 @@ import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { Shield } from "lucide-react";
+import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -112,8 +113,11 @@ const Dashboard = () => {
             <CardContent className="space-y-4">
               <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Contacta al administrador para que te asigne un dispositivo MikroTik y puedas acceder al sistema.
+                  Puedes agregar tu propio dispositivo MikroTik para que el administrador lo revise y active.
                 </p>
+              </div>
+              <div className="flex justify-center">
+                <AddDeviceDialog />
               </div>
             </CardContent>
           </Card>
