@@ -254,10 +254,15 @@ const SimpleQueues = () => {
       // Usar "Morosos" si seleccionó crear nueva lista
       const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
       
-      // Verificar si la IP ya está en la lista
-      const alreadyInList = addressListEntries?.some((entry: any) => 
-        entry.address === queue.target && entry.list.toLowerCase() === finalListName.toLowerCase()
-      );
+      // Normalizar IP para comparación (remover /32 al final si existe)
+      const normalizeIP = (ip: string) => ip.replace(/\/32$/, '');
+      const targetIP = normalizeIP(queue.target);
+      
+      // Verificar si la IP ya está en la lista (comparando IPs normalizadas)
+      const alreadyInList = addressListEntries?.some((entry: any) => {
+        const entryIP = normalizeIP(entry.address);
+        return entryIP === targetIP && entry.list.toLowerCase() === finalListName.toLowerCase();
+      });
 
       if (alreadyInList) {
         toast.info(`Esta IP ya está en la lista "${finalListName}"`);
@@ -279,20 +284,34 @@ const SimpleQueues = () => {
         },
       });
 
+      // Verificar si hay error en la respuesta data
+      if (data && !data.success && data.error) {
+        if (data.error.includes("already have such entry")) {
+          toast.warning(`Esta IP ya existe en la lista "${finalListName}"`);
+          return;
+        }
+        throw new Error(data.error);
+      }
+
       if (error) {
-        // Manejar el error específico de entrada duplicada
         if (error.message && error.message.includes("already have such entry")) {
           toast.warning(`Esta IP ya existe en la lista "${finalListName}"`);
-        } else {
-          throw error;
+          return;
         }
-        return;
+        throw error;
       }
       
       toast.success(`IP agregada a la lista "${finalListName}"`);
     } catch (error: any) {
       console.error("Error al agregar a address-list:", error);
-      toast.error(error.message || "Error al agregar a address-list");
+      
+      // Manejar el caso específico de entrada duplicada
+      const errorMsg = error.message || JSON.stringify(error);
+      if (errorMsg.includes("already have such entry")) {
+        toast.warning(`Esta IP ya existe en la lista`);
+      } else {
+        toast.error(errorMsg || "Error al agregar a address-list");
+      }
     }
   };
 
@@ -340,6 +359,9 @@ const SimpleQueues = () => {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
       
+      // Normalizar IP para comparación
+      const normalizeIP = (ip: string) => ip.replace(/\/32$/, '');
+      
       let added = 0;
       let skipped = 0;
 
@@ -347,10 +369,13 @@ const SimpleQueues = () => {
         const queue = queues?.find((q: any) => q[".id"] === queueId);
         if (!queue) continue;
 
+        const targetIP = normalizeIP(queue.target);
+
         // Verificar si ya está en la lista
-        const alreadyInList = addressListEntries?.some((entry: any) => 
-          entry.address === queue.target && entry.list.toLowerCase() === finalListName.toLowerCase()
-        );
+        const alreadyInList = addressListEntries?.some((entry: any) => {
+          const entryIP = normalizeIP(entry.address);
+          return entryIP === targetIP && entry.list.toLowerCase() === finalListName.toLowerCase();
+        });
 
         if (alreadyInList) {
           skipped++;
@@ -358,7 +383,7 @@ const SimpleQueues = () => {
         }
 
         try {
-          const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+          const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
               host: device.host,
               username: device.username,
@@ -373,14 +398,26 @@ const SimpleQueues = () => {
             },
           });
 
-          if (!error || !error.message?.includes("already have such entry")) {
+          // Verificar si hay error en data
+          const hasError = (data && !data.success) || error;
+          const errorMsg = (data?.error || error?.message || "").toLowerCase();
+          
+          if (hasError && errorMsg.includes("already have such entry")) {
+            skipped++;
+          } else if (!hasError) {
             added++;
           } else {
             skipped++;
+            console.error("Error adding IP:", data?.error || error?.message);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error adding IP:", err);
-          skipped++;
+          const errMsg = (err.message || "").toLowerCase();
+          if (errMsg.includes("already have such entry")) {
+            skipped++;
+          } else {
+            skipped++;
+          }
         }
       }
       
