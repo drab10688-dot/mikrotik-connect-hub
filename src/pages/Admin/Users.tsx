@@ -399,11 +399,14 @@ export default function UsersAdmin() {
                                     {isAdminRole ? 'Acceso a Dispositivos' : 'Mis Dispositivos'}
                                   </h4>
                                   {isAdminRole ? (
-                                    // Admin view: show all devices with toggle buttons
-                                    devices && devices.length > 0 ? (
+                                    // Admin view: show only assigned devices with toggle buttons
+                                    userDevices.length > 0 ? (
                                       <div className="grid gap-2">
-                                         {devices.map((device: any) => {
-                                           const hasAccess = getUserDeviceAccess(user.user_id, device.id);
+                                         {userDevices.map((access: any) => {
+                                           const device = devices?.find(d => d.id === access.mikrotik_id);
+                                           if (!device) return null;
+                                           const isCreator = device.created_by === user.user_id;
+                                           
                                            return (
                                              <div
                                                key={device.id}
@@ -414,39 +417,31 @@ export default function UsersAdmin() {
                                                  <p className="text-sm text-muted-foreground">{device.host}</p>
                                                </div>
                                                <div className="flex gap-2">
-                                                 {hasAccess ? (
+                                                 <Button
+                                                   variant="destructive"
+                                                   size="sm"
+                                                   onClick={() => handleToggleAccess(user.user_id, device.id, true)}
+                                                 >
+                                                   Desactivar
+                                                 </Button>
+                                                 {isCreator && (
                                                    <Button
-                                                     variant="destructive"
+                                                     variant="ghost"
                                                      size="sm"
-                                                     onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                                     onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
+                                                     title="Eliminar dispositivo"
                                                    >
-                                                     Desactivar
-                                                   </Button>
-                                                 ) : (
-                                                   <Button
-                                                     variant="default"
-                                                     size="sm"
-                                                     onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                                   >
-                                                     Activar
+                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                    </Button>
                                                  )}
-                                                 <Button
-                                                   variant="ghost"
-                                                   size="sm"
-                                                   onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
-                                                   title="Eliminar dispositivo"
-                                                 >
-                                                   <Trash2 className="h-4 w-4 text-destructive" />
-                                                 </Button>
                                                </div>
                                              </div>
                                            );
                                          })}
-                                      </div>
-                                    ) : (
-                                      <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
-                                    )
+                                       </div>
+                                     ) : (
+                                       <p className="text-sm text-muted-foreground">No hay dispositivos asignados</p>
+                                     )
                                   ) : (
                                     // Regular user view: show created devices with management controls
                                     createdDevices.length > 0 ? (
