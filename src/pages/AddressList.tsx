@@ -3,31 +3,46 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Plus, Power, PowerOff } from "lucide-react";
+import { Search, Trash2, Plus, Ban, Shield, AlertCircle, ListPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const AddressList = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isCreateListDialogOpen, setIsCreateListDialogOpen] = useState(false);
+  const [deleteListName, setDeleteListName] = useState<string | null>(null);
   const [isBulkMode, setIsBulkMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({
     addresses: "",
     list: "",
     comment: "",
   });
+  const [newListName, setNewListName] = useState("");
 
-  const { data: addresses, isLoading, refetch } = useQuery({
-    queryKey: ["address-list"],
+  const { data: addressEntries, isLoading, refetch } = useQuery({
+    queryKey: ["address-list-entries"],
     queryFn: async () => {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
@@ -37,23 +52,38 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "address-list-print",
-          action: device.version === "v7" ? "list-address" : undefined,
+          command: "address-list-print",
         },
       });
 
       if (error) throw error;
-      // Filtrar objetos dinámicos que no se pueden editar
-      const allAddresses = data.data || [];
-      return allAddresses.filter((a: any) => a.dynamic !== "true" && a.dynamic !== true);
+      return data.data || [];
     },
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
-  // Obtener listas únicas del MikroTik
-  const availableLists = Array.from(
-    new Set((addresses || []).map((addr: any) => addr.list).filter(Boolean))
-  ).sort();
+  // Agrupar entradas por lista
+  const groupedByList = (addressEntries || []).reduce((acc: any, entry: any) => {
+    const listName = entry.list || "Sin lista";
+    if (!acc[listName]) {
+      acc[listName] = [];
+    }
+    acc[listName].push(entry);
+    return acc;
+  }, {});
+
+  // Obtener nombres de listas únicas
+  const availableLists = Object.keys(groupedByList).sort();
+
+  // Filtrar listas según búsqueda
+  const filteredLists = availableLists.filter(listName => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const matchesListName = listName.toLowerCase().includes(lowerSearch);
+    const matchesIP = groupedByList[listName].some((entry: any) => 
+      entry.address?.toLowerCase().includes(lowerSearch)
+    );
+    return matchesListName || matchesIP;
+  });
 
   const expandIPRange = (input: string): string[] => {
     const lines = input.split("\n").filter(line => line.trim());
@@ -62,7 +92,6 @@ const AddressList = () => {
     for (const line of lines) {
       const trimmed = line.trim();
       
-      // Detectar si es un rango (formato: IP1 - IP2 o IP1-IP2)
       const rangeMatch = trimmed.match(/^(\d+\.\d+\.\d+\.\d+)\s*-\s*(\d+\.\d+\.\d+\.\d+)$/);
       
       if (rangeMatch) {
@@ -70,7 +99,6 @@ const AddressList = () => {
         const startParts = startIP.split('.').map(Number);
         const endParts = endIP.split('.').map(Number);
         
-        // Validar que sean del mismo segmento de red (mismos primeros 3 octetos)
         if (startParts[0] === endParts[0] && 
             startParts[1] === endParts[1] && 
             startParts[2] === endParts[2]) {
@@ -83,13 +111,12 @@ const AddressList = () => {
               expandedIPs.push(`${startParts[0]}.${startParts[1]}.${startParts[2]}.${i}`);
             }
           } else {
-            expandedIPs.push(trimmed); // Si el rango es inválido, agregar como está
+            expandedIPs.push(trimmed);
           }
         } else {
-          expandedIPs.push(trimmed); // Si no es el mismo segmento, agregar como está
+          expandedIPs.push(trimmed);
         }
       } else {
-        // No es un rango, agregar la IP individual
         expandedIPs.push(trimmed);
       }
     }
@@ -97,46 +124,74 @@ const AddressList = () => {
     return expandedIPs;
   };
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.list.trim()) {
-      toast.error("Debes seleccionar o escribir una lista");
+  const handleCreateList = async () => {
+    if (!newListName.trim()) {
+      toast.error("Ingresa un nombre para la lista");
       return;
     }
 
-    setIsAdding(true);
-    const loadingToast = toast.loading("Creando direcciones IP...");
+    if (availableLists.includes(newListName.trim())) {
+      toast.error("Esta lista ya existe");
+      return;
+    }
 
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
-      // Expandir rangos si está en modo bloque
+      // Crear una entrada dummy temporal para crear la lista
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+        body: {
+          host: device.host,
+          username: device.username,
+          password: device.password,
+          port: device.port,
+          command: "address-list-add",
+          params: {
+            list: newListName.trim(),
+            address: "0.0.0.0",
+            comment: "Lista creada - eliminar esta entrada después de agregar IPs reales",
+          },
+        },
+      });
+
+      if (error) throw error;
+      
+      toast.success(`Lista "${newListName}" creada exitosamente`);
+      setNewListName("");
+      setIsCreateListDialogOpen(false);
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || "Error al crear lista");
+    }
+  };
+
+  const handleAddIPs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.list.trim()) {
+      toast.error("Selecciona una lista");
+      return;
+    }
+
+    const loadingToast = toast.loading("Agregando IPs...");
+
+    try {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      
       const addressList = isBulkMode 
         ? expandIPRange(formData.addresses)
         : formData.addresses.split("\n").filter(addr => addr.trim());
       
       if (addressList.length === 0) {
         toast.error("Ingresa al menos una dirección");
-        setIsAdding(false);
         toast.dismiss(loadingToast);
         return;
       }
 
-      toast.loading(`Procesando ${addressList.length} direcciones...`, { id: loadingToast });
-
       let successCount = 0;
-      let errorCount = 0;
       let duplicateCount = 0;
 
-      for (let i = 0; i < addressList.length; i++) {
-        const address = addressList[i];
-        
-        // Actualizar progreso cada 5 direcciones
-        if (i > 0 && i % 5 === 0) {
-          toast.loading(`Procesando ${i}/${addressList.length} direcciones...`, { id: loadingToast });
-        }
-
+      for (const address of addressList) {
         try {
           const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
@@ -144,8 +199,7 @@ const AddressList = () => {
               username: device.username,
               password: device.password,
               port: device.port,
-              command: device.version === "v7" ? undefined : "address-list-add",
-              action: device.version === "v7" ? "add-address" : undefined,
+              command: "address-list-add",
               params: {
                 address: address.trim(),
                 list: formData.list,
@@ -154,26 +208,17 @@ const AddressList = () => {
             },
           });
 
-          if (error) throw error;
-          
-          // Verificar si el error es por entrada duplicada
-          if (data && !data.success && data.error && 
-              (data.error.includes("already have such entry") || 
-               data.error.includes("already exists"))) {
-            duplicateCount++;
-          } else if (!data || data.success) {
-            successCount++;
+          if (error || (data && !data.success && data.error)) {
+            const errorMsg = error?.message || data?.error || "";
+            if (errorMsg.includes("already have such entry")) {
+              duplicateCount++;
+            }
           } else {
-            errorCount++;
+            successCount++;
           }
         } catch (err: any) {
-          // Verificar si el error es por entrada duplicada
-          const errorMsg = err?.message || "";
-          if (errorMsg.includes("already have such entry") || 
-              errorMsg.includes("already exists")) {
+          if (err?.message?.includes("already have such entry")) {
             duplicateCount++;
-          } else {
-            errorCount++;
           }
         }
       }
@@ -181,28 +226,23 @@ const AddressList = () => {
       toast.dismiss(loadingToast);
 
       if (successCount > 0) {
-        toast.success(`${successCount} dirección(es) agregada(s) exitosamente`);
+        toast.success(`${successCount} IP(s) agregada(s) exitosamente`);
       }
       if (duplicateCount > 0) {
-        toast.info(`${duplicateCount} dirección(es) ya existían`);
-      }
-      if (errorCount > 0) {
-        toast.error(`${errorCount} dirección(es) fallaron`);
+        toast.info(`${duplicateCount} IP(s) ya existían`);
       }
       
-      setIsDialogOpen(false);
+      setIsAddDialogOpen(false);
       setFormData({ addresses: "", list: "", comment: "" });
       setIsBulkMode(false);
       refetch();
     } catch (error: any) {
       toast.dismiss(loadingToast);
-      toast.error(error.message || "Error al agregar dirección");
-    } finally {
-      setIsAdding(false);
+      toast.error(error.message || "Error al agregar IPs");
     }
   };
 
-  const handleToggle = async (addressId: string, currentDisabled: boolean) => {
+  const handleDeleteEntry = async (entryId: string) => {
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
@@ -212,369 +252,340 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : (currentDisabled ? "address-list-enable" : "address-list-disable"),
-          action: device.version === "v7" ? (currentDisabled ? "enable-address" : "disable-address") : undefined,
-          params: { ".id": addressId },
+          command: "address-list-remove",
+          params: { ".id": entryId },
         },
       });
 
       if (error) throw error;
       
-      toast.success(currentDisabled ? "Dirección activada" : "Dirección desactivada");
+      toast.success("IP eliminada");
       refetch();
     } catch (error: any) {
-      toast.error(error.message || "Error al cambiar estado");
+      toast.error(error.message || "Error al eliminar IP");
     }
   };
 
-  const handleDelete = async (addressId: string) => {
-    try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
-        body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === "v7" ? undefined : "address-list-remove",
-          action: device.version === "v7" ? "remove-address" : undefined,
-          params: { ".id": addressId },
-        },
-      });
+  const handleDeleteList = async () => {
+    if (!deleteListName) return;
 
-      if (error) throw error;
-      
-      toast.success("Dirección eliminada");
-      refetch();
-    } catch (error: any) {
-      toast.error(error.message || "Error al eliminar dirección");
-    }
-  };
-
-  const handleBulkAction = async (action: "enable" | "disable" | "delete") => {
-    if (selectedIds.length === 0) {
-      toast.error("Selecciona al menos una dirección");
+    const entriesToDelete = groupedByList[deleteListName] || [];
+    
+    if (entriesToDelete.length === 0) {
+      toast.error("No hay entradas para eliminar");
+      setDeleteListName(null);
       return;
     }
+
+    const loadingToast = toast.loading(`Eliminando ${entriesToDelete.length} entrada(s)...`);
 
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       let successCount = 0;
 
-      for (const id of selectedIds) {
+      for (const entry of entriesToDelete) {
         try {
-          let command = "";
-          let actionV7 = "";
-
-          if (action === "enable") {
-            command = "address-list-enable";
-            actionV7 = "enable-address";
-          } else if (action === "disable") {
-            command = "address-list-disable";
-            actionV7 = "disable-address";
-          } else {
-            command = "address-list-remove";
-            actionV7 = "remove-address";
-          }
-
           const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
               host: device.host,
               username: device.username,
               password: device.password,
               port: device.port,
-              command: device.version === "v7" ? undefined : command,
-              action: device.version === "v7" ? actionV7 : undefined,
-              params: { ".id": id },
+              command: "address-list-remove",
+              params: { ".id": entry[".id"] },
             },
           });
 
           if (!error) successCount++;
         } catch {
-          // Continue with next
+          // Continuar con la siguiente
         }
       }
 
-      toast.success(`${successCount} dirección(es) procesada(s)`);
-      setSelectedIds([]);
+      toast.dismiss(loadingToast);
+      toast.success(`Lista "${deleteListName}" eliminada - ${successCount} entrada(s) eliminada(s)`);
+      setDeleteListName(null);
       refetch();
     } catch (error: any) {
-      toast.error(error.message || "Error en acción masiva");
+      toast.dismiss(loadingToast);
+      toast.error(error.message || "Error al eliminar lista");
     }
   };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filteredAddresses.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filteredAddresses.map((addr: any) => addr[".id"]));
-    }
-  };
-
-  const filteredAddresses = addresses?.filter((addr: any) =>
-    addr.address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    addr.list?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
       <div className="ml-64 p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Address List</h1>
-          <p className="text-muted-foreground">Administra listas de direcciones IP</p>
+          <h1 className="text-3xl font-bold text-foreground">Address Lists</h1>
+          <p className="text-muted-foreground">Gestiona listas de direcciones IP bloqueadas o permitidas</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Listas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{availableLists.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total IPs Bloqueadas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{addressEntries?.length || 0}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Listas Activas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{availableLists.filter(list => list !== "Sin lista").length}</div>
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
           <CardHeader>
-              <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Direcciones IP</CardTitle>
-                <CardDescription>Lista de direcciones configuradas</CardDescription>
+                <CardTitle>Gestión de Listas</CardTitle>
+                <CardDescription>Administra tus address lists y las IPs bloqueadas</CardDescription>
               </div>
-              <div className="flex gap-2 items-center">
-                {selectedIds.length > 0 && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleBulkAction("enable")}
-                    >
-                      <Power className="w-4 h-4 mr-2" />
-                      Activar ({selectedIds.length})
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleBulkAction("disable")}
-                    >
-                      <PowerOff className="w-4 h-4 mr-2" />
-                      Desactivar ({selectedIds.length})
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleBulkAction("delete")}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Eliminar ({selectedIds.length})
-                    </Button>
-                  </>
-                )}
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <div className="flex gap-2">
+                <Dialog open={isCreateListDialogOpen} onOpenChange={setIsCreateListDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar Dirección
+                    <Button variant="outline">
+                      <ListPlus className="w-4 h-4 mr-2" />
+                      Nueva Lista
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Agregar Dirección IP</DialogTitle>
+                      <DialogTitle>Crear Nueva Lista</DialogTitle>
                       <DialogDescription>
-                        Agrega una nueva dirección a la lista
+                        Crea una nueva address list vacía
                       </DialogDescription>
                     </DialogHeader>
-                     <form onSubmit={handleAdd} className="space-y-4">
-                       <div className="space-y-2">
-                         <Label htmlFor="addresses">Direcciones IP *</Label>
-                         <Textarea
-                           id="addresses"
-                           value={formData.addresses}
-                           onChange={(e) => setFormData({ ...formData, addresses: e.target.value })}
-                           placeholder={isBulkMode ? "192.168.100.2\n192.168.100.3\no un rango:\n192.168.100.2 - 192.168.100.60" : "192.168.1.100"}
-                           rows={isBulkMode ? 6 : 2}
-                           required
-                         />
-                         <div className="flex items-center justify-between">
-                           <Button
-                             type="button"
-                             variant="outline"
-                             size="sm"
-                             onClick={() => setIsBulkMode(!isBulkMode)}
-                           >
-                             {isBulkMode ? "Modo Simple" : "Modo Bloque"}
-                           </Button>
-                           {isBulkMode && (
-                             <span className="text-xs text-muted-foreground">
-                               Formato rango: 192.168.100.2 - 192.168.100.60
-                             </span>
-                           )}
-                         </div>
-                       </div>
-                       <div className="space-y-2">
-                         <Label htmlFor="list">Lista *</Label>
-                         {availableLists.length > 0 ? (
-                           <Select
-                             value={formData.list}
-                             onValueChange={(value) => {
-                               if (value === "__custom__") {
-                                 setFormData({ ...formData, list: "" });
-                               } else {
-                                 setFormData({ ...formData, list: value });
-                               }
-                             }}
-                           >
-                             <SelectTrigger>
-                               <SelectValue placeholder="Selecciona una lista" />
-                             </SelectTrigger>
-                             <SelectContent>
-                               {availableLists.map((list: string) => (
-                                 <SelectItem key={list} value={list}>
-                                   {list}
-                                 </SelectItem>
-                               ))}
-                               <SelectItem value="__custom__">
-                                 + Crear nueva lista
-                               </SelectItem>
-                             </SelectContent>
-                           </Select>
-                         ) : (
-                           <Input
-                             id="list"
-                             value={formData.list}
-                             onChange={(e) => setFormData({ ...formData, list: e.target.value })}
-                             placeholder="Nombre de la lista (ej: blocked, allowed)"
-                             required
-                           />
-                         )}
-                         {formData.list && !availableLists.includes(formData.list) && availableLists.length > 0 && (
-                           <Input
-                             id="custom-list"
-                             value={formData.list}
-                             onChange={(e) => setFormData({ ...formData, list: e.target.value })}
-                             placeholder="Nombre de la nueva lista"
-                             required
-                           />
-                         )}
-                       </div>
-                       <div className="space-y-2">
-                         <Label htmlFor="comment">Comentario</Label>
-                         <Input
-                           id="comment"
-                           value={formData.comment}
-                           onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
-                           placeholder="Descripción opcional"
-                         />
-                       </div>
-                       <div className="flex gap-2 justify-end">
-                         <Button 
-                           type="button" 
-                           variant="outline" 
-                           onClick={() => setIsDialogOpen(false)}
-                           disabled={isAdding}
-                         >
-                           Cancelar
-                         </Button>
-                         <Button type="submit" disabled={isAdding}>
-                           {isAdding ? "Creando..." : "Agregar"}
-                         </Button>
-                       </div>
-                     </form>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-list-name">Nombre de la Lista *</Label>
+                        <Input
+                          id="new-list-name"
+                          value={newListName}
+                          onChange={(e) => setNewListName(e.target.value)}
+                          placeholder="ej: Morosos, Bloqueados, VIP"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="outline" onClick={() => setIsCreateListDialogOpen(false)}>
+                          Cancelar
+                        </Button>
+                        <Button onClick={handleCreateList}>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Crear Lista
+                        </Button>
+                      </div>
+                    </div>
                   </DialogContent>
                 </Dialog>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Buscar..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 w-64"
-                  />
-                </div>
+
+                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Agregar IPs
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Agregar IPs a Lista</DialogTitle>
+                      <DialogDescription>
+                        Agrega una o varias direcciones IP a una lista existente
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddIPs} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="list-select">Lista Destino *</Label>
+                        <select
+                          id="list-select"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          value={formData.list}
+                          onChange={(e) => setFormData({ ...formData, list: e.target.value })}
+                          required
+                        >
+                          <option value="">Selecciona una lista</option>
+                          {availableLists.map((list) => (
+                            <option key={list} value={list}>{list}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="addresses">Direcciones IP *</Label>
+                        <Textarea
+                          id="addresses"
+                          value={formData.addresses}
+                          onChange={(e) => setFormData({ ...formData, addresses: e.target.value })}
+                          placeholder={isBulkMode ? "192.168.100.2\n192.168.100.3\no rango:\n192.168.100.2 - 192.168.100.60" : "192.168.1.100"}
+                          rows={isBulkMode ? 6 : 2}
+                          required
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsBulkMode(!isBulkMode)}
+                        >
+                          {isBulkMode ? "Modo Simple" : "Modo Bloque/Rango"}
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="comment">Comentario (Opcional)</Label>
+                        <Input
+                          id="comment"
+                          value={formData.comment}
+                          onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
+                          placeholder="Descripción o motivo"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="outline" type="button" onClick={() => setIsAddDialogOpen(false)}>
+                          Cancelar
+                        </Button>
+                        <Button type="submit">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Agregar
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium w-12">
-                      <Checkbox
-                        checked={selectedIds.length === filteredAddresses.length && filteredAddresses.length > 0}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    </th>
-                    <th className="text-left p-4 font-medium">Estado</th>
-                    <th className="text-left p-4 font-medium">Dirección</th>
-                    <th className="text-left p-4 font-medium">Lista</th>
-                    <th className="text-left p-4 font-medium">Comentario</th>
-                    <th className="text-right p-4 font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={6} className="text-center p-8 text-muted-foreground">
-                        Cargando direcciones...
-                      </td>
-                    </tr>
-                  ) : filteredAddresses.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center p-8 text-muted-foreground">
-                        No hay direcciones configuradas
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredAddresses.map((addr: any) => {
-                      const isDisabled = addr.disabled === "true" || addr.disabled === true;
-                      const isSelected = selectedIds.includes(addr[".id"]);
-                      
-                      return (
-                        <tr key={addr[".id"]} className="border-b hover:bg-muted/50">
-                          <td className="p-4">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setSelectedIds([...selectedIds, addr[".id"]]);
-                                } else {
-                                  setSelectedIds(selectedIds.filter(id => id !== addr[".id"]));
-                                }
-                              }}
-                            />
-                          </td>
-                          <td className="p-4">
-                            <Badge variant={isDisabled ? "secondary" : "default"}>
-                              {isDisabled ? "Inactivo" : "Activo"}
-                            </Badge>
-                          </td>
-                          <td className="p-4 font-mono font-medium">{addr.address}</td>
-                          <td className="p-4">{addr.list}</td>
-                          <td className="p-4 text-sm text-muted-foreground">{addr.comment || "-"}</td>
-                          <td className="p-4 text-right">
-                            <div className="flex gap-1 justify-end">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleToggle(addr[".id"], isDisabled)}
-                              >
-                                {isDisabled ? (
-                                  <Power className="w-4 h-4 text-green-500" />
-                                ) : (
-                                  <PowerOff className="w-4 h-4 text-orange-500" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDelete(addr[".id"])}
-                              >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="mb-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Buscar por nombre de lista o IP..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
+
+            {isLoading ? (
+              <div className="text-center p-8 text-muted-foreground">
+                Cargando listas...
+              </div>
+            ) : filteredLists.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground">
+                <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No hay listas configuradas</p>
+              </div>
+            ) : (
+              <Accordion type="multiple" className="space-y-2">
+                {filteredLists.map((listName) => {
+                  const entries = groupedByList[listName];
+                  const filteredEntries = searchTerm 
+                    ? entries.filter((e: any) => e.address?.toLowerCase().includes(searchTerm.toLowerCase()))
+                    : entries;
+
+                  return (
+                    <AccordionItem key={listName} value={listName} className="border rounded-lg px-4">
+                      <AccordionTrigger className="hover:no-underline">
+                        <div className="flex items-center justify-between w-full pr-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                              {listName.toLowerCase().includes("moros") || listName.toLowerCase().includes("block") ? (
+                                <Ban className="w-5 h-5 text-destructive" />
+                              ) : (
+                                <Shield className="w-5 h-5 text-primary" />
+                              )}
+                            </div>
+                            <div className="text-left">
+                              <div className="font-semibold">{listName}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {entries.length} IP{entries.length !== 1 ? 's' : ''} en la lista
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteListName(listName);
+                            }}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-2 pt-4">
+                          {filteredEntries.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              No hay IPs que coincidan con la búsqueda
+                            </p>
+                          ) : (
+                            filteredEntries.map((entry: any) => (
+                              <div
+                                key={entry[".id"]}
+                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                              >
+                                <div className="flex-1">
+                                  <div className="font-mono font-medium">{entry.address}</div>
+                                  {entry.comment && (
+                                    <div className="text-sm text-muted-foreground mt-1">
+                                      {entry.comment}
+                                    </div>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteEntry(entry[".id"])}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            )}
           </CardContent>
         </Card>
+
+        <AlertDialog open={!!deleteListName} onOpenChange={() => setDeleteListName(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar lista completa?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Estás a punto de eliminar la lista "{deleteListName}" y todas sus {groupedByList[deleteListName || ""]?.length || 0} entrada(s).
+                Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteList} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Eliminar Lista
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
