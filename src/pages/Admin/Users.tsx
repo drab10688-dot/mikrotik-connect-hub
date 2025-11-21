@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { UserPlus, Shield, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
@@ -254,8 +253,8 @@ export default function UsersAdmin() {
                       const isAdmin = user.user_roles?.[0]?.role === 'admin';
                       
                       return (
-                        <>
-                          <TableRow key={user.id}>
+                        <Fragment key={user.id}>
+                          <TableRow>
                             <TableCell>
                               {isAdmin && (
                                 <Button
@@ -319,7 +318,7 @@ export default function UsersAdmin() {
                             </TableCell>
                           </TableRow>
                           {isExpanded && isAdmin && (
-                            <TableRow key={`${user.id}-devices`}>
+                            <TableRow>
                               <TableCell colSpan={6} className="bg-muted/50">
                                 <div className="p-4 space-y-2">
                                   <h4 className="font-semibold text-sm mb-3">Acceso a Dispositivos</h4>
@@ -336,10 +335,23 @@ export default function UsersAdmin() {
                                               <p className="font-medium">{device.name}</p>
                                               <p className="text-sm text-muted-foreground">{device.host}</p>
                                             </div>
-                                            <Switch
-                                              checked={hasAccess}
-                                              onCheckedChange={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                            />
+                                            {hasAccess ? (
+                                              <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                              >
+                                                Desactivar
+                                              </Button>
+                                            ) : (
+                                              <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                              >
+                                                Activar
+                                              </Button>
+                                            )}
                                           </div>
                                         );
                                       })}
@@ -351,7 +363,7 @@ export default function UsersAdmin() {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                   </TableBody>
