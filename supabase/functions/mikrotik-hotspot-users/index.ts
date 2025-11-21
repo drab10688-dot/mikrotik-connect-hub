@@ -64,6 +64,11 @@ Deno.serve(async (req) => {
         result = await mikrotikRequest(config, '/rest/ip/hotspot/user');
         break;
 
+      case 'profiles':
+      case 'list-profiles':
+        result = await mikrotikRequest(config, '/rest/ip/hotspot/user/profile');
+        break;
+
       case 'add':
         result = await mikrotikRequest(config, '/rest/ip/hotspot/user/add', 'POST', userData);
         break;
