@@ -9,12 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/dashboard/Sidebar';
-import { UserPlus, Shield, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { UserPlus, Shield, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 export default function UsersAdmin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [deviceToDelete, setDeviceToDelete] = useState<{ id: string; name: string } | null>(null);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -203,6 +205,43 @@ export default function UsersAdmin() {
     });
   };
 
+  const deleteDeviceMutation = useMutation({
+    mutationFn: async (deviceId: string) => {
+      // Primero eliminar todos los accesos de usuarios a este dispositivo
+      const { error: accessError } = await supabase
+        .from('user_mikrotik_access')
+        .delete()
+        .eq('mikrotik_id', deviceId);
+
+      if (accessError) throw accessError;
+
+      // Eliminar vouchers asociados
+      const { error: voucherError } = await supabase
+        .from('vouchers')
+        .delete()
+        .eq('mikrotik_id', deviceId);
+
+      if (voucherError) throw voucherError;
+
+      // Finalmente eliminar el dispositivo
+      const { error: deviceError } = await supabase
+        .from('mikrotik_devices')
+        .delete()
+        .eq('id', deviceId);
+
+      if (deviceError) throw deviceError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-all'] });
+      queryClient.invalidateQueries({ queryKey: ['user-mikrotik-accesses'] });
+      toast.success('Dispositivo eliminado exitosamente');
+      setDeviceToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Error al eliminar dispositivo');
+    },
+  });
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -325,37 +364,47 @@ export default function UsersAdmin() {
                                   <h4 className="font-semibold text-sm mb-3">Acceso a Dispositivos</h4>
                                   {devices && devices.length > 0 ? (
                                     <div className="grid gap-2">
-                                      {devices.map((device: any) => {
-                                        const hasAccess = getUserDeviceAccess(user.user_id, device.id);
-                                        return (
-                                          <div
-                                            key={device.id}
-                                            className="flex items-center justify-between p-3 bg-background rounded-lg border"
-                                          >
-                                            <div>
-                                              <p className="font-medium">{device.name}</p>
-                                              <p className="text-sm text-muted-foreground">{device.host}</p>
-                                            </div>
-                                            {hasAccess ? (
-                                              <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                              >
-                                                Desactivar
-                                              </Button>
-                                            ) : (
-                                              <Button
-                                                variant="default"
-                                                size="sm"
-                                                onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                              >
-                                                Activar
-                                              </Button>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
+                                       {devices.map((device: any) => {
+                                         const hasAccess = getUserDeviceAccess(user.user_id, device.id);
+                                         return (
+                                           <div
+                                             key={device.id}
+                                             className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                           >
+                                             <div className="flex-1">
+                                               <p className="font-medium">{device.name}</p>
+                                               <p className="text-sm text-muted-foreground">{device.host}</p>
+                                             </div>
+                                             <div className="flex gap-2">
+                                               {hasAccess ? (
+                                                 <Button
+                                                   variant="destructive"
+                                                   size="sm"
+                                                   onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                                 >
+                                                   Desactivar
+                                                 </Button>
+                                               ) : (
+                                                 <Button
+                                                   variant="default"
+                                                   size="sm"
+                                                   onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                                 >
+                                                   Activar
+                                                 </Button>
+                                               )}
+                                               <Button
+                                                 variant="ghost"
+                                                 size="sm"
+                                                 onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
+                                                 title="Eliminar dispositivo"
+                                               >
+                                                 <Trash2 className="h-4 w-4 text-destructive" />
+                                               </Button>
+                                             </div>
+                                           </div>
+                                         );
+                                       })}
                                     </div>
                                   ) : (
                                     <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
@@ -374,6 +423,37 @@ export default function UsersAdmin() {
           </Card>
         </div>
       </div>
+
+      {/* Delete Device Confirmation Dialog */}
+      <AlertDialog open={!!deviceToDelete} onOpenChange={() => setDeviceToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              ¿Eliminar dispositivo?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Estás a punto de eliminar el dispositivo <strong>{deviceToDelete?.name}</strong>.
+              <br /><br />
+              Esta acción:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Eliminará todos los accesos de usuarios a este dispositivo</li>
+                <li>Eliminará todos los vouchers asociados</li>
+                <li>No se puede deshacer</li>
+              </ul>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deviceToDelete && deleteDeviceMutation.mutate(deviceToDelete.id)}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Eliminar Dispositivo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
