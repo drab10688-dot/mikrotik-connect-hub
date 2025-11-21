@@ -290,7 +290,12 @@ export default function UsersAdmin() {
                     {users.map((user: any) => {
                       const isExpanded = expandedUsers.has(user.user_id);
                       const userRole = user.user_roles?.[0]?.role;
-                      const shouldShowDevices = userRole === 'admin' || userRole === 'super_admin';
+                      const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
+                      
+                      // Check if user has any assigned devices
+                      const userDevices = accesses?.filter(a => a.user_id === user.user_id) || [];
+                      const hasAssignedDevices = userDevices.length > 0;
+                      const shouldShowDevices = isAdminRole || hasAssignedDevices;
                       
                       return (
                         <Fragment key={user.id}>
@@ -361,53 +366,84 @@ export default function UsersAdmin() {
                             <TableRow>
                               <TableCell colSpan={6} className="bg-muted/50">
                                 <div className="p-4 space-y-2">
-                                  <h4 className="font-semibold text-sm mb-3">Acceso a Dispositivos</h4>
-                                  {devices && devices.length > 0 ? (
-                                    <div className="grid gap-2">
-                                       {devices.map((device: any) => {
-                                         const hasAccess = getUserDeviceAccess(user.user_id, device.id);
-                                         return (
-                                           <div
-                                             key={device.id}
-                                             className="flex items-center justify-between p-3 bg-background rounded-lg border"
-                                           >
-                                             <div className="flex-1">
-                                               <p className="font-medium">{device.name}</p>
-                                               <p className="text-sm text-muted-foreground">{device.host}</p>
-                                             </div>
-                                             <div className="flex gap-2">
-                                               {hasAccess ? (
+                                  <h4 className="font-semibold text-sm mb-3">
+                                    {isAdminRole ? 'Acceso a Dispositivos' : 'Dispositivos Asignados'}
+                                  </h4>
+                                  {isAdminRole ? (
+                                    // Admin view: show all devices with toggle buttons
+                                    devices && devices.length > 0 ? (
+                                      <div className="grid gap-2">
+                                         {devices.map((device: any) => {
+                                           const hasAccess = getUserDeviceAccess(user.user_id, device.id);
+                                           return (
+                                             <div
+                                               key={device.id}
+                                               className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                             >
+                                               <div className="flex-1">
+                                                 <p className="font-medium">{device.name}</p>
+                                                 <p className="text-sm text-muted-foreground">{device.host}</p>
+                                               </div>
+                                               <div className="flex gap-2">
+                                                 {hasAccess ? (
+                                                   <Button
+                                                     variant="destructive"
+                                                     size="sm"
+                                                     onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                                   >
+                                                     Desactivar
+                                                   </Button>
+                                                 ) : (
+                                                   <Button
+                                                     variant="default"
+                                                     size="sm"
+                                                     onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                                   >
+                                                     Activar
+                                                   </Button>
+                                                 )}
                                                  <Button
-                                                   variant="destructive"
+                                                   variant="ghost"
                                                    size="sm"
-                                                   onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                                   onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
+                                                   title="Eliminar dispositivo"
                                                  >
-                                                   Desactivar
+                                                   <Trash2 className="h-4 w-4 text-destructive" />
                                                  </Button>
-                                               ) : (
-                                                 <Button
-                                                   variant="default"
-                                                   size="sm"
-                                                   onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                                 >
-                                                   Activar
-                                                 </Button>
-                                               )}
-                                               <Button
-                                                 variant="ghost"
-                                                 size="sm"
-                                                 onClick={() => setDeviceToDelete({ id: device.id, name: device.name })}
-                                                 title="Eliminar dispositivo"
-                                               >
-                                                 <Trash2 className="h-4 w-4 text-destructive" />
-                                               </Button>
+                                               </div>
                                              </div>
-                                           </div>
-                                         );
-                                       })}
-                                    </div>
+                                           );
+                                         })}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
+                                    )
                                   ) : (
-                                    <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
+                                    // Regular user view: show only assigned devices (read-only)
+                                    userDevices.length > 0 ? (
+                                      <div className="grid gap-2">
+                                        {userDevices.map((access: any) => {
+                                          const device = devices?.find(d => d.id === access.mikrotik_id);
+                                          if (!device) return null;
+                                          return (
+                                            <div
+                                              key={device.id}
+                                              className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                            >
+                                              <div className="flex-1">
+                                                <p className="font-medium">{device.name}</p>
+                                                <p className="text-sm text-muted-foreground">{device.host}</p>
+                                              </div>
+                                              <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
+                                                Asignado
+                                              </Badge>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground">No hay dispositivos asignados</p>
+                                    )
                                   )}
                                 </div>
                               </TableCell>
