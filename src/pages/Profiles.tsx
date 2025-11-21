@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Search, Plus, Edit, Trash2, Wifi, Cable } from "lucide-react";
@@ -12,9 +13,13 @@ import { deleteHotspotProfile, deletePPPoEProfile } from "@/lib/mikrotik";
 import { AddHotspotProfileDialog } from "@/components/forms/AddHotspotProfileDialog";
 import { AddPPPoEProfileDialog } from "@/components/forms/AddPPPoEProfileDialog";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 
 export default function Profiles() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedMikrotik, setSelectedMikrotik] = useState<string>("");
+  const { devices: mikrotikDevices } = useUserDeviceAccess();
+  
   const { data: hotspotProfilesData, isLoading: loadingHotspot, refetch: refetchHotspot } = useHotspotProfiles();
   const { data: pppoeProfilesData, isLoading: loadingPPPoE, refetch: refetchPPPoE } = usePPPoEProfiles();
 
@@ -59,13 +64,36 @@ export default function Profiles() {
       <div className="flex-1 p-8 ml-64">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">Gestión de Perfiles</h1>
-              <p className="text-muted-foreground">Configura límites de velocidad, tiempo de sesión y cuotas de datos</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold">Gestión de Perfiles</h1>
+            <p className="text-muted-foreground">Configura límites de velocidad, tiempo de sesión y cuotas de datos</p>
           </div>
+        </div>
 
-      <Tabs defaultValue="hotspot" className="space-y-4">
+        {/* Device Selection */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Seleccionar Dispositivo</CardTitle>
+            <CardDescription>Elige el MikroTik para gestionar perfiles</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select value={selectedMikrotik} onValueChange={setSelectedMikrotik}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona un dispositivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {mikrotikDevices?.map((device: any) => (
+                  <SelectItem key={device.id} value={device.id}>
+                    {device.name} ({device.host})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
+        {selectedMikrotik && (
+          <Tabs defaultValue="hotspot" className="space-y-4">
         <TabsList>
           <TabsTrigger value="hotspot" className="flex items-center gap-2">
             <Wifi className="w-4 h-4" />
@@ -213,6 +241,7 @@ export default function Profiles() {
           </Card>
         </TabsContent>
       </Tabs>
+        )}
         </div>
       </div>
     </div>

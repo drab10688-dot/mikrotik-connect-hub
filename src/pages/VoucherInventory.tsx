@@ -11,6 +11,7 @@ import { useVoucherInventory } from '@/hooks/useVoucherInventory';
 import { VoucherInventoryCard } from '@/components/vouchers/VoucherInventoryCard';
 import { VoucherTable } from '@/components/vouchers/VoucherTable';
 import { PrintVoucherTicket } from '@/components/vouchers/PrintVoucherTicket';
+import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
 import { Plus, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,17 +25,7 @@ export default function VoucherInventory() {
   const [logo, setLogo] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: mikrotikDevices } = useQuery({
-    queryKey: ['mikrotik-devices-vouchers'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .order('name');
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { devices: mikrotikDevices } = useUserDeviceAccess();
 
   // Obtener perfiles directamente del dispositivo seleccionado
   const { data: profiles = [] } = useQuery({
