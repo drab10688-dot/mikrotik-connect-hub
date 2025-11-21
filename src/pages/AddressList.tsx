@@ -19,6 +19,7 @@ const AddressList = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({
     addresses: "",
     list: "",
@@ -104,6 +105,9 @@ const AddressList = () => {
       return;
     }
 
+    setIsAdding(true);
+    const loadingToast = toast.loading("Creando direcciones IP...");
+
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
@@ -114,14 +118,25 @@ const AddressList = () => {
       
       if (addressList.length === 0) {
         toast.error("Ingresa al menos una dirección");
+        setIsAdding(false);
+        toast.dismiss(loadingToast);
         return;
       }
+
+      toast.loading(`Procesando ${addressList.length} direcciones...`, { id: loadingToast });
 
       let successCount = 0;
       let errorCount = 0;
       let duplicateCount = 0;
 
-      for (const address of addressList) {
+      for (let i = 0; i < addressList.length; i++) {
+        const address = addressList[i];
+        
+        // Actualizar progreso cada 5 direcciones
+        if (i > 0 && i % 5 === 0) {
+          toast.loading(`Procesando ${i}/${addressList.length} direcciones...`, { id: loadingToast });
+        }
+
         try {
           const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
@@ -163,6 +178,8 @@ const AddressList = () => {
         }
       }
 
+      toast.dismiss(loadingToast);
+
       if (successCount > 0) {
         toast.success(`${successCount} dirección(es) agregada(s) exitosamente`);
       }
@@ -178,7 +195,10 @@ const AddressList = () => {
       setIsBulkMode(false);
       refetch();
     } catch (error: any) {
+      toast.dismiss(loadingToast);
       toast.error(error.message || "Error al agregar dirección");
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -439,10 +459,17 @@ const AddressList = () => {
                          />
                        </div>
                        <div className="flex gap-2 justify-end">
-                         <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                         <Button 
+                           type="button" 
+                           variant="outline" 
+                           onClick={() => setIsDialogOpen(false)}
+                           disabled={isAdding}
+                         >
                            Cancelar
                          </Button>
-                         <Button type="submit">Agregar</Button>
+                         <Button type="submit" disabled={isAdding}>
+                           {isAdding ? "Creando..." : "Agregar"}
+                         </Button>
                        </div>
                      </form>
                   </DialogContent>
