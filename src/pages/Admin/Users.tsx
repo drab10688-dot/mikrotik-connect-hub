@@ -54,7 +54,7 @@ export default function UsersAdmin() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('mikrotik_devices')
-        .select('*')
+        .select('*, profiles!mikrotik_devices_created_by_fkey(user_id, full_name, email)')
         .order('name');
 
       if (error) throw error;
@@ -292,10 +292,12 @@ export default function UsersAdmin() {
                       const userRole = user.user_roles?.[0]?.role;
                       const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
                       
-                      // Check if user has any assigned devices
+                      // Check if user has any assigned devices OR created devices
                       const userDevices = accesses?.filter(a => a.user_id === user.user_id) || [];
+                      const createdDevices = devices?.filter(d => d.created_by === user.user_id) || [];
                       const hasAssignedDevices = userDevices.length > 0;
-                      const shouldShowDevices = isAdminRole || hasAssignedDevices;
+                      const hasCreatedDevices = createdDevices.length > 0;
+                      const shouldShowDevices = isAdminRole || hasAssignedDevices || hasCreatedDevices;
                       
                       return (
                         <Fragment key={user.id}>
@@ -367,7 +369,7 @@ export default function UsersAdmin() {
                               <TableCell colSpan={6} className="bg-muted/50">
                                 <div className="p-4 space-y-2">
                                   <h4 className="font-semibold text-sm mb-3">
-                                    {isAdminRole ? 'Acceso a Dispositivos' : 'Dispositivos Asignados'}
+                                    {isAdminRole ? 'Acceso a Dispositivos' : 'Mis Dispositivos'}
                                   </h4>
                                   {isAdminRole ? (
                                     // Admin view: show all devices with toggle buttons
@@ -419,12 +421,10 @@ export default function UsersAdmin() {
                                       <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
                                     )
                                   ) : (
-                                    // Regular user view: show only assigned devices (read-only)
-                                    userDevices.length > 0 ? (
+                                    // Regular user view: show created devices with status
+                                    createdDevices.length > 0 ? (
                                       <div className="grid gap-2">
-                                        {userDevices.map((access: any) => {
-                                          const device = devices?.find(d => d.id === access.mikrotik_id);
-                                          if (!device) return null;
+                                        {createdDevices.map((device: any) => {
                                           return (
                                             <div
                                               key={device.id}
@@ -434,15 +434,22 @@ export default function UsersAdmin() {
                                                 <p className="font-medium">{device.name}</p>
                                                 <p className="text-sm text-muted-foreground">{device.host}</p>
                                               </div>
-                                              <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
-                                                Asignado
+                                              <Badge 
+                                                variant="outline" 
+                                                className={
+                                                  device.status === 'active' 
+                                                    ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                                    : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+                                                }
+                                              >
+                                                {device.status === 'active' ? 'Activo' : 'Pendiente'}
                                               </Badge>
                                             </div>
                                           );
                                         })}
                                       </div>
                                     ) : (
-                                      <p className="text-sm text-muted-foreground">No hay dispositivos asignados</p>
+                                      <p className="text-sm text-muted-foreground">No has registrado dispositivos</p>
                                     )
                                   )}
                                 </div>
