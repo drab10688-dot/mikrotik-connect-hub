@@ -66,7 +66,37 @@ serve(async (req) => {
       );
     }
 
-    // Delete user using admin API
+    // Primero eliminar accesos a dispositivos
+    const { error: accessError } = await supabaseClient
+      .from('user_mikrotik_access')
+      .delete()
+      .eq('user_id', userId);
+
+    if (accessError) {
+      console.error('Error eliminando accesos:', accessError);
+    }
+
+    // Eliminar roles del usuario
+    const { error: rolesError } = await supabaseClient
+      .from('user_roles')
+      .delete()
+      .eq('user_id', userId);
+
+    if (rolesError) {
+      console.error('Error eliminando roles:', rolesError);
+    }
+
+    // Eliminar perfil del usuario
+    const { error: profileError } = await supabaseClient
+      .from('profiles')
+      .delete()
+      .eq('user_id', userId);
+
+    if (profileError) {
+      console.error('Error eliminando perfil:', profileError);
+    }
+
+    // Finalmente eliminar usuario de auth
     const { error: deleteError } = await supabaseClient.auth.admin.deleteUser(userId);
 
     if (deleteError) {
