@@ -12,10 +12,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const SimpleQueues = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedQueues, setSelectedQueues] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     target: "",
@@ -329,6 +331,97 @@ const SimpleQueues = () => {
     }
   };
 
+  const handleBulkAddToList = async (listName: string) => {
+    if (selectedQueues.length === 0) {
+      toast.error("Selecciona al menos una cola");
+      return;
+    }
+
+    try {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
+      
+      const normalizeIP = (ip: string) => ip.split('/')[0];
+      
+      let added = 0;
+      let skipped = 0;
+
+      for (const queueId of selectedQueues) {
+        const queue = queues?.find((q: any) => q[".id"] === queueId);
+        if (!queue) continue;
+
+        const targetIP = normalizeIP(queue.target);
+
+        const alreadyInList = addressListEntries?.some((entry: any) => {
+          const entryIP = normalizeIP(entry.address || '');
+          return entryIP === targetIP && entry.list.toLowerCase() === finalListName.toLowerCase();
+        });
+
+        if (alreadyInList) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+            body: {
+              host: device.host,
+              username: device.username,
+              password: device.password,
+              port: device.port,
+              command: "address-list-add",
+              params: {
+                list: finalListName,
+                address: queue.target,
+                comment: `Suspensión: ${queue.name}${queue.comment ? ' - ' + queue.comment : ''}`,
+              },
+            },
+          });
+
+          const hasError = (data && !data.success) || error;
+          const errorMsg = (data?.error || error?.message || "").toLowerCase();
+          
+          if (hasError && errorMsg.includes("already have such entry")) {
+            skipped++;
+          } else if (!hasError) {
+            added++;
+          } else {
+            skipped++;
+          }
+        } catch (err: any) {
+          const errMsg = (err?.message || "").toLowerCase();
+          if (errMsg.includes("already have such entry")) {
+            skipped++;
+          } else {
+            skipped++;
+          }
+        }
+      }
+      
+      await Promise.all([refetch(), refetchAddressLists()]);
+      
+      if (added > 0 && skipped > 0) {
+        toast.success(`${added} IPs agregadas a "${finalListName}" (${skipped} ya existían)`);
+      } else if (added > 0) {
+        toast.success(`${added} IPs agregadas a "${finalListName}"`);
+      } else {
+        toast.info(`Todas las IPs ya estaban en "${finalListName}"`);
+      }
+      
+      setSelectedQueues([]);
+    } catch (error: any) {
+      toast.error(error.message || "Error al agregar en lote");
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedQueues.length === filteredQueues.length) {
+      setSelectedQueues([]);
+    } else {
+      setSelectedQueues(filteredQueues.map((q: any) => q[".id"]));
+    }
+  };
+
   const isInAddressList = (target: string) => {
     if (!addressListEntries) return false;
     
@@ -364,6 +457,43 @@ const SimpleQueues = () => {
                 <CardDescription>Control de ancho de banda por usuario/IP</CardDescription>
               </div>
               <div className="flex gap-2">
+                {selectedQueues.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary">
+                        <ListPlus className="w-4 h-4 mr-2" />
+                        Agregar {selectedQueues.length} a Morosos
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 bg-popover z-50">
+                      <div className="px-2 py-1.5 text-sm font-semibold">
+                        Agregar seleccionados a:
+                      </div>
+                      <DropdownMenuSeparator />
+                      {addressLists && addressLists.length > 0 ? (
+                        addressLists.map((list: string) => (
+                          <DropdownMenuItem
+                            key={list}
+                            onClick={() => handleBulkAddToList(list)}
+                          >
+                            {list}
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <DropdownMenuItem disabled>
+                          No hay listas disponibles
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAddToList("__nuevo__")}
+                        className="text-primary"
+                      >
+                        + Nueva lista: Morosos
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
                     <Button>
@@ -474,6 +604,12 @@ const SimpleQueues = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b bg-muted/50">
+                    <th className="text-left p-4 font-medium w-12">
+                      <Checkbox
+                        checked={selectedQueues.length === filteredQueues.length && filteredQueues.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="text-left p-4 font-medium">Acción</th>
                     <th className="text-left p-4 font-medium">Nombre</th>
                     <th className="text-left p-4 font-medium">Target</th>
@@ -486,23 +622,36 @@ const SimpleQueues = () => {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                      <td colSpan={8} className="text-center p-8 text-muted-foreground">
                         Cargando colas...
                       </td>
                     </tr>
                   ) : filteredQueues.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                      <td colSpan={8} className="text-center p-8 text-muted-foreground">
                         No hay colas configuradas
                       </td>
                     </tr>
                   ) : (
                     filteredQueues.map((queue: any) => {
                       const isDisabled = queue.disabled === "true" || queue.disabled === true;
+                      const isSelected = selectedQueues.includes(queue[".id"]);
                       const isSuspended = isInAddressList(queue.target);
                       
                       return (
                         <tr key={queue[".id"]} className={`border-b hover:bg-muted/50 ${isDisabled ? 'opacity-50' : ''}`}>
+                          <td className="p-4">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedQueues([...selectedQueues, queue[".id"]]);
+                                } else {
+                                  setSelectedQueues(selectedQueues.filter(id => id !== queue[".id"]));
+                                }
+                              }}
+                            />
+                          </td>
                           <td className="p-4">
                             {!isSuspended ? (
                               <Button
