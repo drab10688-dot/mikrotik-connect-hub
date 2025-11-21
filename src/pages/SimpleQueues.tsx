@@ -78,7 +78,7 @@ const SimpleQueues = () => {
   });
 
   // Obtener todas las IPs en address-lists para mostrar estado de suspensión
-  const { data: addressListEntries } = useQuery({
+  const { data: addressListEntries, refetch: refetchAddressLists } = useQuery({
     queryKey: ["address-list-entries"],
     queryFn: async () => {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
@@ -96,7 +96,7 @@ const SimpleQueues = () => {
       if (error) throw error;
       return data.data || [];
     },
-    refetchInterval: 10000,
+    refetchInterval: 5000, // Refetch cada 5 segundos para mantener actualizado
   });
 
   const validateBandwidth = (value: string): boolean => {
@@ -285,10 +285,15 @@ const SimpleQueues = () => {
     try {
       const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       
-      // Buscar todas las entradas de address-list que coincidan con esta IP
-      const entries = addressListEntries?.filter((entry: any) => 
-        entry.address === queue.target
-      );
+      // Normalizar IP para comparación (remover /32, /24, etc.)
+      const normalizeIP = (ip: string) => ip.split('/')[0];
+      const targetIP = normalizeIP(queue.target);
+      
+      // Buscar todas las entradas de address-list que coincidan con esta IP (normalizadas)
+      const entries = addressListEntries?.filter((entry: any) => {
+        const entryIP = normalizeIP(entry.address || '');
+        return entryIP === targetIP;
+      });
 
       if (!entries || entries.length === 0) {
         toast.info("Esta IP no está en ninguna lista");
@@ -296,8 +301,9 @@ const SimpleQueues = () => {
       }
 
       // Remover todas las entradas encontradas
+      let removedCount = 0;
       for (const entry of entries) {
-        await supabase.functions.invoke("mikrotik-v6-api", {
+        const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
           body: {
             host: device.host,
             username: device.username,
@@ -307,9 +313,16 @@ const SimpleQueues = () => {
             params: { ".id": entry[".id"] },
           },
         });
+        
+        if (!error) {
+          removedCount++;
+        }
       }
       
-      toast.success("Servicio reactivado - IP removida de todas las listas");
+      // Forzar actualización inmediata de los datos
+      await Promise.all([refetch(), refetchAddressLists()]);
+      
+      toast.success(`Servicio reactivado - ${removedCount} entrada(s) eliminada(s)`);
     } catch (error: any) {
       toast.error(error.message || "Error al remover de address-list");
     }
@@ -411,7 +424,16 @@ const SimpleQueues = () => {
   };
 
   const isInAddressList = (target: string) => {
-    return addressListEntries?.some((entry: any) => entry.address === target);
+    if (!addressListEntries) return false;
+    
+    // Normalizar IP para comparación (remover /32, /24, etc.)
+    const normalizeIP = (ip: string) => ip.split('/')[0];
+    const targetIP = normalizeIP(target);
+    
+    return addressListEntries.some((entry: any) => {
+      const entryIP = normalizeIP(entry.address || '');
+      return entryIP === targetIP;
+    });
   };
 
   const filteredQueues = queues?.filter((queue: any) =>
