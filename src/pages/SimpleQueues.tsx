@@ -3,7 +3,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Plus, Ban, CheckCircle, ListPlus } from "lucide-react";
+import { Search, Trash2, Plus, Ban, CheckCircle, ListPlus, ListX } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -12,10 +12,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const SimpleQueues = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedQueues, setSelectedQueues] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     target: "",
@@ -73,6 +75,28 @@ const SimpleQueues = () => {
       return uniqueLists;
     },
     refetchInterval: 30000,
+  });
+
+  // Obtener todas las IPs en address-lists para mostrar estado de suspensión
+  const { data: addressListEntries } = useQuery({
+    queryKey: ["address-list-entries"],
+    queryFn: async () => {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+        body: {
+          host: device.host,
+          username: device.username,
+          password: device.password,
+          port: device.port,
+          command: "address-list-print",
+        },
+      });
+
+      if (error) throw error;
+      return data.data || [];
+    },
+    refetchInterval: 10000,
   });
 
   const validateBandwidth = (value: string): boolean => {
@@ -253,6 +277,89 @@ const SimpleQueues = () => {
     }
   };
 
+  const handleRemoveFromAddressList = async (queue: any) => {
+    try {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      
+      // Buscar todas las entradas de address-list que coincidan con esta IP
+      const entries = addressListEntries?.filter((entry: any) => 
+        entry.address === queue.target
+      );
+
+      if (!entries || entries.length === 0) {
+        toast.info("Esta IP no está en ninguna lista");
+        return;
+      }
+
+      // Remover todas las entradas encontradas
+      for (const entry of entries) {
+        await supabase.functions.invoke("mikrotik-v6-api", {
+          body: {
+            host: device.host,
+            username: device.username,
+            password: device.password,
+            port: device.port,
+            command: "address-list-remove",
+            params: { ".id": entry[".id"] },
+          },
+        });
+      }
+      
+      toast.success("Servicio reactivado - IP removida de todas las listas");
+    } catch (error: any) {
+      toast.error(error.message || "Error al remover de address-list");
+    }
+  };
+
+  const handleBulkAddToList = async (listName: string) => {
+    if (selectedQueues.length === 0) {
+      toast.error("Selecciona al menos una cola");
+      return;
+    }
+
+    try {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
+      
+      for (const queueId of selectedQueues) {
+        const queue = queues?.find((q: any) => q[".id"] === queueId);
+        if (!queue) continue;
+
+        await supabase.functions.invoke("mikrotik-v6-api", {
+          body: {
+            host: device.host,
+            username: device.username,
+            password: device.password,
+            port: device.port,
+            command: "address-list-add",
+            params: {
+              list: finalListName,
+              address: queue.target,
+              comment: `Suspensión: ${queue.name}${queue.comment ? ' - ' + queue.comment : ''}`,
+            },
+          },
+        });
+      }
+      
+      toast.success(`${selectedQueues.length} IPs agregadas a "${finalListName}"`);
+      setSelectedQueues([]);
+    } catch (error: any) {
+      toast.error(error.message || "Error al agregar en bloque");
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedQueues.length === filteredQueues.length) {
+      setSelectedQueues([]);
+    } else {
+      setSelectedQueues(filteredQueues.map((q: any) => q[".id"]));
+    }
+  };
+
+  const isInAddressList = (target: string) => {
+    return addressListEntries?.some((entry: any) => entry.address === target);
+  };
+
   const filteredQueues = queues?.filter((queue: any) =>
     queue.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     queue.target?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -275,6 +382,43 @@ const SimpleQueues = () => {
                 <CardDescription>Control de ancho de banda por usuario/IP</CardDescription>
               </div>
               <div className="flex gap-2">
+                {selectedQueues.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary">
+                        <ListPlus className="w-4 h-4 mr-2" />
+                        Agregar {selectedQueues.length} a lista
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <div className="px-2 py-1.5 text-sm font-semibold">
+                        Agregar seleccionados a:
+                      </div>
+                      <DropdownMenuSeparator />
+                      {addressLists && addressLists.length > 0 ? (
+                        addressLists.map((list: string) => (
+                          <DropdownMenuItem
+                            key={list}
+                            onClick={() => handleBulkAddToList(list)}
+                          >
+                            {list}
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <DropdownMenuItem disabled>
+                          No hay listas disponibles
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAddToList("__nuevo__")}
+                        className="text-primary"
+                      >
+                        + Nueva lista: Morosos
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
                     <Button>
@@ -408,6 +552,12 @@ const SimpleQueues = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b bg-muted/50">
+                    <th className="text-left p-4 font-medium w-12">
+                      <Checkbox
+                        checked={selectedQueues.length === filteredQueues.length && filteredQueues.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="text-left p-4 font-medium">Nombre</th>
                     <th className="text-left p-4 font-medium">Target</th>
                     <th className="text-left p-4 font-medium">Max Limit</th>
@@ -419,29 +569,50 @@ const SimpleQueues = () => {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="text-center p-8 text-muted-foreground">
+                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
                         Cargando colas...
                       </td>
                     </tr>
                   ) : filteredQueues.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center p-8 text-muted-foreground">
+                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
                         No hay colas configuradas
                       </td>
                     </tr>
                   ) : (
                     filteredQueues.map((queue: any) => {
                       const isDisabled = queue.disabled === "true" || queue.disabled === true;
+                      const isSelected = selectedQueues.includes(queue[".id"]);
+                      const isSuspended = isInAddressList(queue.target);
                       
                       return (
                         <tr key={queue[".id"]} className={`border-b hover:bg-muted/50 ${isDisabled ? 'opacity-50' : ''}`}>
+                          <td className="p-4">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedQueues([...selectedQueues, queue[".id"]]);
+                                } else {
+                                  setSelectedQueues(selectedQueues.filter(id => id !== queue[".id"]));
+                                }
+                              }}
+                            />
+                          </td>
                           <td className="p-4 font-medium">{queue.name}</td>
                           <td className="p-4 font-mono text-sm">{queue.target}</td>
                           <td className="p-4 text-sm">{queue["max-limit"] || "-"}</td>
                           <td className="p-4">
-                            <Badge variant={isDisabled ? "secondary" : "default"}>
-                              {isDisabled ? "Desactivado" : "Activo"}
-                            </Badge>
+                            <div className="flex gap-2">
+                              <Badge variant={isDisabled ? "secondary" : "default"}>
+                                {isDisabled ? "Desactivado" : "Activo"}
+                              </Badge>
+                              {isSuspended && (
+                                <Badge variant="destructive">
+                                  Suspendido
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">{queue.comment || "-"}</td>
                           <td className="p-4 text-right">
@@ -463,12 +634,24 @@ const SimpleQueues = () => {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    title="Agregar a Address List"
+                                    title="Gestionar Address List"
                                   >
                                     <ListPlus className="w-4 h-4 text-orange-500" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
+                                  {isSuspended && (
+                                    <>
+                                      <DropdownMenuItem
+                                        onClick={() => handleRemoveFromAddressList(queue)}
+                                        className="text-green-600"
+                                      >
+                                        <ListX className="w-4 h-4 mr-2" />
+                                        Reactivar servicio
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                    </>
+                                  )}
                                   <div className="px-2 py-1.5 text-sm font-semibold">
                                     Agregar a lista:
                                   </div>
