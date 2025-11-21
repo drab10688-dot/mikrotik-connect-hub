@@ -54,7 +54,7 @@ export default function UsersAdmin() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('mikrotik_devices')
-        .select('*, profiles!mikrotik_devices_created_by_fkey(user_id, full_name, email)')
+        .select('*')
         .order('name');
 
       if (error) throw error;
