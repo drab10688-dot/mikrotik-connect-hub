@@ -217,6 +217,22 @@ export const removePPPoEUser = async (userId: string) => {
   });
 };
 
+export const togglePPPoEUser = async (userId: string, currentlyDisabled: boolean) => {
+  const credentials = getMikroTikCredentials();
+  const command = currentlyDisabled ? "ppp-secret-enable" : "ppp-secret-disable";
+  
+  if (credentials?.version === "v6") {
+    return await callMikroTikFunction(command, {
+      command,
+      params: { ".id": userId },
+    });
+  }
+  return await callMikroTikFunction("mikrotik-pppoe", {
+    action: currentlyDisabled ? "enable" : "disable",
+    userData: { id: userId },
+  });
+};
+
 export const getPPPoEActive = async () => {
   const credentials = getMikroTikCredentials();
   if (credentials?.version === "v6") {

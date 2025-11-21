@@ -4,10 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Activity } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, Trash2, Activity, Ban, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { usePPPoEUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
-import { removePPPoEUser } from "@/lib/mikrotik";
+import { removePPPoEUser, togglePPPoEUser } from "@/lib/mikrotik";
 import { AddPPPoEUserDialog } from "@/components/forms/AddPPPoEUserDialog";
 
 const Ppp = () => {
@@ -22,6 +23,16 @@ const Ppp = () => {
       refetchUsers();
     } catch (error: any) {
       toast.error(error.message || "Error al eliminar usuario");
+    }
+  };
+
+  const handleToggleUser = async (userId: string, currentlyDisabled: boolean) => {
+    try {
+      await togglePPPoEUser(userId, currentlyDisabled);
+      toast.success(currentlyDisabled ? "Usuario activado" : "Usuario desactivado");
+      refetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || "Error al modificar usuario");
     }
   };
 
@@ -93,8 +104,8 @@ const Ppp = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Usuarios PPPoE</CardTitle>
-                <CardDescription>Lista de secretos y credenciales PPPoE</CardDescription>
+                <CardTitle>Gestión PPPoE</CardTitle>
+                <CardDescription>Administra secretos y conexiones activas</CardDescription>
               </div>
               <div className="flex gap-2">
                 <AddPPPoEUserDialog onSuccess={refetchUsers} />
@@ -111,74 +122,142 @@ const Ppp = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium">Usuario</th>
-                    <th className="text-left p-4 font-medium">Servicio</th>
-                    <th className="text-left p-4 font-medium">Perfil</th>
-                    <th className="text-left p-4 font-medium">Dirección Local</th>
-                    <th className="text-left p-4 font-medium">Dirección Remota</th>
-                    <th className="text-left p-4 font-medium">Estado</th>
-                    <th className="text-right p-4 font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingUsers ? (
-                    <tr>
-                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
-                        Cargando usuarios...
-                      </td>
-                    </tr>
-                  ) : filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
-                        No hay usuarios PPPoE configurados
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map((user: any) => {
-                      const isActive = activeConnections?.some((conn: any) => 
-                        conn.name === user.name
-                      );
-                      
-                      return (
-                        <tr key={user[".id"]} className="border-b hover:bg-muted/50">
-                          <td className="p-4 font-medium">{user.name}</td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {user.service || "any"}
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {user.profile || "default"}
-                          </td>
-                          <td className="p-4 text-sm font-mono">
-                            {user["local-address"] || "-"}
-                          </td>
-                          <td className="p-4 text-sm font-mono">
-                            {user["remote-address"] || "-"}
-                          </td>
-                          <td className="p-4">
-                            <Badge variant={isActive ? "default" : "secondary"}>
-                              {isActive ? "Conectado" : "Desconectado"}
-                            </Badge>
-                          </td>
-                          <td className="p-4 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(user[".id"])}
-                            >
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
+            <Tabs defaultValue="secrets" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="secrets">Secretos PPPoE</TabsTrigger>
+                <TabsTrigger value="active">Conexiones Activas</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="secrets" className="mt-4">
+                <div className="rounded-md border">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left p-4 font-medium">Usuario</th>
+                        <th className="text-left p-4 font-medium">Servicio</th>
+                        <th className="text-left p-4 font-medium">Perfil</th>
+                        <th className="text-left p-4 font-medium">IP Local</th>
+                        <th className="text-left p-4 font-medium">IP Remota</th>
+                        <th className="text-left p-4 font-medium">Estado</th>
+                        <th className="text-right p-4 font-medium">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingUsers ? (
+                        <tr>
+                          <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                            Cargando usuarios...
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                      ) : filteredUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                            No hay usuarios PPPoE configurados
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredUsers.map((user: any) => {
+                          const isDisabled = user.disabled === "true" || user.disabled === true;
+                          
+                          return (
+                            <tr key={user[".id"]} className="border-b hover:bg-muted/50">
+                              <td className="p-4 font-medium">{user.name}</td>
+                              <td className="p-4 text-sm text-muted-foreground">
+                                {user.service || "any"}
+                              </td>
+                              <td className="p-4 text-sm text-muted-foreground">
+                                {user.profile || "default"}
+                              </td>
+                              <td className="p-4 text-sm font-mono">
+                                {user["local-address"] || "-"}
+                              </td>
+                              <td className="p-4 text-sm font-mono">
+                                {user["remote-address"] || "-"}
+                              </td>
+                              <td className="p-4">
+                                <Badge variant={isDisabled ? "secondary" : "default"}>
+                                  {isDisabled ? "Desactivado" : "Activo"}
+                                </Badge>
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex gap-1 justify-end">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleToggleUser(user[".id"], isDisabled)}
+                                    title={isDisabled ? "Activar" : "Desactivar"}
+                                  >
+                                    {isDisabled ? (
+                                      <CheckCircle className="w-4 h-4 text-green-500" />
+                                    ) : (
+                                      <Ban className="w-4 h-4 text-orange-500" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDelete(user[".id"])}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="active" className="mt-4">
+                <div className="rounded-md border">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left p-4 font-medium">Usuario</th>
+                        <th className="text-left p-4 font-medium">Dirección</th>
+                        <th className="text-left p-4 font-medium">Tiempo Activo</th>
+                        <th className="text-left p-4 font-medium">Servicio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingActive ? (
+                        <tr>
+                          <td colSpan={4} className="text-center p-8 text-muted-foreground">
+                            Cargando conexiones...
+                          </td>
+                        </tr>
+                      ) : !activeConnections || activeConnections.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="text-center p-8 text-muted-foreground">
+                            No hay conexiones activas
+                          </td>
+                        </tr>
+                      ) : (
+                        activeConnections
+                          .filter((conn: any) => 
+                            conn.name?.toLowerCase().includes(searchTerm.toLowerCase())
+                          )
+                          .map((conn: any, index: number) => (
+                            <tr key={index} className="border-b hover:bg-muted/50">
+                              <td className="p-4 font-medium">{conn.name}</td>
+                              <td className="p-4 text-sm font-mono">{conn.address || "-"}</td>
+                              <td className="p-4 text-sm text-muted-foreground">
+                                {conn.uptime || "-"}
+                              </td>
+                              <td className="p-4 text-sm text-muted-foreground">
+                                {conn.service || "pppoe"}
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
