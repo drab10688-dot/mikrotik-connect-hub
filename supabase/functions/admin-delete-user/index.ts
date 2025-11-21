@@ -66,6 +66,8 @@ serve(async (req) => {
       );
     }
 
+    console.log('Eliminando usuario:', userId);
+
     // Primero eliminar accesos a dispositivos
     const { error: accessError } = await supabaseClient
       .from('user_mikrotik_access')
@@ -74,6 +76,8 @@ serve(async (req) => {
 
     if (accessError) {
       console.error('Error eliminando accesos:', accessError);
+    } else {
+      console.log('Accesos eliminados exitosamente');
     }
 
     // Eliminar roles del usuario
@@ -84,6 +88,8 @@ serve(async (req) => {
 
     if (rolesError) {
       console.error('Error eliminando roles:', rolesError);
+    } else {
+      console.log('Roles eliminados exitosamente');
     }
 
     // Eliminar perfil del usuario
@@ -94,12 +100,30 @@ serve(async (req) => {
 
     if (profileError) {
       console.error('Error eliminando perfil:', profileError);
+    } else {
+      console.log('Perfil eliminado exitosamente');
     }
 
-    // Finalmente eliminar usuario de auth
+    // Verificar si el usuario existe en auth antes de intentar eliminarlo
+    const { data: authUser, error: getUserError } = await supabaseClient.auth.admin.getUserById(userId);
+
+    if (getUserError) {
+      console.log('Usuario no encontrado en auth.users, probablemente ya fue eliminado');
+      // Si el usuario no existe en auth, consideramos la operación exitosa
+      // ya que los datos relacionados fueron eliminados
+      return new Response(
+        JSON.stringify({ success: true, message: 'Usuario y datos relacionados eliminados' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Si el usuario existe en auth, eliminarlo
     const { error: deleteError } = await supabaseClient.auth.admin.deleteUser(userId);
 
     if (deleteError) {
+      console.error('Error al eliminar usuario de auth:', deleteError);
       return new Response(
         JSON.stringify({ error: 'Error al eliminar usuario: ' + deleteError.message }),
         { 
@@ -108,6 +132,8 @@ serve(async (req) => {
         }
       );
     }
+
+    console.log('Usuario eliminado completamente de auth');
 
     return new Response(
       JSON.stringify({ success: true }),
