@@ -257,12 +257,15 @@ export default function UsersAdmin() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-all'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-select'] });
       queryClient.invalidateQueries({ queryKey: ['user-mikrotik-accesses'] });
       toast.success('Dispositivo eliminado exitosamente');
       setDeviceToDelete(null);
     },
     onError: (error: any) => {
       toast.error(error.message || 'Error al eliminar dispositivo');
+      setDeviceToDelete(null);
     },
   });
 
