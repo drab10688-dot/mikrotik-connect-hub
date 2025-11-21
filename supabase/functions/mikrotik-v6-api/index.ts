@@ -295,6 +295,14 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ip/firewall/address-list/remove', params);
         break;
 
+      case 'address-list-enable':
+        result = await api.executeCommand('/ip/firewall/address-list/enable', params);
+        break;
+
+      case 'address-list-disable':
+        result = await api.executeCommand('/ip/firewall/address-list/disable', params);
+        break;
+
       case 'simple-queues':
         result = await api.executeCommand('/queue/simple/print');
         break;
