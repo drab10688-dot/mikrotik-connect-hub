@@ -46,6 +46,12 @@ const SimpleQueues = () => {
     refetchInterval: 10000,
   });
 
+  const validateBandwidth = (value: string): boolean => {
+    // Formato válido: número seguido de k, M, o G (ej: 1M, 500k, 10M)
+    const bandwidthRegex = /^\d+(\.\d+)?[kMG]$/;
+    return bandwidthRegex.test(value.trim());
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -61,7 +67,18 @@ const SimpleQueues = () => {
         return;
       }
       
-      // Formatear max-limit correctamente: upload/download
+      // Validar formato
+      if (!validateBandwidth(uploadValue)) {
+        toast.error("Formato inválido de upload. Use: número + k/M/G (ej: 5M, 500k, 1G)");
+        return;
+      }
+      
+      if (!validateBandwidth(downloadValue)) {
+        toast.error("Formato inválido de download. Use: número + k/M/G (ej: 5M, 500k, 1G)");
+        return;
+      }
+      
+      // Formatear max-limit correctamente: upload/download (sin espacios)
       const maxLimit = `${uploadValue}/${downloadValue}`;
       
       const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
@@ -206,22 +223,34 @@ const SimpleQueues = () => {
                           <Input
                             id="upload"
                             value={formData.upload}
-                            onChange={(e) => setFormData({ ...formData, upload: e.target.value })}
+                            onChange={(e) => {
+                              // Permitir solo números, punto, k, M, G
+                              const value = e.target.value.replace(/[^0-9.kMG]/g, '');
+                              setFormData({ ...formData, upload: value });
+                            }}
                             placeholder="5M"
                             required
                           />
-                          <p className="text-xs text-muted-foreground">Ej: 1M, 5M, 10M</p>
+                          <p className="text-xs text-muted-foreground">
+                            Formato: número + k/M/G (ej: 1M, 500k, 2G)
+                          </p>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="download">Download Limit *</Label>
                           <Input
                             id="download"
                             value={formData.download}
-                            onChange={(e) => setFormData({ ...formData, download: e.target.value })}
+                            onChange={(e) => {
+                              // Permitir solo números, punto, k, M, G
+                              const value = e.target.value.replace(/[^0-9.kMG]/g, '');
+                              setFormData({ ...formData, download: value });
+                            }}
                             placeholder="10M"
                             required
                           />
-                          <p className="text-xs text-muted-foreground">Ej: 1M, 5M, 10M</p>
+                          <p className="text-xs text-muted-foreground">
+                            Formato: número + k/M/G (ej: 1M, 500k, 2G)
+                          </p>
                         </div>
                       </div>
                       <div className="space-y-2">
