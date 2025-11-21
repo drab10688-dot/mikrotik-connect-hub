@@ -325,46 +325,37 @@ export default function UsersAdmin() {
                                   <h4 className="font-semibold text-sm mb-3">Acceso a Dispositivos</h4>
                                   {devices && devices.length > 0 ? (
                                     <div className="grid gap-2">
-                                      {devices
-                                        .filter((device: any) => {
-                                          // Si es super_admin, solo mostrar sus propios dispositivos
-                                          if (userRole === 'super_admin') {
-                                            return device.created_by === user.user_id;
-                                          }
-                                          // Si es admin, mostrar todos los dispositivos
-                                          return true;
-                                        })
-                                        .map((device: any) => {
-                                          const hasAccess = getUserDeviceAccess(user.user_id, device.id);
-                                          return (
-                                            <div
-                                              key={device.id}
-                                              className="flex items-center justify-between p-3 bg-background rounded-lg border"
-                                            >
-                                              <div>
-                                                <p className="font-medium">{device.name}</p>
-                                                <p className="text-sm text-muted-foreground">{device.host}</p>
-                                              </div>
-                                              {hasAccess ? (
-                                                <Button
-                                                  variant="destructive"
-                                                  size="sm"
-                                                  onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                                >
-                                                  Desactivar
-                                                </Button>
-                                              ) : (
-                                                <Button
-                                                  variant="default"
-                                                  size="sm"
-                                                  onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
-                                                >
-                                                  Activar
-                                                </Button>
-                                              )}
+                                      {devices.map((device: any) => {
+                                        const hasAccess = getUserDeviceAccess(user.user_id, device.id);
+                                        return (
+                                          <div
+                                            key={device.id}
+                                            className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                          >
+                                            <div>
+                                              <p className="font-medium">{device.name}</p>
+                                              <p className="text-sm text-muted-foreground">{device.host}</p>
                                             </div>
-                                          );
-                                        })}
+                                            {hasAccess ? (
+                                              <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                              >
+                                                Desactivar
+                                              </Button>
+                                            ) : (
+                                              <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                              >
+                                                Activar
+                                              </Button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   ) : (
                                     <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
