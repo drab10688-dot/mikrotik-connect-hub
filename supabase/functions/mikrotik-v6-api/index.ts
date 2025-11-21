@@ -283,6 +283,38 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/active/remove', params);
         break;
 
+      case 'address-list':
+        result = await api.executeCommand('/ip/firewall/address-list/print');
+        break;
+
+      case 'address-list-add':
+        result = await api.executeCommand('/ip/firewall/address-list/add', params);
+        break;
+
+      case 'address-list-remove':
+        result = await api.executeCommand('/ip/firewall/address-list/remove', params);
+        break;
+
+      case 'simple-queues':
+        result = await api.executeCommand('/queue/simple/print');
+        break;
+
+      case 'simple-queue-add':
+        result = await api.executeCommand('/queue/simple/add', params);
+        break;
+
+      case 'simple-queue-remove':
+        result = await api.executeCommand('/queue/simple/remove', params);
+        break;
+
+      case 'simple-queue-disable':
+        result = await api.executeCommand('/queue/simple/disable', params);
+        break;
+
+      case 'simple-queue-enable':
+        result = await api.executeCommand('/queue/simple/enable', params);
+        break;
+
       case 'hotspot-profiles':
         result = await api.executeCommand('/ip/hotspot/user/profile/print');
         break;
