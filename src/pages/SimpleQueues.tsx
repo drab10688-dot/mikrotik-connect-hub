@@ -219,13 +219,15 @@ const SimpleQueues = () => {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="upload">Upload Limit *</Label>
+                          <Label htmlFor="upload">Límite de Subida *</Label>
                           <Input
                             id="upload"
                             value={formData.upload}
                             onChange={(e) => {
-                              // Permitir solo números, punto, k, M, G
-                              const value = e.target.value.replace(/[^0-9.kMG]/g, '');
+                              // Permitir solo números, punto, k, M, G y convertir a mayúsculas
+                              const value = e.target.value
+                                .replace(/[^0-9.kmgKMG]/g, '')
+                                .toUpperCase();
                               setFormData({ ...formData, upload: value });
                             }}
                             placeholder="5M"
@@ -236,13 +238,15 @@ const SimpleQueues = () => {
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="download">Download Limit *</Label>
+                          <Label htmlFor="download">Límite de Descarga *</Label>
                           <Input
                             id="download"
                             value={formData.download}
                             onChange={(e) => {
-                              // Permitir solo números, punto, k, M, G
-                              const value = e.target.value.replace(/[^0-9.kMG]/g, '');
+                              // Permitir solo números, punto, k, M, G y convertir a mayúsculas
+                              const value = e.target.value
+                                .replace(/[^0-9.kmgKMG]/g, '')
+                                .toUpperCase();
                               setFormData({ ...formData, download: value });
                             }}
                             placeholder="10M"
