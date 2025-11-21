@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
 import { Plus, Trash2, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,18 +26,7 @@ export default function HotspotProfiles() {
   const [idleTimeout, setIdleTimeout] = useState("");
 
   const queryClient = useQueryClient();
-
-  const { data: mikrotikDevices } = useQuery({
-    queryKey: ['mikrotik-devices-profiles'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .order('name');
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { devices: mikrotikDevices } = useUserDeviceAccess();
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['hotspot-profiles-manage', selectedMikrotik],
