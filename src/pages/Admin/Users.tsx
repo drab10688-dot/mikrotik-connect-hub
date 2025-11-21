@@ -7,13 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/dashboard/Sidebar';
-import { UserPlus, Shield, Trash2 } from 'lucide-react';
+import { UserPlus, Shield, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 
 export default function UsersAdmin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -43,6 +45,31 @@ export default function UsersAdmin() {
       );
 
       return usersWithRoles;
+    },
+  });
+
+  const { data: devices } = useQuery({
+    queryKey: ['mikrotik-devices-all'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: accesses } = useQuery({
+    queryKey: ['user-mikrotik-accesses'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_mikrotik_access')
+        .select('*, mikrotik_devices(name)');
+
+      if (error) throw error;
+      return data;
     },
   });
 
@@ -111,6 +138,72 @@ export default function UsersAdmin() {
     }
   };
 
+  const toggleAccessMutation = useMutation({
+    mutationFn: async ({ userId, deviceId, hasAccess, grantedBy }: { 
+      userId: string; 
+      deviceId: string; 
+      hasAccess: boolean;
+      grantedBy: string;
+    }) => {
+      if (hasAccess) {
+        // Revoke access
+        const access = accesses?.find(a => a.user_id === userId && a.mikrotik_id === deviceId);
+        if (access) {
+          const { error } = await supabase
+            .from('user_mikrotik_access')
+            .delete()
+            .eq('id', access.id);
+          if (error) throw error;
+        }
+      } else {
+        // Grant access
+        const { error } = await supabase
+          .from('user_mikrotik_access')
+          .insert({
+            user_id: userId,
+            mikrotik_id: deviceId,
+            granted_by: grantedBy,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-mikrotik-accesses'] });
+      toast.success('Acceso actualizado exitosamente');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Error al actualizar el acceso');
+    },
+  });
+
+  const toggleUserExpansion = (userId: string) => {
+    setExpandedUsers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+      } else {
+        newSet.add(userId);
+      }
+      return newSet;
+    });
+  };
+
+  const getUserDeviceAccess = (userId: string, deviceId: string) => {
+    return accesses?.some(a => a.user_id === userId && a.mikrotik_id === deviceId) || false;
+  };
+
+  const handleToggleAccess = async (userId: string, deviceId: string, hasAccess: boolean) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return;
+    
+    toggleAccessMutation.mutate({
+      userId,
+      deviceId,
+      hasAccess,
+      grantedBy: session.user.id,
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -147,6 +240,7 @@ export default function UsersAdmin() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[50px]"></TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Rol</TableHead>
@@ -155,56 +249,111 @@ export default function UsersAdmin() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user: any) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">
-                          {user.full_name || 'Sin nombre'}
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Select
-                            value={user.user_roles?.[0]?.role || 'user'}
-                            onValueChange={(value) => handleRoleChange(user.user_id, value)}
-                          >
-                            <SelectTrigger className="w-[150px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="super_admin">
-                                <div className="flex items-center gap-2">
-                                  <Shield className="h-4 w-4 text-red-500" />
-                                  Super Admin
+                    {users.map((user: any) => {
+                      const isExpanded = expandedUsers.has(user.user_id);
+                      const isAdmin = user.user_roles?.[0]?.role === 'admin';
+                      
+                      return (
+                        <>
+                          <TableRow key={user.id}>
+                            <TableCell>
+                              {isAdmin && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleUserExpansion(user.user_id)}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {user.full_name || 'Sin nombre'}
+                            </TableCell>
+                            <TableCell>{user.email}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={user.user_roles?.[0]?.role || 'user'}
+                                onValueChange={(value) => handleRoleChange(user.user_id, value)}
+                              >
+                                <SelectTrigger className="w-[150px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="super_admin">
+                                    <div className="flex items-center gap-2">
+                                      <Shield className="h-4 w-4 text-red-500" />
+                                      Super Admin
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="admin">
+                                    <div className="flex items-center gap-2">
+                                      <Shield className="h-4 w-4 text-blue-500" />
+                                      Admin
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="user">
+                                    <div className="flex items-center gap-2">
+                                      <UserPlus className="h-4 w-4 text-green-500" />
+                                      Usuario
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              {new Date(user.created_at).toLocaleDateString('es-ES')}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user.user_id, user.full_name || user.email)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                          {isExpanded && isAdmin && (
+                            <TableRow key={`${user.id}-devices`}>
+                              <TableCell colSpan={6} className="bg-muted/50">
+                                <div className="p-4 space-y-2">
+                                  <h4 className="font-semibold text-sm mb-3">Acceso a Dispositivos</h4>
+                                  {devices && devices.length > 0 ? (
+                                    <div className="grid gap-2">
+                                      {devices.map((device: any) => {
+                                        const hasAccess = getUserDeviceAccess(user.user_id, device.id);
+                                        return (
+                                          <div
+                                            key={device.id}
+                                            className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                                          >
+                                            <div>
+                                              <p className="font-medium">{device.name}</p>
+                                              <p className="text-sm text-muted-foreground">{device.host}</p>
+                                            </div>
+                                            <Switch
+                                              checked={hasAccess}
+                                              onCheckedChange={() => handleToggleAccess(user.user_id, device.id, hasAccess)}
+                                            />
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground">No hay dispositivos disponibles</p>
+                                  )}
                                 </div>
-                              </SelectItem>
-                              <SelectItem value="admin">
-                                <div className="flex items-center gap-2">
-                                  <Shield className="h-4 w-4 text-blue-500" />
-                                  Admin
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="user">
-                                <div className="flex items-center gap-2">
-                                  <UserPlus className="h-4 w-4 text-green-500" />
-                                  Usuario
-                                </div>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(user.created_at).toLocaleDateString('es-ES')}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteUser(user.user_id, user.full_name || user.email)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
