@@ -148,25 +148,29 @@ const Ppp = () => {
                         <th className="text-left p-4 font-medium">Perfil</th>
                         <th className="text-left p-4 font-medium">IP Local</th>
                         <th className="text-left p-4 font-medium">IP Remota</th>
+                        <th className="text-left p-4 font-medium">Estado</th>
                         <th className="text-right p-4 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loadingUsers ? (
                         <tr>
-                          <td colSpan={6} className="text-center p-8 text-muted-foreground">
+                          <td colSpan={7} className="text-center p-8 text-muted-foreground">
                             Cargando usuarios...
                           </td>
                         </tr>
                       ) : filteredUsers.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="text-center p-8 text-muted-foreground">
+                          <td colSpan={7} className="text-center p-8 text-muted-foreground">
                             No hay usuarios PPPoE configurados
                           </td>
                         </tr>
                       ) : (
                         filteredUsers.map((user: any) => {
                           const isDisabled = user.disabled === "true" || user.disabled === true;
+                          const isActive = activeConnections?.some((conn: any) => 
+                            conn.name === user.name
+                          );
                           
                           return (
                             <tr key={user[".id"]} className={`border-b hover:bg-muted/50 ${isDisabled ? 'opacity-50' : ''}`}>
@@ -189,6 +193,11 @@ const Ppp = () => {
                               </td>
                               <td className="p-4 text-sm font-mono">
                                 {user["remote-address"] || "-"}
+                              </td>
+                              <td className="p-4">
+                                <Badge variant={isActive ? "default" : "secondary"}>
+                                  {isActive ? "Conectado" : "Desconectado"}
+                                </Badge>
                               </td>
                               <td className="p-4 text-right">
                                 <div className="flex gap-1 justify-end">
