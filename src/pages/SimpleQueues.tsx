@@ -38,7 +38,9 @@ const SimpleQueues = () => {
       });
 
       if (error) throw error;
-      return data.data || [];
+      // Filtrar objetos dinámicos que no se pueden editar
+      const allQueues = data.data || [];
+      return allQueues.filter((q: any) => q.dynamic !== "true" && q.dynamic !== true);
     },
     refetchInterval: 10000,
   });

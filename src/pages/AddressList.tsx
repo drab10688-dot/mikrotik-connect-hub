@@ -30,13 +30,15 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "address-list",
+          command: device.version === "v7" ? undefined : "firewall-address-list",
           action: device.version === "v7" ? "list-address" : undefined,
         },
       });
 
       if (error) throw error;
-      return data.data || [];
+      // Filtrar objetos dinámicos que no se pueden editar
+      const allAddresses = data.data || [];
+      return allAddresses.filter((a: any) => a.dynamic !== "true" && a.dynamic !== true);
     },
     refetchInterval: 10000,
   });
@@ -53,7 +55,7 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "address-list-add",
+          command: device.version === "v7" ? undefined : "firewall-address-list-add",
           action: device.version === "v7" ? "add-address" : undefined,
           params: {
             address: formData.address,
@@ -84,7 +86,7 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "address-list-remove",
+          command: device.version === "v7" ? undefined : "firewall-address-list-remove",
           action: device.version === "v7" ? "remove-address" : undefined,
           params: { ".id": addressId },
         },
