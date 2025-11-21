@@ -3,7 +3,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Plus, Ban, CheckCircle } from "lucide-react";
+import { Search, Trash2, Plus, Ban, CheckCircle, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
 const SimpleQueues = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -222,6 +223,36 @@ const SimpleQueues = () => {
     }
   };
 
+  const handleAddToAddressList = async (queue: any, listName: string) => {
+    try {
+      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      
+      // Usar "Morosos" si seleccionó crear nueva lista
+      const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
+      
+      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+        body: {
+          host: device.host,
+          username: device.username,
+          password: device.password,
+          port: device.port,
+          command: "address-list-add",
+          params: {
+            list: finalListName,
+            address: queue.target,
+            comment: `Suspensión: ${queue.name}${queue.comment ? ' - ' + queue.comment : ''}`,
+          },
+        },
+      });
+
+      if (error) throw error;
+      
+      toast.success(`IP agregada a la lista "${finalListName}"`);
+    } catch (error: any) {
+      toast.error(error.message || "Error al agregar a address-list");
+    }
+  };
+
   const filteredQueues = queues?.filter((queue: any) =>
     queue.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     queue.target?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -427,6 +458,44 @@ const SimpleQueues = () => {
                                   <Ban className="w-4 h-4 text-orange-500" />
                                 )}
                               </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Agregar a Address List"
+                                  >
+                                    <ListPlus className="w-4 h-4 text-orange-500" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56">
+                                  <div className="px-2 py-1.5 text-sm font-semibold">
+                                    Agregar a lista:
+                                  </div>
+                                  <DropdownMenuSeparator />
+                                  {addressLists && addressLists.length > 0 ? (
+                                    addressLists.map((list: string) => (
+                                      <DropdownMenuItem
+                                        key={list}
+                                        onClick={() => handleAddToAddressList(queue, list)}
+                                      >
+                                        {list}
+                                      </DropdownMenuItem>
+                                    ))
+                                  ) : (
+                                    <DropdownMenuItem disabled>
+                                      No hay listas disponibles
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleAddToAddressList(queue, "__nuevo__")}
+                                    className="text-primary"
+                                  >
+                                    + Nueva lista: Morosos
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                               <Button
                                 variant="ghost"
                                 size="sm"
