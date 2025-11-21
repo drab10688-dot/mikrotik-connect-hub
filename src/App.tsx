@@ -16,6 +16,8 @@ import Diagnostics from "./pages/Diagnostics";
 import Profiles from "./pages/Profiles";
 import HotspotProfiles from "./pages/HotspotProfiles";
 import Reports from "./pages/Reports";
+import AddressList from "./pages/AddressList";
+import SimpleQueues from "./pages/SimpleQueues";
 import UsersAdmin from "./pages/Admin/Users";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
@@ -40,6 +42,8 @@ const App = () => (
         <Route path="/voucher-inventory" element={<ProtectedRoute><VoucherInventory /></ProtectedRoute>} />
           <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
           <Route path="/hotspot-profiles" element={<ProtectedRoute><HotspotProfiles /></ProtectedRoute>} />
+        <Route path="/address-list" element={<ProtectedRoute><AddressList /></ProtectedRoute>} />
+        <Route path="/simple-queues" element={<ProtectedRoute><SimpleQueues /></ProtectedRoute>} />
         <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

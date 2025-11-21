@@ -10,7 +10,9 @@ import {
   Router,
   ShieldCheck,
   BarChart3,
-  Ticket
+  Ticket,
+  ListChecks,
+  Gauge
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +29,8 @@ const menuItems = [
   { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },
   { icon: Ticket, label: "Perfiles Hotspot", path: "/hotspot-profiles" },
   { icon: ShieldCheck, label: "Perfiles PPPoE", path: "/profiles" },
+  { icon: ListChecks, label: "Address List", path: "/address-list" },
+  { icon: Gauge, label: "Simple Queues", path: "/simple-queues" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
