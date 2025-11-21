@@ -153,41 +153,7 @@ const SimpleQueues = () => {
 
       if (error) throw error;
       
-      // Si se seleccionó una address list, agregar la IP a esa lista
-      if (formData.addressList && formData.addressList !== "none") {
-        try {
-          // Si seleccionó "nueva lista", usar "Morosos" como nombre
-          const listName = formData.addressList === "__nuevo__" ? "Morosos" : formData.addressList;
-          
-          const { error: addressError } = await supabase.functions.invoke("mikrotik-v6-api", {
-            body: {
-              host: device.host,
-              username: device.username,
-              password: device.password,
-              port: device.port,
-              command: "address-list-add",
-              params: {
-                list: listName,
-                address: formData.target.trim(),
-                comment: `Suspensión: ${formData.name.trim()}`,
-              },
-            },
-          });
-
-          if (addressError) {
-            console.error("Error al agregar a address-list:", addressError);
-            toast.warning("Cola creada pero no se pudo agregar a la lista de direcciones");
-          } else {
-            toast.success("Cola agregada y dirección suspendida exitosamente");
-          }
-        } catch (addressListError) {
-          console.error("Error al agregar a address-list:", addressListError);
-          toast.warning("Cola creada pero no se pudo agregar a la lista de direcciones");
-        }
-      } else {
-        toast.success("Cola agregada exitosamente");
-      }
-      
+      toast.success("Cola agregada exitosamente");
       setIsDialogOpen(false);
       setFormData({ name: "", target: "", upload: "", download: "", comment: "", addressList: "" });
       refetch();
@@ -591,29 +557,6 @@ const SimpleQueues = () => {
                           placeholder="Descripción opcional"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="addressList">Agregar a Address List (Opcional)</Label>
-                        <Select
-                          value={formData.addressList}
-                          onValueChange={(value) => setFormData({ ...formData, addressList: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar lista (ej: Morosos)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Ninguna</SelectItem>
-                            {addressLists?.map((list: string) => (
-                              <SelectItem key={list} value={list}>
-                                {list}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="__nuevo__">+ Nueva lista: Morosos</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Al seleccionar una lista, la IP se agregará automáticamente para suspensión
-                        </p>
-                      </div>
                       <div className="flex gap-2 justify-end">
                         <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                           Cancelar
@@ -696,8 +639,9 @@ const SimpleQueues = () => {
                                 {isDisabled ? "Desactivado" : "Activo"}
                               </Badge>
                               {isSuspended && (
-                                <Badge variant="destructive">
-                                  Suspendido
+                                <Badge variant="destructive" className="flex items-center gap-1">
+                                  <Ban className="w-3 h-3" />
+                                  Usuario Moroso
                                 </Badge>
                               )}
                             </div>
