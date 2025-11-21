@@ -283,15 +283,15 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/active/remove', params);
         break;
 
-      case 'firewall-address-list':
+      case 'address-list-print':
         result = await api.executeCommand('/ip/firewall/address-list/print');
         break;
 
-      case 'firewall-address-list-add':
+      case 'address-list-add':
         result = await api.executeCommand('/ip/firewall/address-list/add', params);
         break;
 
-      case 'firewall-address-list-remove':
+      case 'address-list-remove':
         result = await api.executeCommand('/ip/firewall/address-list/remove', params);
         break;
 

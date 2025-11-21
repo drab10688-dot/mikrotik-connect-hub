@@ -30,7 +30,7 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "firewall-address-list",
+          command: device.version === "v7" ? undefined : "address-list-print",
           action: device.version === "v7" ? "list-address" : undefined,
         },
       });
@@ -55,7 +55,7 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "firewall-address-list-add",
+          command: device.version === "v7" ? undefined : "address-list-add",
           action: device.version === "v7" ? "add-address" : undefined,
           params: {
             address: formData.address,
@@ -86,7 +86,7 @@ const AddressList = () => {
           username: device.username,
           password: device.password,
           port: device.port,
-          command: device.version === "v7" ? undefined : "firewall-address-list-remove",
+          command: device.version === "v7" ? undefined : "address-list-remove",
           action: device.version === "v7" ? "remove-address" : undefined,
           params: { ".id": addressId },
         },
