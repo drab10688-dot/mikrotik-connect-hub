@@ -267,6 +267,14 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/secret/remove', params);
         break;
 
+      case 'ppp-secret-disable':
+        result = await api.executeCommand('/ppp/secret/disable', params);
+        break;
+
+      case 'ppp-secret-enable':
+        result = await api.executeCommand('/ppp/secret/enable', params);
+        break;
+
       case 'ppp-active':
         result = await api.executeCommand('/ppp/active/print');
         break;

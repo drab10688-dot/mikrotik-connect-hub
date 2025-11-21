@@ -24,6 +24,8 @@ export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
     password: "",
     service: "pppoe",
     profile: "default",
+    "local-address": "",
+    "remote-address": "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,6 +41,8 @@ export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
         password: "",
         service: "pppoe",
         profile: "default",
+        "local-address": "",
+        "remote-address": "",
       });
       onSuccess();
     } catch (error: any) {
@@ -124,6 +128,28 @@ export const AddPPPoEUserDialog = ({ onSuccess }: AddPPPoEUserDialogProps) => {
                   )}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="local-address">Dirección Local</Label>
+              <Input
+                id="local-address"
+                value={formData["local-address"]}
+                onChange={(e) => setFormData({ ...formData, "local-address": e.target.value })}
+                placeholder="192.168.1.1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="remote-address">Dirección Remota</Label>
+              <Input
+                id="remote-address"
+                value={formData["remote-address"]}
+                onChange={(e) => setFormData({ ...formData, "remote-address": e.target.value })}
+                placeholder="192.168.1.2"
+              />
             </div>
           </div>
 
