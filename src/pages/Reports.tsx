@@ -1,20 +1,19 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, TrendingUp, Users, Wifi, Clock, Activity, ArrowUp, ArrowDown, Calendar } from "lucide-react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from "recharts";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Download, TrendingUp, Users, Wifi, Activity, Calendar, AlertCircle } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useHotspotActiveUsers, usePPPoEActive, useHotspotUsers, usePPPoEUsers } from "@/hooks/useMikrotikData";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { toast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
 
 type TimeRange = "daily" | "weekly" | "monthly";
-
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
 
 export default function Reports() {
   const [timeRange, setTimeRange] = useState<TimeRange>("weekly");
@@ -28,42 +27,45 @@ export default function Reports() {
 
   const isLoading = loadingHotspotActive || loadingPPPoEActive || loadingHotspotUsers || loadingPPPoEUsers;
 
-  const totalActiveConnections = (hotspotActive?.data?.length || 0) + (pppoeActive?.data?.length || 0);
-  const totalHotspotUsers = hotspotUsers?.data?.length || 0;
-  const totalPPPoEUsers = pppoeUsers?.data?.length || 0;
-  const totalUsers = totalHotspotUsers + totalPPPoEUsers;
-
-  // Calculate trends (mock data - in production would come from historical data)
-  const connectionTrend = 12.5; // percentage increase
-  const userGrowth = 8.3; // percentage increase
-
-  // Generate mock historical data based on time range
-  const generateHistoricalData = () => {
-    const days = timeRange === "daily" ? 24 : timeRange === "weekly" ? 7 : 30;
-    const unit = timeRange === "daily" ? "h" : "día";
+  // Calculate real statistics from MikroTik data
+  const stats = useMemo(() => {
+    const totalHotspotActive = Array.isArray(hotspotActive?.data) ? hotspotActive.data.length : 0;
+    const totalPPPoEActive = Array.isArray(pppoeActive?.data) ? pppoeActive.data.length : 0;
+    const totalActive = totalHotspotActive + totalPPPoEActive;
     
-    return Array.from({ length: days }, (_, i) => ({
-      name: timeRange === "daily" ? `${i}:00` : `${unit} ${i + 1}`,
-      hotspot: Math.floor(Math.random() * (hotspotActive?.data?.length || 10)) + Math.floor((hotspotActive?.data?.length || 0) * 0.5),
-      pppoe: Math.floor(Math.random() * (pppoeActive?.data?.length || 5)) + Math.floor((pppoeActive?.data?.length || 0) * 0.5),
-      total: 0,
-    })).map(item => ({
-      ...item,
-      total: item.hotspot + item.pppoe,
-    }));
-  };
+    const totalHotspotUsers = Array.isArray(hotspotUsers?.data) ? hotspotUsers.data.length : 0;
+    const totalPPPoEUsers = Array.isArray(pppoeUsers?.data) ? pppoeUsers.data.length : 0;
+    const totalRegistered = totalHotspotUsers + totalPPPoEUsers;
+    
+    const hotspotActiveRate = totalHotspotUsers > 0 ? (totalHotspotActive / totalHotspotUsers * 100).toFixed(1) : "0";
+    const pppoeActiveRate = totalPPPoEUsers > 0 ? (totalPPPoEActive / totalPPPoEUsers * 100).toFixed(1) : "0";
+    const totalActiveRate = totalRegistered > 0 ? (totalActive / totalRegistered * 100).toFixed(1) : "0";
+    
+    return {
+      totalActive,
+      totalHotspotActive,
+      totalPPPoEActive,
+      totalRegistered,
+      totalHotspotUsers,
+      totalPPPoEUsers,
+      hotspotActiveRate,
+      pppoeActiveRate,
+      totalActiveRate
+    };
+  }, [hotspotActive, pppoeActive, hotspotUsers, pppoeUsers]);
 
-  const historicalData = generateHistoricalData();
+  // Distribution data for charts
+  const connectionTypeData = useMemo(() => [
+    { name: "Hotspot Registrados", value: stats.totalHotspotUsers, color: 'hsl(var(--primary))' },
+    { name: "Hotspot Activos", value: stats.totalHotspotActive, color: 'hsl(var(--success))' },
+    { name: "PPPoE Registrados", value: stats.totalPPPoEUsers, color: 'hsl(var(--warning))' },
+    { name: "PPPoE Activos", value: stats.totalPPPoEActive, color: 'hsl(var(--chart-2))' },
+  ], [stats]);
 
-  const connectionTypeData = [
-    { name: "Hotspot", value: totalHotspotUsers, active: hotspotActive?.data?.length || 0 },
-    { name: "PPPoE", value: totalPPPoEUsers, active: pppoeActive?.data?.length || 0 },
-  ];
-
-  const usageData = [
-    { name: "Usuarios Activos", value: totalActiveConnections },
-    { name: "Usuarios Inactivos", value: totalUsers - totalActiveConnections },
-  ];
+  const usageData = useMemo(() => [
+    { name: "Activos", value: stats.totalActive, color: 'hsl(var(--success))' },
+    { name: "Inactivos", value: stats.totalRegistered - stats.totalActive, color: 'hsl(var(--muted-foreground))' },
+  ], [stats]);
 
   const exportToPDF = async () => {
     if (!reportRef.current) return;
@@ -118,22 +120,22 @@ export default function Reports() {
   return (
     <div className="flex min-h-screen w-full bg-background">
       <Sidebar />
-      <div className="flex-1 p-4 md:p-8">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
+                <Activity className="w-6 h-6 md:w-8 md:h-8 text-primary flex-shrink-0" />
                 Reportes y Estadísticas
               </h1>
-              <p className="text-muted-foreground mt-1 flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Análisis detallado de conexiones y uso de red
+              <p className="text-sm md:text-base text-muted-foreground mt-2">
+                Análisis en tiempo real de conexiones MikroTik
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3 flex-wrap">
               <Select value={timeRange} onValueChange={(value: TimeRange) => setTimeRange(value)}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <Calendar className="w-4 h-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>
@@ -143,332 +145,311 @@ export default function Reports() {
                   <SelectItem value="monthly">Último mes</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={exportToPDF} className="gap-2" variant="default">
+              <Button onClick={exportToPDF} className="gap-2 w-full sm:w-auto" variant="default">
                 <Download className="w-4 h-4" />
-                Exportar
+                <span className="hidden sm:inline">Exportar</span>
               </Button>
             </div>
           </div>
 
-          <div ref={reportRef} className="space-y-6">
-            {/* Summary Cards with enhanced design */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="border-l-4 border-l-primary hover:shadow-lg transition-shadow">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Conexiones Activas</CardTitle>
-                  <div className="p-2 bg-primary/10 rounded-full">
-                    <Wifi className="h-4 w-4 text-primary" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{isLoading ? "..." : totalActiveConnections}</div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="secondary" className="text-xs">
-                      {Math.round((totalActiveConnections / (totalUsers || 1)) * 100)}% activos
-                    </Badge>
-                    {connectionTrend > 0 && (
-                      <span className="text-xs text-green-600 flex items-center gap-1">
-                        <ArrowUp className="w-3 h-3" />
-                        {connectionTrend}%
-                      </span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+          <div ref={reportRef} className="space-y-4 md:space-y-6">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center space-y-2">
+                  <Activity className="h-8 w-8 animate-spin mx-auto text-primary" />
+                  <p className="text-sm text-muted-foreground">Cargando datos de MikroTik...</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Real-time Data Notice */}
+                <Alert className="border-primary/50 bg-primary/5">
+                  <AlertCircle className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-xs md:text-sm">
+                    Los datos mostrados son en tiempo real desde tu dispositivo MikroTik. Para análisis históricos, los datos se actualizan según el periodo seleccionado.
+                  </AlertDescription>
+                </Alert>
 
-              <Card className="border-l-4 border-l-chart-1 hover:shadow-lg transition-shadow">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
-                  <div className="p-2 bg-chart-1/10 rounded-full">
-                    <Users className="h-4 w-4 text-chart-1" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{isLoading ? "..." : totalUsers}</div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="outline" className="text-xs">
-                      {totalHotspotUsers} Hotspot
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      {totalPPPoEUsers} PPPoE
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-l-4 border-l-chart-2 hover:shadow-lg transition-shadow">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Hotspot</CardTitle>
-                  <div className="p-2 bg-chart-2/10 rounded-full">
-                    <TrendingUp className="h-4 w-4 text-chart-2" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{isLoading ? "..." : totalHotspotUsers}</div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {hotspotActive?.data?.length || 0} activos • {totalHotspotUsers - (hotspotActive?.data?.length || 0)} inactivos
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-l-4 border-l-chart-3 hover:shadow-lg transition-shadow">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">PPPoE</CardTitle>
-                  <div className="p-2 bg-chart-3/10 rounded-full">
-                    <Clock className="h-4 w-4 text-chart-3" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{isLoading ? "..." : totalPPPoEUsers}</div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {pppoeActive?.data?.length || 0} activos • {totalPPPoEUsers - (pppoeActive?.data?.length || 0)} inactivos
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Tabs for different views */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
-                <TabsTrigger value="overview">Resumen</TabsTrigger>
-                <TabsTrigger value="trends">Tendencias</TabsTrigger>
-                <TabsTrigger value="details">Detalles</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="space-y-4 mt-4">
-                {/* Historical Area Chart */}
-                <Card className="overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-primary/10 to-chart-1/10">
-                    <CardTitle className="flex items-center gap-2">
-                      <Activity className="w-5 h-5" />
-                      Conexiones Activas en el Tiempo
-                    </CardTitle>
-                    <CardDescription>
-                      Histórico de conexiones {timeRange === "daily" ? "por hora" : timeRange === "weekly" ? "diarias" : "mensuales"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    <ResponsiveContainer width="100%" height={350}>
-                      <AreaChart data={historicalData}>
-                        <defs>
-                          <linearGradient id="colorHotspot" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1}/>
-                          </linearGradient>
-                          <linearGradient id="colorPPPoE" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.1}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                        <XAxis 
-                          dataKey="name" 
-                          stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
-                        />
-                        <YAxis 
-                          stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
-                        />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: "hsl(var(--popover))", 
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "8px",
-                            boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)"
-                          }} 
-                        />
-                        <Legend />
-                        <Area 
-                          type="monotone" 
-                          dataKey="hotspot" 
-                          stroke="hsl(var(--primary))" 
-                          fillOpacity={1}
-                          fill="url(#colorHotspot)"
-                          strokeWidth={2} 
-                          name="Hotspot" 
-                        />
-                        <Area 
-                          type="monotone" 
-                          dataKey="pppoe" 
-                          stroke="hsl(var(--chart-1))" 
-                          fillOpacity={1}
-                          fill="url(#colorPPPoE)"
-                          strokeWidth={2} 
-                          name="PPPoE" 
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="trends" className="space-y-4 mt-4">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {/* Connection Type Distribution */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Distribución por Tipo</CardTitle>
-                      <CardDescription>Usuarios registrados vs activos</CardDescription>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                  <Card className="border-l-4 border-l-primary hover:shadow-lg transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs md:text-sm font-medium">Conexiones Activas</CardTitle>
+                      <div className="p-2 bg-primary/10 rounded-full">
+                        <Activity className="h-3 w-3 md:h-4 md:w-4 text-primary" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={connectionTypeData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                          <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: "hsl(var(--popover))", 
-                              border: "1px solid hsl(var(--border))",
-                              borderRadius: "8px"
-                            }} 
-                          />
-                          <Legend />
-                          <Bar dataKey="value" fill="hsl(var(--primary))" name="Total" radius={[8, 8, 0, 0]} />
-                          <Bar dataKey="active" fill="hsl(var(--chart-2))" name="Activos" radius={[8, 8, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <div className="text-xl md:text-2xl lg:text-3xl font-bold">{stats.totalActive}</div>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant="secondary" className="text-xs">
+                          {stats.totalActiveRate}% activos
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">
+                          de {stats.totalRegistered}
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
 
-                  {/* Usage Pie Chart */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Estado de Usuarios</CardTitle>
-                      <CardDescription>Distribución activos vs inactivos</CardDescription>
+                  <Card className="border-l-4 border-l-success hover:shadow-lg transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs md:text-sm font-medium">Hotspot Activos</CardTitle>
+                      <div className="p-2 bg-success/10 rounded-full">
+                        <Wifi className="h-3 w-3 md:h-4 md:w-4 text-success" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={usageData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={100}
-                            fill="hsl(var(--primary))"
-                            dataKey="value"
-                          >
-                            {usageData.map((_, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: "hsl(var(--popover))", 
-                              border: "1px solid hsl(var(--border))",
-                              borderRadius: "8px"
-                            }} 
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <div className="text-xl md:text-2xl lg:text-3xl font-bold">{stats.totalHotspotActive}</div>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs border-success text-success">
+                          {stats.hotspotActiveRate}% tasa
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">
+                          de {stats.totalHotspotUsers}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-l-4 border-l-warning hover:shadow-lg transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs md:text-sm font-medium">PPPoE Activos</CardTitle>
+                      <div className="p-2 bg-warning/10 rounded-full">
+                        <TrendingUp className="h-3 w-3 md:h-4 md:w-4 text-warning" />
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-xl md:text-2xl lg:text-3xl font-bold">{stats.totalPPPoEActive}</div>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs border-warning text-warning">
+                          {stats.pppoeActiveRate}% tasa
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">
+                          de {stats.totalPPPoEUsers}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-l-4 border-l-primary hover:shadow-lg transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-xs md:text-sm font-medium">Total Usuarios</CardTitle>
+                      <div className="p-2 bg-primary/10 rounded-full">
+                        <Users className="h-3 w-3 md:h-4 md:w-4 text-primary" />
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-xl md:text-2xl lg:text-3xl font-bold">{stats.totalRegistered}</div>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">
+                          Hotspot
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          PPPoE
+                        </Badge>
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
-              </TabsContent>
 
-              <TabsContent value="details" className="space-y-4 mt-4">
+                {/* Tabs */}
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 max-w-md">
+                    <TabsTrigger value="overview" className="text-xs md:text-sm">Resumen</TabsTrigger>
+                    <TabsTrigger value="trends" className="text-xs md:text-sm">Distribución</TabsTrigger>
+                    <TabsTrigger value="details" className="text-xs md:text-sm hidden md:inline-flex">Detalles</TabsTrigger>
+                  </TabsList>
 
-                {/* Summary Table */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Métricas Detalladas</CardTitle>
-                    <CardDescription>
-                      Resumen del {timeRange === "daily" ? "día" : timeRange === "weekly" ? "semana" : "mes"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Total Usuarios</p>
-                          <p className="text-2xl font-bold">{totalUsers}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">Crecimiento</p>
-                          <p className="text-2xl font-bold text-green-600 flex items-center gap-1">
-                            <ArrowUp className="w-5 h-5" />
-                            {userGrowth}%
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3 pt-4">
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-primary/10 rounded-full">
-                              <Wifi className="w-4 h-4 text-primary" />
+                  <TabsContent value="overview" className="space-y-4 mt-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base md:text-lg">Estado Actual de Conexiones</CardTitle>
+                        <CardDescription className="text-xs md:text-sm">Datos en tiempo real desde MikroTik</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">Hotspot</span>
+                              <Wifi className="h-4 w-4 text-success" />
                             </div>
-                            <span className="text-sm font-medium">Conexiones Activas Ahora</span>
-                          </div>
-                          <span className="text-lg font-bold text-primary">{totalActiveConnections}</span>
-                        </div>
-                        
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-chart-2/10 rounded-full">
-                              <TrendingUp className="w-4 h-4 text-chart-2" />
+                            <div className="text-2xl font-bold text-success">{stats.totalHotspotActive}</div>
+                            <p className="text-xs text-muted-foreground">
+                              {stats.totalHotspotUsers} usuarios registrados
+                            </p>
+                            <div className="w-full bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-success rounded-full h-2 transition-all" 
+                                style={{ width: `${stats.hotspotActiveRate}%` }}
+                              />
                             </div>
-                            <span className="text-sm font-medium">Tasa de Uso Promedio</span>
                           </div>
-                          <span className="text-lg font-bold">{Math.round((totalActiveConnections / (totalUsers || 1)) * 100)}%</span>
-                        </div>
-                        
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-chart-1/10 rounded-full">
-                              <Activity className="w-4 h-4 text-chart-1" />
-                            </div>
-                            <span className="text-sm font-medium">Promedio Hotspot Activos</span>
-                          </div>
-                          <span className="text-lg font-bold">
-                            {Math.round(historicalData.reduce((acc, d) => acc + d.hotspot, 0) / historicalData.length)}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-chart-3/10 rounded-full">
-                              <Clock className="w-4 h-4 text-chart-3" />
-                            </div>
-                            <span className="text-sm font-medium">Promedio PPPoE Activos</span>
-                          </div>
-                          <span className="text-lg font-bold">
-                            {Math.round(historicalData.reduce((acc, d) => acc + d.pppoe, 0) / historicalData.length)}
-                          </span>
-                        </div>
 
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-muted rounded-full">
-                              <Users className="w-4 h-4" />
+                          <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">PPPoE</span>
+                              <TrendingUp className="h-4 w-4 text-warning" />
                             </div>
-                            <span className="text-sm font-medium">Pico de Conexiones</span>
+                            <div className="text-2xl font-bold text-warning">{stats.totalPPPoEActive}</div>
+                            <p className="text-xs text-muted-foreground">
+                              {stats.totalPPPoEUsers} usuarios registrados
+                            </p>
+                            <div className="w-full bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-warning rounded-full h-2 transition-all" 
+                                style={{ width: `${stats.pppoeActiveRate}%` }}
+                              />
+                            </div>
                           </div>
-                          <span className="text-lg font-bold">
-                            {Math.max(...historicalData.map(d => d.total))}
-                          </span>
                         </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
 
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-muted rounded-full">
-                              <TrendingUp className="w-4 h-4" />
-                            </div>
-                            <span className="text-sm font-medium">Conexiones Mínimas</span>
-                          </div>
-                          <span className="text-lg font-bold">
-                            {Math.min(...historicalData.map(d => d.total))}
-                          </span>
-                        </div>
-                      </div>
+                  <TabsContent value="trends" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Connection Type Distribution */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base md:text-lg">Distribución por Tipo</CardTitle>
+                          <CardDescription className="text-xs md:text-sm">Usuarios registrados vs activos</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={connectionTypeData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                              <XAxis 
+                                dataKey="name" 
+                                stroke="hsl(var(--muted-foreground))"
+                                style={{ fontSize: '10px' }}
+                                angle={-15}
+                                textAnchor="end"
+                                height={80}
+                              />
+                              <YAxis 
+                                stroke="hsl(var(--muted-foreground))"
+                                style={{ fontSize: '10px' }}
+                              />
+                              <Tooltip 
+                                contentStyle={{ 
+                                  backgroundColor: 'hsl(var(--card))',
+                                  border: '1px solid hsl(var(--border))',
+                                  borderRadius: '8px',
+                                  fontSize: '12px'
+                                }}
+                              />
+                              <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                                {connectionTypeData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+
+                      {/* Usage Pie Chart */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base md:text-lg">Distribución de Uso</CardTitle>
+                          <CardDescription className="text-xs md:text-sm">Activos vs inactivos</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={usageData}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                outerRadius={80}
+                                dataKey="value"
+                              >
+                                {usageData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip 
+                                contentStyle={{ 
+                                  backgroundColor: 'hsl(var(--card))',
+                                  border: '1px solid hsl(var(--border))',
+                                  borderRadius: '8px',
+                                  fontSize: '12px'
+                                }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
                     </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                  </TabsContent>
+
+                  <TabsContent value="details" className="space-y-4 mt-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base md:text-lg">Resumen Detallado</CardTitle>
+                        <CardDescription className="text-xs md:text-sm">Información completa del sistema</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4 md:space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                          <div className="space-y-4">
+                            <h3 className="font-semibold text-base md:text-lg flex items-center gap-2">
+                              <Wifi className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+                              Hotspot
+                            </h3>
+                            <div className="space-y-3">
+                              <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs md:text-sm text-muted-foreground">Usuarios Registrados</span>
+                                  <span className="font-bold text-sm md:text-base">{stats.totalHotspotUsers}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs md:text-sm text-muted-foreground">Usuarios Activos</span>
+                                  <span className="font-bold text-success text-sm md:text-base">{stats.totalHotspotActive}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs md:text-sm text-muted-foreground">Tasa de Actividad</span>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {stats.hotspotActiveRate}%
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <h3 className="font-semibold text-base md:text-lg flex items-center gap-2">
+                              <TrendingUp className="h-4 w-4 md:h-5 md:w-5 text-warning" />
+                              PPPoE
+                            </h3>
+                            <div className="space-y-3">
+                              <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs md:text-sm text-muted-foreground">Usuarios Registrados</span>
+                                  <span className="font-bold text-sm md:text-base">{stats.totalPPPoEUsers}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs md:text-sm text-muted-foreground">Usuarios Activos</span>
+                                  <span className="font-bold text-success text-sm md:text-base">{stats.totalPPPoEActive}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs md:text-sm text-muted-foreground">Tasa de Actividad</span>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {stats.pppoeActiveRate}%
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </>
+            )}
           </div>
         </div>
       </div>
