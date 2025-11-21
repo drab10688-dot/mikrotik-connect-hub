@@ -21,6 +21,8 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import { useSystemResources } from "@/hooks/useMikrotikData";
 import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
+import { Shield } from "lucide-react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -38,6 +40,7 @@ const menuItems = [
 export const Sidebar = () => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   
@@ -75,27 +78,45 @@ export const Sidebar = () => {
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-              )
-            }
-          >
-            <item.icon className="w-5 h-5" />
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
-        
-        <div className="pt-4 mt-4 border-t border-sidebar-border">
-          <AdminMenu />
-        </div>
+        {loadingAccess ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          </div>
+        ) : !hasDeviceAccess ? (
+          <div className="px-4 py-6 space-y-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Shield className="w-5 h-5" />
+              <span className="text-sm font-medium">Sin acceso</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              No tienes dispositivos MikroTik asignados. Contacta al administrador.
+            </p>
+          </div>
+        ) : (
+          <>
+            {menuItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                  )
+                }
+              >
+                <item.icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+            
+            <div className="pt-4 mt-4 border-t border-sidebar-border">
+              <AdminMenu />
+            </div>
+          </>
+        )}
       </nav>
 
       <div className="p-4 border-t border-sidebar-border">

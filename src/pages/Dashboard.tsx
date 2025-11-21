@@ -8,9 +8,12 @@ import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown } from 
 import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
+import { Shield } from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const { data: systemInfo, isLoading: loadingSystem } = useSystemResources();
   const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
   const { data: pppoeActiveData, isLoading: loadingPPPoE } = usePPPoEActive();
@@ -79,6 +82,45 @@ const Dashboard = () => {
       color: "bg-orange-500",
     },
   ];
+
+  if (loadingAccess) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="ml-64 p-8 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasDeviceAccess) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="ml-64 p-8 flex items-center justify-center">
+          <Card className="max-w-md w-full">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                <Shield className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <CardTitle className="text-2xl">Sin Acceso a Dispositivos</CardTitle>
+              <CardDescription className="text-base mt-2">
+                No tienes dispositivos MikroTik asignados
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Contacta al administrador para que te asigne un dispositivo MikroTik y puedas acceder al sistema.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
