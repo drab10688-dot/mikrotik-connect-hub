@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { useVoucherInventory } from '@/hooks/useVoucherInventory';
+import { useVoucherPresets } from '@/hooks/useVoucherPresets';
 import { VoucherInventoryCard } from '@/components/vouchers/VoucherInventoryCard';
 import { VoucherTable } from '@/components/vouchers/VoucherTable';
 import { PrintVoucherTicket } from '@/components/vouchers/PrintVoucherTicket';
@@ -24,7 +24,7 @@ import QRCode from 'qrcode';
 export default function VoucherInventory() {
   const [selectedMikrotik, setSelectedMikrotik] = useState<string>("");
   const [voucherCount, setVoucherCount] = useState(1);
-  const [selectedProfile, setSelectedProfile] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState("");
   const [validity, setValidity] = useState("24h");
   const [price, setPrice] = useState(0);
   const [businessName, setBusinessName] = useState("WiFi Service");
@@ -35,42 +35,7 @@ export default function VoucherInventory() {
   const { isAdmin, isSuperAdmin } = useAuth();
 
   const { devices: mikrotikDevices } = useUserDeviceAccess();
-
-  // Obtener perfiles directamente del dispositivo seleccionado
-  const { data: profiles = [] } = useQuery({
-    queryKey: ['hotspot-profiles', selectedMikrotik],
-    queryFn: async () => {
-      if (!selectedMikrotik) return [];
-      
-      const { data: device } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .eq('id', selectedMikrotik)
-        .single();
-      
-      if (!device) return [];
-      
-      const functionName = device.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profiles',
-          action: device.version === 'v7' ? 'list-profiles' : undefined,
-        },
-      });
-      
-      if (error) {
-        console.error('Error obteniendo perfiles:', error);
-        return [];
-      }
-      
-      return data?.data || [];
-    },
-    enabled: !!selectedMikrotik,
-  });
+  const { presets } = useVoucherPresets(selectedMikrotik);
 
   const {
     vouchers,
@@ -86,17 +51,23 @@ export default function VoucherInventory() {
   } = useVoucherInventory(selectedMikrotik);
 
   const handleGenerate = () => {
-    if (!selectedMikrotik || !selectedProfile) {
-      toast.error('Selecciona un dispositivo y perfil');
+    if (!selectedMikrotik || !selectedPreset) {
+      toast.error('Selecciona un dispositivo y preset');
+      return;
+    }
+
+    const preset = presets?.find(p => p.id === selectedPreset);
+    if (!preset) {
+      toast.error('Preset no encontrado');
       return;
     }
 
     generateVouchers({
       count: voucherCount,
-      profile: selectedProfile,
+      profile: preset.name, // Use preset name as profile
       mikrotikId: selectedMikrotik,
-      validity,
-      price,
+      validity: preset.validity,
+      price: preset.price,
     });
   };
 
@@ -360,7 +331,8 @@ export default function VoucherInventory() {
               {/* Presets */}
               <VoucherPresetsManager 
                 mikrotikId={selectedMikrotik}
-                onSelectPreset={(validity, price) => {
+                onSelectPreset={(presetId, validity, price) => {
+                  setSelectedPreset(presetId);
                   setValidity(validity);
                   setPrice(price);
                   toast.success('Preset aplicado');
@@ -379,7 +351,7 @@ export default function VoucherInventory() {
                   <CardDescription>Crea nuevos vouchers con configuración personalizada</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="count">Cantidad</Label>
                       <Input
@@ -393,36 +365,24 @@ export default function VoucherInventory() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="profile">Perfil</Label>
-                      <Select value={selectedProfile} onValueChange={setSelectedProfile}>
+                      <Label htmlFor="preset">Preset de Voucher</Label>
+                      <Select value={selectedPreset} onValueChange={(value) => {
+                        setSelectedPreset(value);
+                        const preset = presets?.find(p => p.id === value);
+                        if (preset) {
+                          setValidity(preset.validity);
+                          setPrice(preset.price);
+                        }
+                      }}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecciona perfil" />
+                          <SelectValue placeholder="Selecciona preset" />
                         </SelectTrigger>
                         <SelectContent>
-                          {profiles.map((profile: any) => (
-                            <SelectItem key={profile['.id']} value={profile.name}>
-                              {profile.name}
+                          {presets?.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.name} - {preset.validity} - ${preset.price.toFixed(2)}
                             </SelectItem>
                           ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="validity">Validez</Label>
-                      <Select value={validity} onValueChange={setValidity}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1h">1 hora</SelectItem>
-                          <SelectItem value="3h">3 horas</SelectItem>
-                          <SelectItem value="6h">6 horas</SelectItem>
-                          <SelectItem value="12h">12 horas</SelectItem>
-                          <SelectItem value="24h">24 horas</SelectItem>
-                          <SelectItem value="3d">3 días</SelectItem>
-                          <SelectItem value="7d">7 días</SelectItem>
-                          <SelectItem value="30d">30 días</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -437,6 +397,7 @@ export default function VoucherInventory() {
                         value={price}
                         onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
                         placeholder="0.00"
+                        readOnly
                       />
                     </div>
                   </div>
@@ -474,7 +435,7 @@ export default function VoucherInventory() {
 
                   <Button 
                     onClick={handleGenerate} 
-                    disabled={isGenerating || !selectedProfile}
+                    disabled={isGenerating || !selectedPreset}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-2" />

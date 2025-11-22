@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { host, username, password, port, action, userId, userData } = await req.json();
+    const { host, username, password, port, action, userId, userData, profileData } = await req.json();
 
     console.log(`MikroTik Hotspot Users - Action: ${action}`);
 
@@ -58,6 +58,7 @@ Deno.serve(async (req) => {
     };
 
     let result;
+    const data = profileData || userData; // Support both parameter names
 
     switch (action) {
       case 'list':
@@ -69,8 +70,12 @@ Deno.serve(async (req) => {
         result = await mikrotikRequest(config, '/rest/ip/hotspot/user/profile');
         break;
 
+      case 'profile-add':
+        result = await mikrotikRequest(config, '/rest/ip/hotspot/user/profile/add', 'POST', data);
+        break;
+
       case 'add':
-        result = await mikrotikRequest(config, '/rest/ip/hotspot/user/add', 'POST', userData);
+        result = await mikrotikRequest(config, '/rest/ip/hotspot/user/add', 'POST', data);
         break;
 
       case 'remove':
@@ -82,7 +87,7 @@ Deno.serve(async (req) => {
       case 'update':
         result = await mikrotikRequest(config, `/rest/ip/hotspot/user/set`, 'POST', {
           '.id': userId,
-          ...userData
+          ...data
         });
         break;
 
