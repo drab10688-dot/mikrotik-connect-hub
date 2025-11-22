@@ -414,3 +414,18 @@ export const deletePPPoEProfile = async (id: string) => {
     id,
   });
 };
+
+// Backup y Restore
+export const exportMikroTikConfig = async (section: 'pppoe-users' | 'pppoe-profiles' | 'hotspot-users' | 'hotspot-profiles' | 'simple-queues' | 'all') => {
+  return callMikroTikFunction("mikrotik-v6-api", {
+    command: "export-config",
+    params: { section }
+  });
+};
+
+export const importMikroTikConfig = async (script: string) => {
+  return callMikroTikFunction("mikrotik-v6-api", {
+    command: "import-config",
+    params: { script }
+  });
+};

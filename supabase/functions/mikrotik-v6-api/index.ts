@@ -369,6 +369,64 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/profile/remove', params);
         break;
 
+      case 'export-config':
+        // Exportar configuración específica o completa
+        const exportCommands = [];
+        
+        if (params.section === 'pppoe-users') {
+          exportCommands.push('/ppp/secret/export');
+        } else if (params.section === 'pppoe-profiles') {
+          exportCommands.push('/ppp/profile/export');
+        } else if (params.section === 'hotspot-users') {
+          exportCommands.push('/ip/hotspot/user/export');
+        } else if (params.section === 'hotspot-profiles') {
+          exportCommands.push('/ip/hotspot/user/profile/export');
+        } else if (params.section === 'simple-queues') {
+          exportCommands.push('/queue/simple/export');
+        } else if (params.section === 'all') {
+          exportCommands.push('/ppp/secret/export');
+          exportCommands.push('/ppp/profile/export');
+          exportCommands.push('/ip/hotspot/user/export');
+          exportCommands.push('/ip/hotspot/user/profile/export');
+          exportCommands.push('/queue/simple/export');
+        } else {
+          exportCommands.push('/export');
+        }
+        
+        const exports = [];
+        for (const cmd of exportCommands) {
+          const exportResult = await api.executeCommand(cmd);
+          exports.push({ command: cmd, data: exportResult });
+        }
+        result = exports;
+        break;
+
+      case 'import-config':
+        // Importar configuración desde un script RSC
+        if (!params.script) {
+          throw new Error('Script RSC requerido');
+        }
+        
+        // Dividir el script en líneas y ejecutar cada comando
+        const lines = params.script.split('\n').filter((line: string) => {
+          const trimmed = line.trim();
+          return trimmed && !trimmed.startsWith('#');
+        });
+        
+        const importResults = [];
+        for (const line of lines) {
+          try {
+            // Ejecutar cada línea como un comando
+            const cmdResult = await api.executeCommand(line.trim());
+            importResults.push({ line, success: true, result: cmdResult });
+          } catch (error) {
+            console.error(`Error ejecutando línea: ${line}`, error);
+            importResults.push({ line, success: false, error: (error as Error).message });
+          }
+        }
+        result = importResults;
+        break;
+
       default:
         // Permitir comandos personalizados
         result = await api.executeCommand(command, params || {});
