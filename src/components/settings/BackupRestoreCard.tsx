@@ -51,8 +51,12 @@ export function BackupRestoreCard() {
         if (allowedFields.length > 0 && !allowedFields.includes(key)) continue;
         
         const val = String(value);
-        // Omitir valores vacíos, "false", "none", "0"
-        if (!val || val === 'false' || val === '' || val === 'none' || val === '0') continue;
+        
+        // Omitir valores vacíos y predeterminados
+        if (!val || val === '' || val === 'none') continue;
+        if (val === 'false' || val === '0') continue;
+        if (val.match(/^0[smhd]?(\/0[smhd]?)?$/)) continue; // 0, 0s, 0/0, 0s/0s, etc.
+        if (val === '0.0.0.0' || val === '::') continue;
         
         // Escapar comillas en el valor
         const escapedVal = val.replace(/"/g, '\\"');
