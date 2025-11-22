@@ -23,6 +23,7 @@ import UsersAdmin from "./pages/Admin/Users";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
 import RegisterUser from "./pages/Admin/RegisterUser";
+import Secretaries from "./pages/Admin/Secretaries";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +55,7 @@ const App = () => (
         <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
         <Route path="/admin/mikrotik-devices" element={<ProtectedRoute><MikrotikDevices /></ProtectedRoute>} />
         <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />
+        <Route path="/admin/secretaries" element={<ProtectedRoute><Secretaries /></ProtectedRoute>} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

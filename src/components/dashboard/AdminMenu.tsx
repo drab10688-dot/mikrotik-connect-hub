@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Shield, Server } from 'lucide-react';
+import { Shield, Server, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { PendingDevicesBadge } from '@/components/admin/PendingDevicesBadge';
 import { useRealtimePendingDevices } from '@/hooks/useRealtimePendingDevices';
 
 export const AdminMenu = () => {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, isAdmin } = useAuth();
   
   // Enable realtime notifications for super admins
   useRealtimePendingDevices();
@@ -35,6 +35,15 @@ export const AdminMenu = () => {
           <span>{isSuperAdmin ? 'Dispositivos' : 'Mis Dispositivos'}</span>
           <PendingDevicesBadge />
         </Link>
+        {isAdmin && (
+          <Link
+            to="/admin/secretaries"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
+          >
+            <Users className="h-4 w-4" />
+            <span>Secretarias</span>
+          </Link>
+        )}
       </div>
     </div>
   );

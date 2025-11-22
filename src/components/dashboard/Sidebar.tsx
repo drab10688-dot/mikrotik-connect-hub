@@ -41,13 +41,20 @@ const menuItems = [
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, isSecretary } = useAuth();
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
+
+  // Filtrar menú para secretarias - solo PPPoE y Queues
+  const filteredMenuItems = isSecretary 
+    ? menuItems.filter(item => 
+        item.path === '/ppp' || item.path === '/simple-queues'
+      )
+    : menuItems;
 
   const handleLogout = async () => {
     await signOut();
@@ -96,7 +103,7 @@ export const Sidebar = () => {
           </div>
         ) : (
           <>
-            {menuItems.map((item) => (
+            {filteredMenuItems.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
@@ -114,9 +121,11 @@ export const Sidebar = () => {
               </NavLink>
             ))}
             
-            <div className="pt-4 mt-4 border-t border-sidebar-border">
-              <AdminMenu />
-            </div>
+            {!isSecretary && (
+              <div className="pt-4 mt-4 border-t border-sidebar-border">
+                <AdminMenu />
+              </div>
+            )}
           </>
         )}
       </nav>
