@@ -194,6 +194,47 @@ export const useVoucherInventory = (mikrotikId?: string) => {
   // Delete voucher mutation
   const deleteVoucherMutation = useMutation({
     mutationFn: async (voucherId: string) => {
+      // Primero obtener el voucher para tener el código
+      const { data: voucher } = await supabase
+        .from('vouchers')
+        .select('*, mikrotik:mikrotik_devices(*)')
+        .eq('id', voucherId)
+        .single();
+
+      if (!voucher) throw new Error('Voucher no encontrado');
+
+      // Eliminar del MikroTik primero
+      const mikrotikDevice = voucher.mikrotik;
+      if (mikrotikDevice) {
+        const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
+        
+        try {
+          const deleteBody = {
+            host: mikrotikDevice.host,
+            username: mikrotikDevice.username,
+            password: mikrotikDevice.password,
+            port: mikrotikDevice.port,
+          };
+
+          if (mikrotikDevice.version === 'v7') {
+            Object.assign(deleteBody, {
+              action: 'remove',
+              voucherUsername: voucher.code,
+            });
+          } else {
+            Object.assign(deleteBody, {
+              command: 'hotspot-user-remove',
+              params: { name: voucher.code },
+            });
+          }
+
+          await supabase.functions.invoke(functionName, { body: deleteBody });
+        } catch (error) {
+          console.error('Error eliminando de MikroTik:', error);
+        }
+      }
+
+      // Luego eliminar de la base de datos
       const { error } = await supabase
         .from('vouchers')
         .delete()
