@@ -15,19 +15,26 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (open && canvasRef.current && voucher) {
-      const qrContent = hotspotUrl.includes('?') 
-        ? `${hotspotUrl}&username=${voucher.code}&password=${voucher.password}`
-        : `${hotspotUrl}?username=${voucher.code}&password=${voucher.password}`;
-      
-      QRCode.toCanvas(canvasRef.current, qrContent, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#ffffff',
-        },
-      });
+    if (open && canvasRef.current && voucher && hotspotUrl) {
+      try {
+        const qrContent = hotspotUrl.includes('?') 
+          ? `${hotspotUrl}&username=${voucher.code}&password=${voucher.password}`
+          : `${hotspotUrl}?username=${voucher.code}&password=${voucher.password}`;
+        
+        QRCode.toCanvas(canvasRef.current, qrContent, {
+          width: 300,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#ffffff',
+          },
+          errorCorrectionLevel: 'M',
+        }).catch((error) => {
+          console.error('Error generating QR code:', error);
+        });
+      } catch (error) {
+        console.error('Error in QR generation:', error);
+      }
     }
   }, [open, voucher, hotspotUrl]);
 

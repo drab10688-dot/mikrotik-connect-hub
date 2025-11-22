@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 
 interface UserRole {
-  role: 'super_admin' | 'admin' | 'user' | null;
+  role: 'super_admin' | 'admin' | 'user' | 'reseller' | null;
 }
 
 export const useAuth = () => {
@@ -112,6 +112,7 @@ export const useAuth = () => {
     signOut,
     isSuperAdmin: role === 'super_admin',
     isAdmin: role === 'admin' || role === 'super_admin',
+    isReseller: role === 'reseller',
     isAuthenticated: !!user,
   };
 };

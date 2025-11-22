@@ -86,6 +86,41 @@ export type Database = {
         }
         Relationships: []
       }
+      reseller_assignments: {
+        Row: {
+          assigned_by: string
+          commission_percentage: number | null
+          created_at: string | null
+          id: string
+          mikrotik_id: string
+          reseller_id: string
+        }
+        Insert: {
+          assigned_by: string
+          commission_percentage?: number | null
+          created_at?: string | null
+          id?: string
+          mikrotik_id: string
+          reseller_id: string
+        }
+        Update: {
+          assigned_by?: string
+          commission_percentage?: number | null
+          created_at?: string | null
+          id?: string
+          mikrotik_id?: string
+          reseller_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reseller_assignments_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_mikrotik_access: {
         Row: {
           created_at: string | null
@@ -138,6 +173,50 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      voucher_presets: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          mikrotik_id: string | null
+          name: string
+          price: number
+          updated_at: string | null
+          validity: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          mikrotik_id?: string | null
+          name: string
+          price?: number
+          updated_at?: string | null
+          validity: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          mikrotik_id?: string | null
+          name?: string
+          price?: number
+          updated_at?: string | null
+          validity?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voucher_presets_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vouchers: {
         Row: {
@@ -216,7 +295,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "super_admin" | "admin" | "user"
+      app_role: "super_admin" | "admin" | "user" | "reseller"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -344,7 +423,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["super_admin", "admin", "user"],
+      app_role: ["super_admin", "admin", "user", "reseller"],
     },
   },
 } as const
