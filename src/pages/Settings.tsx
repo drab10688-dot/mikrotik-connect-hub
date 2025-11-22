@@ -12,7 +12,6 @@ import { Router, Wifi } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
-import { BackupRestoreCard } from "@/components/settings/BackupRestoreCard";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -279,8 +278,6 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
-
-          <BackupRestoreCard />
         </div>
       </div>
     </div>
