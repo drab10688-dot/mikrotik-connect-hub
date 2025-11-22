@@ -7,8 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Download, TrendingUp, Users, Wifi, Activity, Calendar, AlertCircle } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { useHotspotActiveUsers, usePPPoEActive, useHotspotUsers, usePPPoEUsers } from "@/hooks/useMikrotikData";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart } from "recharts";
+import { useHotspotActiveUsers, usePPPoEActive, useHotspotUsers, usePPPoEUsers, useSystemResources } from "@/hooks/useMikrotikData";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { toast } from "@/hooks/use-toast";
@@ -20,21 +20,27 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState("overview");
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const { data: hotspotActive, isLoading: loadingHotspotActive } = useHotspotActiveUsers();
-  const { data: pppoeActive, isLoading: loadingPPPoEActive } = usePPPoEActive();
-  const { data: hotspotUsers, isLoading: loadingHotspotUsers } = useHotspotUsers();
-  const { data: pppoeUsers, isLoading: loadingPPPoEUsers } = usePPPoEUsers();
+  const { data: hotspotActiveData, isLoading: loadingHotspotActive } = useHotspotActiveUsers();
+  const { data: pppoeActiveData, isLoading: loadingPPPoEActive } = usePPPoEActive();
+  const { data: hotspotUsersData, isLoading: loadingHotspotUsers } = useHotspotUsers();
+  const { data: pppoeUsersData, isLoading: loadingPPPoEUsers } = usePPPoEUsers();
+  const { data: systemInfo } = useSystemResources();
 
   const isLoading = loadingHotspotActive || loadingPPPoEActive || loadingHotspotUsers || loadingPPPoEUsers;
 
   // Calculate real statistics from MikroTik data
   const stats = useMemo(() => {
-    const totalHotspotActive = Array.isArray(hotspotActive?.data) ? hotspotActive.data.length : 0;
-    const totalPPPoEActive = Array.isArray(pppoeActive?.data) ? pppoeActive.data.length : 0;
+    const hotspotActive = Array.isArray(hotspotActiveData) ? hotspotActiveData : [];
+    const pppoeActive = Array.isArray(pppoeActiveData) ? pppoeActiveData : [];
+    const hotspotUsers = Array.isArray(hotspotUsersData) ? hotspotUsersData : [];
+    const pppoeUsers = Array.isArray(pppoeUsersData) ? pppoeUsersData : [];
+    
+    const totalHotspotActive = hotspotActive.length;
+    const totalPPPoEActive = pppoeActive.length;
     const totalActive = totalHotspotActive + totalPPPoEActive;
     
-    const totalHotspotUsers = Array.isArray(hotspotUsers?.data) ? hotspotUsers.data.length : 0;
-    const totalPPPoEUsers = Array.isArray(pppoeUsers?.data) ? pppoeUsers.data.length : 0;
+    const totalHotspotUsers = hotspotUsers.length;
+    const totalPPPoEUsers = pppoeUsers.length;
     const totalRegistered = totalHotspotUsers + totalPPPoEUsers;
     
     const hotspotActiveRate = totalHotspotUsers > 0 ? (totalHotspotActive / totalHotspotUsers * 100).toFixed(1) : "0";
@@ -50,9 +56,13 @@ export default function Reports() {
       totalPPPoEUsers,
       hotspotActiveRate,
       pppoeActiveRate,
-      totalActiveRate
+      totalActiveRate,
+      hotspotActive,
+      pppoeActive,
+      hotspotUsers,
+      pppoeUsers
     };
-  }, [hotspotActive, pppoeActive, hotspotUsers, pppoeUsers]);
+  }, [hotspotActiveData, pppoeActiveData, hotspotUsersData, pppoeUsersData]);
 
   // Distribution data for charts
   const connectionTypeData = useMemo(() => [
@@ -261,47 +271,162 @@ export default function Reports() {
                     <TabsTrigger value="details" className="text-xs md:text-sm hidden md:inline-flex">Detalles</TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="overview" className="space-y-4 mt-4">
+                   <TabsContent value="overview" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base md:text-lg">Estado Actual de Conexiones</CardTitle>
+                          <CardDescription className="text-xs md:text-sm">Datos en tiempo real desde MikroTik</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-1 gap-4">
+                            <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">Hotspot</span>
+                                <Wifi className="h-4 w-4 text-success" />
+                              </div>
+                              <div className="text-2xl font-bold text-success">{stats.totalHotspotActive}</div>
+                              <p className="text-xs text-muted-foreground">
+                                {stats.totalHotspotUsers} usuarios registrados
+                              </p>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div 
+                                  className="bg-success rounded-full h-2 transition-all" 
+                                  style={{ width: `${stats.hotspotActiveRate}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">PPPoE</span>
+                                <TrendingUp className="h-4 w-4 text-warning" />
+                              </div>
+                              <div className="text-2xl font-bold text-warning">{stats.totalPPPoEActive}</div>
+                              <p className="text-xs text-muted-foreground">
+                                {stats.totalPPPoEUsers} usuarios registrados
+                              </p>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div 
+                                  className="bg-warning rounded-full h-2 transition-all" 
+                                  style={{ width: `${stats.pppoeActiveRate}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* System Resources */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base md:text-lg">Recursos del Sistema</CardTitle>
+                          <CardDescription className="text-xs md:text-sm">Información del MikroTik</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {systemInfo && Array.isArray(systemInfo) && systemInfo[0] ? (
+                            <>
+                              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                                <span className="text-xs md:text-sm text-muted-foreground">CPU</span>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-24 bg-muted rounded-full h-2">
+                                    <div 
+                                      className="bg-primary rounded-full h-2 transition-all" 
+                                      style={{ width: `${systemInfo[0]['cpu-load'] || 0}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-bold text-sm">{systemInfo[0]['cpu-load'] || 0}%</span>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                                <span className="text-xs md:text-sm text-muted-foreground">Memoria</span>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-24 bg-muted rounded-full h-2">
+                                    <div 
+                                      className="bg-warning rounded-full h-2 transition-all" 
+                                      style={{ 
+                                        width: `${((parseInt(systemInfo[0]['total-memory'] || '0') - parseInt(systemInfo[0]['free-memory'] || '0')) / parseInt(systemInfo[0]['total-memory'] || '1') * 100).toFixed(0)}%` 
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="font-bold text-sm">
+                                    {((parseInt(systemInfo[0]['total-memory'] || '0') - parseInt(systemInfo[0]['free-memory'] || '0')) / parseInt(systemInfo[0]['total-memory'] || '1') * 100).toFixed(0)}%
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                                <span className="text-xs md:text-sm text-muted-foreground">Uptime</span>
+                                <span className="font-bold text-sm">{systemInfo[0].uptime || 'N/A'}</span>
+                              </div>
+                              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                                <span className="text-xs md:text-sm text-muted-foreground">Versión</span>
+                                <span className="font-bold text-sm">{systemInfo[0].version || 'N/A'}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">No hay información del sistema</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Top Active Users */}
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base md:text-lg">Estado Actual de Conexiones</CardTitle>
-                        <CardDescription className="text-xs md:text-sm">Datos en tiempo real desde MikroTik</CardDescription>
+                        <CardTitle className="text-base md:text-lg">Usuarios Más Activos</CardTitle>
+                        <CardDescription className="text-xs md:text-sm">Top 10 por tiempo de conexión</CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="p-4 bg-muted/30 rounded-lg space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">Hotspot</span>
-                              <Wifi className="h-4 w-4 text-success" />
-                            </div>
-                            <div className="text-2xl font-bold text-success">{stats.totalHotspotActive}</div>
-                            <p className="text-xs text-muted-foreground">
-                              {stats.totalHotspotUsers} usuarios registrados
-                            </p>
-                            <div className="w-full bg-muted rounded-full h-2">
-                              <div 
-                                className="bg-success rounded-full h-2 transition-all" 
-                                style={{ width: `${stats.hotspotActiveRate}%` }}
-                              />
-                            </div>
-                          </div>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {(() => {
+                            const allActiveUsers = [
+                              ...(stats.hotspotActive || []).map((u: any) => ({ 
+                                ...u, 
+                                type: 'Hotspot', 
+                                uptime: u.uptime || '0s' 
+                              })),
+                              ...(stats.pppoeActive || []).map((u: any) => ({ 
+                                ...u, 
+                                type: 'PPPoE', 
+                                uptime: u.uptime || '0s',
+                                user: u.name 
+                              }))
+                            ].sort((a, b) => {
+                              // Simple sort by uptime string (this is approximate)
+                              return (b.uptime || '').localeCompare(a.uptime || '');
+                            }).slice(0, 10);
 
-                          <div className="p-4 bg-muted/30 rounded-lg space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">PPPoE</span>
-                              <TrendingUp className="h-4 w-4 text-warning" />
-                            </div>
-                            <div className="text-2xl font-bold text-warning">{stats.totalPPPoEActive}</div>
-                            <p className="text-xs text-muted-foreground">
-                              {stats.totalPPPoEUsers} usuarios registrados
-                            </p>
-                            <div className="w-full bg-muted rounded-full h-2">
-                              <div 
-                                className="bg-warning rounded-full h-2 transition-all" 
-                                style={{ width: `${stats.pppoeActiveRate}%` }}
-                              />
-                            </div>
-                          </div>
+                            return allActiveUsers.length > 0 ? (
+                              <div className="space-y-2">
+                                {allActiveUsers.map((user: any, index: number) => (
+                                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                                        <span className="text-xs font-bold text-primary">{index + 1}</span>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{user.user || user.name || 'Sin nombre'}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <Badge variant="outline" className="text-xs">
+                                            {user.type}
+                                          </Badge>
+                                          <span className="text-xs text-muted-foreground truncate">
+                                            {user.address || user['remote-address'] || 'Sin IP'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 ml-2">
+                                      <p className="text-sm font-bold">{user.uptime}</p>
+                                      <p className="text-xs text-muted-foreground">{user.profile || 'default'}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground text-center py-8">No hay usuarios activos</p>
+                            );
+                          })()}
                         </div>
                       </CardContent>
                     </Card>

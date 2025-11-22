@@ -65,13 +65,13 @@ export default function Diagnostics() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-4 md:p-6">
+      <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
         <div className="flex items-center gap-3">
-          <Activity className="w-8 h-8 text-primary" />
+          <Activity className="w-6 h-6 md:w-8 md:h-8 text-primary" />
           <div>
-            <h1 className="text-3xl font-bold">Diagnóstico de Conexión</h1>
-            <p className="text-muted-foreground">Prueba conectividad TCP y escanea puertos del router</p>
+            <h1 className="text-2xl md:text-3xl font-bold">Diagnóstico de Conexión</h1>
+            <p className="text-sm md:text-base text-muted-foreground">Prueba conectividad TCP y escanea puertos del router</p>
           </div>
         </div>
 
