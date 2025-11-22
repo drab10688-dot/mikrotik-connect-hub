@@ -20,18 +20,45 @@ export function BackupRestoreCard() {
   const convertToRSC = (data: any[], command: string): string => {
     let rsc = `\n# ${command}\n`;
     
+    // Campos que siempre debemos omitir
+    const omitFields = [
+      '.id', 'dynamic', 'disabled', 'invalid', 
+      'last-logged-out', 'last-caller-id', 'last-disconnect-reason',
+      'uptime', 'encoding', 'session-id', 'radius',
+      'limit-bytes-in', 'limit-bytes-out',
+      'creation-time', 'default'
+    ];
+    
+    // Campos básicos por tipo de comando
+    const essentialFields: Record<string, string[]> = {
+      '/ppp/secret/add': ['name', 'password', 'service', 'profile', 'remote-address', 'comment'],
+      '/ppp/profile/add': ['name', 'local-address', 'remote-address', 'rate-limit', 'only-one'],
+      '/ip/hotspot/user/add': ['name', 'password', 'profile', 'server', 'comment'],
+      '/ip/hotspot/user/profile/add': ['name', 'shared-users', 'rate-limit', 'idle-timeout', 'keepalive-timeout'],
+      '/queue/simple/add': ['name', 'target', 'max-limit', 'burst-limit', 'burst-threshold', 'burst-time', 'comment']
+    };
+    
+    const allowedFields = essentialFields[command] || [];
+    
     for (const item of data) {
-      let cmd = command.replace('/print', '/add');
+      let cmd = command;
       
       for (const [key, value] of Object.entries(item)) {
-        if (key === '.id') continue;
-        if (key === 'dynamic' && value === 'true') continue;
+        // Omitir campos no deseados
+        if (omitFields.includes(key)) continue;
+        
+        // Si hay lista de campos permitidos, verificar
+        if (allowedFields.length > 0 && !allowedFields.includes(key)) continue;
         
         const val = String(value);
-        if (val && val !== 'false' && val !== '' && val !== 'none') {
-          cmd += ` ${key}="${val}"`;
-        }
+        // Omitir valores vacíos, "false", "none", "0"
+        if (!val || val === 'false' || val === '' || val === 'none' || val === '0') continue;
+        
+        // Escapar comillas en el valor
+        const escapedVal = val.replace(/"/g, '\\"');
+        cmd += ` ${key}="${escapedVal}"`;
       }
+      
       rsc += cmd + '\n';
     }
     
