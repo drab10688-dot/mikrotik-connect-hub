@@ -64,12 +64,11 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
         <!DOCTYPE html>
         <html>
           <head>
-            <title>QR Code - ${voucher.code}</title>
+            <title>QR Code - ${voucher.profile}</title>
             <style>
               body {
                 margin: 0;
                 display: flex;
-                flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 min-height: 100vh;
@@ -79,9 +78,8 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
                 text-align: center;
                 padding: 20px;
               }
-              h2 { margin: 10px 0; }
-              img { margin: 20px 0; }
-              .info { margin: 10px 0; font-size: 14px; }
+              img { display: block; margin: 0 auto; }
+              .info { margin-top: 20px; font-size: 18px; font-weight: bold; }
               @media print {
                 @page { margin: 0; }
               }
@@ -89,11 +87,8 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
           </head>
           <body>
             <div class="container">
-              <h2>Voucher WiFi</h2>
               <img src="${imgData}" alt="QR Code" style="width: 300px; height: 300px;" />
-              <div class="info"><strong>Usuario:</strong> ${voucher.code}</div>
-              <div class="info"><strong>Contraseña:</strong> ${voucher.password}</div>
-              <div class="info"><strong>Perfil:</strong> ${voucher.profile}</div>
+              <div class="info">${voucher.profile}</div>
             </div>
             <script>
               window.onload = () => {
@@ -126,14 +121,8 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
           </div>
           
           <div className="w-full space-y-2 text-center">
-            <div className="text-sm">
-              <span className="font-semibold">Usuario:</span> {voucher.code}
-            </div>
-            <div className="text-sm">
-              <span className="font-semibold">Contraseña:</span> {voucher.password}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Perfil: {voucher.profile}
+            <div className="text-lg font-semibold">
+              {voucher.profile}
             </div>
           </div>
 
