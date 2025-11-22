@@ -209,26 +209,46 @@ export const useVoucherInventory = (mikrotikId?: string) => {
         const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
         
         try {
-          const deleteBody = {
-            host: mikrotikDevice.host,
-            username: mikrotikDevice.username,
-            password: mikrotikDevice.password,
-            port: mikrotikDevice.port,
-          };
-
           if (mikrotikDevice.version === 'v7') {
-            Object.assign(deleteBody, {
-              action: 'remove',
-              voucherUsername: voucher.code,
+            await supabase.functions.invoke(functionName, {
+              body: {
+                host: mikrotikDevice.host,
+                username: mikrotikDevice.username,
+                password: mikrotikDevice.password,
+                port: mikrotikDevice.port,
+                action: 'remove',
+                voucherUsername: voucher.code,
+              },
             });
           } else {
-            Object.assign(deleteBody, {
-              command: 'hotspot-user-remove',
-              params: { name: voucher.code },
+            // Para v6, primero obtener la lista de usuarios para encontrar el .id
+            const { data: usersData } = await supabase.functions.invoke(functionName, {
+              body: {
+                host: mikrotikDevice.host,
+                username: mikrotikDevice.username,
+                password: mikrotikDevice.password,
+                port: mikrotikDevice.port,
+                command: 'hotspot-users',
+              },
             });
-          }
 
-          await supabase.functions.invoke(functionName, { body: deleteBody });
+            if (usersData?.data) {
+              const user = usersData.data.find((u: any) => u.name === voucher.code);
+              if (user && user['.id']) {
+                // Ahora eliminar usando el .id
+                await supabase.functions.invoke(functionName, {
+                  body: {
+                    host: mikrotikDevice.host,
+                    username: mikrotikDevice.username,
+                    password: mikrotikDevice.password,
+                    port: mikrotikDevice.port,
+                    command: 'hotspot-user-remove',
+                    params: { '.id': user['.id'] },
+                  },
+                });
+              }
+            }
+          }
         } catch (error) {
           console.error('Error eliminando de MikroTik:', error);
         }
