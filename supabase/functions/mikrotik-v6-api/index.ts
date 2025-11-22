@@ -14,9 +14,9 @@ class MikroTikAPI {
         ? { hostname: host, port }
         : { hostname: host, port };
       
-      // Crear promesa de timeout de 30 segundos
+      // Crear promesa de timeout de 60 segundos para operaciones largas como backup
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
+        setTimeout(() => reject(new Error('Connection timeout after 60 seconds')), 60000)
       );
       
       // Conectar con timeout
@@ -132,9 +132,9 @@ class MikroTikAPI {
       const buf = new Uint8Array(n);
       let readTotal = 0;
       
-      // Timeout de 20 segundos para lectura
+      // Timeout de 45 segundos para lectura de operaciones largas
       const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Read timeout after 20 seconds')), 20000)
+        setTimeout(() => reject(new Error('Read timeout after 45 seconds')), 45000)
       );
       
       while (readTotal < n) {
