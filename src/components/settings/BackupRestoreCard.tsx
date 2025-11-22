@@ -5,8 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Database, Download, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { exportMikroTikConfig, importMikroTikConfig, getMikroTikCredentials } from "@/lib/mikrotik";
+import { getMikroTikCredentials, getPPPoEUsers, getHotspotUsers } from "@/lib/mikrotik";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
 
 export function BackupRestoreCard() {
   const [exportSection, setExportSection] = useState<string>("all");
@@ -16,6 +17,27 @@ export function BackupRestoreCard() {
 
   const isConnected = !!getMikroTikCredentials();
 
+  const convertToRSC = (data: any[], command: string): string => {
+    let rsc = `\n# ${command}\n`;
+    
+    for (const item of data) {
+      let cmd = command.replace('/print', '/add');
+      
+      for (const [key, value] of Object.entries(item)) {
+        if (key === '.id') continue;
+        if (key === 'dynamic' && value === 'true') continue;
+        
+        const val = String(value);
+        if (val && val !== 'false' && val !== '' && val !== 'none') {
+          cmd += ` ${key}="${val}"`;
+        }
+      }
+      rsc += cmd + '\n';
+    }
+    
+    return rsc;
+  };
+
   const handleExport = async () => {
     if (!isConnected) {
       toast.error("Debes conectarte a un MikroTik primero");
@@ -24,29 +46,64 @@ export function BackupRestoreCard() {
 
     setIsExporting(true);
     try {
-      const result = await exportMikroTikConfig(exportSection as any);
-      
-      // Construir el contenido del archivo RSC
       let rscContent = `# MikroTik Backup - ${new Date().toLocaleString()}\n`;
-      rscContent += `# Sección: ${exportSection}\n\n`;
+      rscContent += `# Sección: ${exportSection}\n`;
+      rscContent += `# Generado por MikroTik Manager\n\n`;
       
-      if (Array.isArray(result)) {
-        for (const section of result) {
-          rscContent += `\n# ${section.command}\n`;
-          if (Array.isArray(section.data)) {
-            // Si es un array de objetos, convertirlos a comandos RSC
-            for (const item of section.data) {
-              rscContent += `${JSON.stringify(item)}\n`;
-            }
-          } else {
-            rscContent += `${JSON.stringify(section.data)}\n`;
+      const credentials = getMikroTikCredentials();
+      
+      if (exportSection === 'all' || exportSection === 'pppoe-users') {
+        const users = await getPPPoEUsers();
+        rscContent += convertToRSC(users, '/ppp/secret/add');
+      }
+      
+      if (exportSection === 'all' || exportSection === 'pppoe-profiles') {
+        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            ...credentials,
+            port: parseInt(credentials!.port),
+            command: 'pppoe-profiles',
+            params: {}
           }
+        });
+        if (data?.success) {
+          rscContent += convertToRSC(data.data, '/ppp/profile/add');
         }
-      } else {
-        rscContent += JSON.stringify(result, null, 2);
+      }
+      
+      if (exportSection === 'all' || exportSection === 'hotspot-users') {
+        const users = await getHotspotUsers();
+        rscContent += convertToRSC(users, '/ip/hotspot/user/add');
+      }
+      
+      if (exportSection === 'all' || exportSection === 'hotspot-profiles') {
+        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            ...credentials,
+            port: parseInt(credentials!.port),
+            command: 'hotspot-profiles',
+            params: {}
+          }
+        });
+        if (data?.success) {
+          rscContent += convertToRSC(data.data, '/ip/hotspot/user/profile/add');
+        }
+      }
+      
+      if (exportSection === 'all' || exportSection === 'simple-queues') {
+        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            ...credentials,
+            port: parseInt(credentials!.port),
+            command: 'simple-queues',
+            params: {}
+          }
+        });
+        if (data?.success) {
+          rscContent += convertToRSC(data.data, '/queue/simple/add');
+        }
       }
 
-      // Crear y descargar el archivo
       const blob = new Blob([rscContent], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -81,19 +138,45 @@ export function BackupRestoreCard() {
 
     setIsImporting(true);
     try {
-      const result = await importMikroTikConfig(importScript);
+      const credentials = getMikroTikCredentials();
+      const lines = importScript.split('\n').filter(line => {
+        const trimmed = line.trim();
+        return trimmed && !trimmed.startsWith('#') && trimmed.length > 10;
+      });
       
-      const successCount = result.filter((r: any) => r.success).length;
-      const failCount = result.filter((r: any) => !r.success).length;
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const line of lines) {
+        try {
+          const { data, error } = await supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: line.trim(),
+              params: {}
+            }
+          });
+          
+          if (error || !data?.success) {
+            failCount++;
+            console.error('Error en línea:', line, error || data?.error);
+          } else {
+            successCount++;
+          }
+        } catch (err) {
+          failCount++;
+          console.error('Error ejecutando:', line, err);
+        }
+      }
 
       if (failCount === 0) {
-        toast.success(`Configuración importada correctamente (${successCount} comandos)`);
+        toast.success(`Configuración restaurada (${successCount} comandos)`);
         setImportScript("");
       } else {
         toast.warning(`Importación parcial: ${successCount} éxitos, ${failCount} fallos`, {
-          description: "Revisa la consola para más detalles",
+          description: "Revisa la consola del navegador para más detalles",
         });
-        console.log("Resultados de importación:", result);
       }
     } catch (error) {
       console.error("Error al importar:", error);
