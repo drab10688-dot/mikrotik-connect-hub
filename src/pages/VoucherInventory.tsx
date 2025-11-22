@@ -12,9 +12,11 @@ import { VoucherInventoryCard } from '@/components/vouchers/VoucherInventoryCard
 import { VoucherTable } from '@/components/vouchers/VoucherTable';
 import { PrintVoucherTicket } from '@/components/vouchers/PrintVoucherTicket';
 import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
-import { VoucherPresets } from '@/components/vouchers/VoucherPresets';
-import { SalesReportCard } from '@/components/vouchers/SalesReportCard';
+import { VoucherPresetsManager } from '@/components/vouchers/VoucherPresetsManager';
+import { VoucherReports } from '@/components/vouchers/VoucherReports';
 import { VoucherQRDialog } from '@/components/vouchers/VoucherQRDialog';
+import { ResellerManagement } from '@/components/vouchers/ResellerManagement';
+import { useAuth } from '@/hooks/useAuth';
 import { Plus, Upload, RefreshCw, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import QRCode from 'qrcode';
@@ -30,6 +32,7 @@ export default function VoucherInventory() {
   const [selectedVouchers, setSelectedVouchers] = useState<string[]>([]);
   const [qrDialogVoucher, setQrDialogVoucher] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isAdmin, isSuperAdmin } = useAuth();
 
   const { devices: mikrotikDevices } = useUserDeviceAccess();
 
@@ -352,16 +355,22 @@ export default function VoucherInventory() {
               <VoucherInventoryCard stats={stats} />
 
               {/* Sales Report */}
-              <SalesReportCard vouchers={vouchers || []} />
+              <VoucherReports vouchers={vouchers || []} />
 
               {/* Presets */}
-              <VoucherPresets 
+              <VoucherPresetsManager 
+                mikrotikId={selectedMikrotik}
                 onSelectPreset={(validity, price) => {
                   setValidity(validity);
                   setPrice(price);
                   toast.success('Preset aplicado');
                 }} 
               />
+
+              {/* Reseller Management - Only for Admins */}
+              {(isAdmin || isSuperAdmin) && (
+                <ResellerManagement mikrotikId={selectedMikrotik} />
+              )}
 
               {/* Generation Form */}
               <Card>
