@@ -59,14 +59,14 @@ const Users = () => {
 
         <Card className="mb-6">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <CardTitle>Lista de Usuarios</CardTitle>
                 <CardDescription>Usuarios del hotspot de MikroTik</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <AddHotspotUserDialog onSuccess={refetch} />
-                <Button onClick={handleExport} variant="outline">
+                <Button onClick={handleExport} variant="outline" className="w-full sm:w-auto">
                   <Download className="w-4 h-4 mr-2" />
                   Exportar
                 </Button>
@@ -86,8 +86,8 @@ const Users = () => {
               </div>
             </div>
 
-            <div className="rounded-lg border overflow-hidden">
-              <table className="w-full">
+            <div className="rounded-lg border overflow-x-auto">
+              <table className="w-full min-w-[600px]">
                 <thead className="bg-muted/50">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-medium text-foreground">Usuario</th>

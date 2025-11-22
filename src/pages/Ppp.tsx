@@ -59,7 +59,7 @@ const Ppp = () => {
           <p className="text-muted-foreground">Administra usuarios y conexiones PPPoE</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -112,12 +112,12 @@ const Ppp = () => {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <CardTitle>Gestión PPPoE</CardTitle>
                 <CardDescription>Administra secretos y conexiones activas</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <AddPPPoEUserDialog onSuccess={refetchUsers} />
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -125,7 +125,7 @@ const Ppp = () => {
                     placeholder="Buscar..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 w-64"
+                    className="pl-9 w-full sm:w-64"
                   />
                 </div>
               </div>
@@ -139,8 +139,8 @@ const Ppp = () => {
               </TabsList>
               
               <TabsContent value="secrets" className="mt-4">
-                <div className="rounded-md border">
-                  <table className="w-full">
+                <div className="rounded-md border overflow-x-auto">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="text-left p-4 font-medium">Usuario</th>
@@ -232,8 +232,8 @@ const Ppp = () => {
               </TabsContent>
 
               <TabsContent value="active" className="mt-4">
-                <div className="rounded-md border">
-                  <table className="w-full">
+                <div className="rounded-md border overflow-x-auto">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="text-left p-4 font-medium">Usuario</th>
