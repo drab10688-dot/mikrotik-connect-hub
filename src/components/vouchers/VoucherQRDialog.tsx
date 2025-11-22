@@ -17,7 +17,16 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
   useEffect(() => {
     if (open && canvasRef.current && voucher) {
       const canvas = canvasRef.current;
-      const qrContent = `Username: ${voucher.code}\nPassword: ${voucher.password}\nProfile: ${voucher.profile}`;
+      
+      // Clear canvas first
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      
+      const qrContent = `Usuario: ${voucher.code}\nContraseña: ${voucher.password}\nPerfil: ${voucher.profile}`;
+      
+      console.log('Generating QR with content:', qrContent);
       
       QRCode.toCanvas(canvas, qrContent, {
         width: 300,
@@ -28,7 +37,7 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
         },
         errorCorrectionLevel: 'H',
       }).then(() => {
-        console.log('QR Code generated successfully');
+        console.log('QR Code generated successfully', canvas.width, canvas.height);
       }).catch((error) => {
         console.error('Error generating QR code:', error);
       });
@@ -112,7 +121,9 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
         </DialogHeader>
         
         <div className="flex flex-col items-center space-y-4 py-4">
-          <canvas ref={canvasRef} className="border rounded-lg" />
+          <div className="bg-white p-4 rounded-lg border">
+            <canvas ref={canvasRef} width="300" height="300" />
+          </div>
           
           <div className="w-full space-y-2 text-center">
             <div className="text-sm">
