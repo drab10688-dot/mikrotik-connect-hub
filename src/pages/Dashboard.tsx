@@ -88,7 +88,7 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />
-        <div className="ml-64 p-8 flex items-center justify-center">
+        <div className="p-4 md:p-8 md:ml-64 flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       </div>
@@ -99,7 +99,7 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />
-        <div className="ml-64 p-8 flex items-center justify-center">
+        <div className="p-4 md:p-8 md:ml-64 flex items-center justify-center">
           <Card className="max-w-md w-full">
             <CardHeader className="text-center">
               <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -129,9 +129,9 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="ml-64 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+      <div className="p-4 md:p-8 md:ml-64">
+        <div className="mb-6 md:mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Panel de administración MikroTik</p>
         </div>
 

@@ -58,7 +58,7 @@ export const Sidebar = () => {
   };
 
   return (
-    <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 flex flex-col border-r border-sidebar-border">
+    <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex flex-col border-r border-sidebar-border hidden md:flex">
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

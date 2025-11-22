@@ -120,7 +120,7 @@ export default function Reports() {
   return (
     <div className="flex min-h-screen w-full bg-background">
       <Sidebar />
-      <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-x-hidden">
+      <div className="flex-1 p-4 md:p-6 lg:p-8 md:ml-64 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -443,9 +443,9 @@ const SimpleQueues = () => {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="ml-64 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Simple Queues</h1>
+      <div className="p-4 md:p-8 md:ml-64">
+        <div className="mb-6 md:mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Simple Queues</h1>
           <p className="text-muted-foreground">Administra colas de ancho de banda</p>
         </div>
 
