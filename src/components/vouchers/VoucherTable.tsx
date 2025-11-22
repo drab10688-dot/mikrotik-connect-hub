@@ -3,15 +3,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SellVoucherDialog } from './SellVoucherDialog';
-import { Trash2, Search, Printer } from 'lucide-react';
+import { Trash2, Search, Printer, QrCode } from 'lucide-react';
 
 interface VoucherTableProps {
   vouchers: any[];
   onSell: (voucherId: string, price: number) => void;
   onDelete: (voucherId: string) => void;
   onPrint: (voucher: any) => void;
+  onViewQR: (voucher: any) => void;
   isSelling: boolean;
+  selectedVouchers: string[];
+  onSelectVoucher: (voucherId: string) => void;
+  onSelectAll: (all: boolean) => void;
 }
 
 export const VoucherTable = ({ 
@@ -19,7 +24,11 @@ export const VoucherTable = ({
   onSell, 
   onDelete, 
   onPrint,
-  isSelling 
+  onViewQR,
+  isSelling,
+  selectedVouchers,
+  onSelectVoucher,
+  onSelectAll,
 }: VoucherTableProps) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -63,6 +72,12 @@ export const VoucherTable = ({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={selectedVouchers.length === filteredVouchers.length && filteredVouchers.length > 0}
+                    onCheckedChange={(checked) => onSelectAll(!!checked)}
+                  />
+                </TableHead>
                 <TableHead>Código</TableHead>
                 <TableHead>Contraseña</TableHead>
                 <TableHead>Perfil</TableHead>
@@ -75,6 +90,12 @@ export const VoucherTable = ({
             <TableBody>
               {filteredVouchers.map((voucher) => (
                 <TableRow key={voucher.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedVouchers.includes(voucher.id)}
+                      onCheckedChange={() => onSelectVoucher(voucher.id)}
+                    />
+                  </TableCell>
                   <TableCell className="font-mono font-bold">{voucher.code}</TableCell>
                   <TableCell className="font-mono">{voucher.password}</TableCell>
                   <TableCell>
@@ -88,7 +109,7 @@ export const VoucherTable = ({
                     {new Date(voucher.expires_at).toLocaleDateString('es-ES')}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1">
                       {voucher.status === 'available' && (
                         <SellVoucherDialog
                           voucher={voucher}
@@ -97,9 +118,18 @@ export const VoucherTable = ({
                         />
                       )}
                       <Button
-                        variant="outline"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onViewQR(voucher)}
+                        title="Ver QR"
+                      >
+                        <QrCode className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => onPrint(voucher)}
+                        title="Imprimir"
                       >
                         <Printer className="h-4 w-4" />
                       </Button>
@@ -111,6 +141,7 @@ export const VoucherTable = ({
                             onDelete(voucher.id);
                           }
                         }}
+                        title="Eliminar"
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
