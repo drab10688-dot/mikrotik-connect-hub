@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +17,7 @@ import { VoucherReports } from '@/components/vouchers/VoucherReports';
 import { VoucherQRDialog } from '@/components/vouchers/VoucherQRDialog';
 import { ResellerManagement } from '@/components/vouchers/ResellerManagement';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Upload, Printer } from 'lucide-react';
+import { Plus, Upload, Printer, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import QRCode from 'qrcode';
 
@@ -48,16 +48,13 @@ export default function VoucherInventory() {
     isSyncing,
   } = useVoucherInventory(selectedMikrotik);
 
-  // Sincronización automática cada 30 segundos
-  useEffect(() => {
-    if (!selectedMikrotik) return;
-
-    const interval = setInterval(() => {
-      syncVouchers(selectedMikrotik);
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [selectedMikrotik, syncVouchers]);
+  const handleSync = () => {
+    if (!selectedMikrotik) {
+      toast.error('Selecciona un dispositivo');
+      return;
+    }
+    syncVouchers(selectedMikrotik);
+  };
 
   const handleGenerate = () => {
     if (!selectedMikrotik || !selectedPreset) {
@@ -476,6 +473,10 @@ export default function VoucherInventory() {
                           Imprimir Seleccionados ({selectedVouchers.length})
                         </Button>
                       )}
+                      <Button onClick={handleSync} disabled={isSyncing} variant="outline">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                        Sincronizar
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>

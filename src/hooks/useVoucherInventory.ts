@@ -66,17 +66,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
           'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
         ).join('');
 
-        // Calculate expiration based on validity
-        let expiresAt = new Date();
-        const validityMatch = params.validity.match(/(\d+)([hdw])/);
-        if (validityMatch) {
-          const [, amount, unit] = validityMatch;
-          const hours = unit === 'h' ? parseInt(amount) :
-                       unit === 'd' ? parseInt(amount) * 24 :
-                       parseInt(amount) * 24 * 7;
-          expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
-        }
-
+        // No establecer fecha de expiración - el voucher expira según el tiempo de uso en MikroTik
         vouchersToCreate.push({
           code,
           password,
@@ -84,7 +74,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
           mikrotik_id: params.mikrotikId,
           status: 'available',
           created_by: user?.id,
-          expires_at: expiresAt.toISOString(),
+          expires_at: null,
           price: params.price || 0,
         });
 
@@ -271,7 +261,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     },
   });
 
-  // Sync vouchers with MikroTik mutation
+  // Sync vouchers with MikroTik mutation - elimina del MikroTik los vouchers que no están en la BD
   const syncVouchersMutation = useMutation({
     mutationFn: async (mikrotikId: string) => {
       const { data: mikrotikDevice } = await supabase
@@ -297,7 +287,6 @@ export const useVoucherInventory = (mikrotikId?: string) => {
       });
 
       const mikrotikUsers = mikrotikData?.data || [];
-      const mikrotikUsernames = mikrotikUsers.map((u: any) => u.name);
 
       // Obtener vouchers de la base de datos
       const { data: dbVouchers } = await supabase
@@ -305,21 +294,51 @@ export const useVoucherInventory = (mikrotikId?: string) => {
         .select('*')
         .eq('mikrotik_id', mikrotikId);
 
-      // Eliminar vouchers que no existen en MikroTik
-      const vouchersToDelete = dbVouchers?.filter(v => !mikrotikUsernames.includes(v.code)) || [];
+      const dbVoucherCodes = dbVouchers?.map(v => v.code) || [];
+
+      // Eliminar del MikroTik los usuarios que NO están en la base de datos
+      const usersToDeleteFromMikrotik = mikrotikUsers.filter(
+        (u: any) => !dbVoucherCodes.includes(u.name) && u.name !== 'default-trial'
+      );
       
-      if (vouchersToDelete.length > 0) {
-        await supabase
-          .from('vouchers')
-          .delete()
-          .in('id', vouchersToDelete.map(v => v.id));
+      let deletedCount = 0;
+      
+      for (const user of usersToDeleteFromMikrotik) {
+        try {
+          if (mikrotikDevice.version === 'v7') {
+            await supabase.functions.invoke(functionName, {
+              body: {
+                host: mikrotikDevice.host,
+                username: mikrotikDevice.username,
+                password: mikrotikDevice.password,
+                port: mikrotikDevice.port,
+                action: 'remove',
+                voucherUsername: user.name,
+              },
+            });
+          } else {
+            await supabase.functions.invoke(functionName, {
+              body: {
+                host: mikrotikDevice.host,
+                username: mikrotikDevice.username,
+                password: mikrotikDevice.password,
+                port: mikrotikDevice.port,
+                command: 'hotspot-user-remove',
+                params: { '.id': user['.id'] },
+              },
+            });
+          }
+          deletedCount++;
+        } catch (error) {
+          console.error(`Error eliminando usuario ${user.name} de MikroTik:`, error);
+        }
       }
 
-      return { deleted: vouchersToDelete.length };
+      return { deleted: deletedCount };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['voucher-inventory'] });
-      toast.success(`Sincronización completada. ${data.deleted} vouchers eliminados.`);
+      toast.success(`Sincronización completada. ${data.deleted} usuarios eliminados del MikroTik.`);
     },
     onError: (error: any) => {
       toast.error(error.message || 'Error al sincronizar vouchers');
