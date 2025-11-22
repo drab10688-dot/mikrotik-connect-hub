@@ -43,8 +43,6 @@ export default function VoucherInventory() {
     stats,
     generateVouchers,
     isGenerating,
-    sellVoucher,
-    isSelling,
     deleteVoucher,
     syncVouchers,
     isSyncing,
@@ -474,11 +472,9 @@ export default function VoucherInventory() {
                   ) : (
                     <VoucherTable
                       vouchers={vouchers || []}
-                      onSell={(voucherId, price) => sellVoucher({ voucherId, price })}
                       onDelete={deleteVoucher}
                       onPrint={handlePrintVoucher}
                       onViewQR={(voucher) => setQrDialogVoucher(voucher)}
-                      isSelling={isSelling}
                       selectedVouchers={selectedVouchers}
                       onSelectVoucher={(voucherId) => {
                         setSelectedVouchers(prev => 

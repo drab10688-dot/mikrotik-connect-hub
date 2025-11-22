@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Clock, DollarSign, Plus, Trash2 } from "lucide-react";
 import { useVoucherPresets } from "@/hooks/useVoucherPresets";
 
@@ -82,22 +82,13 @@ export function VoucherPresetsManager({ mikrotikId, onSelectPreset }: VoucherPre
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="validity">Validez</Label>
-                  <Select value={newPreset.validity} onValueChange={(value) => setNewPreset({ ...newPreset, validity: value })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1h">1 hora</SelectItem>
-                      <SelectItem value="3h">3 horas</SelectItem>
-                      <SelectItem value="6h">6 horas</SelectItem>
-                      <SelectItem value="12h">12 horas</SelectItem>
-                      <SelectItem value="24h">24 horas</SelectItem>
-                      <SelectItem value="3d">3 días</SelectItem>
-                      <SelectItem value="7d">7 días</SelectItem>
-                      <SelectItem value="30d">30 días</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="validity">Validez (ej: 1h, 24h, 7d, 30d)</Label>
+                  <Input
+                    id="validity"
+                    value={newPreset.validity}
+                    onChange={(e) => setNewPreset({ ...newPreset, validity: e.target.value })}
+                    placeholder="ej: 24h"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="price">Precio</Label>
