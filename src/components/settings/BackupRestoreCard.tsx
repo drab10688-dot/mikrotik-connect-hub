@@ -11,17 +11,23 @@ import { supabase } from "@/integrations/supabase/client";
 
 export function BackupRestoreCard() {
   const [exportSection, setExportSection] = useState<string>("all");
+  const [exportFormat, setExportFormat] = useState<string>("api");
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importScript, setImportScript] = useState("");
 
   const isConnected = !!getMikroTikCredentials();
 
-  const convertToRSC = (data: any[], command: string): string => {
+  const convertToRSC = (data: any[], command: string, format: string = "api"): string => {
     let rsc = `\n# ${command}\n`;
     
+    // Ajustar el comando según el formato
+    const terminalCommand = format === "terminal" 
+      ? command.replace(/\/add$/, ' add').replace(/\//g, ' ').trim()
+      : command;
+    
     for (const item of data) {
-      let cmd = command;
+      let cmd = format === "terminal" ? `/${terminalCommand}` : command;
       
       for (const [key, value] of Object.entries(item)) {
         // Omitir campos internos y de solo lectura
@@ -40,9 +46,15 @@ export function BackupRestoreCard() {
         if (val === '0' || val === '0s' || val === '0/0' || val === '0s/0s') continue;
         if (val === '0.0.0.0' || val === '::' || val === '0.1/0.1') continue;
         
-        // Escapar comillas
-        const escapedVal = val.replace(/"/g, '\\"');
-        cmd += ` ${key}="${escapedVal}"`;
+        // Formato terminal: sin comillas para valores simples, con comillas para valores con espacios
+        if (format === "terminal") {
+          const needsQuotes = val.includes(' ') || val.includes('/') || val.includes('\\');
+          cmd += needsQuotes ? ` ${key}="${val}"` : ` ${key}=${val}`;
+        } else {
+          // Formato API: siempre con comillas y escapadas
+          const escapedVal = val.replace(/"/g, '\\"');
+          cmd += ` ${key}="${escapedVal}"`;
+        }
       }
       
       rsc += cmd + '\n';
@@ -61,13 +73,14 @@ export function BackupRestoreCard() {
     try {
       let rscContent = `# MikroTik Backup - ${new Date().toLocaleString()}\n`;
       rscContent += `# Sección: ${exportSection}\n`;
+      rscContent += `# Formato: ${exportFormat === "terminal" ? "Terminal CLI" : "API"}\n`;
       rscContent += `# Generado por MikroTik Manager\n\n`;
       
       const credentials = getMikroTikCredentials();
       
       if (exportSection === 'all' || exportSection === 'pppoe-users') {
         const users = await getPPPoEUsers();
-        rscContent += convertToRSC(users, '/ppp/secret/add');
+        rscContent += convertToRSC(users, '/ppp/secret/add', exportFormat);
       }
       
       if (exportSection === 'all' || exportSection === 'pppoe-profiles') {
@@ -80,13 +93,13 @@ export function BackupRestoreCard() {
           }
         });
         if (data?.success) {
-          rscContent += convertToRSC(data.data, '/ppp/profile/add');
+          rscContent += convertToRSC(data.data, '/ppp/profile/add', exportFormat);
         }
       }
       
       if (exportSection === 'all' || exportSection === 'hotspot-users') {
         const users = await getHotspotUsers();
-        rscContent += convertToRSC(users, '/ip/hotspot/user/add');
+        rscContent += convertToRSC(users, '/ip/hotspot/user/add', exportFormat);
       }
       
       if (exportSection === 'all' || exportSection === 'hotspot-profiles') {
@@ -99,7 +112,7 @@ export function BackupRestoreCard() {
           }
         });
         if (data?.success) {
-          rscContent += convertToRSC(data.data, '/ip/hotspot/user/profile/add');
+          rscContent += convertToRSC(data.data, '/ip/hotspot/user/profile/add', exportFormat);
         }
       }
       
@@ -113,7 +126,7 @@ export function BackupRestoreCard() {
           }
         });
         if (data?.success) {
-          rscContent += convertToRSC(data.data, '/queue/simple/add');
+          rscContent += convertToRSC(data.data, '/queue/simple/add', exportFormat);
         }
       }
 
@@ -258,6 +271,18 @@ export function BackupRestoreCard() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label htmlFor="export-format" className="text-sm">Formato de exportación</Label>
+              <Select value={exportFormat} onValueChange={setExportFormat} disabled={!isConnected}>
+                <SelectTrigger id="export-format">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="api">Formato API (para importar aquí)</SelectItem>
+                  <SelectItem value="terminal">Formato Terminal (para pegar en MikroTik)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button 
               onClick={handleExport} 
               className="w-full" 
@@ -337,7 +362,8 @@ export function BackupRestoreCard() {
         <div className="p-3 bg-muted rounded-lg">
           <p className="text-xs text-muted-foreground">
             <strong>Nota:</strong> El backup incluye usuarios, perfiles y queues según la sección seleccionada. 
-            Al restaurar, los comandos se ejecutarán en el orden del archivo. Asegúrate de tener un backup antes de restaurar.
+            Formato API: para importar usando la función de restaurar. Formato Terminal: para copiar y pegar 
+            directamente en el terminal de MikroTik. Asegúrate de tener un backup antes de restaurar.
           </p>
         </div>
       </CardContent>
