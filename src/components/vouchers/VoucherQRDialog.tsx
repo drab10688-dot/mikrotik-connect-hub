@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Printer } from "lucide-react";
@@ -12,23 +12,15 @@ interface VoucherQRDialogProps {
 }
 
 export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: VoucherQRDialogProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
 
   useEffect(() => {
-    if (open && canvasRef.current && voucher) {
-      const canvas = canvasRef.current;
-      
-      // Clear canvas first
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-      
+    if (open && voucher) {
       const qrContent = `Usuario: ${voucher.code}\nContraseña: ${voucher.password}\nPerfil: ${voucher.profile}`;
       
       console.log('Generating QR with content:', qrContent);
       
-      QRCode.toCanvas(canvas, qrContent, {
+      QRCode.toDataURL(qrContent, {
         width: 300,
         margin: 2,
         color: {
@@ -36,8 +28,9 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
           light: '#FFFFFF',
         },
         errorCorrectionLevel: 'H',
-      }).then(() => {
-        console.log('QR Code generated successfully', canvas.width, canvas.height);
+      }).then((url) => {
+        console.log('QR Code generated successfully');
+        setQrCodeUrl(url);
       }).catch((error) => {
         console.error('Error generating QR code:', error);
       });
@@ -45,21 +38,19 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
   }, [open, voucher]);
 
   const handleDownload = () => {
-    if (canvasRef.current) {
-      const url = canvasRef.current.toDataURL('image/png');
+    if (qrCodeUrl) {
       const a = document.createElement('a');
-      a.href = url;
+      a.href = qrCodeUrl;
       a.download = `voucher-qr-${voucher.code}.png`;
       a.click();
     }
   };
 
   const handlePrint = () => {
-    if (canvasRef.current) {
+    if (qrCodeUrl) {
       const printWindow = window.open('', '_blank');
       if (!printWindow) return;
 
-      const imgData = canvasRef.current.toDataURL('image/png');
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
@@ -87,7 +78,7 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
           </head>
           <body>
             <div class="container">
-              <img src="${imgData}" alt="QR Code" style="width: 300px; height: 300px;" />
+              <img src="${qrCodeUrl}" alt="QR Code" style="width: 300px; height: 300px;" />
               <div class="info">${voucher.profile}</div>
             </div>
             <script>
@@ -117,7 +108,13 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
         
         <div className="flex flex-col items-center space-y-4 py-4">
           <div className="bg-white p-4 rounded-lg border">
-            <canvas ref={canvasRef} width="300" height="300" />
+            {qrCodeUrl ? (
+              <img src={qrCodeUrl} alt="QR Code" className="w-[300px] h-[300px]" />
+            ) : (
+              <div className="w-[300px] h-[300px] flex items-center justify-center">
+                <span className="text-muted-foreground">Generando QR...</span>
+              </div>
+            )}
           </div>
           
           <div className="w-full space-y-2 text-center">
@@ -127,11 +124,11 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
           </div>
 
           <div className="flex gap-2 w-full">
-            <Button onClick={handleDownload} variant="outline" className="flex-1">
+            <Button onClick={handleDownload} variant="outline" className="flex-1" disabled={!qrCodeUrl}>
               <Download className="h-4 w-4 mr-2" />
               Descargar
             </Button>
-            <Button onClick={handlePrint} variant="outline" className="flex-1">
+            <Button onClick={handlePrint} variant="outline" className="flex-1" disabled={!qrCodeUrl}>
               <Printer className="h-4 w-4 mr-2" />
               Imprimir
             </Button>
