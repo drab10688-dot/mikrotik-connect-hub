@@ -17,6 +17,40 @@ export function BackupRestoreCard() {
 
   const isConnected = !!getMikroTikCredentials();
 
+  const convertToRSC = (data: any[], command: string): string => {
+    let rsc = `\n# ${command}\n`;
+    
+    for (const item of data) {
+      let cmd = command;
+      
+      for (const [key, value] of Object.entries(item)) {
+        // Omitir campos internos y de solo lectura
+        if (key.startsWith('.') || key === 'dynamic' || key === 'invalid' || key === 'default') continue;
+        if (key.includes('bytes') || key.includes('packets') || key.includes('rate')) continue;
+        if (key === 'uptime' || key === 'encoding' || key === 'session-id' || key === 'radius') continue;
+        if (key === 'last-logged-out' || key === 'last-caller-id' || key === 'last-disconnect-reason') continue;
+        if (key === 'creation-time' || key === 'queued-packets' || key === 'queued-bytes') continue;
+        if (key === 'dropped' || key === 'total-dropped' || key === 'total-queued-packets') continue;
+        if (key === 'total-queued-bytes' || key === 'pcq-queues' || key === 'bucket-size') continue;
+        
+        const val = String(value);
+        
+        // Omitir valores vacíos y predeterminados
+        if (!val || val === '' || val === 'none' || val === 'false') continue;
+        if (val === '0' || val === '0s' || val === '0/0' || val === '0s/0s') continue;
+        if (val === '0.0.0.0' || val === '::' || val === '0.1/0.1') continue;
+        
+        // Escapar comillas
+        const escapedVal = val.replace(/"/g, '\\"');
+        cmd += ` ${key}="${escapedVal}"`;
+      }
+      
+      rsc += cmd + '\n';
+    }
+    
+    return rsc;
+  };
+
   const handleExport = async () => {
     if (!isConnected) {
       toast.error("Debes conectarte a un MikroTik primero");
@@ -25,48 +59,62 @@ export function BackupRestoreCard() {
 
     setIsExporting(true);
     try {
-      const credentials = getMikroTikCredentials();
-      
-      // Construir el comando export según la sección seleccionada
-      let exportCommand = '/export';
-      
-      if (exportSection === 'pppoe-users') {
-        exportCommand = '/ppp secret export';
-      } else if (exportSection === 'pppoe-profiles') {
-        exportCommand = '/ppp profile export';
-      } else if (exportSection === 'hotspot-users') {
-        exportCommand = '/ip hotspot user export';
-      } else if (exportSection === 'hotspot-profiles') {
-        exportCommand = '/ip hotspot user profile export';
-      } else if (exportSection === 'simple-queues') {
-        exportCommand = '/queue simple export';
-      }
-      
-      // Ejecutar el comando export en el MikroTik
-      const { data, error } = await supabase.functions.invoke('mikrotik-v6-api', {
-        body: {
-          ...credentials,
-          port: parseInt(credentials!.port),
-          command: exportCommand,
-          params: {}
-        }
-      });
-
-      if (error || !data?.success) {
-        throw new Error(data?.error || 'Error al ejecutar comando export');
-      }
-
-      // El contenido del export viene en data.data como string
       let rscContent = `# MikroTik Backup - ${new Date().toLocaleString()}\n`;
       rscContent += `# Sección: ${exportSection}\n`;
-      rscContent += `# Generado directamente desde MikroTik\n\n`;
+      rscContent += `# Generado por MikroTik Manager\n\n`;
       
-      // Agregar el contenido exportado
-      if (typeof data.data === 'string') {
-        rscContent += data.data;
-      } else if (Array.isArray(data.data) && data.data.length > 0) {
-        // Si viene como array, convertir a string
-        rscContent += data.data.join('\n');
+      const credentials = getMikroTikCredentials();
+      
+      if (exportSection === 'all' || exportSection === 'pppoe-users') {
+        const users = await getPPPoEUsers();
+        rscContent += convertToRSC(users, '/ppp/secret/add');
+      }
+      
+      if (exportSection === 'all' || exportSection === 'pppoe-profiles') {
+        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            ...credentials,
+            port: parseInt(credentials!.port),
+            command: 'pppoe-profiles',
+            params: {}
+          }
+        });
+        if (data?.success) {
+          rscContent += convertToRSC(data.data, '/ppp/profile/add');
+        }
+      }
+      
+      if (exportSection === 'all' || exportSection === 'hotspot-users') {
+        const users = await getHotspotUsers();
+        rscContent += convertToRSC(users, '/ip/hotspot/user/add');
+      }
+      
+      if (exportSection === 'all' || exportSection === 'hotspot-profiles') {
+        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            ...credentials,
+            port: parseInt(credentials!.port),
+            command: 'hotspot-profiles',
+            params: {}
+          }
+        });
+        if (data?.success) {
+          rscContent += convertToRSC(data.data, '/ip/hotspot/user/profile/add');
+        }
+      }
+      
+      if (exportSection === 'all' || exportSection === 'simple-queues') {
+        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            ...credentials,
+            port: parseInt(credentials!.port),
+            command: 'simple-queues',
+            params: {}
+          }
+        });
+        if (data?.success) {
+          rscContent += convertToRSC(data.data, '/queue/simple/add');
+        }
       }
 
       const blob = new Blob([rscContent], { type: "text/plain" });
