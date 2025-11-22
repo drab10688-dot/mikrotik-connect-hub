@@ -1,0 +1,211 @@
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useSecretaries } from '@/hooks/useSecretaries';
+import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
+import { supabase } from '@/integrations/supabase/client';
+import { Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+export default function Secretaries() {
+  const [selectedMikrotik, setSelectedMikrotik] = useState<string>('');
+  const [secretaryEmail, setSecretaryEmail] = useState('');
+  const [canManagePppoe, setCanManagePppoe] = useState(true);
+  const [canManageQueues, setCanManageQueues] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const { devices } = useUserDeviceAccess();
+  const { assignments, isLoading, assignSecretary, removeSecretary } = useSecretaries(selectedMikrotik);
+
+  const handleAssignSecretary = async () => {
+    if (!secretaryEmail || !selectedMikrotik) {
+      toast.error('Completa todos los campos');
+      return;
+    }
+
+    // Buscar el usuario por email
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('email', secretaryEmail)
+      .maybeSingle();
+
+    if (error || !profiles) {
+      toast.error('Usuario no encontrado');
+      return;
+    }
+
+    // Asignar rol de secretaria si no lo tiene
+    const { error: roleError } = await supabase
+      .from('user_roles')
+      .upsert({
+        user_id: profiles.user_id,
+        role: 'secretary',
+      });
+
+    if (roleError) {
+      toast.error('Error al asignar rol');
+      return;
+    }
+
+    assignSecretary({
+      secretaryId: profiles.user_id,
+      mikrotikId: selectedMikrotik,
+      canManagePppoe,
+      canManageQueues,
+    });
+
+    setIsDialogOpen(false);
+    setSecretaryEmail('');
+    setCanManagePppoe(true);
+    setCanManageQueues(true);
+  };
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold mb-2">Gestión de Secretarias</h1>
+        <p className="text-muted-foreground">
+          Asigna secretarias con permisos limitados para administrar PPPoE y Queues
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Secretarias Asignadas</CardTitle>
+              <CardDescription>Administra los permisos de tus secretarias</CardDescription>
+            </div>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Asignar Secretaria
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Asignar Nueva Secretaria</DialogTitle>
+                  <DialogDescription>
+                    Asigna permisos a una secretaria para administrar dispositivos específicos
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label>Dispositivo MikroTik</Label>
+                    <Select value={selectedMikrotik} onValueChange={setSelectedMikrotik}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona un dispositivo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {devices?.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label>Email de la Secretaria</Label>
+                    <Input
+                      type="email"
+                      value={secretaryEmail}
+                      onChange={(e) => setSecretaryEmail(e.target.value)}
+                      placeholder="secretaria@ejemplo.com"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="pppoe-permission">Gestión PPPoE</Label>
+                      <Switch
+                        id="pppoe-permission"
+                        checked={canManagePppoe}
+                        onCheckedChange={setCanManagePppoe}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="queues-permission">Gestión Queues</Label>
+                      <Switch
+                        id="queues-permission"
+                        checked={canManageQueues}
+                        onCheckedChange={setCanManageQueues}
+                      />
+                    </div>
+                  </div>
+
+                  <Button onClick={handleAssignSecretary} className="w-full">
+                    Asignar Secretaria
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!selectedMikrotik ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Selecciona un dispositivo para ver las secretarias asignadas
+            </div>
+          ) : isLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            </div>
+          ) : assignments && assignments.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>PPPoE</TableHead>
+                  <TableHead>Queues</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {assignments.map((assignment) => (
+                  <TableRow key={assignment.id}>
+                    <TableCell>{assignment.secretary_id}</TableCell>
+                    <TableCell>
+                      {assignment.can_manage_pppoe ? '✓' : '✗'}
+                    </TableCell>
+                    <TableCell>
+                      {assignment.can_manage_queues ? '✓' : '✗'}
+                    </TableCell>
+                    <TableCell>
+                      {new Date(assignment.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeSecretary(assignment.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No hay secretarias asignadas a este dispositivo
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

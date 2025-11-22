@@ -121,6 +121,44 @@ export type Database = {
           },
         ]
       }
+      secretary_assignments: {
+        Row: {
+          assigned_by: string
+          can_manage_pppoe: boolean | null
+          can_manage_queues: boolean | null
+          created_at: string | null
+          id: string
+          mikrotik_id: string
+          secretary_id: string
+        }
+        Insert: {
+          assigned_by: string
+          can_manage_pppoe?: boolean | null
+          can_manage_queues?: boolean | null
+          created_at?: string | null
+          id?: string
+          mikrotik_id: string
+          secretary_id: string
+        }
+        Update: {
+          assigned_by?: string
+          can_manage_pppoe?: boolean | null
+          can_manage_queues?: boolean | null
+          created_at?: string | null
+          id?: string
+          mikrotik_id?: string
+          secretary_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "secretary_assignments_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_mikrotik_access: {
         Row: {
           created_at: string | null
@@ -295,7 +333,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "super_admin" | "admin" | "user" | "reseller"
+      app_role: "super_admin" | "admin" | "user" | "reseller" | "secretary"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -423,7 +461,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["super_admin", "admin", "user", "reseller"],
+      app_role: ["super_admin", "admin", "user", "reseller", "secretary"],
     },
   },
 } as const
