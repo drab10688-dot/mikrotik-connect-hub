@@ -12,7 +12,8 @@ import {
   BarChart3,
   Ticket,
   ListChecks,
-  Gauge
+  Gauge,
+  Database
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -34,6 +35,7 @@ const menuItems = [
   { icon: ListChecks, label: "Address List", path: "/address-list" },
   { icon: Gauge, label: "Simple Queues", path: "/simple-queues" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
+  { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
 
