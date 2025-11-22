@@ -94,6 +94,8 @@ export default function VoucherInventory() {
       return;
     }
 
+    const selectedDevice = mikrotikDevices?.find(d => d.id === selectedMikrotik);
+    const hotspotUrl = selectedDevice?.hotspot_url || 'http://192.168.88.1/login';
     const vouchersToP = vouchers?.filter(v => selectedVouchers.includes(v.id)) || [];
 
     const printWindow = window.open('', '_blank');
@@ -102,9 +104,12 @@ export default function VoucherInventory() {
     let qrCardsHtml = '';
     for (const voucher of vouchersToP) {
       const qrCanvas = document.createElement('canvas');
-      const qrContent = `Usuario: ${voucher.code}\nContraseña: ${voucher.password}\nPerfil: ${voucher.profile}`;
+      // Construir URL del portal captive con credenciales
+      const loginUrl = hotspotUrl.includes('?') 
+        ? `${hotspotUrl}&username=${voucher.code}&password=${voucher.password}`
+        : `${hotspotUrl}?username=${voucher.code}&password=${voucher.password}`;
       
-      await QRCode.toCanvas(qrCanvas, qrContent, { width: 250, errorCorrectionLevel: 'H' });
+      await QRCode.toCanvas(qrCanvas, loginUrl, { width: 250, errorCorrectionLevel: 'H' });
       const qrDataUrl = qrCanvas.toDataURL();
 
       qrCardsHtml += `
