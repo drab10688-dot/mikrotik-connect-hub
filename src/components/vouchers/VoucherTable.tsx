@@ -4,16 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { SellVoucherDialog } from './SellVoucherDialog';
 import { Trash2, Search, Printer, QrCode } from 'lucide-react';
 
 interface VoucherTableProps {
   vouchers: any[];
-  onSell: (voucherId: string, price: number) => void;
   onDelete: (voucherId: string) => void;
   onPrint: (voucher: any) => void;
   onViewQR: (voucher: any) => void;
-  isSelling: boolean;
   selectedVouchers: string[];
   onSelectVoucher: (voucherId: string) => void;
   onSelectAll: (all: boolean) => void;
@@ -21,11 +18,9 @@ interface VoucherTableProps {
 
 export const VoucherTable = ({ 
   vouchers, 
-  onSell, 
   onDelete, 
   onPrint,
   onViewQR,
-  isSelling,
   selectedVouchers,
   onSelectVoucher,
   onSelectAll,
@@ -110,13 +105,6 @@ export const VoucherTable = ({
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {voucher.status === 'available' && (
-                        <SellVoucherDialog
-                          voucher={voucher}
-                          onSell={onSell}
-                          isSelling={isSelling}
-                        />
-                      )}
                       <Button
                         variant="ghost"
                         size="sm"
