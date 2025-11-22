@@ -15,12 +15,15 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
 
   useEffect(() => {
-    if (open && voucher) {
-      const qrContent = `Usuario: ${voucher.code}\nContraseña: ${voucher.password}\nPerfil: ${voucher.profile}`;
+    if (open && voucher && hotspotUrl) {
+      // Construir URL del portal captive con credenciales
+      const loginUrl = hotspotUrl.includes('?') 
+        ? `${hotspotUrl}&username=${voucher.code}&password=${voucher.password}`
+        : `${hotspotUrl}?username=${voucher.code}&password=${voucher.password}`;
       
-      console.log('Generating QR with content:', qrContent);
+      console.log('Generating QR with URL:', loginUrl);
       
-      QRCode.toDataURL(qrContent, {
+      QRCode.toDataURL(loginUrl, {
         width: 300,
         margin: 2,
         color: {
@@ -35,7 +38,7 @@ export function VoucherQRDialog({ voucher, hotspotUrl, open, onOpenChange }: Vou
         console.error('Error generating QR code:', error);
       });
     }
-  }, [open, voucher]);
+  }, [open, voucher, hotspotUrl]);
 
   const handleDownload = () => {
     if (qrCodeUrl) {
