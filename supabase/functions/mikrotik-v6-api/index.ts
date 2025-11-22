@@ -9,10 +9,23 @@ class MikroTikAPI {
 
   async connect(host: string, port: number, username: string, password: string, useTls: boolean) {
     try {
-      // Conectar vía TCP
-      this.conn = useTls 
-        ? await Deno.connectTls({ hostname: host, port })
-        : await Deno.connect({ hostname: host, port });
+      // Conectar vía TCP con timeout más largo
+      const connectOptions = useTls 
+        ? { hostname: host, port }
+        : { hostname: host, port };
+      
+      // Crear promesa de timeout de 30 segundos
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
+      );
+      
+      // Conectar con timeout
+      this.conn = await Promise.race([
+        useTls 
+          ? Deno.connectTls(connectOptions)
+          : Deno.connect(connectOptions),
+        timeoutPromise
+      ]) as Deno.Conn;
 
       // Login process
       await this.login(username, password);
@@ -113,13 +126,22 @@ class MikroTikAPI {
   private async readResponse(): Promise<{ type: string; data: Record<string, string> }> {
     if (!this.conn) throw new Error('Not connected');
 
-    // Helpers locales para lectura robusta
+    // Helpers locales para lectura robusta con timeout
     const readExact = async (n: number): Promise<Uint8Array> => {
       if (!this.conn) throw new Error('Not connected');
       const buf = new Uint8Array(n);
       let readTotal = 0;
+      
+      // Timeout de 20 segundos para lectura
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Read timeout after 20 seconds')), 20000)
+      );
+      
       while (readTotal < n) {
-        const chunk = await this.conn.read(buf.subarray(readTotal));
+        const chunk = await Promise.race([
+          this.conn.read(buf.subarray(readTotal)),
+          timeoutPromise
+        ]);
         if (chunk === null) throw new Error('Connection closed');
         readTotal += chunk;
       }

@@ -10,11 +10,12 @@ import { toast } from "sonner";
 import { usePPPoEUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { removePPPoEUser, togglePPPoEUser, disconnectPPPoEUser } from "@/lib/mikrotik";
 import { AddPPPoEUserDialog } from "@/components/forms/AddPPPoEUserDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const Ppp = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const { data: pppUsers, isLoading: loadingUsers, refetch: refetchUsers } = usePPPoEUsers();
-  const { data: activeConnections, isLoading: loadingActive, refetch: refetchActive } = usePPPoEActive();
+  const { data: pppUsers, isLoading: loadingUsers, refetch: refetchUsers, error: usersError } = usePPPoEUsers();
+  const { data: activeConnections, isLoading: loadingActive, refetch: refetchActive, error: activeError } = usePPPoEActive();
 
   const handleDelete = async (userId: string) => {
     try {
@@ -109,6 +110,16 @@ const Ppp = () => {
             </CardContent>
           </Card>
         </div>
+
+        {(usersError || activeError) && (
+          <ErrorBoundary 
+            error={(usersError as Error)?.message || (activeError as Error)?.message} 
+            onRetry={() => {
+              if (usersError) refetchUsers();
+              if (activeError) refetchActive();
+            }}
+          />
+        )}
 
         <Card>
           <CardHeader>
