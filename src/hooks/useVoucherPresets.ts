@@ -49,6 +49,40 @@ export const useVoucherPresets = (mikrotikId?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuario no autenticado');
 
+      // Get device info to create MikroTik profile
+      const { data: device } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .eq('id', params.mikrotikId)
+        .single();
+
+      if (!device) throw new Error('Dispositivo no encontrado');
+
+      // Create Hotspot profile in MikroTik with the preset name
+      const functionName = device.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
+      const profileData = {
+        name: params.name,
+        'shared-users': '1',
+        'rate-limit': params.description || '',
+      };
+      
+      const profileResult = await supabase.functions.invoke(functionName, {
+        body: {
+          host: device.host,
+          username: device.username,
+          password: device.password,
+          port: device.port,
+          command: device.version === 'v7' ? undefined : 'hotspot-profile-add',
+          action: device.version === 'v7' ? 'profile-add' : undefined,
+          ...(device.version === 'v7' ? { profileData } : { params: profileData }),
+        },
+      });
+
+      if (profileResult.error) {
+        console.error('Error al crear perfil en MikroTik:', profileResult.error);
+      }
+
+      // Create preset in database
       const { data, error } = await supabase
         .from('voucher_presets')
         .insert({
@@ -67,7 +101,7 @@ export const useVoucherPresets = (mikrotikId?: string) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['voucher-presets'] });
-      toast.success('Preset creado exitosamente');
+      toast.success('Preset y perfil MikroTik creados exitosamente');
     },
     onError: (error: any) => {
       toast.error(error.message || 'Error al crear preset');

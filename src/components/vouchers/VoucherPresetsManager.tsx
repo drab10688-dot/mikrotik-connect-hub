@@ -10,7 +10,7 @@ import { useVoucherPresets } from "@/hooks/useVoucherPresets";
 
 interface VoucherPresetsManagerProps {
   mikrotikId: string;
-  onSelectPreset: (validity: string, price: number) => void;
+  onSelectPreset: (presetId: string, validity: string, price: number) => void;
 }
 
 export function VoucherPresetsManager({ mikrotikId, onSelectPreset }: VoucherPresetsManagerProps) {
@@ -73,12 +73,12 @@ export function VoucherPresetsManager({ mikrotikId, onSelectPreset }: VoucherPre
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="description">Descripción</Label>
+                  <Label htmlFor="description">Límite de velocidad (Rate Limit)</Label>
                   <Input
                     id="description"
                     value={newPreset.description}
                     onChange={(e) => setNewPreset({ ...newPreset, description: e.target.value })}
-                    placeholder="ej: Acceso por 24 horas"
+                    placeholder="ej: 10M/10M"
                   />
                 </div>
                 <div className="space-y-2">
@@ -129,7 +129,7 @@ export function VoucherPresetsManager({ mikrotikId, onSelectPreset }: VoucherPre
                 <Button
                   variant="outline"
                   className="h-auto w-full flex-col items-start p-4 hover:bg-primary/10 hover:border-primary"
-                  onClick={() => onSelectPreset(preset.validity, preset.price)}
+                  onClick={() => onSelectPreset(preset.id, preset.validity, preset.price)}
                 >
                   <div className="font-semibold text-sm mb-2">{preset.name}</div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
