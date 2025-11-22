@@ -296,9 +296,13 @@ export const useVoucherInventory = (mikrotikId?: string) => {
 
       const dbVoucherCodes = dbVouchers?.map(v => v.code) || [];
 
-      // Eliminar del MikroTik los usuarios que NO están en la base de datos
+      // Eliminar del MikroTik solo los usuarios que:
+      // 1. NO están en la base de datos
+      // 2. Tienen "Voucher" en el comentario (son vouchers generados por el sistema)
       const usersToDeleteFromMikrotik = mikrotikUsers.filter(
-        (u: any) => !dbVoucherCodes.includes(u.name) && u.name !== 'default-trial'
+        (u: any) => !dbVoucherCodes.includes(u.name) && 
+                    u.comment && 
+                    u.comment.includes('Voucher')
       );
       
       let deletedCount = 0;
