@@ -78,55 +78,92 @@ export function BackupRestoreCard() {
       
       const credentials = getMikroTikCredentials();
       
-      if (exportSection === 'all' || exportSection === 'pppoe-users') {
-        const users = await getPPPoEUsers();
-        rscContent += convertToRSC(users, '/ppp/secret/add', exportFormat);
-      }
-      
-      if (exportSection === 'all' || exportSection === 'pppoe-profiles') {
-        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
-          body: {
-            ...credentials,
-            port: parseInt(credentials!.port),
-            command: 'pppoe-profiles',
-            params: {}
-          }
-        });
-        if (data?.success) {
-          rscContent += convertToRSC(data.data, '/ppp/profile/add', exportFormat);
+      if (exportSection === 'all') {
+        // Hacer todas las llamadas en paralelo para reducir tiempo
+        const [pppoeUsers, pppoeProfiles, hotspotUsers, hotspotProfiles, simpleQueues] = await Promise.all([
+          getPPPoEUsers(),
+          supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: 'pppoe-profiles',
+              params: {}
+            }
+          }),
+          getHotspotUsers(),
+          supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: 'hotspot-profiles',
+              params: {}
+            }
+          }),
+          supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: 'simple-queues',
+              params: {}
+            }
+          })
+        ]);
+        
+        rscContent += convertToRSC(pppoeUsers, '/ppp/secret/add', exportFormat);
+        if (pppoeProfiles.data?.success) {
+          rscContent += convertToRSC(pppoeProfiles.data.data, '/ppp/profile/add', exportFormat);
         }
-      }
-      
-      if (exportSection === 'all' || exportSection === 'hotspot-users') {
-        const users = await getHotspotUsers();
-        rscContent += convertToRSC(users, '/ip/hotspot/user/add', exportFormat);
-      }
-      
-      if (exportSection === 'all' || exportSection === 'hotspot-profiles') {
-        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
-          body: {
-            ...credentials,
-            port: parseInt(credentials!.port),
-            command: 'hotspot-profiles',
-            params: {}
-          }
-        });
-        if (data?.success) {
-          rscContent += convertToRSC(data.data, '/ip/hotspot/user/profile/add', exportFormat);
+        rscContent += convertToRSC(hotspotUsers, '/ip/hotspot/user/add', exportFormat);
+        if (hotspotProfiles.data?.success) {
+          rscContent += convertToRSC(hotspotProfiles.data.data, '/ip/hotspot/user/profile/add', exportFormat);
         }
-      }
-      
-      if (exportSection === 'all' || exportSection === 'simple-queues') {
-        const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
-          body: {
-            ...credentials,
-            port: parseInt(credentials!.port),
-            command: 'simple-queues',
-            params: {}
+        if (simpleQueues.data?.success) {
+          rscContent += convertToRSC(simpleQueues.data.data, '/queue/simple/add', exportFormat);
+        }
+      } else {
+        // Exportar sección individual
+        if (exportSection === 'pppoe-users') {
+          const users = await getPPPoEUsers();
+          rscContent += convertToRSC(users, '/ppp/secret/add', exportFormat);
+        } else if (exportSection === 'pppoe-profiles') {
+          const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: 'pppoe-profiles',
+              params: {}
+            }
+          });
+          if (data?.success) {
+            rscContent += convertToRSC(data.data, '/ppp/profile/add', exportFormat);
           }
-        });
-        if (data?.success) {
-          rscContent += convertToRSC(data.data, '/queue/simple/add', exportFormat);
+        } else if (exportSection === 'hotspot-users') {
+          const users = await getHotspotUsers();
+          rscContent += convertToRSC(users, '/ip/hotspot/user/add', exportFormat);
+        } else if (exportSection === 'hotspot-profiles') {
+          const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: 'hotspot-profiles',
+              params: {}
+            }
+          });
+          if (data?.success) {
+            rscContent += convertToRSC(data.data, '/ip/hotspot/user/profile/add', exportFormat);
+          }
+        } else if (exportSection === 'simple-queues') {
+          const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              ...credentials,
+              port: parseInt(credentials!.port),
+              command: 'simple-queues',
+              params: {}
+            }
+          });
+          if (data?.success) {
+            rscContent += convertToRSC(data.data, '/queue/simple/add', exportFormat);
+          }
         }
       }
 
