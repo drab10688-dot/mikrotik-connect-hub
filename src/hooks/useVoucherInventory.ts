@@ -106,6 +106,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
             password: user.password,
             profile: user.profile,
             comment: `Voucher ${new Date().toISOString()}`,
+            'limit-uptime': user.validity, // Configurar límite de tiempo en MikroTik
           };
 
           const { error: mikrotikError } = await supabase.functions.invoke(functionName, {
@@ -209,6 +210,61 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     },
   });
 
+  // Sync vouchers with MikroTik mutation
+  const syncVouchersMutation = useMutation({
+    mutationFn: async (mikrotikId: string) => {
+      const { data: mikrotikDevice } = await supabase
+        .from('mikrotik_devices')
+        .select('*')
+        .eq('id', mikrotikId)
+        .single();
+
+      if (!mikrotikDevice) throw new Error('Dispositivo no encontrado');
+
+      const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
+      
+      // Obtener usuarios de MikroTik
+      const { data: mikrotikData } = await supabase.functions.invoke(functionName, {
+        body: {
+          host: mikrotikDevice.host,
+          username: mikrotikDevice.username,
+          password: mikrotikDevice.password,
+          port: mikrotikDevice.port,
+          command: mikrotikDevice.version === 'v7' ? undefined : 'hotspot-users',
+          action: mikrotikDevice.version === 'v7' ? 'list' : undefined,
+        },
+      });
+
+      const mikrotikUsers = mikrotikData?.data || [];
+      const mikrotikUsernames = mikrotikUsers.map((u: any) => u.name);
+
+      // Obtener vouchers de la base de datos
+      const { data: dbVouchers } = await supabase
+        .from('vouchers')
+        .select('*')
+        .eq('mikrotik_id', mikrotikId);
+
+      // Eliminar vouchers que no existen en MikroTik
+      const vouchersToDelete = dbVouchers?.filter(v => !mikrotikUsernames.includes(v.code)) || [];
+      
+      if (vouchersToDelete.length > 0) {
+        await supabase
+          .from('vouchers')
+          .delete()
+          .in('id', vouchersToDelete.map(v => v.id));
+      }
+
+      return { deleted: vouchersToDelete.length };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['voucher-inventory'] });
+      toast.success(`Sincronización completada. ${data.deleted} vouchers eliminados.`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Error al sincronizar vouchers');
+    },
+  });
+
   // Stats
   const stats = {
     total: vouchers?.length || 0,
@@ -228,5 +284,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     isSelling: sellVoucherMutation.isPending,
     markAsUsed: markAsUsedMutation.mutate,
     deleteVoucher: deleteVoucherMutation.mutate,
+    syncVouchers: syncVouchersMutation.mutate,
+    isSyncing: syncVouchersMutation.isPending,
   };
 };
