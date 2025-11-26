@@ -11,9 +11,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { Shield } from "lucide-react";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
+import { useAuth } from "@/hooks/useAuth";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { isSecretary, loading: authLoading } = useAuth();
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const { data: systemInfo, isLoading: loadingSystem } = useSystemResources();
   const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
@@ -26,11 +28,16 @@ const Dashboard = () => {
   const systemData = (systemInfo as any[])?.[0];
 
   useEffect(() => {
+    if (!authLoading && isSecretary) {
+      navigate("/ppp");
+      return;
+    }
+
     const isConnected = localStorage.getItem("mikrotik_connected");
     if (!isConnected) {
       navigate("/settings");
     }
-  }, [navigate]);
+  }, [navigate, isSecretary, authLoading]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';

@@ -16,6 +16,8 @@ import { toast } from 'sonner';
 export default function Secretaries() {
   const [selectedMikrotik, setSelectedMikrotik] = useState<string>('');
   const [secretaryEmail, setSecretaryEmail] = useState('');
+  const [secretaryPassword, setSecretaryPassword] = useState('');
+  const [secretaryFullName, setSecretaryFullName] = useState('');
   const [canManagePppoe, setCanManagePppoe] = useState(true);
   const [canManageQueues, setCanManageQueues] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -24,47 +26,92 @@ export default function Secretaries() {
   const { assignments, isLoading, assignSecretary, removeSecretary } = useSecretaries(selectedMikrotik);
 
   const handleAssignSecretary = async () => {
-    if (!secretaryEmail || !selectedMikrotik) {
-      toast.error('Completa todos los campos');
+    if (!secretaryEmail || !secretaryPassword || !selectedMikrotik) {
+      toast.error('Completa todos los campos requeridos');
       return;
     }
 
-    // Buscar el usuario por email
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('user_id')
-      .eq('email', secretaryEmail)
-      .maybeSingle();
+    try {
+      // Primero buscar si el usuario ya existe
+      let userId: string;
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('email', secretaryEmail)
+        .maybeSingle();
 
-    if (error || !profiles) {
-      toast.error('Usuario no encontrado');
-      return;
-    }
+      if (existingProfile) {
+        // Usuario ya existe
+        userId = existingProfile.user_id;
+      } else {
+        // Crear nuevo usuario con Supabase Auth
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: secretaryEmail,
+          password: secretaryPassword,
+          options: {
+            data: {
+              full_name: secretaryFullName || secretaryEmail,
+            },
+          },
+        });
 
-    // Asignar rol de secretaria si no lo tiene
-    const { error: roleError } = await supabase
-      .from('user_roles')
-      .upsert({
-        user_id: profiles.user_id,
-        role: 'secretary',
+        if (signUpError) {
+          toast.error('Error al crear usuario: ' + signUpError.message);
+          return;
+        }
+
+        if (!authData.user) {
+          toast.error('No se pudo crear el usuario');
+          return;
+        }
+
+        userId = authData.user.id;
+
+        // Crear perfil
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: userId,
+            email: secretaryEmail,
+            full_name: secretaryFullName || secretaryEmail,
+          });
+
+        if (profileError) {
+          console.error('Error al crear perfil:', profileError);
+        }
+      }
+
+      // Asignar rol de secretaria
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .upsert({
+          user_id: userId,
+          role: 'secretary',
+        });
+
+      if (roleError) {
+        toast.error('Error al asignar rol');
+        return;
+      }
+
+      // Asignar permisos
+      assignSecretary({
+        secretaryId: userId,
+        mikrotikId: selectedMikrotik,
+        canManagePppoe,
+        canManageQueues,
       });
 
-    if (roleError) {
-      toast.error('Error al asignar rol');
-      return;
+      setIsDialogOpen(false);
+      setSecretaryEmail('');
+      setSecretaryPassword('');
+      setSecretaryFullName('');
+      setCanManagePppoe(true);
+      setCanManageQueues(true);
+      toast.success('Secretaria asignada exitosamente');
+    } catch (error: any) {
+      toast.error('Error: ' + error.message);
     }
-
-    assignSecretary({
-      secretaryId: profiles.user_id,
-      mikrotikId: selectedMikrotik,
-      canManagePppoe,
-      canManageQueues,
-    });
-
-    setIsDialogOpen(false);
-    setSecretaryEmail('');
-    setCanManagePppoe(true);
-    setCanManageQueues(true);
   };
 
   return (
@@ -116,13 +163,39 @@ export default function Secretaries() {
                   </div>
 
                   <div>
+                    <Label>Nombre Completo</Label>
+                    <Input
+                      type="text"
+                      value={secretaryFullName}
+                      onChange={(e) => setSecretaryFullName(e.target.value)}
+                      placeholder="Nombre de la secretaria"
+                    />
+                  </div>
+
+                  <div>
                     <Label>Email de la Secretaria</Label>
                     <Input
                       type="email"
                       value={secretaryEmail}
                       onChange={(e) => setSecretaryEmail(e.target.value)}
                       placeholder="secretaria@ejemplo.com"
+                      required
                     />
+                  </div>
+
+                  <div>
+                    <Label>Contraseña</Label>
+                    <Input
+                      type="password"
+                      value={secretaryPassword}
+                      onChange={(e) => setSecretaryPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      minLength={6}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Mínimo 6 caracteres
+                    </p>
                   </div>
 
                   <div className="space-y-3">
