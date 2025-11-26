@@ -14,7 +14,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Secretaries() {
-  const [selectedMikrotik, setSelectedMikrotik] = useState<string>('');
+  const [viewMikrotik, setViewMikrotik] = useState<string>('');
+  const [dialogMikrotik, setDialogMikrotik] = useState<string>('');
   const [secretaryEmail, setSecretaryEmail] = useState('');
   const [secretaryPassword, setSecretaryPassword] = useState('');
   const [secretaryFullName, setSecretaryFullName] = useState('');
@@ -23,10 +24,10 @@ export default function Secretaries() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const { devices } = useUserDeviceAccess();
-  const { assignments, isLoading, assignSecretary, removeSecretary } = useSecretaries(selectedMikrotik);
+  const { assignments, isLoading, assignSecretary, removeSecretary, updateSecretary } = useSecretaries(viewMikrotik);
 
   const handleAssignSecretary = async () => {
-    if (!secretaryEmail || !secretaryPassword || !selectedMikrotik) {
+    if (!secretaryEmail || !secretaryPassword || !dialogMikrotik) {
       toast.error('Completa todos los campos requeridos');
       return;
     }
@@ -97,12 +98,13 @@ export default function Secretaries() {
       // Asignar permisos
       assignSecretary({
         secretaryId: userId,
-        mikrotikId: selectedMikrotik,
+        mikrotikId: dialogMikrotik,
         canManagePppoe,
         canManageQueues,
       });
 
       setIsDialogOpen(false);
+      setDialogMikrotik('');
       setSecretaryEmail('');
       setSecretaryPassword('');
       setSecretaryFullName('');
@@ -125,109 +127,127 @@ export default function Secretaries() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Secretarias Asignadas</CardTitle>
-              <CardDescription>Administra los permisos de tus secretarias</CardDescription>
-            </div>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Asignar Secretaria
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Asignar Nueva Secretaria</DialogTitle>
-                  <DialogDescription>
-                    Asigna permisos a una secretaria para administrar dispositivos específicos
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label>Dispositivo MikroTik</Label>
-                    <Select value={selectedMikrotik} onValueChange={setSelectedMikrotik}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona un dispositivo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {devices?.map((device) => (
-                          <SelectItem key={device.id} value={device.id}>
-                            {device.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label>Nombre Completo</Label>
-                    <Input
-                      type="text"
-                      value={secretaryFullName}
-                      onChange={(e) => setSecretaryFullName(e.target.value)}
-                      placeholder="Nombre de la secretaria"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Email de la Secretaria</Label>
-                    <Input
-                      type="email"
-                      value={secretaryEmail}
-                      onChange={(e) => setSecretaryEmail(e.target.value)}
-                      placeholder="secretaria@ejemplo.com"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Contraseña</Label>
-                    <Input
-                      type="password"
-                      value={secretaryPassword}
-                      onChange={(e) => setSecretaryPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      minLength={6}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Mínimo 6 caracteres
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="pppoe-permission">Gestión PPPoE</Label>
-                      <Switch
-                        id="pppoe-permission"
-                        checked={canManagePppoe}
-                        onCheckedChange={setCanManagePppoe}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="queues-permission">Gestión Queues</Label>
-                      <Switch
-                        id="queues-permission"
-                        checked={canManageQueues}
-                        onCheckedChange={setCanManageQueues}
-                      />
-                    </div>
-                  </div>
-
-                  <Button onClick={handleAssignSecretary} className="w-full">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Secretarias Asignadas</CardTitle>
+                <CardDescription>Administra los permisos de tus secretarias</CardDescription>
+              </div>
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
                     Asignar Secretaria
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Asignar Nueva Secretaria</DialogTitle>
+                    <DialogDescription>
+                      Asigna permisos a una secretaria para administrar dispositivos específicos
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Dispositivo MikroTik</Label>
+                      <Select value={dialogMikrotik} onValueChange={setDialogMikrotik}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un dispositivo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {devices?.map((device) => (
+                            <SelectItem key={device.id} value={device.id}>
+                              {device.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label>Nombre Completo</Label>
+                      <Input
+                        type="text"
+                        value={secretaryFullName}
+                        onChange={(e) => setSecretaryFullName(e.target.value)}
+                        placeholder="Nombre de la secretaria"
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Email de la Secretaria</Label>
+                      <Input
+                        type="email"
+                        value={secretaryEmail}
+                        onChange={(e) => setSecretaryEmail(e.target.value)}
+                        placeholder="secretaria@ejemplo.com"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Contraseña</Label>
+                      <Input
+                        type="password"
+                        value={secretaryPassword}
+                        onChange={(e) => setSecretaryPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        minLength={6}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Mínimo 6 caracteres
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="pppoe-permission">Gestión PPPoE</Label>
+                        <Switch
+                          id="pppoe-permission"
+                          checked={canManagePppoe}
+                          onCheckedChange={setCanManagePppoe}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="queues-permission">Gestión Queues</Label>
+                        <Switch
+                          id="queues-permission"
+                          checked={canManageQueues}
+                          onCheckedChange={setCanManageQueues}
+                        />
+                      </div>
+                    </div>
+
+                    <Button onClick={handleAssignSecretary} className="w-full">
+                      Asignar Secretaria
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+            
+            <div>
+              <Label>Seleccionar Dispositivo</Label>
+              <Select value={viewMikrotik} onValueChange={setViewMikrotik}>
+                <SelectTrigger className="w-full max-w-md">
+                  <SelectValue placeholder="Selecciona un dispositivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {devices?.map((device) => (
+                    <SelectItem key={device.id} value={device.id}>
+                      {device.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {!selectedMikrotik ? (
+          {!viewMikrotik ? (
             <div className="text-center py-8 text-muted-foreground">
               Selecciona un dispositivo para ver las secretarias asignadas
             </div>
@@ -239,7 +259,7 @@ export default function Secretaries() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email</TableHead>
+                  <TableHead>ID Secretaria</TableHead>
                   <TableHead>PPPoE</TableHead>
                   <TableHead>Queues</TableHead>
                   <TableHead>Fecha</TableHead>
@@ -249,12 +269,30 @@ export default function Secretaries() {
               <TableBody>
                 {assignments.map((assignment) => (
                   <TableRow key={assignment.id}>
-                    <TableCell>{assignment.secretary_id}</TableCell>
+                    <TableCell className="font-mono text-xs">{assignment.secretary_id}</TableCell>
                     <TableCell>
-                      {assignment.can_manage_pppoe ? '✓' : '✗'}
+                      <Switch
+                        checked={assignment.can_manage_pppoe}
+                        onCheckedChange={(checked) => {
+                          updateSecretary({
+                            assignmentId: assignment.id,
+                            canManagePppoe: checked,
+                            canManageQueues: assignment.can_manage_queues || false,
+                          });
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
-                      {assignment.can_manage_queues ? '✓' : '✗'}
+                      <Switch
+                        checked={assignment.can_manage_queues}
+                        onCheckedChange={(checked) => {
+                          updateSecretary({
+                            assignmentId: assignment.id,
+                            canManagePppoe: assignment.can_manage_pppoe || false,
+                            canManageQueues: checked,
+                          });
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       {new Date(assignment.created_at).toLocaleDateString()}
