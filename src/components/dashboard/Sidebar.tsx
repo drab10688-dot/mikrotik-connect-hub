@@ -49,10 +49,10 @@ export const Sidebar = () => {
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
-  // Filtrar menú para secretarias - solo PPPoE y Queues
+  // Filtrar menú para secretarias - Dashboard, PPPoE y Queues
   const filteredMenuItems = isSecretary 
     ? menuItems.filter(item => 
-        item.path === '/ppp' || item.path === '/simple-queues'
+        item.path === '/dashboard' || item.path === '/ppp' || item.path === '/simple-queues'
       )
     : menuItems;
 

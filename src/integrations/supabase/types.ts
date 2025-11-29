@@ -124,8 +124,19 @@ export type Database = {
       secretary_assignments: {
         Row: {
           assigned_by: string
+          can_create_pppoe: boolean | null
+          can_create_queues: boolean | null
+          can_delete_pppoe: boolean | null
+          can_delete_queues: boolean | null
+          can_disconnect_pppoe: boolean | null
+          can_edit_pppoe: boolean | null
+          can_edit_queues: boolean | null
           can_manage_pppoe: boolean | null
           can_manage_queues: boolean | null
+          can_reactivate_queues: boolean | null
+          can_suspend_queues: boolean | null
+          can_toggle_pppoe: boolean | null
+          can_toggle_queues: boolean | null
           created_at: string | null
           id: string
           mikrotik_id: string
@@ -133,8 +144,19 @@ export type Database = {
         }
         Insert: {
           assigned_by: string
+          can_create_pppoe?: boolean | null
+          can_create_queues?: boolean | null
+          can_delete_pppoe?: boolean | null
+          can_delete_queues?: boolean | null
+          can_disconnect_pppoe?: boolean | null
+          can_edit_pppoe?: boolean | null
+          can_edit_queues?: boolean | null
           can_manage_pppoe?: boolean | null
           can_manage_queues?: boolean | null
+          can_reactivate_queues?: boolean | null
+          can_suspend_queues?: boolean | null
+          can_toggle_pppoe?: boolean | null
+          can_toggle_queues?: boolean | null
           created_at?: string | null
           id?: string
           mikrotik_id: string
@@ -142,8 +164,19 @@ export type Database = {
         }
         Update: {
           assigned_by?: string
+          can_create_pppoe?: boolean | null
+          can_create_queues?: boolean | null
+          can_delete_pppoe?: boolean | null
+          can_delete_queues?: boolean | null
+          can_disconnect_pppoe?: boolean | null
+          can_edit_pppoe?: boolean | null
+          can_edit_queues?: boolean | null
           can_manage_pppoe?: boolean | null
           can_manage_queues?: boolean | null
+          can_reactivate_queues?: boolean | null
+          can_suspend_queues?: boolean | null
+          can_toggle_pppoe?: boolean | null
+          can_toggle_queues?: boolean | null
           created_at?: string | null
           id?: string
           mikrotik_id?: string

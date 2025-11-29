@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useSecretaries } from '@/hooks/useSecretaries';
 import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 export default function Secretaries() {
   const [viewMikrotik, setViewMikrotik] = useState<string>('');
@@ -22,6 +23,22 @@ export default function Secretaries() {
   const [canManagePppoe, setCanManagePppoe] = useState(true);
   const [canManageQueues, setCanManageQueues] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<any>(null);
+
+  // Permisos PPPoE
+  const [canCreatePppoe, setCanCreatePppoe] = useState(true);
+  const [canEditPppoe, setCanEditPppoe] = useState(true);
+  const [canDeletePppoe, setCanDeletePppoe] = useState(true);
+  const [canDisconnectPppoe, setCanDisconnectPppoe] = useState(true);
+  const [canTogglePppoe, setCanTogglePppoe] = useState(true);
+
+  // Permisos Queues
+  const [canCreateQueues, setCanCreateQueues] = useState(true);
+  const [canEditQueues, setCanEditQueues] = useState(true);
+  const [canDeleteQueues, setCanDeleteQueues] = useState(true);
+  const [canToggleQueues, setCanToggleQueues] = useState(true);
+  const [canSuspendQueues, setCanSuspendQueues] = useState(true);
+  const [canReactivateQueues, setCanReactivateQueues] = useState(true);
 
   const { devices } = useUserDeviceAccess();
   const { assignments, isLoading, assignSecretary, removeSecretary, updateSecretary } = useSecretaries(viewMikrotik);
@@ -33,7 +50,6 @@ export default function Secretaries() {
     }
 
     try {
-      // Primero buscar si el usuario ya existe
       let userId: string;
       const { data: existingProfile } = await supabase
         .from('profiles')
@@ -42,10 +58,8 @@ export default function Secretaries() {
         .maybeSingle();
 
       if (existingProfile) {
-        // Usuario ya existe
         userId = existingProfile.user_id;
       } else {
-        // Crear nuevo usuario con Supabase Auth
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: secretaryEmail,
           password: secretaryPassword,
@@ -68,7 +82,6 @@ export default function Secretaries() {
 
         userId = authData.user.id;
 
-        // Crear perfil
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
@@ -82,7 +95,6 @@ export default function Secretaries() {
         }
       }
 
-      // Asignar rol de secretaria
       const { error: roleError } = await supabase
         .from('user_roles')
         .upsert({
@@ -95,12 +107,22 @@ export default function Secretaries() {
         return;
       }
 
-      // Asignar permisos
       assignSecretary({
         secretaryId: userId,
         mikrotikId: dialogMikrotik,
         canManagePppoe,
         canManageQueues,
+        canCreatePppoe,
+        canEditPppoe,
+        canDeletePppoe,
+        canDisconnectPppoe,
+        canTogglePppoe,
+        canCreateQueues,
+        canEditQueues,
+        canDeleteQueues,
+        canToggleQueues,
+        canSuspendQueues,
+        canReactivateQueues,
       });
 
       setIsDialogOpen(false);
@@ -108,12 +130,34 @@ export default function Secretaries() {
       setSecretaryEmail('');
       setSecretaryPassword('');
       setSecretaryFullName('');
-      setCanManagePppoe(true);
-      setCanManageQueues(true);
+      resetPermissions();
       toast.success('Secretaria asignada exitosamente');
     } catch (error: any) {
       toast.error('Error: ' + error.message);
     }
+  };
+
+  const resetPermissions = () => {
+    setCanManagePppoe(true);
+    setCanManageQueues(true);
+    setCanCreatePppoe(true);
+    setCanEditPppoe(true);
+    setCanDeletePppoe(true);
+    setCanDisconnectPppoe(true);
+    setCanTogglePppoe(true);
+    setCanCreateQueues(true);
+    setCanEditQueues(true);
+    setCanDeleteQueues(true);
+    setCanToggleQueues(true);
+    setCanSuspendQueues(true);
+    setCanReactivateQueues(true);
+  };
+
+  const handleUpdatePermissions = (assignment: any, updates: any) => {
+    updateSecretary({
+      assignmentId: assignment.id,
+      ...updates,
+    });
   };
 
   return (
@@ -121,7 +165,7 @@ export default function Secretaries() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Gestión de Secretarias</h1>
         <p className="text-muted-foreground">
-          Asigna secretarias con permisos limitados para administrar PPPoE y Queues
+          Asigna secretarias con permisos personalizados para administrar PPPoE y Queues
         </p>
       </div>
 
@@ -140,11 +184,11 @@ export default function Secretaries() {
                     Asignar Secretaria
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Asignar Nueva Secretaria</DialogTitle>
                     <DialogDescription>
-                      Asigna permisos a una secretaria para administrar dispositivos específicos
+                      Configura los permisos específicos para la secretaria
                     </DialogDescription>
                   </DialogHeader>
 
@@ -201,25 +245,85 @@ export default function Secretaries() {
                       </p>
                     </div>
 
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="pppoe-permission">Gestión PPPoE</Label>
-                        <Switch
-                          id="pppoe-permission"
-                          checked={canManagePppoe}
-                          onCheckedChange={setCanManagePppoe}
-                        />
-                      </div>
+                    <Accordion type="multiple" className="w-full">
+                      <AccordionItem value="pppoe">
+                        <AccordionTrigger>
+                          <div className="flex items-center justify-between w-full pr-4">
+                            <span>Permisos PPPoE</span>
+                            <Switch
+                              checked={canManagePppoe}
+                              onCheckedChange={setCanManagePppoe}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-3 pl-4">
+                            <div className="flex items-center justify-between">
+                              <Label>Crear usuarios PPPoE</Label>
+                              <Switch checked={canCreatePppoe} onCheckedChange={setCanCreatePppoe} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Editar usuarios PPPoE</Label>
+                              <Switch checked={canEditPppoe} onCheckedChange={setCanEditPppoe} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Eliminar usuarios PPPoE</Label>
+                              <Switch checked={canDeletePppoe} onCheckedChange={setCanDeletePppoe} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Desconectar sesiones PPPoE</Label>
+                              <Switch checked={canDisconnectPppoe} onCheckedChange={setCanDisconnectPppoe} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Activar/Desactivar usuarios</Label>
+                              <Switch checked={canTogglePppoe} onCheckedChange={setCanTogglePppoe} />
+                            </div>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
 
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="queues-permission">Gestión Queues</Label>
-                        <Switch
-                          id="queues-permission"
-                          checked={canManageQueues}
-                          onCheckedChange={setCanManageQueues}
-                        />
-                      </div>
-                    </div>
+                      <AccordionItem value="queues">
+                        <AccordionTrigger>
+                          <div className="flex items-center justify-between w-full pr-4">
+                            <span>Permisos Queues</span>
+                            <Switch
+                              checked={canManageQueues}
+                              onCheckedChange={setCanManageQueues}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-3 pl-4">
+                            <div className="flex items-center justify-between">
+                              <Label>Crear colas</Label>
+                              <Switch checked={canCreateQueues} onCheckedChange={setCanCreateQueues} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Editar colas</Label>
+                              <Switch checked={canEditQueues} onCheckedChange={setCanEditQueues} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Eliminar colas</Label>
+                              <Switch checked={canDeleteQueues} onCheckedChange={setCanDeleteQueues} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Activar/Desactivar colas</Label>
+                              <Switch checked={canToggleQueues} onCheckedChange={setCanToggleQueues} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Suspender servicios (Address List)</Label>
+                              <Switch checked={canSuspendQueues} onCheckedChange={setCanSuspendQueues} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>Reactivar servicios</Label>
+                              <Switch checked={canReactivateQueues} onCheckedChange={setCanReactivateQueues} />
+                            </div>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
 
                     <Button onClick={handleAssignSecretary} className="w-full">
                       Asignar Secretaria
@@ -260,10 +364,10 @@ export default function Secretaries() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID Secretaria</TableHead>
-                  <TableHead>PPPoE</TableHead>
-                  <TableHead>Queues</TableHead>
+                  <TableHead>Acceso PPPoE</TableHead>
+                  <TableHead>Acceso Queues</TableHead>
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -274,11 +378,7 @@ export default function Secretaries() {
                       <Switch
                         checked={assignment.can_manage_pppoe}
                         onCheckedChange={(checked) => {
-                          updateSecretary({
-                            assignmentId: assignment.id,
-                            canManagePppoe: checked,
-                            canManageQueues: assignment.can_manage_queues || false,
-                          });
+                          handleUpdatePermissions(assignment, { can_manage_pppoe: checked });
                         }}
                       />
                     </TableCell>
@@ -286,11 +386,7 @@ export default function Secretaries() {
                       <Switch
                         checked={assignment.can_manage_queues}
                         onCheckedChange={(checked) => {
-                          updateSecretary({
-                            assignmentId: assignment.id,
-                            canManagePppoe: assignment.can_manage_pppoe || false,
-                            canManageQueues: checked,
-                          });
+                          handleUpdatePermissions(assignment, { can_manage_queues: checked });
                         }}
                       />
                     </TableCell>
@@ -298,13 +394,155 @@ export default function Secretaries() {
                       {new Date(assignment.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeSecretary(assignment.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1 justify-end">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingAssignment(assignment)}
+                            >
+                              <Settings className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>Permisos Detallados</DialogTitle>
+                              <DialogDescription>
+                                Configura permisos específicos para esta secretaria
+                              </DialogDescription>
+                            </DialogHeader>
+                            {editingAssignment && (
+                              <div className="space-y-4">
+                                <div className="space-y-3">
+                                  <h3 className="font-semibold">Permisos PPPoE</h3>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Crear usuarios</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_create_pppoe ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_create_pppoe: checked });
+                                        setEditingAssignment({...editingAssignment, can_create_pppoe: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Editar usuarios</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_edit_pppoe ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_edit_pppoe: checked });
+                                        setEditingAssignment({...editingAssignment, can_edit_pppoe: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Eliminar usuarios</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_delete_pppoe ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_delete_pppoe: checked });
+                                        setEditingAssignment({...editingAssignment, can_delete_pppoe: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Desconectar sesiones</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_disconnect_pppoe ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_disconnect_pppoe: checked });
+                                        setEditingAssignment({...editingAssignment, can_disconnect_pppoe: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Activar/Desactivar</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_toggle_pppoe ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_toggle_pppoe: checked });
+                                        setEditingAssignment({...editingAssignment, can_toggle_pppoe: checked});
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                  <h3 className="font-semibold">Permisos Queues</h3>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Crear colas</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_create_queues ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_create_queues: checked });
+                                        setEditingAssignment({...editingAssignment, can_create_queues: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Editar colas</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_edit_queues ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_edit_queues: checked });
+                                        setEditingAssignment({...editingAssignment, can_edit_queues: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Eliminar colas</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_delete_queues ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_delete_queues: checked });
+                                        setEditingAssignment({...editingAssignment, can_delete_queues: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Activar/Desactivar</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_toggle_queues ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_toggle_queues: checked });
+                                        setEditingAssignment({...editingAssignment, can_toggle_queues: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Suspender servicios</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_suspend_queues ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_suspend_queues: checked });
+                                        setEditingAssignment({...editingAssignment, can_suspend_queues: checked});
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Label>Reactivar servicios</Label>
+                                    <Switch
+                                      checked={editingAssignment.can_reactivate_queues ?? true}
+                                      onCheckedChange={(checked) => {
+                                        handleUpdatePermissions(editingAssignment, { can_reactivate_queues: checked });
+                                        setEditingAssignment({...editingAssignment, can_reactivate_queues: checked});
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeSecretary(assignment.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

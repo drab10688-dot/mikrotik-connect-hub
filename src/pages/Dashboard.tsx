@@ -28,16 +28,11 @@ const Dashboard = () => {
   const systemData = (systemInfo as any[])?.[0];
 
   useEffect(() => {
-    if (!authLoading && isSecretary) {
-      navigate("/ppp");
-      return;
-    }
-
     const isConnected = localStorage.getItem("mikrotik_connected");
-    if (!isConnected) {
+    if (!authLoading && !isConnected && hasDeviceAccess) {
       navigate("/settings");
     }
-  }, [navigate, isSecretary, authLoading]);
+  }, [navigate, isSecretary, authLoading, hasDeviceAccess]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
