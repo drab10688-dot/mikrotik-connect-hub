@@ -8,6 +8,17 @@ interface AssignSecretaryParams {
   mikrotikId: string;
   canManagePppoe: boolean;
   canManageQueues: boolean;
+  canCreatePppoe?: boolean;
+  canEditPppoe?: boolean;
+  canDeletePppoe?: boolean;
+  canDisconnectPppoe?: boolean;
+  canTogglePppoe?: boolean;
+  canCreateQueues?: boolean;
+  canEditQueues?: boolean;
+  canDeleteQueues?: boolean;
+  canToggleQueues?: boolean;
+  canSuspendQueues?: boolean;
+  canReactivateQueues?: boolean;
 }
 
 export const useSecretaries = (mikrotikId?: string) => {
@@ -45,6 +56,17 @@ export const useSecretaries = (mikrotikId?: string) => {
           assigned_by: user?.id,
           can_manage_pppoe: params.canManagePppoe,
           can_manage_queues: params.canManageQueues,
+          can_create_pppoe: params.canCreatePppoe ?? true,
+          can_edit_pppoe: params.canEditPppoe ?? true,
+          can_delete_pppoe: params.canDeletePppoe ?? true,
+          can_disconnect_pppoe: params.canDisconnectPppoe ?? true,
+          can_toggle_pppoe: params.canTogglePppoe ?? true,
+          can_create_queues: params.canCreateQueues ?? true,
+          can_edit_queues: params.canEditQueues ?? true,
+          can_delete_queues: params.canDeleteQueues ?? true,
+          can_toggle_queues: params.canToggleQueues ?? true,
+          can_suspend_queues: params.canSuspendQueues ?? true,
+          can_reactivate_queues: params.canReactivateQueues ?? true,
         });
 
       if (error) throw error;
@@ -79,17 +101,14 @@ export const useSecretaries = (mikrotikId?: string) => {
 
   // Update secretary permissions mutation
   const updateSecretaryMutation = useMutation({
-    mutationFn: async ({ assignmentId, canManagePppoe, canManageQueues }: { 
+    mutationFn: async (params: { 
       assignmentId: string;
-      canManagePppoe: boolean;
-      canManageQueues: boolean;
+      [key: string]: any;
     }) => {
+      const { assignmentId, ...updateData } = params;
       const { error } = await supabase
         .from('secretary_assignments')
-        .update({
-          can_manage_pppoe: canManagePppoe,
-          can_manage_queues: canManageQueues,
-        })
+        .update(updateData)
         .eq('id', assignmentId);
 
       if (error) throw error;

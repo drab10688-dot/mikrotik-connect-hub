@@ -47,14 +47,8 @@ export default function Login() {
         .eq('user_id', data.user.id)
         .single();
 
-      toast.success('Inicio de sesión exitoso');
-      
-      // Redirigir según el rol
-      if (roleData?.role === 'secretary') {
-        navigate('/ppp');
-      } else {
-        navigate('/dashboard');
-      }
+      // Redirect to dashboard for all users
+      navigate('/dashboard');
     } catch (error: any) {
       toast.error(error.message || 'Error al iniciar sesión');
     } finally {
