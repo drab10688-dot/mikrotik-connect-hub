@@ -5,6 +5,7 @@ import { useAuth } from './useAuth';
 export const useSecretaryPermissions = () => {
   const { user, isSecretary } = useAuth();
 
+  // Get secretary assignments with device details
   const { data: assignments, isLoading } = useQuery({
     queryKey: ['my-secretary-assignments', user?.id],
     queryFn: async () => {
@@ -12,7 +13,19 @@ export const useSecretaryPermissions = () => {
       
       const { data, error } = await supabase
         .from('secretary_assignments')
-        .select('*')
+        .select(`
+          *,
+          mikrotik_devices:mikrotik_id (
+            id,
+            name,
+            host,
+            port,
+            username,
+            password,
+            version,
+            status
+          )
+        `)
         .eq('secretary_id', user.id);
 
       if (error) throw error;
@@ -33,11 +46,15 @@ export const useSecretaryPermissions = () => {
   // Get all assigned mikrotik IDs
   const assignedDeviceIds = assignments?.map(a => a.mikrotik_id) || [];
 
+  // Get all assigned devices with full details
+  const assignedDevices = assignments?.map(a => a.mikrotik_devices).filter(Boolean) || [];
+
   return {
     assignments,
     isLoading,
     hasAnyAccess,
     assignedDeviceIds,
+    assignedDevices,
     getPermissionsForDevice,
   };
 };

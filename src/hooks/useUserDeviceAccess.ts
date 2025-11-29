@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 
 export const useUserDeviceAccess = () => {
-  const { user, isSuperAdmin, isAdmin } = useAuth();
+  const { user, isSuperAdmin, isAdmin, isSecretary } = useAuth();
 
   const { data: devices, isLoading } = useQuery({
     queryKey: ['user-device-access', user?.id],
@@ -19,6 +19,18 @@ export const useUserDeviceAccess = () => {
 
         if (error) throw error;
         return data;
+      } else if (isSecretary) {
+        // Secretaries see their assigned devices
+        const { data, error } = await supabase
+          .from('secretary_assignments')
+          .select(`
+            mikrotik_devices (*)
+          `)
+          .eq('secretary_id', user?.id)
+          .eq('mikrotik_devices.status', 'active');
+
+        if (error) throw error;
+        return data.map((assignment: any) => assignment.mikrotik_devices).filter(Boolean);
       } else if (isAdmin) {
         // Regular admins only see assigned active devices
         const { data, error } = await supabase
