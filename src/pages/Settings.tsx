@@ -15,11 +15,11 @@ import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { user, isSuperAdmin, isAdmin } = useAuth();
+  const { user, isSuperAdmin, isAdmin, isSecretary } = useAuth();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
 
   const { data: devices, isLoading } = useQuery({
-    queryKey: ['mikrotik-devices-select', user?.id],
+    queryKey: ['mikrotik-devices-select', user?.id, isSecretary],
     queryFn: async () => {
       if (isSuperAdmin) {
         // Super admins see all active devices
@@ -31,6 +31,17 @@ export default function Settings() {
 
         if (error) throw error;
         return data;
+      } else if (isSecretary) {
+        // Secretaries see their assigned active devices
+        const { data, error } = await supabase
+          .from('secretary_assignments')
+          .select(`
+            mikrotik_devices (*)
+          `)
+          .eq('secretary_id', user?.id);
+
+        if (error) throw error;
+        return data.map((assignment: any) => assignment.mikrotik_devices).filter((d: any) => d && d.status === 'active');
       } else if (isAdmin) {
         // Regular admins only see assigned active devices
         const { data, error } = await supabase
@@ -82,7 +93,22 @@ export default function Settings() {
     // Verificar autorización
     try {
       if (!isSuperAdmin) {
-        if (isAdmin) {
+        if (isSecretary) {
+          // Verificar que la secretaria tenga acceso asignado
+          const { data: access, error } = await supabase
+            .from('secretary_assignments')
+            .select('id')
+            .eq('secretary_id', user?.id)
+            .eq('mikrotik_id', device.id)
+            .single();
+
+          if (error || !access) {
+            toast.error("Acceso no autorizado", {
+              description: "No tienes permiso para conectarte a este dispositivo. Contacta al administrador."
+            });
+            return;
+          }
+        } else if (isAdmin) {
           // Verificar que el admin tenga acceso asignado
           const { data: access, error } = await supabase
             .from('user_mikrotik_access')
@@ -137,7 +163,7 @@ export default function Settings() {
                 Selecciona el dispositivo MikroTik
               </p>
             </div>
-            {!isAdmin && <AddDeviceDialog />}
+            {!isAdmin && !isSecretary && <AddDeviceDialog />}
           </div>
 
           <Card>
@@ -151,6 +177,8 @@ export default function Settings() {
                   <CardDescription>
                     {isSuperAdmin 
                       ? 'Selecciona cualquier router para gestionar'
+                      : isSecretary
+                      ? 'Selecciona uno de tus routers asignados para gestionar'
                       : isAdmin
                       ? 'Selecciona uno de tus routers asignados'
                       : 'Selecciona uno de tus routers'
@@ -168,15 +196,22 @@ export default function Settings() {
                   <p className="text-muted-foreground">
                     {isSuperAdmin
                       ? 'No hay dispositivos MikroTik configurados'
+                      : isSecretary
+                      ? 'No tienes dispositivos MikroTik asignados'
                       : isAdmin 
                       ? 'No tienes dispositivos MikroTik asignados'
                       : 'No has creado dispositivos MikroTik aún'
                     }
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {isSuperAdmin || !isAdmin ? 'Agrega un dispositivo usando el botón de arriba' : 'Contacta al administrador'}
+                    {isSecretary 
+                      ? 'Contacta al administrador para que te asigne un dispositivo'
+                      : isSuperAdmin || !isAdmin 
+                      ? 'Agrega un dispositivo usando el botón de arriba' 
+                      : 'Contacta al administrador'
+                    }
                   </p>
-                  {!isSuperAdmin && !isAdmin && (
+                  {!isSuperAdmin && !isAdmin && !isSecretary && (
                     <p className="text-xs text-orange-600 mt-4 bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg inline-block">
                       Los dispositivos nuevos requieren aprobación del administrador antes de poder usarse
                     </p>
