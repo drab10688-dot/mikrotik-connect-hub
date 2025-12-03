@@ -9,14 +9,16 @@ import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hoo
 import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
-import { Shield } from "lucide-react";
+import { Shield, Router } from "lucide-react";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { isSecretary, loading: authLoading } = useAuth();
-  const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
+  const { isSecretary, isAdmin, isSuperAdmin, loading: authLoading } = useAuth();
+  const { devices, hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
+  const { assignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const { data: systemInfo, isLoading: loadingSystem } = useSystemResources();
   const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
   const { data: pppoeActiveData, isLoading: loadingPPPoE } = usePPPoEActive();
@@ -109,18 +111,31 @@ const Dashboard = () => {
               </div>
               <CardTitle className="text-2xl">Sin Acceso a Dispositivos</CardTitle>
               <CardDescription className="text-base mt-2">
-                No tienes dispositivos MikroTik asignados
+                {isSecretary 
+                  ? 'No tienes dispositivos MikroTik asignados'
+                  : 'No tienes dispositivos MikroTik asignados'
+                }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Puedes agregar tu propio dispositivo MikroTik para que el administrador lo revise y active.
-                </p>
-              </div>
-              <div className="flex justify-center">
-                <AddDeviceDialog />
-              </div>
+              {isSecretary ? (
+                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Contacta al administrador para que te asigne un dispositivo MikroTik con los permisos correspondientes.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Puedes agregar tu propio dispositivo MikroTik para que el administrador lo revise y active.
+                    </p>
+                  </div>
+                  <div className="flex justify-center">
+                    <AddDeviceDialog />
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
