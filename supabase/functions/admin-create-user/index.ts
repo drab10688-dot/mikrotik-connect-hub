@@ -39,14 +39,17 @@ serve(async (req) => {
       );
     }
 
-    // Verificar que el usuario sea super_admin
+    // Verificar que el usuario sea super_admin o admin
     const { data: roleData, error: roleError } = await supabaseClient
       .from('user_roles')
       .select('role')
       .eq('user_id', requestingUser.id)
       .single();
 
-    if (roleError || roleData?.role !== 'super_admin') {
+    const isSuperAdmin = roleData?.role === 'super_admin';
+    const isAdmin = roleData?.role === 'admin' || isSuperAdmin;
+
+    if (roleError || !isAdmin) {
       return new Response(
         JSON.stringify({ error: 'No tienes permisos para crear usuarios' }),
         { 
@@ -64,6 +67,82 @@ serve(async (req) => {
         JSON.stringify({ error: 'Email, contraseña y rol son requeridos' }),
         { 
           status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Si es admin (no super_admin), solo puede crear secretarias
+    if (!isSuperAdmin && role !== 'secretary') {
+      return new Response(
+        JSON.stringify({ error: 'Solo puedes crear usuarios con rol de secretaria' }),
+        { 
+          status: 403, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Verificar si el usuario ya existe
+    const { data: existingUsers } = await supabaseClient.auth.admin.listUsers();
+    const existingUser = existingUsers?.users?.find(u => u.email === email);
+
+    let userId: string;
+
+    if (existingUser) {
+      // Usuario ya existe, solo actualizar rol
+      userId = existingUser.id;
+      
+      // Verificar si ya tiene el rol
+      const { data: existingRole } = await supabaseClient
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      if (existingRole) {
+        // Actualizar rol existente
+        const { error: updateRoleError } = await supabaseClient
+          .from('user_roles')
+          .update({ role: role })
+          .eq('user_id', userId);
+
+        if (updateRoleError) {
+          return new Response(
+            JSON.stringify({ error: 'Error al actualizar rol: ' + updateRoleError.message }),
+            { 
+              status: 500, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+      } else {
+        // Insertar nuevo rol
+        const { error: insertRoleError } = await supabaseClient
+          .from('user_roles')
+          .insert({ user_id: userId, role: role });
+
+        if (insertRoleError) {
+          return new Response(
+            JSON.stringify({ error: 'Error al asignar rol: ' + insertRoleError.message }),
+            { 
+              status: 500, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          user: {
+            id: userId,
+            email: email,
+          },
+          existing: true
+        }),
+        { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -99,11 +178,13 @@ serve(async (req) => {
       );
     }
 
+    userId = newUser.user.id;
+
     // Crear el perfil del usuario
     const { error: profileError } = await supabaseClient
       .from('profiles')
       .insert({
-        user_id: newUser.user.id,
+        user_id: userId,
         email: email,
         full_name: fullName,
       });
@@ -117,7 +198,7 @@ serve(async (req) => {
     const { error: roleInsertError } = await supabaseClient
       .from('user_roles')
       .insert({
-        user_id: newUser.user.id,
+        user_id: userId,
         role: role,
       });
 
@@ -135,8 +216,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         user: {
-          id: newUser.user.id,
-          email: newUser.user.email,
+          id: userId,
+          email: email,
         }
       }),
       { 

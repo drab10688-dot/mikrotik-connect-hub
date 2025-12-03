@@ -49,64 +49,37 @@ export default function Secretaries() {
       return;
     }
 
-    try {
-      let userId: string;
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('email', secretaryEmail)
-        .maybeSingle();
+    if (secretaryPassword.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
 
-      if (existingProfile) {
-        userId = existingProfile.user_id;
-      } else {
-        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    try {
+      // Usar edge function para crear usuario y asignar rol
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      const response = await supabase.functions.invoke('admin-create-user', {
+        body: {
           email: secretaryEmail,
           password: secretaryPassword,
-          options: {
-            data: {
-              full_name: secretaryFullName || secretaryEmail,
-            },
-          },
-        });
-
-        if (signUpError) {
-          toast.error('Error al crear usuario: ' + signUpError.message);
-          return;
-        }
-
-        if (!authData.user) {
-          toast.error('No se pudo crear el usuario');
-          return;
-        }
-
-        userId = authData.user.id;
-
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: userId,
-            email: secretaryEmail,
-            full_name: secretaryFullName || secretaryEmail,
-          });
-
-        if (profileError) {
-          console.error('Error al crear perfil:', profileError);
-        }
-      }
-
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .upsert({
-          user_id: userId,
+          fullName: secretaryFullName || secretaryEmail,
           role: 'secretary',
-        });
+        },
+      });
 
-      if (roleError) {
-        toast.error('Error al asignar rol');
+      if (response.error) {
+        toast.error('Error al crear secretaria: ' + response.error.message);
         return;
       }
 
+      if (!response.data?.success) {
+        toast.error(response.data?.error || 'Error al crear secretaria');
+        return;
+      }
+
+      const userId = response.data.user.id;
+
+      // Asignar permisos al dispositivo
       assignSecretary({
         secretaryId: userId,
         mikrotikId: dialogMikrotik,
