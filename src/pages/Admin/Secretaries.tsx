@@ -357,7 +357,7 @@ export default function Secretaries() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID Secretaria</TableHead>
+                  <TableHead>Secretaria</TableHead>
                   <TableHead>Acceso PPPoE</TableHead>
                   <TableHead>Acceso Queues</TableHead>
                   <TableHead>Fecha</TableHead>
@@ -365,9 +365,14 @@ export default function Secretaries() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignments.map((assignment) => (
+                {assignments.map((assignment: any) => (
                   <TableRow key={assignment.id}>
-                    <TableCell className="font-mono text-xs">{assignment.secretary_id}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{assignment.secretary_name || 'Sin nombre'}</p>
+                        <p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.secretary_id}</p>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Switch
                         checked={assignment.can_manage_pppoe}

@@ -25,7 +25,7 @@ export const useSecretaries = (mikrotikId?: string) => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  // Fetch secretary assignments
+  // Fetch secretary assignments with profile info
   const { data: assignments, isLoading } = useQuery({
     queryKey: ['secretary-assignments', mikrotikId],
     queryFn: async () => {
@@ -40,6 +40,23 @@ export const useSecretaries = (mikrotikId?: string) => {
 
       const { data, error } = await query;
       if (error) throw error;
+
+      // Fetch profiles for each secretary
+      if (data && data.length > 0) {
+        const secretaryIds = data.map(a => a.secretary_id);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, email, full_name')
+          .in('user_id', secretaryIds);
+
+        // Merge profile data with assignments
+        return data.map(assignment => ({
+          ...assignment,
+          secretary_email: profiles?.find(p => p.user_id === assignment.secretary_id)?.email || null,
+          secretary_name: profiles?.find(p => p.user_id === assignment.secretary_id)?.full_name || null,
+        }));
+      }
+
       return data;
     },
     enabled: !!mikrotikId,
