@@ -11,9 +11,10 @@ import { useSecretaries } from '@/hooks/useSecretaries';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2, Settings } from 'lucide-react';
+import { Plus, Trash2, Settings, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { useNavigate } from 'react-router-dom';
 
 export default function Secretaries() {
   const [viewMikrotik, setViewMikrotik] = useState<string>('');
@@ -154,13 +155,20 @@ export default function Secretaries() {
     });
   };
 
+  const navigate = useNavigate();
+
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Gestión de Secretarias</h1>
-        <p className="text-muted-foreground">
-          Asigna secretarias con permisos personalizados para administrar PPPoE y Queues
-        </p>
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Gestión de Secretarias</h1>
+          <p className="text-muted-foreground">
+            Asigna secretarias con permisos personalizados para administrar PPPoE y Queues
+          </p>
+        </div>
       </div>
 
       <Card>
