@@ -119,7 +119,13 @@ serve(async (req) => {
         );
       }
 
-      // Insertar nuevo rol (el usuario puede tener múltiples roles)
+      // Eliminar roles anteriores y asignar el nuevo rol
+      // (un usuario solo debe tener un rol principal)
+      await supabaseClient
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId);
+
       const { error: insertRoleError } = await supabaseClient
         .from('user_roles')
         .insert({ user_id: userId, role: role });
