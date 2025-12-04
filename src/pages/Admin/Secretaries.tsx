@@ -164,9 +164,9 @@ export default function Secretaries() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Gestión de Secretarias</h1>
+          <h1 className="text-3xl font-bold">Gestión de Asistentes</h1>
           <p className="text-muted-foreground">
-            Asigna secretarias con permisos personalizados para administrar PPPoE y Queues
+            Asigna asistentes con permisos personalizados para administrar PPPoE y Queues
           </p>
         </div>
       </div>
