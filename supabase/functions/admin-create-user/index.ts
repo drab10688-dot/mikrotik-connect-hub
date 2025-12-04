@@ -93,44 +93,45 @@ serve(async (req) => {
       // Usuario ya existe, solo actualizar rol
       userId = existingUser.id;
       
-      // Verificar si ya tiene el rol
+      // Verificar si ya tiene este rol específico
       const { data: existingRole } = await supabaseClient
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
+        .eq('role', role)
         .maybeSingle();
 
       if (existingRole) {
-        // Actualizar rol existente
-        const { error: updateRoleError } = await supabaseClient
-          .from('user_roles')
-          .update({ role: role })
-          .eq('user_id', userId);
+        // Ya tiene este rol, no hacer nada
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            user: {
+              id: userId,
+              email: email,
+            },
+            existing: true,
+            message: 'Usuario ya tiene este rol asignado'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
 
-        if (updateRoleError) {
-          return new Response(
-            JSON.stringify({ error: 'Error al actualizar rol: ' + updateRoleError.message }),
-            { 
-              status: 500, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
-        }
-      } else {
-        // Insertar nuevo rol
-        const { error: insertRoleError } = await supabaseClient
-          .from('user_roles')
-          .insert({ user_id: userId, role: role });
+      // Insertar nuevo rol (el usuario puede tener múltiples roles)
+      const { error: insertRoleError } = await supabaseClient
+        .from('user_roles')
+        .insert({ user_id: userId, role: role });
 
-        if (insertRoleError) {
-          return new Response(
-            JSON.stringify({ error: 'Error al asignar rol: ' + insertRoleError.message }),
-            { 
-              status: 500, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
-        }
+      if (insertRoleError) {
+        return new Response(
+          JSON.stringify({ error: 'Error al asignar rol: ' + insertRoleError.message }),
+          { 
+            status: 500, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
       }
 
       return new Response(
