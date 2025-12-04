@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSecretaries } from '@/hooks/useSecretaries';
-import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Plus, Trash2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
@@ -40,7 +41,27 @@ export default function Secretaries() {
   const [canSuspendQueues, setCanSuspendQueues] = useState(true);
   const [canReactivateQueues, setCanReactivateQueues] = useState(true);
 
-  const { devices } = useUserDeviceAccess();
+  const { user } = useAuth();
+  
+  // Solo obtener dispositivos asignados al admin actual via user_mikrotik_access
+  const { data: devices } = useQuery({
+    queryKey: ['admin-assigned-devices', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      
+      const { data, error } = await supabase
+        .from('user_mikrotik_access')
+        .select('mikrotik_devices(*)')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      return data
+        .map((access: any) => access.mikrotik_devices)
+        .filter((device: any) => device && device.status === 'active');
+    },
+    enabled: !!user,
+  });
+  
   const { assignments, isLoading, assignSecretary, removeSecretary, updateSecretary } = useSecretaries(viewMikrotik);
 
   const handleAssignSecretary = async () => {
