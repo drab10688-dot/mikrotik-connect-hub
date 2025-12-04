@@ -41,7 +41,7 @@ export const AdminMenu = () => {
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
           >
             <Users className="h-4 w-4" />
-            <span>Secretarias</span>
+            <span>Asistentes</span>
           </Link>
         )}
       </div>
