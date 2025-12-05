@@ -1,22 +1,22 @@
 project_id = "qybuufofocxsctwnpwon"
 
 [functions.mikrotik-connect]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mikrotik-hotspot-users]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mikrotik-system-info]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mikrotik-v6-api]
-verify_jwt = false
+verify_jwt = true
 
 [functions.network-diagnostics]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mikrotik-vouchers]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mikrotik-pppoe]
-verify_jwt = false
+verify_jwt = true

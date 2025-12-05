@@ -1,6 +1,59 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: string): Promise<{ authorized: boolean; error?: string }> {
+  const { data: roleData } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  if (roleData?.role === 'super_admin') {
+    return { authorized: true };
+  }
+
+  if (!mikrotikId) {
+    return { authorized: true };
+  }
+
+  const { data: accessData } = await supabase
+    .from('user_mikrotik_access')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (accessData) {
+    return { authorized: true };
+  }
+
+  const { data: secretaryData } = await supabase
+    .from('secretary_assignments')
+    .select('id')
+    .eq('secretary_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (secretaryData) {
+    return { authorized: true };
+  }
+
+  const { data: resellerData } = await supabase
+    .from('reseller_assignments')
+    .select('id')
+    .eq('reseller_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (resellerData) {
+    return { authorized: true };
+  }
+
+  return { authorized: false, error: 'No tienes acceso a este dispositivo MikroTik' };
 }
 
 class MikroTikAPI {
@@ -9,17 +62,14 @@ class MikroTikAPI {
 
   async connect(host: string, port: number, username: string, password: string, useTls: boolean) {
     try {
-      // Conectar vía TCP con timeout más largo
       const connectOptions = useTls 
         ? { hostname: host, port }
         : { hostname: host, port };
       
-      // Crear promesa de timeout de 60 segundos para operaciones largas como backup
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout after 60 seconds')), 60000)
       );
       
-      // Conectar con timeout
       this.conn = await Promise.race([
         useTls 
           ? Deno.connectTls(connectOptions)
@@ -27,7 +77,6 @@ class MikroTikAPI {
         timeoutPromise
       ]) as Deno.Conn;
 
-      // Login process
       await this.login(username, password);
       return true;
     } catch (error) {
@@ -37,7 +86,6 @@ class MikroTikAPI {
   }
 
   private async login(username: string, password: string) {
-    // Enviar comando de login sin contraseña para obtener el challenge
     await this.sendCommand(['/login', `=name=${username}`, `=password=${password}`]);
     const response = await this.readResponse();
     
@@ -91,7 +139,6 @@ class MikroTikAPI {
       await this.conn.write(wordBytes);
     }
     
-    // Enviar palabra vacía para terminar
     await this.conn.write(new Uint8Array([0]));
   }
 
@@ -126,13 +173,11 @@ class MikroTikAPI {
   private async readResponse(): Promise<{ type: string; data: Record<string, string> }> {
     if (!this.conn) throw new Error('Not connected');
 
-    // Helpers locales para lectura robusta con timeout
     const readExact = async (n: number): Promise<Uint8Array> => {
       if (!this.conn) throw new Error('Not connected');
       const buf = new Uint8Array(n);
       let readTotal = 0;
       
-      // Timeout de 45 segundos para lectura de operaciones largas
       const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Read timeout after 45 seconds')), 45000)
       );
@@ -174,7 +219,7 @@ class MikroTikAPI {
 
     while (true) {
       const length = await readLengthPrefix();
-      if (length === 0) break; // Fin de la sentencia
+      if (length === 0) break;
 
       const wordBuffer = await readExact(length);
       const word = new TextDecoder().decode(wordBuffer);
@@ -234,9 +279,41 @@ Deno.serve(async (req) => {
   let api: MikroTikAPI | null = null;
 
   try {
-    const { host, username, password, port, command, params } = await req.json();
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Token requerido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
 
-    console.log(`Connecting to MikroTik v6 at ${host}:${port}`);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Sesión inválida' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    const { host, username, password, port, command, params, mikrotikId } = await req.json();
+
+    console.log(`User ${user.id} - Connecting to MikroTik v6 at ${host}:${port}, command: ${command}`);
+
+    const accessCheck = await verifyUserAccess(supabase, user.id, mikrotikId);
+    if (!accessCheck.authorized) {
+      console.error(`Access denied for user ${user.id} to device ${mikrotikId}`);
+      return new Response(
+        JSON.stringify({ success: false, error: accessCheck.error }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
 
     const useTls = port === 8729;
     const actualPort = port || (useTls ? 8729 : 8728);
@@ -370,7 +447,6 @@ Deno.serve(async (req) => {
         break;
 
       default:
-        // Permitir comandos personalizados
         result = await api.executeCommand(command, params || {});
     }
 
@@ -393,7 +469,6 @@ Deno.serve(async (req) => {
     const errorMessage = (error as Error).message || 'Error desconocido';
     let userFriendlyError = errorMessage;
 
-    // Mensajes más descriptivos para errores comunes
     if (errorMessage.includes('Connection refused') || errorMessage.includes('ECONNREFUSED')) {
       userFriendlyError = 'No se puede conectar al router. Verifica que:\n' +
         '1. El servicio API esté habilitado (/ip service enable api)\n' +
