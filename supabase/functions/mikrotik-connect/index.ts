@@ -13,6 +13,62 @@ interface MikroTikConfig {
   useTls: boolean;
 }
 
+async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: string): Promise<{ authorized: boolean; error?: string }> {
+  // Check if user is super_admin (has access to everything)
+  const { data: roleData } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  if (roleData?.role === 'super_admin') {
+    return { authorized: true };
+  }
+
+  // If no mikrotikId provided, user must be at least authenticated
+  if (!mikrotikId) {
+    return { authorized: true };
+  }
+
+  // Check user_mikrotik_access for admins/users
+  const { data: accessData } = await supabase
+    .from('user_mikrotik_access')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (accessData) {
+    return { authorized: true };
+  }
+
+  // Check secretary_assignments for secretaries
+  const { data: secretaryData } = await supabase
+    .from('secretary_assignments')
+    .select('id')
+    .eq('secretary_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (secretaryData) {
+    return { authorized: true };
+  }
+
+  // Check reseller_assignments for resellers
+  const { data: resellerData } = await supabase
+    .from('reseller_assignments')
+    .select('id')
+    .eq('reseller_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (resellerData) {
+    return { authorized: true };
+  }
+
+  return { authorized: false, error: 'No tienes acceso a este dispositivo MikroTik' };
+}
+
 async function connectToMikroTik(config: MikroTikConfig) {
   const attempts = [
     { port: config.port, useTls: config.port === 443 || config.port === 8729 },
@@ -70,9 +126,43 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { host, username, password, port, version } = await req.json();
+    // Verify JWT and get user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Token requerido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
 
-    console.log(`Attempting to connect to MikroTik at ${host}:${port} (${version})`);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Sesión inválida' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    const { host, username, password, port, version, mikrotikId } = await req.json();
+
+    console.log(`User ${user.id} attempting to connect to MikroTik at ${host}:${port}`);
+
+    // Verify user has access to this device
+    const accessCheck = await verifyUserAccess(supabase, user.id, mikrotikId);
+    if (!accessCheck.authorized) {
+      console.error(`Access denied for user ${user.id} to device ${mikrotikId}`);
+      return new Response(
+        JSON.stringify({ success: false, error: accessCheck.error }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
 
     const useTls = port === 443 || port === 8729;
     const actualPort = port || 80;
@@ -107,7 +197,6 @@ Deno.serve(async (req) => {
     const errorMsg = (error as Error).message || 'Error al conectar con MikroTik';
     let userMessage = errorMsg;
     
-    // Detectar tipo de error y dar mensaje específico
     if (errorMsg.includes('Connection refused') || errorMsg.includes('ECONNREFUSED')) {
       userMessage = 'No se puede conectar al router. Para RouterOS v7:\n\n' +
         '1. Habilita el servicio web: /ip service set www-ssl disabled=no\n' +

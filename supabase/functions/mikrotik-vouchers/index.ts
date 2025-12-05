@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -9,6 +11,57 @@ interface MikroTikConfig {
   password: string;
   port: number;
   useTls: boolean;
+}
+
+async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: string): Promise<{ authorized: boolean; error?: string }> {
+  const { data: roleData } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  if (roleData?.role === 'super_admin') {
+    return { authorized: true };
+  }
+
+  if (!mikrotikId) {
+    return { authorized: true };
+  }
+
+  const { data: accessData } = await supabase
+    .from('user_mikrotik_access')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (accessData) {
+    return { authorized: true };
+  }
+
+  const { data: secretaryData } = await supabase
+    .from('secretary_assignments')
+    .select('id')
+    .eq('secretary_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (secretaryData) {
+    return { authorized: true };
+  }
+
+  const { data: resellerData } = await supabase
+    .from('reseller_assignments')
+    .select('id')
+    .eq('reseller_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (resellerData) {
+    return { authorized: true };
+  }
+
+  return { authorized: false, error: 'No tienes acceso a este dispositivo MikroTik' };
 }
 
 async function mikrotikRequest(config: MikroTikConfig, path: string, method: string = 'GET', body?: any) {
@@ -53,9 +106,41 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { host, username, password, port, action, voucherData, count } = await req.json();
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Token requerido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
 
-    console.log(`Voucher action: ${action}`);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Sesión inválida' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    const { host, username, password, port, action, voucherData, count, mikrotikId } = await req.json();
+
+    console.log(`User ${user.id} - Voucher action: ${action}`);
+
+    const accessCheck = await verifyUserAccess(supabase, user.id, mikrotikId);
+    if (!accessCheck.authorized) {
+      console.error(`Access denied for user ${user.id} to device ${mikrotikId}`);
+      return new Response(
+        JSON.stringify({ success: false, error: accessCheck.error }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
 
     const useTls = port === 443 || port === 8729;
     const config: MikroTikConfig = {
@@ -70,48 +155,43 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'generate':
-        // Generar múltiples vouchers
         const vouchers = [];
         const voucherCount = count || 1;
         const profile = voucherData?.profile || 'default';
         const validity = voucherData?.validity || '1d';
         
         for (let i = 0; i < voucherCount; i++) {
-          const username = generateRandomString(8);
-          const password = generateRandomString(8);
+          const vUsername = generateRandomString(8);
+          const vPassword = generateRandomString(8);
           
-          // Crear usuario hotspot
           await mikrotikRequest(config, '/rest/ip/hotspot/user/add', 'POST', {
-            name: username,
-            password: password,
+            name: vUsername,
+            password: vPassword,
             profile: profile,
             comment: `Voucher ${new Date().toISOString()}`,
           });
           
-          vouchers.push({ username, password, profile, validity });
+          vouchers.push({ username: vUsername, password: vPassword, profile, validity });
         }
         
         result = vouchers;
         break;
 
       case 'list':
-        // Listar todos los usuarios (vouchers)
         result = await mikrotikRequest(config, '/rest/ip/hotspot/user');
         break;
 
       case 'delete':
-        // Eliminar voucher por ID
         await mikrotikRequest(config, `/rest/ip/hotspot/user/${voucherData.id}`, 'DELETE');
         result = { success: true };
         break;
 
       case 'bulk-delete':
-        // Eliminar múltiples vouchers
         const users = await mikrotikRequest(config, '/rest/ip/hotspot/user');
         const toDelete = users.filter((u: any) => u.comment?.includes('Voucher'));
         
-        for (const user of toDelete) {
-          await mikrotikRequest(config, `/rest/ip/hotspot/user/${user['.id']}`, 'DELETE');
+        for (const vUser of toDelete) {
+          await mikrotikRequest(config, `/rest/ip/hotspot/user/${vUser['.id']}`, 'DELETE');
         }
         
         result = { deleted: toDelete.length };

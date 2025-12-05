@@ -1,6 +1,59 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: string): Promise<{ authorized: boolean; error?: string }> {
+  const { data: roleData } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  if (roleData?.role === 'super_admin') {
+    return { authorized: true };
+  }
+
+  if (!mikrotikId) {
+    return { authorized: true };
+  }
+
+  const { data: accessData } = await supabase
+    .from('user_mikrotik_access')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (accessData) {
+    return { authorized: true };
+  }
+
+  const { data: secretaryData } = await supabase
+    .from('secretary_assignments')
+    .select('id')
+    .eq('secretary_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (secretaryData) {
+    return { authorized: true };
+  }
+
+  const { data: resellerData } = await supabase
+    .from('reseller_assignments')
+    .select('id')
+    .eq('reseller_id', userId)
+    .eq('mikrotik_id', mikrotikId)
+    .single();
+
+  if (resellerData) {
+    return { authorized: true };
+  }
+
+  return { authorized: false, error: 'No tienes acceso a este dispositivo MikroTik' };
 }
 
 async function testTcpConnection(host: string, port: number, timeout: number = 5000): Promise<{ success: boolean; time?: number; error?: string }> {
@@ -58,9 +111,41 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { host, action, port, ports } = await req.json();
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Token requerido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
 
-    console.log(`Network diagnostics - Action: ${action}, Host: ${host}`);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado - Sesión inválida' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    const { host, action, port, ports, mikrotikId } = await req.json();
+
+    console.log(`User ${user.id} - Network diagnostics - Action: ${action}, Host: ${host}`);
+
+    const accessCheck = await verifyUserAccess(supabase, user.id, mikrotikId);
+    if (!accessCheck.authorized) {
+      console.error(`Access denied for user ${user.id} to device ${mikrotikId}`);
+      return new Response(
+        JSON.stringify({ success: false, error: accessCheck.error }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
 
     let result;
 
