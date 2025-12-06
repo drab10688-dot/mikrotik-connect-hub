@@ -1,24 +1,25 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Edit, Trash2, Wifi, Cable } from "lucide-react";
+import { Search, Plus, Edit, Trash2, Wifi, Cable, Router } from "lucide-react";
 import { useHotspotProfiles, usePPPoEProfiles } from "@/hooks/useMikrotikData";
 import { toast } from "sonner";
-import { deleteHotspotProfile, deletePPPoEProfile } from "@/lib/mikrotik";
+import { deleteHotspotProfile, deletePPPoEProfile, getSelectedDeviceId, getSelectedDevice } from "@/lib/mikrotik";
 import { AddHotspotProfileDialog } from "@/components/forms/AddHotspotProfileDialog";
 import { AddPPPoEProfileDialog } from "@/components/forms/AddPPPoEProfileDialog";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 
 export default function Profiles() {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedMikrotik, setSelectedMikrotik] = useState<string>("");
-  const { devices: mikrotikDevices } = useUserDeviceAccess();
+  const connectedDeviceId = getSelectedDeviceId();
+  const connectedDevice = getSelectedDevice();
+  const selectedMikrotik = connectedDeviceId || "";
   
   const { data: hotspotProfilesData, isLoading: loadingHotspot, refetch: refetchHotspot } = useHotspotProfiles();
   const { data: pppoeProfilesData, isLoading: loadingPPPoE, refetch: refetchPPPoE } = usePPPoEProfiles();
@@ -70,177 +71,189 @@ export default function Profiles() {
           </div>
         </div>
 
-        {/* Device Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Seleccionar Dispositivo</CardTitle>
-            <CardDescription>Elige el MikroTik para gestionar perfiles</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Select value={selectedMikrotik} onValueChange={setSelectedMikrotik}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona un dispositivo" />
-              </SelectTrigger>
-              <SelectContent>
-                {mikrotikDevices?.map((device: any) => (
-                  <SelectItem key={device.id} value={device.id}>
-                    {device.name} ({device.host})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-
-        {selectedMikrotik && (
-          <Tabs defaultValue="hotspot" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="hotspot" className="flex items-center gap-2">
-            <Wifi className="w-4 h-4" />
-            Perfiles Hotspot
-          </TabsTrigger>
-          <TabsTrigger value="pppoe" className="flex items-center gap-2">
-            <Cable className="w-4 h-4" />
-            Perfiles PPPoE
-          </TabsTrigger>
-        </TabsList>
-
-        <div className="flex gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar perfiles..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
-
-        <TabsContent value="hotspot" className="space-y-4">
+        {/* Connected Device Info */}
+        {!selectedMikrotik ? (
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Perfiles Hotspot</CardTitle>
-                  <CardDescription>Gestiona perfiles para usuarios de Hotspot</CardDescription>
-                </div>
-                <AddHotspotProfileDialog onSuccess={refetchHotspot} />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loadingHotspot ? (
-                <div className="text-center py-8 text-muted-foreground">Cargando perfiles...</div>
-              ) : filteredHotspotProfiles.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">No se encontraron perfiles</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Límite de Velocidad</TableHead>
-                      <TableHead>Tiempo de Sesión</TableHead>
-                      <TableHead>Tiempo Inactivo</TableHead>
-                      <TableHead>Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredHotspotProfiles.map((profile: any) => (
-                      <TableRow key={profile[".id"]}>
-                        <TableCell className="font-medium">{profile.name}</TableCell>
-                        <TableCell>
-                          {profile["rate-limit"] ? (
-                            <Badge variant="secondary">{profile["rate-limit"]}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">Sin límite</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {profile["session-timeout"] || <span className="text-muted-foreground">Ilimitado</span>}
-                        </TableCell>
-                        <TableCell>
-                          {profile["idle-timeout"] || <span className="text-muted-foreground">Sin límite</span>}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteHotspotProfile(profile[".id"], profile.name)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+            <CardContent className="py-8 text-center">
+              <Router className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground mb-4">
+                No hay dispositivo MikroTik conectado
+              </p>
+              <Button onClick={() => navigate('/settings')}>
+                Ir a Configuración
+              </Button>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="pppoe" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Perfiles PPPoE</CardTitle>
-                  <CardDescription>Gestiona perfiles para conexiones PPPoE</CardDescription>
+        ) : (
+          <>
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Router className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">{connectedDevice?.name}</CardTitle>
+                      <CardDescription>{connectedDevice?.host}:{connectedDevice?.port}</CardDescription>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
+                    Cambiar
+                  </Button>
                 </div>
-                <AddPPPoEProfileDialog onSuccess={refetchPPPoE} />
+              </CardHeader>
+            </Card>
+
+            <Tabs defaultValue="hotspot" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="hotspot" className="flex items-center gap-2">
+                  <Wifi className="w-4 h-4" />
+                  Perfiles Hotspot
+                </TabsTrigger>
+                <TabsTrigger value="pppoe" className="flex items-center gap-2">
+                  <Cable className="w-4 h-4" />
+                  Perfiles PPPoE
+                </TabsTrigger>
+              </TabsList>
+
+              <div className="flex gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar perfiles..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              {loadingPPPoE ? (
-                <div className="text-center py-8 text-muted-foreground">Cargando perfiles...</div>
-              ) : filteredPPPoEProfiles.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">No se encontraron perfiles</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Límite de Velocidad</TableHead>
-                      <TableHead>Dirección Local</TableHead>
-                      <TableHead>Pool Remoto</TableHead>
-                      <TableHead>Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPPPoEProfiles.map((profile: any) => (
-                      <TableRow key={profile[".id"]}>
-                        <TableCell className="font-medium">{profile.name}</TableCell>
-                        <TableCell>
-                          {profile["rate-limit"] ? (
-                            <Badge variant="secondary">{profile["rate-limit"]}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">Sin límite</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{profile["local-address"] || "-"}</TableCell>
-                        <TableCell>{profile["remote-address"] || "-"}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeletePPPoEProfile(profile[".id"], profile.name)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+
+              <TabsContent value="hotspot" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Perfiles Hotspot</CardTitle>
+                        <CardDescription>Gestiona perfiles para usuarios de Hotspot</CardDescription>
+                      </div>
+                      <AddHotspotProfileDialog onSuccess={refetchHotspot} />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingHotspot ? (
+                      <div className="text-center py-8 text-muted-foreground">Cargando perfiles...</div>
+                    ) : filteredHotspotProfiles.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">No se encontraron perfiles</div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nombre</TableHead>
+                            <TableHead>Límite de Velocidad</TableHead>
+                            <TableHead>Tiempo de Sesión</TableHead>
+                            <TableHead>Tiempo Inactivo</TableHead>
+                            <TableHead>Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredHotspotProfiles.map((profile: any) => (
+                            <TableRow key={profile[".id"]}>
+                              <TableCell className="font-medium">{profile.name}</TableCell>
+                              <TableCell>
+                                {profile["rate-limit"] ? (
+                                  <Badge variant="secondary">{profile["rate-limit"]}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">Sin límite</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {profile["session-timeout"] || <span className="text-muted-foreground">Ilimitado</span>}
+                              </TableCell>
+                              <TableCell>
+                                {profile["idle-timeout"] || <span className="text-muted-foreground">Sin límite</span>}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteHotspotProfile(profile[".id"], profile.name)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="pppoe" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Perfiles PPPoE</CardTitle>
+                        <CardDescription>Gestiona perfiles para conexiones PPPoE</CardDescription>
+                      </div>
+                      <AddPPPoEProfileDialog onSuccess={refetchPPPoE} />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingPPPoE ? (
+                      <div className="text-center py-8 text-muted-foreground">Cargando perfiles...</div>
+                    ) : filteredPPPoEProfiles.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">No se encontraron perfiles</div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nombre</TableHead>
+                            <TableHead>Límite de Velocidad</TableHead>
+                            <TableHead>Dirección Local</TableHead>
+                            <TableHead>Pool Remoto</TableHead>
+                            <TableHead>Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredPPPoEProfiles.map((profile: any) => (
+                            <TableRow key={profile[".id"]}>
+                              <TableCell className="font-medium">{profile.name}</TableCell>
+                              <TableCell>
+                                {profile["rate-limit"] ? (
+                                  <Badge variant="secondary">{profile["rate-limit"]}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">Sin límite</span>
+                                )}
+                              </TableCell>
+                              <TableCell>{profile["local-address"] || "-"}</TableCell>
+                              <TableCell>{profile["remote-address"] || "-"}</TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeletePPPoEProfile(profile[".id"], profile.name)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </>
         )}
         </div>
       </div>

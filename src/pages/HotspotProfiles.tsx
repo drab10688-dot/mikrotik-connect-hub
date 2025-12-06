@@ -1,20 +1,24 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
-import { Plus, Trash2, Wifi } from 'lucide-react';
+import { getSelectedDeviceId, getSelectedDevice } from '@/lib/mikrotik';
+import { Plus, Trash2, Wifi, Router } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function HotspotProfiles() {
-  const [selectedMikrotik, setSelectedMikrotik] = useState<string>("");
+  const navigate = useNavigate();
+  const connectedDeviceId = getSelectedDeviceId();
+  const connectedDevice = getSelectedDevice();
+  const selectedMikrotik = connectedDeviceId || "";
+  
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
   
@@ -26,7 +30,6 @@ export default function HotspotProfiles() {
   const [idleTimeout, setIdleTimeout] = useState("");
 
   const queryClient = useQueryClient();
-  const { devices: mikrotikDevices } = useUserDeviceAccess();
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['hotspot-profiles-manage', selectedMikrotik],
@@ -174,30 +177,39 @@ export default function HotspotProfiles() {
             </div>
           </div>
 
-          {/* Device Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Seleccionar Dispositivo</CardTitle>
-              <CardDescription>Elige el MikroTik para gestionar perfiles</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select value={selectedMikrotik} onValueChange={setSelectedMikrotik}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un dispositivo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {mikrotikDevices?.map((device: any) => (
-                    <SelectItem key={device.id} value={device.id}>
-                      {device.name} ({device.host})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-
-          {selectedMikrotik && (
+          {/* Connected Device Info */}
+          {!selectedMikrotik ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <Router className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground mb-4">
+                  No hay dispositivo MikroTik conectado
+                </p>
+                <Button onClick={() => navigate('/settings')}>
+                  Ir a Configuración
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
             <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <Router className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{connectedDevice?.name}</CardTitle>
+                        <CardDescription>{connectedDevice?.host}:{connectedDevice?.port}</CardDescription>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
+                      Cambiar
+                    </Button>
+                  </div>
+                </CardHeader>
+              </Card>
               {/* Create Profile Section */}
               {showCreateDialog ? (
                 <Card>

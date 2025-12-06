@@ -1,4 +1,6 @@
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,18 +13,22 @@ import { useVoucherPresets } from '@/hooks/useVoucherPresets';
 import { VoucherInventoryCard } from '@/components/vouchers/VoucherInventoryCard';
 import { VoucherTable } from '@/components/vouchers/VoucherTable';
 import { PrintVoucherTicket } from '@/components/vouchers/PrintVoucherTicket';
-import { useUserDeviceAccess } from '@/hooks/useUserDeviceAccess';
 import { VoucherPresetsManager } from '@/components/vouchers/VoucherPresetsManager';
 import { VoucherReports } from '@/components/vouchers/VoucherReports';
 import { VoucherQRDialog } from '@/components/vouchers/VoucherQRDialog';
 import { ResellerManagement } from '@/components/vouchers/ResellerManagement';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Upload, Printer, RefreshCw } from 'lucide-react';
+import { getSelectedDeviceId, getSelectedDevice } from '@/lib/mikrotik';
+import { Plus, Upload, Printer, RefreshCw, Router } from 'lucide-react';
 import { toast } from 'sonner';
 import QRCode from 'qrcode';
 
 export default function VoucherInventory() {
-  const [selectedMikrotik, setSelectedMikrotik] = useState<string>("");
+  const navigate = useNavigate();
+  const connectedDeviceId = getSelectedDeviceId();
+  const connectedDevice = getSelectedDevice();
+  const selectedMikrotik = connectedDeviceId || "";
+  
   const [voucherCount, setVoucherCount] = useState(1);
   const [selectedPreset, setSelectedPreset] = useState("");
   const [validity, setValidity] = useState("24h");
@@ -34,7 +40,23 @@ export default function VoucherInventory() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isAdmin, isSuperAdmin } = useAuth();
 
-  const { devices: mikrotikDevices } = useUserDeviceAccess();
+  // Fetch the connected device's hotspot_url from database
+  const { data: deviceInfo } = useQuery({
+    queryKey: ['device-info', selectedMikrotik],
+    queryFn: async () => {
+      if (!selectedMikrotik) return null;
+      const { data, error } = await supabase
+        .from('mikrotik_devices')
+        .select('hotspot_url')
+        .eq('id', selectedMikrotik)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!selectedMikrotik,
+  });
+
+  const hotspotUrl = deviceInfo?.hotspot_url || 'http://192.168.88.1/login';
   const { presets } = useVoucherPresets(selectedMikrotik);
 
   const {
@@ -50,7 +72,7 @@ export default function VoucherInventory() {
 
   const handleSync = () => {
     if (!selectedMikrotik) {
-      toast.error('Selecciona un dispositivo');
+      toast.error('No hay dispositivo conectado');
       return;
     }
     syncVouchers(selectedMikrotik);
@@ -58,7 +80,7 @@ export default function VoucherInventory() {
 
   const handleGenerate = () => {
     if (!selectedMikrotik || !selectedPreset) {
-      toast.error('Selecciona un dispositivo y preset');
+      toast.error('Selecciona un preset para generar vouchers');
       return;
     }
 
@@ -94,8 +116,6 @@ export default function VoucherInventory() {
       return;
     }
 
-    const selectedDevice = mikrotikDevices?.find(d => d.id === selectedMikrotik);
-    const hotspotUrl = selectedDevice?.hotspot_url || 'http://192.168.88.1/login';
     const vouchersToP = vouchers?.filter(v => selectedVouchers.includes(v.id)) || [];
 
     const printWindow = window.open('', '_blank');
@@ -193,8 +213,6 @@ export default function VoucherInventory() {
   };
 
   const handlePrintVoucher = async (voucher: any) => {
-    const selectedDevice = mikrotikDevices?.find(d => d.id === selectedMikrotik);
-    const hotspotUrl = selectedDevice?.hotspot_url || 'http://192.168.88.1/login';
 
     const qrCanvas = document.createElement('canvas');
     const qrContent = hotspotUrl.includes('?') 
@@ -310,27 +328,39 @@ export default function VoucherInventory() {
             </p>
           </div>
 
-          {/* Device Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Seleccionar Dispositivo</CardTitle>
-              <CardDescription>Elige el MikroTik para gestionar vouchers</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select value={selectedMikrotik} onValueChange={setSelectedMikrotik}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un dispositivo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {mikrotikDevices?.map((device: any) => (
-                    <SelectItem key={device.id} value={device.id}>
-                      {device.name} ({device.host})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
+          {/* Connected Device Info */}
+          {!selectedMikrotik ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <Router className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground mb-4">
+                  No hay dispositivo MikroTik conectado
+                </p>
+                <Button onClick={() => navigate('/settings')}>
+                  Ir a Configuración
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Router className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">{connectedDevice?.name}</CardTitle>
+                      <CardDescription>{connectedDevice?.host}:{connectedDevice?.port}</CardDescription>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
+                    Cambiar
+                  </Button>
+                </div>
+              </CardHeader>
+            </Card>
+          )}
 
           {selectedMikrotik && (
             <>
@@ -507,7 +537,7 @@ export default function VoucherInventory() {
               
               <VoucherQRDialog
                 voucher={qrDialogVoucher}
-                hotspotUrl={mikrotikDevices?.find(d => d.id === selectedMikrotik)?.hotspot_url || 'http://192.168.88.1/login'}
+                hotspotUrl={hotspotUrl}
                 open={!!qrDialogVoucher}
                 onOpenChange={(open) => !open && setQrDialogVoucher(null)}
               />
