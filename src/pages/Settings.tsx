@@ -17,6 +17,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, isSuperAdmin, isAdmin, isSecretary } = useAuth();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
+  const [autoConnecting, setAutoConnecting] = useState(false);
 
   // Clean up legacy credential storage on mount
   useEffect(() => {
@@ -72,6 +73,33 @@ export default function Settings() {
     },
     enabled: !!user,
   });
+
+  // Auto-select and connect when user has exactly one active device
+  useEffect(() => {
+    if (isLoading || autoConnecting || !devices) return;
+    
+    const activeDevices = devices.filter((d: any) => d.status === 'active');
+    
+    // If user has exactly one active device, auto-select and connect
+    if (activeDevices.length === 1 && !selectedDevice) {
+      const device = activeDevices[0];
+      setSelectedDevice(device.id);
+      setAutoConnecting(true);
+      
+      // Auto-connect after a brief delay to show the selection
+      setTimeout(() => {
+        saveSelectedDevice({
+          id: device.id,
+          name: device.name,
+          host: device.host,
+          port: device.port.toString(),
+          version: device.version,
+        });
+        toast.success(`Conectado automáticamente a ${device.name}`);
+        navigate("/dashboard");
+      }, 500);
+    }
+  }, [devices, isLoading, selectedDevice, autoConnecting, navigate]);
 
   const handleConnect = async () => {
     if (!selectedDevice) {
