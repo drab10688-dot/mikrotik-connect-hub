@@ -69,6 +69,21 @@ async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: stri
   return { authorized: false, error: 'No tienes acceso a este dispositivo MikroTik' };
 }
 
+async function getDeviceCredentials(supabase: any, mikrotikId: string): Promise<{ host: string; username: string; password: string; port: number; version: string } | null> {
+  const { data, error } = await supabase
+    .from('mikrotik_devices')
+    .select('host, username, password, port, version')
+    .eq('id', mikrotikId)
+    .single();
+
+  if (error || !data) {
+    console.error('Error fetching device credentials:', error);
+    return null;
+  }
+
+  return data;
+}
+
 async function connectToMikroTik(config: MikroTikConfig) {
   const attempts = [
     { port: config.port, useTls: config.port === 443 || config.port === 8729 },
@@ -150,9 +165,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { host, username, password, port, version, mikrotikId } = await req.json();
+    const { mikrotikId } = await req.json();
 
-    console.log(`User ${user.id} attempting to connect to MikroTik at ${host}:${port}`);
+    if (!mikrotikId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'mikrotikId es requerido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    console.log(`User ${user.id} attempting to connect to MikroTik device ${mikrotikId}`);
 
     // Verify user has access to this device
     const accessCheck = await verifyUserAccess(supabase, user.id, mikrotikId);
@@ -164,14 +186,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    const useTls = port === 443 || port === 8729;
-    const actualPort = port || 80;
+    // Get device credentials from database (server-side only)
+    const serviceSupabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const credentials = await getDeviceCredentials(serviceSupabase, mikrotikId);
+    if (!credentials) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Dispositivo no encontrado' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
+    }
+
+    console.log(`Connecting to MikroTik at ${credentials.host}:${credentials.port}`);
+
+    const useTls = credentials.port === 443 || credentials.port === 8729;
 
     const config: MikroTikConfig = {
-      host: host,
-      username,
-      password,
-      port: actualPort,
+      host: credentials.host,
+      username: credentials.username,
+      password: credentials.password,
+      port: credentials.port,
       useTls,
     };
 

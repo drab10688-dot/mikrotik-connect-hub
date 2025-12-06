@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
-import { saveMikroTikCredentials } from "@/lib/mikrotik";
+import { saveSelectedDevice, cleanupLegacyStorage } from "@/lib/mikrotik";
 import { Router, Wifi } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
@@ -17,6 +17,11 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, isSuperAdmin, isAdmin, isSecretary } = useAuth();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
+
+  // Clean up legacy credential storage on mount
+  useEffect(() => {
+    cleanupLegacyStorage();
+  }, []);
 
   const { data: devices, isLoading } = useQuery({
     queryKey: ['mikrotik-devices-select', user?.id, isSecretary],
@@ -80,7 +85,7 @@ export default function Settings() {
       return;
     }
 
-    // Verificar que el dispositivo esté activo
+    // Verify device is active
     if (device.status !== 'active') {
       toast.error("Dispositivo no disponible", {
         description: device.status === 'pending' 
@@ -90,11 +95,11 @@ export default function Settings() {
       return;
     }
 
-    // Verificar autorización
+    // Verify authorization
     try {
       if (!isSuperAdmin) {
         if (isSecretary) {
-          // Verificar que la secretaria tenga acceso asignado
+          // Verify secretary has assigned access
           const { data: access, error } = await supabase
             .from('secretary_assignments')
             .select('id')
@@ -109,7 +114,7 @@ export default function Settings() {
             return;
           }
         } else if (isAdmin) {
-          // Verificar que el admin tenga acceso asignado
+          // Verify admin has assigned access
           const { data: access, error } = await supabase
             .from('user_mikrotik_access')
             .select('id')
@@ -124,7 +129,7 @@ export default function Settings() {
             return;
           }
         } else {
-          // Verificar que el usuario sea el creador
+          // Verify user is the creator
           if (device.created_by !== user?.id) {
             toast.error("Acceso no autorizado", {
               description: "Este dispositivo no te pertenece. Solo puedes conectarte a tus propios dispositivos."
@@ -134,11 +139,11 @@ export default function Settings() {
         }
       }
 
-      // Si pasó todas las validaciones, guardar credenciales y conectar
-      saveMikroTikCredentials({
+      // Save only non-sensitive device info (NO passwords or usernames)
+      saveSelectedDevice({
+        id: device.id,
+        name: device.name,
         host: device.host,
-        username: device.username,
-        password: device.password,
         port: device.port.toString(),
         version: device.version,
       });

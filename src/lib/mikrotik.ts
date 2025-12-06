@@ -1,50 +1,79 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export interface MikroTikCredentials {
+export interface MikroTikDeviceConfig {
+  id: string;
+  name: string;
   host: string;
-  username: string;
-  password: string;
   port: string;
   version: string;
 }
 
-export const saveMikroTikCredentials = (credentials: MikroTikCredentials) => {
-  localStorage.setItem("mikrotik_config", JSON.stringify(credentials));
+export const saveSelectedDevice = (device: MikroTikDeviceConfig) => {
+  // Only store non-sensitive device info - NO passwords or usernames
+  localStorage.setItem("mikrotik_device_id", device.id);
   localStorage.setItem("mikrotik_connected", "true");
-  localStorage.setItem("mikrotik_host", credentials.host);
-  localStorage.setItem("mikrotik_version", credentials.version);
+  localStorage.setItem("mikrotik_host", device.host);
+  localStorage.setItem("mikrotik_version", device.version);
+  localStorage.setItem("mikrotik_device_name", device.name);
+  localStorage.setItem("mikrotik_port", device.port);
 };
 
-export const getMikroTikCredentials = (): MikroTikCredentials | null => {
-  const config = localStorage.getItem("mikrotik_config");
-  return config ? JSON.parse(config) : null;
+export const getSelectedDevice = (): MikroTikDeviceConfig | null => {
+  const id = localStorage.getItem("mikrotik_device_id");
+  if (!id) return null;
+  
+  return {
+    id,
+    name: localStorage.getItem("mikrotik_device_name") || "",
+    host: localStorage.getItem("mikrotik_host") || "",
+    port: localStorage.getItem("mikrotik_port") || "8728",
+    version: localStorage.getItem("mikrotik_version") || "v6",
+  };
 };
 
-export const clearMikroTikCredentials = () => {
-  localStorage.removeItem("mikrotik_config");
+export const getSelectedDeviceId = (): string | null => {
+  return localStorage.getItem("mikrotik_device_id");
+};
+
+export const clearSelectedDevice = () => {
+  localStorage.removeItem("mikrotik_device_id");
   localStorage.removeItem("mikrotik_connected");
   localStorage.removeItem("mikrotik_host");
   localStorage.removeItem("mikrotik_version");
+  localStorage.removeItem("mikrotik_device_name");
+  localStorage.removeItem("mikrotik_port");
+  // Also clean up legacy keys if present
+  localStorage.removeItem("mikrotik_config");
+};
+
+// Legacy compatibility - remove old credential storage if present
+export const cleanupLegacyStorage = () => {
+  const legacyConfig = localStorage.getItem("mikrotik_config");
+  if (legacyConfig) {
+    localStorage.removeItem("mikrotik_config");
+  }
 };
 
 export const callMikroTikFunction = async (
   functionName: string,
   params: Record<string, any>
 ) => {
-  const credentials = getMikroTikCredentials();
+  const device = getSelectedDevice();
   
-  if (!credentials) {
-    throw new Error("No hay credenciales de MikroTik guardadas");
+  if (!device) {
+    throw new Error("No hay dispositivo MikroTik seleccionado");
   }
 
-  // Si es v6, usar la API binaria
-  if (credentials.version === "v6") {
+  // Pass only the device ID - credentials will be fetched server-side
+  const commonParams = {
+    mikrotikId: device.id,
+  };
+
+  // If version v6, use binary API
+  if (device.version === "v6") {
     const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
       body: {
-        host: credentials.host,
-        username: credentials.username,
-        password: credentials.password,
-        port: parseInt(credentials.port),
+        ...commonParams,
         command: params.command || functionName,
         params: params.params || {},
       },
@@ -55,11 +84,10 @@ export const callMikroTikFunction = async (
     return data.data;
   }
 
-  // Para v7, usar REST API
+  // For v7, use REST API
   const { data, error } = await supabase.functions.invoke(functionName, {
     body: {
-      ...credentials,
-      port: parseInt(credentials.port),
+      ...commonParams,
       ...params,
     },
   });
@@ -70,15 +98,12 @@ export const callMikroTikFunction = async (
   return data.data;
 };
 
-export const testMikroTikConnection = async (credentials: MikroTikCredentials) => {
-  // Si es v6, usar la API binaria
-  if (credentials.version === "v6") {
+export const testMikroTikConnection = async (mikrotikId: string, version: string) => {
+  // Test connection using device ID - credentials fetched server-side
+  if (version === "v6") {
     const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
       body: {
-        host: credentials.host,
-        username: credentials.username,
-        password: credentials.password,
-        port: parseInt(credentials.port),
+        mikrotikId,
         command: "/system/resource/print",
         params: {},
       },
@@ -88,11 +113,10 @@ export const testMikroTikConnection = async (credentials: MikroTikCredentials) =
     return { success: true, data: data.data };
   }
 
-  // Para v7, usar REST API
+  // For v7, use REST API
   const { data, error } = await supabase.functions.invoke("mikrotik-connect", {
     body: {
-      ...credentials,
-      port: parseInt(credentials.port),
+      mikrotikId,
     },
   });
 
@@ -101,8 +125,8 @@ export const testMikroTikConnection = async (credentials: MikroTikCredentials) =
 };
 
 export const getHotspotUsers = async () => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-users", {
       command: "hotspot-users",
     });
@@ -118,8 +142,8 @@ export const addHotspotUser = async (userData: {
   profile?: string;
   limit?: string;
 }) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-user-add", {
       command: "hotspot-user-add",
       params: {
@@ -136,8 +160,8 @@ export const addHotspotUser = async (userData: {
 };
 
 export const removeHotspotUser = async (userId: string) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-user-remove", {
       command: "hotspot-user-remove",
       params: {
@@ -152,8 +176,8 @@ export const removeHotspotUser = async (userId: string) => {
 };
 
 export const getSystemInfo = async (type: string = "resources") => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     const commandMap: Record<string, string> = {
       "resources": "system-resource",
       "interfaces": "interfaces",
@@ -170,8 +194,8 @@ export const getSystemInfo = async (type: string = "resources") => {
 };
 
 export const getPPPoEUsers = async () => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("ppp-secrets", {
       command: "ppp-secrets",
     });
@@ -190,8 +214,8 @@ export const addPPPoEUser = async (userData: {
   remoteAddress?: string;
   comment?: string;
 }) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("ppp-secret-add", {
       command: "ppp-secret-add",
       params: userData,
@@ -204,8 +228,8 @@ export const addPPPoEUser = async (userData: {
 };
 
 export const removePPPoEUser = async (userId: string) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("ppp-secret-remove", {
       command: "ppp-secret-remove",
       params: { ".id": userId },
@@ -218,10 +242,10 @@ export const removePPPoEUser = async (userId: string) => {
 };
 
 export const togglePPPoEUser = async (userId: string, currentlyDisabled: boolean) => {
-  const credentials = getMikroTikCredentials();
+  const device = getSelectedDevice();
   const command = currentlyDisabled ? "ppp-secret-enable" : "ppp-secret-disable";
   
-  if (credentials?.version === "v6") {
+  if (device?.version === "v6") {
     return await callMikroTikFunction(command, {
       command,
       params: { ".id": userId },
@@ -234,9 +258,9 @@ export const togglePPPoEUser = async (userId: string, currentlyDisabled: boolean
 };
 
 export const disconnectPPPoEUser = async (connectionId: string) => {
-  const credentials = getMikroTikCredentials();
+  const device = getSelectedDevice();
   
-  if (credentials?.version === "v6") {
+  if (device?.version === "v6") {
     return await callMikroTikFunction("ppp-active-remove", {
       command: "ppp-active-remove",
       params: { ".id": connectionId },
@@ -249,8 +273,8 @@ export const disconnectPPPoEUser = async (connectionId: string) => {
 };
 
 export const getPPPoEActive = async () => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("ppp-active", {
       command: "ppp-active",
     });
@@ -261,9 +285,9 @@ export const getPPPoEActive = async () => {
 };
 
 export const generateVouchers = async (count: number, profile?: string) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
-    // Para v6, generamos vouchers directamente con hotspot users
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
+    // For v6, generate vouchers directly with hotspot users
     const vouchers = [];
     for (let i = 0; i < count; i++) {
       const username = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -290,9 +314,9 @@ export const generateVouchers = async (count: number, profile?: string) => {
 };
 
 export const getVouchers = async () => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
-    // Para v6, los vouchers son usuarios hotspot
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
+    // For v6, vouchers are hotspot users
     return await callMikroTikFunction("hotspot-users", {
       command: "hotspot-users",
     });
@@ -303,8 +327,8 @@ export const getVouchers = async () => {
 };
 
 export const deleteVoucher = async (voucherId: string) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-user-remove", {
       command: "hotspot-user-remove",
       params: {
@@ -320,8 +344,8 @@ export const deleteVoucher = async (voucherId: string) => {
 
 // Profiles Management
 export const getHotspotProfiles = async () => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-profiles", {
       command: "hotspot-profiles",
     });
@@ -332,8 +356,8 @@ export const getHotspotProfiles = async () => {
 };
 
 export const addHotspotProfile = async (profileData: any) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-profile-add", {
       command: "hotspot-profile-add",
       params: profileData,
@@ -354,8 +378,8 @@ export const updateHotspotProfile = async (id: string, profileData: any) => {
 };
 
 export const deleteHotspotProfile = async (id: string) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("hotspot-profile-delete", {
       command: "hotspot-profile-delete",
       params: { ".id": id },
@@ -368,8 +392,8 @@ export const deleteHotspotProfile = async (id: string) => {
 };
 
 export const getPPPoEProfiles = async () => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("pppoe-profiles", {
       command: "pppoe-profiles",
     });
@@ -380,8 +404,8 @@ export const getPPPoEProfiles = async () => {
 };
 
 export const addPPPoEProfile = async (profileData: any) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("pppoe-profile-add", {
       command: "pppoe-profile-add",
       params: profileData,
@@ -402,8 +426,8 @@ export const updatePPPoEProfile = async (id: string, profileData: any) => {
 };
 
 export const deletePPPoEProfile = async (id: string) => {
-  const credentials = getMikroTikCredentials();
-  if (credentials?.version === "v6") {
+  const device = getSelectedDevice();
+  if (device?.version === "v6") {
     return await callMikroTikFunction("pppoe-profile-delete", {
       command: "pppoe-profile-delete",
       params: { ".id": id },
@@ -414,3 +438,11 @@ export const deletePPPoEProfile = async (id: string) => {
     id,
   });
 };
+
+// Legacy exports for backwards compatibility during migration
+export const getMikroTikCredentials = getSelectedDevice;
+export const saveMikroTikCredentials = (credentials: { host: string; username: string; password: string; port: string; version: string }) => {
+  // This is a legacy function - should not be used
+  console.warn("saveMikroTikCredentials is deprecated. Use saveSelectedDevice instead.");
+};
+export const clearMikroTikCredentials = clearSelectedDevice;
