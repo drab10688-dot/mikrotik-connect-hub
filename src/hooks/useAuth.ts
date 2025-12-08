@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
+import { clearSelectedDevice } from '@/lib/mikrotik';
 
 interface UserRole {
   role: 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary' | null;
@@ -26,6 +27,8 @@ export const useAuth = () => {
         if (session?.user) {
           await fetchUserRole(session.user.id);
         } else {
+          // Clear device selection when no session
+          clearSelectedDevice();
           setLoading(false);
         }
       } catch (error) {
@@ -43,13 +46,17 @@ export const useAuth = () => {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchUserRole(session.user.id);
       } else {
+        // Clear device selection on logout
+        if (event === 'SIGNED_OUT') {
+          clearSelectedDevice();
+        }
         setRole(null);
         setLoading(false);
       }
@@ -102,6 +109,7 @@ export const useAuth = () => {
   };
 
   const signOut = async () => {
+    clearSelectedDevice();
     await supabase.auth.signOut();
   };
 
