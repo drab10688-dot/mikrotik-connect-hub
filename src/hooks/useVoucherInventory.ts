@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from './useAuth';
+import { getSelectedDeviceId } from '@/lib/mikrotik';
 
 interface GenerateVouchersParams {
   count: number;
@@ -40,33 +41,65 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     enabled: !!mikrotikId,
   });
 
+  // Fetch hotspot users from MikroTik to detect used vouchers
+  const { data: hotspotUsers } = useQuery({
+    queryKey: ['hotspot-users-status', mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return [];
+      
+      const { data, error } = await supabase.functions.invoke('mikrotik-v6-api', {
+        body: {
+          mikrotikId,
+          command: 'hotspot-users',
+        },
+      });
+
+      if (error) {
+        console.error('Error fetching hotspot users:', error);
+        return [];
+      }
+      
+      return data?.data || [];
+    },
+    enabled: !!mikrotikId,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Compute vouchers with updated status based on MikroTik data
+  const vouchersWithStatus = vouchers?.map(voucher => {
+    // Find the corresponding hotspot user in MikroTik
+    const mikrotikUser = hotspotUsers?.find((u: any) => u.name === voucher.code);
+    
+    if (mikrotikUser) {
+      // If uptime exists and is not "0s", the voucher has been used
+      const uptime = mikrotikUser.uptime || '0s';
+      const hasBeenUsed = uptime !== '0s' && uptime !== '';
+      
+      if (hasBeenUsed && voucher.status !== 'used') {
+        return { ...voucher, status: 'used', uptime: mikrotikUser.uptime };
+      }
+      
+      return { ...voucher, uptime: mikrotikUser.uptime || null };
+    }
+    
+    return voucher;
+  });
+
   // Generate vouchers mutation
   const generateVouchersMutation = useMutation({
     mutationFn: async (params: GenerateVouchersParams) => {
-      // Obtener credenciales del MikroTik
-      const { data: mikrotikDevice, error: deviceError } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .eq('id', params.mikrotikId)
-        .single();
-
-      if (deviceError) throw deviceError;
-
       const vouchersToCreate = [];
       const mikrotikUsers = [];
 
       for (let i = 0; i < params.count; i++) {
-        // Generate unique code (8 chars uppercase + numbers)
         const code = Array.from({ length: 8 }, () => 
           'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
         ).join('');
 
-        // Generate password (8 chars)
         const password = Array.from({ length: 8 }, () => 
           'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
         ).join('');
 
-        // No establecer fecha de expiración - el voucher expira según el tiempo de uso en MikroTik
         vouchersToCreate.push({
           code,
           password,
@@ -86,29 +119,22 @@ export const useVoucherInventory = (mikrotikId?: string) => {
         });
       }
 
-      // Crear usuarios en MikroTik usando la función edge
-      const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-      
-      for (const user of mikrotikUsers) {
+      // Create users in MikroTik using mikrotikId
+      for (const mikrotikUser of mikrotikUsers) {
         try {
           const userParams = {
-            name: user.username,
-            password: user.password,
-            profile: user.profile,
+            name: mikrotikUser.username,
+            password: mikrotikUser.password,
+            profile: mikrotikUser.profile,
             comment: `Voucher ${new Date().toISOString()}`,
-            'limit-uptime': user.validity, // Configurar límite de tiempo en MikroTik
+            'limit-uptime': mikrotikUser.validity,
           };
 
-          const { error: mikrotikError } = await supabase.functions.invoke(functionName, {
+          const { error: mikrotikError } = await supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              host: mikrotikDevice.host,
-              username: mikrotikDevice.username,
-              password: mikrotikDevice.password,
-              port: mikrotikDevice.port,
-              command: mikrotikDevice.version === 'v7' ? undefined : 'hotspot-user-add',
-              action: mikrotikDevice.version === 'v7' ? 'add' : undefined,
-              params: mikrotikDevice.version === 'v6' ? userParams : undefined,
-              userData: mikrotikDevice.version === 'v7' ? userParams : undefined,
+              mikrotikId: params.mikrotikId,
+              command: 'hotspot-user-add',
+              params: userParams,
             },
           });
 
@@ -120,7 +146,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
         }
       }
 
-      // Guardar en Supabase
+      // Save to Supabase
       const { data, error } = await supabase
         .from('vouchers')
         .insert(vouchersToCreate)
@@ -131,6 +157,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['voucher-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['hotspot-users-status'] });
       toast.success(`${data.length} vouchers generados exitosamente`);
     },
     onError: (error: any) => {
@@ -184,67 +211,42 @@ export const useVoucherInventory = (mikrotikId?: string) => {
   // Delete voucher mutation
   const deleteVoucherMutation = useMutation({
     mutationFn: async (voucherId: string) => {
-      // Primero obtener el voucher para tener el código
+      // First get the voucher to have the code
       const { data: voucher } = await supabase
         .from('vouchers')
-        .select('*, mikrotik:mikrotik_devices(*)')
+        .select('*')
         .eq('id', voucherId)
         .single();
 
       if (!voucher) throw new Error('Voucher no encontrado');
 
-      // Eliminar del MikroTik primero
-      const mikrotikDevice = voucher.mikrotik;
-      if (mikrotikDevice) {
-        const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-        
-        try {
-          if (mikrotikDevice.version === 'v7') {
-            await supabase.functions.invoke(functionName, {
-              body: {
-                host: mikrotikDevice.host,
-                username: mikrotikDevice.username,
-                password: mikrotikDevice.password,
-                port: mikrotikDevice.port,
-                action: 'remove',
-                voucherUsername: voucher.code,
-              },
-            });
-          } else {
-            // Para v6, primero obtener la lista de usuarios para encontrar el .id
-            const { data: usersData } = await supabase.functions.invoke(functionName, {
-              body: {
-                host: mikrotikDevice.host,
-                username: mikrotikDevice.username,
-                password: mikrotikDevice.password,
-                port: mikrotikDevice.port,
-                command: 'hotspot-users',
-              },
-            });
+      // Delete from MikroTik first
+      try {
+        // Get users list to find the .id
+        const { data: usersData } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            mikrotikId: voucher.mikrotik_id,
+            command: 'hotspot-users',
+          },
+        });
 
-            if (usersData?.data) {
-              const user = usersData.data.find((u: any) => u.name === voucher.code);
-              if (user && user['.id']) {
-                // Ahora eliminar usando el .id
-                await supabase.functions.invoke(functionName, {
-                  body: {
-                    host: mikrotikDevice.host,
-                    username: mikrotikDevice.username,
-                    password: mikrotikDevice.password,
-                    port: mikrotikDevice.port,
-                    command: 'hotspot-user-remove',
-                    params: { '.id': user['.id'] },
-                  },
-                });
-              }
-            }
+        if (usersData?.data) {
+          const mikrotikUser = usersData.data.find((u: any) => u.name === voucher.code);
+          if (mikrotikUser && mikrotikUser['.id']) {
+            await supabase.functions.invoke('mikrotik-v6-api', {
+              body: {
+                mikrotikId: voucher.mikrotik_id,
+                command: 'hotspot-user-remove',
+                params: { '.id': mikrotikUser['.id'] },
+              },
+            });
           }
-        } catch (error) {
-          console.error('Error eliminando de MikroTik:', error);
         }
+      } catch (error) {
+        console.error('Error eliminando de MikroTik:', error);
       }
 
-      // Luego eliminar de la base de datos
+      // Then delete from database
       const { error } = await supabase
         .from('vouchers')
         .delete()
@@ -254,6 +256,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['voucher-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['hotspot-users-status'] });
       toast.success('Voucher eliminado exitosamente');
     },
     onError: (error: any) => {
@@ -261,34 +264,20 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     },
   });
 
-  // Sync vouchers with MikroTik mutation - elimina del MikroTik los vouchers que no están en la BD
+  // Sync vouchers with MikroTik - delete from MikroTik vouchers not in DB
   const syncVouchersMutation = useMutation({
     mutationFn: async (mikrotikId: string) => {
-      const { data: mikrotikDevice } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .eq('id', mikrotikId)
-        .single();
-
-      if (!mikrotikDevice) throw new Error('Dispositivo no encontrado');
-
-      const functionName = mikrotikDevice.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-      
-      // Obtener usuarios de MikroTik
-      const { data: mikrotikData } = await supabase.functions.invoke(functionName, {
+      // Get users from MikroTik
+      const { data: mikrotikData } = await supabase.functions.invoke('mikrotik-v6-api', {
         body: {
-          host: mikrotikDevice.host,
-          username: mikrotikDevice.username,
-          password: mikrotikDevice.password,
-          port: mikrotikDevice.port,
-          command: mikrotikDevice.version === 'v7' ? undefined : 'hotspot-users',
-          action: mikrotikDevice.version === 'v7' ? 'list' : undefined,
+          mikrotikId,
+          command: 'hotspot-users',
         },
       });
 
       const mikrotikUsers = mikrotikData?.data || [];
 
-      // Obtener vouchers de la base de datos
+      // Get vouchers from database
       const { data: dbVouchers } = await supabase
         .from('vouchers')
         .select('*')
@@ -296,9 +285,9 @@ export const useVoucherInventory = (mikrotikId?: string) => {
 
       const dbVoucherCodes = dbVouchers?.map(v => v.code) || [];
 
-      // Eliminar del MikroTik solo los usuarios que:
-      // 1. NO están en la base de datos
-      // 2. Tienen "Voucher" en el comentario (son vouchers generados por el sistema)
+      // Delete from MikroTik users that:
+      // 1. Are NOT in the database
+      // 2. Have "Voucher" in comment (are vouchers generated by the system)
       const usersToDeleteFromMikrotik = mikrotikUsers.filter(
         (u: any) => !dbVoucherCodes.includes(u.name) && 
                     u.comment && 
@@ -309,57 +298,60 @@ export const useVoucherInventory = (mikrotikId?: string) => {
       
       for (const user of usersToDeleteFromMikrotik) {
         try {
-          if (mikrotikDevice.version === 'v7') {
-            await supabase.functions.invoke(functionName, {
-              body: {
-                host: mikrotikDevice.host,
-                username: mikrotikDevice.username,
-                password: mikrotikDevice.password,
-                port: mikrotikDevice.port,
-                action: 'remove',
-                voucherUsername: user.name,
-              },
-            });
-          } else {
-            await supabase.functions.invoke(functionName, {
-              body: {
-                host: mikrotikDevice.host,
-                username: mikrotikDevice.username,
-                password: mikrotikDevice.password,
-                port: mikrotikDevice.port,
-                command: 'hotspot-user-remove',
-                params: { '.id': user['.id'] },
-              },
-            });
-          }
+          await supabase.functions.invoke('mikrotik-v6-api', {
+            body: {
+              mikrotikId,
+              command: 'hotspot-user-remove',
+              params: { '.id': user['.id'] },
+            },
+          });
           deletedCount++;
         } catch (error) {
           console.error(`Error eliminando usuario ${user.name} de MikroTik:`, error);
         }
       }
 
-      return { deleted: deletedCount };
+      // Update vouchers that have been used (uptime > 0)
+      const updatedVouchers = [];
+      for (const voucher of dbVouchers || []) {
+        const mikrotikUser = mikrotikUsers.find((u: any) => u.name === voucher.code);
+        if (mikrotikUser) {
+          const uptime = mikrotikUser.uptime || '0s';
+          const hasBeenUsed = uptime !== '0s' && uptime !== '';
+          
+          if (hasBeenUsed && voucher.status !== 'used') {
+            await supabase
+              .from('vouchers')
+              .update({ status: 'used' })
+              .eq('id', voucher.id);
+            updatedVouchers.push(voucher.code);
+          }
+        }
+      }
+
+      return { deleted: deletedCount, updated: updatedVouchers.length };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['voucher-inventory'] });
-      toast.success(`Sincronización completada. ${data.deleted} usuarios eliminados del MikroTik.`);
+      queryClient.invalidateQueries({ queryKey: ['hotspot-users-status'] });
+      toast.success(`Sincronización completada. ${data.deleted} usuarios eliminados, ${data.updated} vouchers actualizados.`);
     },
     onError: (error: any) => {
       toast.error(error.message || 'Error al sincronizar vouchers');
     },
   });
 
-  // Stats
+  // Stats based on vouchers with updated status
   const stats = {
-    total: vouchers?.length || 0,
-    available: vouchers?.filter(v => v.status === 'available').length || 0,
-    sold: vouchers?.filter(v => v.status === 'sold').length || 0,
-    used: vouchers?.filter(v => v.status === 'used').length || 0,
-    expired: vouchers?.filter(v => v.status === 'expired').length || 0,
+    total: vouchersWithStatus?.length || 0,
+    available: vouchersWithStatus?.filter(v => v.status === 'available').length || 0,
+    sold: vouchersWithStatus?.filter(v => v.status === 'sold').length || 0,
+    used: vouchersWithStatus?.filter(v => v.status === 'used').length || 0,
+    expired: vouchersWithStatus?.filter(v => v.status === 'expired').length || 0,
   };
 
   return {
-    vouchers,
+    vouchers: vouchersWithStatus,
     isLoading,
     stats,
     generateVouchers: generateVouchersMutation.mutate,

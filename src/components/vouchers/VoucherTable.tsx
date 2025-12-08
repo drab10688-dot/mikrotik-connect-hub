@@ -34,14 +34,14 @@ export const VoucherTable = ({
   ) || [];
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any; label: string }> = {
+    const variants: Record<string, { variant: any; label: string; className?: string }> = {
       available: { variant: 'default', label: 'Disponible' },
       sold: { variant: 'secondary', label: 'Vendido' },
-      used: { variant: 'outline', label: 'Usado' },
+      used: { variant: 'outline', label: 'Conectado', className: 'bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400' },
       expired: { variant: 'destructive', label: 'Expirado' },
     };
     const config = variants[status] || { variant: 'outline', label: status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return <Badge variant={config.variant} className={config.className}>{config.label}</Badge>;
   };
 
   return (
@@ -77,8 +77,8 @@ export const VoucherTable = ({
                 <TableHead>Contraseña</TableHead>
                 <TableHead>Perfil</TableHead>
                 <TableHead>Estado</TableHead>
+                <TableHead>Tiempo Usado</TableHead>
                 <TableHead>Precio</TableHead>
-                <TableHead>Expira</TableHead>
                 <TableHead>Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -97,11 +97,11 @@ export const VoucherTable = ({
                     <Badge variant="outline">{voucher.profile}</Badge>
                   </TableCell>
                   <TableCell>{getStatusBadge(voucher.status)}</TableCell>
+                  <TableCell className="text-sm font-mono">
+                    {voucher.uptime && voucher.uptime !== '0s' ? voucher.uptime : '-'}
+                  </TableCell>
                   <TableCell>
                     {voucher.price ? `$${voucher.price.toFixed(2)}` : '-'}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {new Date(voucher.expires_at).toLocaleDateString('es-ES')}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
