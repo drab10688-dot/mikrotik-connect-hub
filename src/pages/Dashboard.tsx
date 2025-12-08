@@ -8,7 +8,7 @@ import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown } from 
 import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
+import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 import { Shield, Router } from "lucide-react";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,7 +17,7 @@ import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 const Dashboard = () => {
   const navigate = useNavigate();
   const { isSecretary, isAdmin, isSuperAdmin, loading: authLoading } = useAuth();
-  const { devices, hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
+  const { device, isValidating, hasValidDevice, availableDevices } = useValidatedDevice(true);
   const { assignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const { data: systemInfo, isLoading: loadingSystem } = useSystemResources();
   const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
@@ -29,12 +29,14 @@ const Dashboard = () => {
 
   const systemData = (systemInfo as any[])?.[0];
 
+  const hasDeviceAccess = availableDevices && availableDevices.length > 0;
+
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
-    if (!authLoading && !isConnected && hasDeviceAccess) {
+    if (!authLoading && !isConnected && hasDeviceAccess && !isValidating) {
       navigate("/settings");
     }
-  }, [navigate, isSecretary, authLoading, hasDeviceAccess]);
+  }, [navigate, isSecretary, authLoading, hasDeviceAccess, isValidating]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -88,7 +90,7 @@ const Dashboard = () => {
     },
   ];
 
-  if (loadingAccess) {
+  if (isValidating) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />
