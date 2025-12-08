@@ -5,12 +5,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: string): Promise<{ authorized: boolean; error?: string }> {
-  const { data: roleData } = await supabase
+async function verifyUserAccess(serviceSupabase: any, userId: string, mikrotikId?: string): Promise<{ authorized: boolean; error?: string }> {
+  // Use service role client to bypass RLS and check access
+  const { data: roleData } = await serviceSupabase
     .from('user_roles')
     .select('role')
     .eq('user_id', userId)
     .single();
+
+  console.log(`User ${userId} role:`, roleData?.role);
 
   if (roleData?.role === 'super_admin') {
     return { authorized: true };
@@ -20,36 +23,63 @@ async function verifyUserAccess(supabase: any, userId: string, mikrotikId?: stri
     return { authorized: true };
   }
 
-  const { data: accessData } = await supabase
+  // Check admin access via user_mikrotik_access
+  if (roleData?.role === 'admin') {
+    const { data: accessData } = await serviceSupabase
+      .from('user_mikrotik_access')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('mikrotik_id', mikrotikId)
+      .single();
+
+    console.log(`Admin access check for device ${mikrotikId}:`, accessData);
+
+    if (accessData) {
+      return { authorized: true };
+    }
+  }
+
+  // Check secretary access
+  if (roleData?.role === 'secretary') {
+    const { data: secretaryData } = await serviceSupabase
+      .from('secretary_assignments')
+      .select('id')
+      .eq('secretary_id', userId)
+      .eq('mikrotik_id', mikrotikId)
+      .single();
+
+    console.log(`Secretary access check for device ${mikrotikId}:`, secretaryData);
+
+    if (secretaryData) {
+      return { authorized: true };
+    }
+  }
+
+  // Check reseller access
+  if (roleData?.role === 'reseller') {
+    const { data: resellerData } = await serviceSupabase
+      .from('reseller_assignments')
+      .select('id')
+      .eq('reseller_id', userId)
+      .eq('mikrotik_id', mikrotikId)
+      .single();
+
+    console.log(`Reseller access check for device ${mikrotikId}:`, resellerData);
+
+    if (resellerData) {
+      return { authorized: true };
+    }
+  }
+
+  // Fallback: check all access tables regardless of role
+  const { data: fallbackAccess } = await serviceSupabase
     .from('user_mikrotik_access')
     .select('id')
     .eq('user_id', userId)
     .eq('mikrotik_id', mikrotikId)
     .single();
 
-  if (accessData) {
-    return { authorized: true };
-  }
-
-  const { data: secretaryData } = await supabase
-    .from('secretary_assignments')
-    .select('id')
-    .eq('secretary_id', userId)
-    .eq('mikrotik_id', mikrotikId)
-    .single();
-
-  if (secretaryData) {
-    return { authorized: true };
-  }
-
-  const { data: resellerData } = await supabase
-    .from('reseller_assignments')
-    .select('id')
-    .eq('reseller_id', userId)
-    .eq('mikrotik_id', mikrotikId)
-    .single();
-
-  if (resellerData) {
+  if (fallbackAccess) {
     return { authorized: true };
   }
 
@@ -328,7 +358,13 @@ Deno.serve(async (req) => {
 
     console.log(`User ${user.id} - Command: ${command} on device ${mikrotikId}`);
 
-    const accessCheck = await verifyUserAccess(supabase, user.id, mikrotikId);
+    // Create service role client for authorization checks (bypasses RLS)
+    const serviceSupabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const accessCheck = await verifyUserAccess(serviceSupabase, user.id, mikrotikId);
     if (!accessCheck.authorized) {
       console.error(`Access denied for user ${user.id} to device ${mikrotikId}`);
       return new Response(
@@ -336,12 +372,6 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
       );
     }
-
-    // Get device credentials from database (server-side only)
-    const serviceSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const credentials = await getDeviceCredentials(serviceSupabase, mikrotikId);
     if (!credentials) {
