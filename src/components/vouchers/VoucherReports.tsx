@@ -3,9 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { DollarSign, TrendingUp, ShoppingCart, Calendar, Clock, Download, Wifi } from "lucide-react";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DollarSign, TrendingUp, ShoppingCart, CalendarIcon, Clock, Download, Wifi } from "lucide-react";
 import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear, subDays, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 interface Voucher {
   id: string;
@@ -23,7 +26,11 @@ interface VoucherReportsProps {
 }
 
 export function VoucherReports({ vouchers }: VoucherReportsProps) {
-  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'year'>('month');
+  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'year' | 'custom'>('month');
+  const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined,
+  });
   
   // Incluir vouchers vendidos Y usados (conectados)
   const soldOrUsedVouchers = vouchers.filter(v => (v.status === 'sold' || v.status === 'used') && (v.sold_at || v.status === 'used'));
@@ -41,6 +48,11 @@ export function VoucherReports({ vouchers }: VoucherReportsProps) {
         return { start: startOfMonth(now), end: endOfMonth(now) };
       case 'year':
         return { start: startOfYear(now), end: endOfYear(now) };
+      case 'custom':
+        if (customDateRange.from && customDateRange.to) {
+          return { start: startOfDay(customDateRange.from), end: endOfDay(customDateRange.to) };
+        }
+        return { start: startOfMonth(now), end: endOfMonth(now) };
       default:
         return { start: startOfMonth(now), end: endOfMonth(now) };
     }
@@ -113,6 +125,11 @@ export function VoucherReports({ vouchers }: VoucherReportsProps) {
         return `Este Mes - ${format(now, 'MMMM yyyy', { locale: es })}`;
       case 'year':
         return `Este Año - ${format(now, 'yyyy', { locale: es })}`;
+      case 'custom':
+        if (customDateRange.from && customDateRange.to) {
+          return `${format(customDateRange.from, 'dd MMM', { locale: es })} - ${format(customDateRange.to, 'dd MMM yyyy', { locale: es })}`;
+        }
+        return 'Selecciona fechas';
       default:
         return '';
     }
@@ -195,8 +212,31 @@ export function VoucherReports({ vouchers }: VoucherReportsProps) {
                 <SelectItem value="week">Esta Semana</SelectItem>
                 <SelectItem value="month">Este Mes</SelectItem>
                 <SelectItem value="year">Este Año</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
               </SelectContent>
             </Select>
+            {period === 'custom' && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !customDateRange.from && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {customDateRange.from && customDateRange.to
+                      ? `${format(customDateRange.from, 'dd/MM/yy')} - ${format(customDateRange.to, 'dd/MM/yy')}`
+                      : "Seleccionar fechas"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <CalendarComponent
+                    mode="range"
+                    selected={{ from: customDateRange.from, to: customDateRange.to }}
+                    onSelect={(range) => setCustomDateRange({ from: range?.from, to: range?.to })}
+                    numberOfMonths={2}
+                    locale={es}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         </div>
       </CardHeader>
