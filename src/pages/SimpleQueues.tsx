@@ -3,7 +3,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Plus, Ban, CheckCircle, ListPlus, ListX } from "lucide-react";
+import { Search, Trash2, Plus, Ban, CheckCircle, ListPlus, ListX, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getSelectedDeviceId } from "@/lib/mikrotik";
 
 const SimpleQueues = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -27,80 +28,77 @@ const SimpleQueues = () => {
     addressList: "",
   });
 
+  const mikrotikId = getSelectedDeviceId();
+
   const { data: queues, isLoading, refetch } = useQuery({
-    queryKey: ["simple-queues"],
+    queryKey: ["simple-queues", mikrotikId],
     queryFn: async () => {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
       
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === "v7" ? undefined : "simple-queues",
-          action: device.version === "v7" ? "list-queues" : undefined,
+          mikrotikId,
+          command: "simple-queues",
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       // Filtrar objetos dinámicos que no se pueden editar
       const allQueues = data.data || [];
       return allQueues.filter((q: any) => q.dynamic !== "true" && q.dynamic !== true);
     },
+    enabled: !!mikrotikId,
     refetchInterval: 10000,
   });
 
   // Obtener address lists disponibles del MikroTik
   const { data: addressLists } = useQuery({
-    queryKey: ["address-lists"],
+    queryKey: ["address-lists", mikrotikId],
     queryFn: async () => {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
       
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
+          mikrotikId,
           command: "address-list-print",
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       
       // Extraer nombres únicos de las address lists
       const lists = data.data || [];
       const uniqueLists = [...new Set(lists.map((item: any) => item.list))].filter(Boolean);
       return uniqueLists;
     },
+    enabled: !!mikrotikId,
     refetchInterval: 30000,
   });
 
   // Obtener todas las IPs en address-lists para mostrar estado de suspensión
   const { data: addressListEntries, refetch: refetchAddressLists } = useQuery({
-    queryKey: ["address-list-entries"],
+    queryKey: ["address-list-entries", mikrotikId],
     queryFn: async () => {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
       
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
+          mikrotikId,
           command: "address-list-print",
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       return data.data || [];
     },
-    refetchInterval: 5000, // Refetch cada 5 segundos para mantener actualizado
+    enabled: !!mikrotikId,
+    refetchInterval: 5000,
   });
 
   const validateBandwidth = (value: string): boolean => {
-    // Formato válido: número seguido de k, M, o G (ej: 1M, 500k, 10M)
     const bandwidthRegex = /^\d+(\.\d+)?[kMG]$/;
     return bandwidthRegex.test(value.trim());
   };
@@ -108,10 +106,12 @@ const SimpleQueues = () => {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      // Limpiar y validar valores
       const uploadValue = formData.upload.trim();
       const downloadValue = formData.download.trim();
       
@@ -120,7 +120,6 @@ const SimpleQueues = () => {
         return;
       }
       
-      // Validar formato
       if (!validateBandwidth(uploadValue)) {
         toast.error("Formato inválido de upload. Use: número + k/M/G (ej: 5M, 500k, 1G)");
         return;
@@ -131,17 +130,12 @@ const SimpleQueues = () => {
         return;
       }
       
-      // Formatear max-limit correctamente: upload/download (sin espacios)
       const maxLimit = `${uploadValue}/${downloadValue}`;
       
-      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === "v7" ? undefined : "simple-queue-add",
-          action: device.version === "v7" ? "add-queue" : undefined,
+          mikrotikId,
+          command: "simple-queue-add",
           params: {
             name: formData.name.trim(),
             target: formData.target.trim(),
@@ -152,6 +146,7 @@ const SimpleQueues = () => {
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       
       toast.success("Cola agregada exitosamente");
       setIsDialogOpen(false);
@@ -163,22 +158,22 @@ const SimpleQueues = () => {
   };
 
   const handleDelete = async (queueId: string) => {
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === "v7" ? undefined : "simple-queue-remove",
-          action: device.version === "v7" ? "remove-queue" : undefined,
+          mikrotikId,
+          command: "simple-queue-remove",
           params: { ".id": queueId },
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       
       toast.success("Cola eliminada");
       refetch();
@@ -188,23 +183,24 @@ const SimpleQueues = () => {
   };
 
   const handleToggle = async (queueId: string, currentlyDisabled: boolean) => {
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       const command = currentlyDisabled ? "simple-queue-enable" : "simple-queue-disable";
       
-      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === "v7" ? undefined : command,
-          action: device.version === "v7" ? (currentlyDisabled ? "enable-queue" : "disable-queue") : undefined,
+          mikrotikId,
+          command,
           params: { ".id": queueId },
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       
       toast.success(currentlyDisabled ? "Cola activada" : "Cola desactivada");
       refetch();
@@ -214,17 +210,16 @@ const SimpleQueues = () => {
   };
 
   const handleAddToAddressList = async (queue: any, listName: string) => {
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      // Usar "Morosos" si seleccionó crear nueva lista
       const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
-      
-      // Normalizar IP para comparación (remover /32 al final si existe)
       const normalizeIP = (ip: string) => ip.replace(/\/32$/, '');
       const targetIP = normalizeIP(queue.target);
       
-      // Verificar si la IP ya está en la lista (comparando IPs normalizadas)
       const alreadyInList = addressListEntries?.some((entry: any) => {
         const entryIP = normalizeIP(entry.address);
         return entryIP === targetIP && entry.list.toLowerCase() === finalListName.toLowerCase();
@@ -237,10 +232,7 @@ const SimpleQueues = () => {
       
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
+          mikrotikId,
           command: "address-list-add",
           params: {
             list: finalListName,
@@ -250,7 +242,6 @@ const SimpleQueues = () => {
         },
       });
 
-      // Verificar si hay error en la respuesta data
       if (data && !data.success && data.error) {
         if (data.error.includes("already have such entry")) {
           toast.warning(`Esta IP ya existe en la lista "${finalListName}"`);
@@ -267,14 +258,10 @@ const SimpleQueues = () => {
         throw error;
       }
       
-      // Forzar actualización inmediata de los datos
       await Promise.all([refetch(), refetchAddressLists()]);
-      
       toast.success(`Usuario bloqueado - IP agregada a "${finalListName}"`);
     } catch (error: any) {
       console.error("Error al agregar a address-list:", error);
-      
-      // Manejar el caso específico de entrada duplicada
       const errorMsg = error.message || JSON.stringify(error);
       if (errorMsg.includes("already have such entry")) {
         toast.warning(`Esta IP ya existe en la lista`);
@@ -285,14 +272,15 @@ const SimpleQueues = () => {
   };
 
   const handleRemoveFromAddressList = async (queue: any) => {
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      // Normalizar IP para comparación (remover /32, /24, etc.)
       const normalizeIP = (ip: string) => ip.split('/')[0];
       const targetIP = normalizeIP(queue.target);
       
-      // Buscar todas las entradas de address-list que coincidan con esta IP (normalizadas)
       const entries = addressListEntries?.filter((entry: any) => {
         const entryIP = normalizeIP(entry.address || '');
         return entryIP === targetIP;
@@ -303,28 +291,22 @@ const SimpleQueues = () => {
         return;
       }
 
-      // Remover todas las entradas encontradas
       let removedCount = 0;
       for (const entry of entries) {
-        const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+        const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
           body: {
-            host: device.host,
-            username: device.username,
-            password: device.password,
-            port: device.port,
+            mikrotikId,
             command: "address-list-remove",
             params: { ".id": entry[".id"] },
           },
         });
         
-        if (!error) {
+        if (!error && data?.success) {
           removedCount++;
         }
       }
       
-      // Forzar actualización inmediata de los datos
       await Promise.all([refetch(), refetchAddressLists()]);
-      
       toast.success(`Servicio reactivado - ${removedCount} entrada(s) eliminada(s)`);
     } catch (error: any) {
       toast.error(error.message || "Error al remover de address-list");
@@ -337,10 +319,13 @@ const SimpleQueues = () => {
       return;
     }
 
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       const finalListName = listName === "__nuevo__" ? "Morosos" : listName;
-      
       const normalizeIP = (ip: string) => ip.split('/')[0];
       
       let added = 0;
@@ -365,10 +350,7 @@ const SimpleQueues = () => {
         try {
           const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
-              host: device.host,
-              username: device.username,
-              password: device.password,
-              port: device.port,
+              mikrotikId,
               command: "address-list-add",
               params: {
                 list: finalListName,
@@ -424,8 +406,6 @@ const SimpleQueues = () => {
 
   const isInAddressList = (target: string) => {
     if (!addressListEntries) return false;
-    
-    // Normalizar IP para comparación (remover /32, /24, etc.)
     const normalizeIP = (ip: string) => ip.split('/')[0];
     const targetIP = normalizeIP(target);
     
@@ -439,6 +419,27 @@ const SimpleQueues = () => {
     queue.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     queue.target?.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
+
+  if (!mikrotikId) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="p-4 md:p-8 md:ml-64">
+          <Card>
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">Sin conexión</h3>
+                <p className="text-muted-foreground">
+                  Conecta un dispositivo MikroTik desde Configuración
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -479,184 +480,175 @@ const SimpleQueues = () => {
                         <DropdownMenuSeparator />
                         {addressLists && addressLists.length > 0 ? (
                           addressLists.map((list: string) => (
-                            <DropdownMenuItem
-                              key={list}
+                            <DropdownMenuItem 
+                              key={list} 
                               onClick={() => handleBulkAddToList(list)}
+                              className="cursor-pointer"
                             >
+                              <Ban className="w-4 h-4 mr-2" />
                               {list}
                             </DropdownMenuItem>
                           ))
                         ) : (
-                          <DropdownMenuItem disabled>
-                            No hay listas disponibles
+                          <DropdownMenuItem 
+                            onClick={() => handleBulkAddToList("__nuevo__")}
+                            className="cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Crear lista "Morosos"
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleBulkAddToList("__nuevo__")}
-                          className="text-primary"
-                        >
-                          + Nueva lista: Morosos
-                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setSelectedQueues([])}
+                    >
+                      Cancelar
+                    </Button>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-lg">
-                    <Ban className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Selecciona colas con el checkbox para bloquear en lote
-                    </span>
-                  </div>
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Agregar Cola
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Agregar Simple Queue</DialogTitle>
+                        <DialogDescription>
+                          Crea una nueva cola de ancho de banda
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleAdd} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Nombre *</Label>
+                          <Input
+                            id="name"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            placeholder="Cliente-001"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="target">Target (IP) *</Label>
+                          <Input
+                            id="target"
+                            value={formData.target}
+                            onChange={(e) => setFormData({ ...formData, target: e.target.value })}
+                            placeholder="192.168.1.100/32"
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="upload">Upload Limit *</Label>
+                            <Input
+                              id="upload"
+                              value={formData.upload}
+                              onChange={(e) => setFormData({ ...formData, upload: e.target.value })}
+                              placeholder="5M"
+                            />
+                            <p className="text-xs text-muted-foreground">Ej: 5M, 500k, 1G</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="download">Download Limit *</Label>
+                            <Input
+                              id="download"
+                              value={formData.download}
+                              onChange={(e) => setFormData({ ...formData, download: e.target.value })}
+                              placeholder="10M"
+                            />
+                            <p className="text-xs text-muted-foreground">Ej: 10M, 1G, 100k</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="comment">Comentario</Label>
+                          <Input
+                            id="comment"
+                            value={formData.comment}
+                            onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
+                            placeholder="Opcional"
+                          />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)}>
+                            Cancelar
+                          </Button>
+                          <Button type="submit">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Agregar
+                          </Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
                 )}
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar Cola
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Agregar Simple Queue</DialogTitle>
-                      <DialogDescription>
-                        Crea una nueva cola de ancho de banda
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleAdd} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Nombre *</Label>
-                        <Input
-                          id="name"
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder="Cliente01"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="target">Target (IP/Red) *</Label>
-                        <Input
-                          id="target"
-                          value={formData.target}
-                          onChange={(e) => setFormData({ ...formData, target: e.target.value })}
-                          placeholder="192.168.1.100/32"
-                          required
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="upload">Límite de Subida *</Label>
-                          <Input
-                            id="upload"
-                            value={formData.upload}
-                            onChange={(e) => {
-                              // Permitir solo números, punto, k, M, G y convertir a mayúsculas
-                              const value = e.target.value
-                                .replace(/[^0-9.kmgKMG]/g, '')
-                                .toUpperCase();
-                              setFormData({ ...formData, upload: value });
-                            }}
-                            placeholder="5M"
-                            required
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Formato: número + k/M/G (ej: 1M, 500k, 2G)
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="download">Límite de Descarga *</Label>
-                          <Input
-                            id="download"
-                            value={formData.download}
-                            onChange={(e) => {
-                              // Permitir solo números, punto, k, M, G y convertir a mayúsculas
-                              const value = e.target.value
-                                .replace(/[^0-9.kmgKMG]/g, '')
-                                .toUpperCase();
-                              setFormData({ ...formData, download: value });
-                            }}
-                            placeholder="10M"
-                            required
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Formato: número + k/M/G (ej: 1M, 500k, 2G)
-                          </p>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="comment">Comentario</Label>
-                        <Input
-                          id="comment"
-                          value={formData.comment}
-                          onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
-                          placeholder="Descripción opcional"
-                        />
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                          Cancelar
-                        </Button>
-                        <Button type="submit">Agregar</Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Buscar..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 w-64"
-                  />
-                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium w-12">
-                      <Checkbox
-                        checked={selectedQueues.length === filteredQueues.length && filteredQueues.length > 0}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    </th>
-                    <th className="text-left p-4 font-medium">Acción</th>
-                    <th className="text-left p-4 font-medium">Nombre</th>
-                    <th className="text-left p-4 font-medium">Target</th>
-                    <th className="text-left p-4 font-medium">Max Limit</th>
-                    <th className="text-left p-4 font-medium">Estado</th>
-                    <th className="text-left p-4 font-medium">Comentario</th>
-                    <th className="text-right p-4 font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={8} className="text-center p-8 text-muted-foreground">
-                        Cargando colas...
-                      </td>
+            <div className="mb-4 flex items-center gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Buscar por nombre o IP..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              {filteredQueues.length > 0 && (
+                <Button variant="outline" size="sm" onClick={toggleSelectAll}>
+                  {selectedQueues.length === filteredQueues.length ? "Deseleccionar todo" : "Seleccionar todo"}
+                </Button>
+              )}
+            </div>
+
+            {isLoading ? (
+              <div className="text-center p-8 text-muted-foreground">
+                Cargando colas...
+              </div>
+            ) : filteredQueues.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground">
+                No hay colas configuradas
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-x-auto">
+                <table className="w-full min-w-[800px]">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="p-3 w-10">
+                        <Checkbox 
+                          checked={selectedQueues.length === filteredQueues.length && filteredQueues.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </th>
+                      <th className="p-3 text-left text-sm font-medium">Nombre</th>
+                      <th className="p-3 text-left text-sm font-medium">Target</th>
+                      <th className="p-3 text-left text-sm font-medium">Max Limit</th>
+                      <th className="p-3 text-left text-sm font-medium">Estado</th>
+                      <th className="p-3 text-left text-sm font-medium">Comentario</th>
+                      <th className="p-3 text-right text-sm font-medium">Acciones</th>
                     </tr>
-                  ) : filteredQueues.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="text-center p-8 text-muted-foreground">
-                        No hay colas configuradas
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredQueues.map((queue: any) => {
+                  </thead>
+                  <tbody>
+                    {filteredQueues.map((queue: any) => {
                       const isDisabled = queue.disabled === "true" || queue.disabled === true;
-                      const isSelected = selectedQueues.includes(queue[".id"]);
                       const isSuspended = isInAddressList(queue.target);
+                      const isSelected = selectedQueues.includes(queue[".id"]);
                       
                       return (
-                        <tr key={queue[".id"]} className={`border-b hover:bg-muted/50 ${isDisabled ? 'opacity-50' : ''}`}>
-                          <td className="p-4">
-                            <Checkbox
+                        <tr 
+                          key={queue[".id"]} 
+                          className={`border-b last:border-0 ${isSelected ? 'bg-primary/5' : ''} ${isSuspended ? 'bg-destructive/5' : ''}`}
+                        >
+                          <td className="p-3">
+                            <Checkbox 
                               checked={isSelected}
                               onCheckedChange={(checked) => {
                                 if (checked) {
@@ -667,121 +659,94 @@ const SimpleQueues = () => {
                               }}
                             />
                           </td>
-                          <td className="p-4">
-                            {!isSuspended ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleAddToAddressList(queue, "Morosos")}
-                                className="text-red-600 border-red-600 hover:bg-red-50 whitespace-nowrap"
-                              >
-                                <Ban className="w-3 h-3 mr-1" />
-                                Agregar a Morosos
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRemoveFromAddressList(queue)}
-                                className="text-green-600 border-green-600 hover:bg-green-50 whitespace-nowrap"
-                              >
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Reactivar
-                              </Button>
-                            )}
-                          </td>
-                          <td className="p-4 font-medium">{queue.name}</td>
-                          <td className="p-4 font-mono text-sm">{queue.target}</td>
-                          <td className="p-4 text-sm">{queue["max-limit"] || "-"}</td>
-                          <td className="p-4">
-                            <div className="flex gap-2">
-                              {isSuspended ? (
-                                <Badge variant="destructive" className="flex items-center gap-1">
-                                  <Ban className="w-3 h-3" />
-                                  Usuario Moroso
-                                </Badge>
-                              ) : (
-                                <Badge variant="default" className="flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Activo
-                                </Badge>
-                              )}
-                              {isDisabled && (
-                                <Badge variant="secondary">
-                                  Desactivado
+                          <td className="p-3 font-medium">{queue.name}</td>
+                          <td className="p-3 font-mono text-sm">{queue.target}</td>
+                          <td className="p-3 text-sm">{queue["max-limit"] || "-"}</td>
+                          <td className="p-3">
+                            <div className="flex gap-1">
+                              <Badge variant={isDisabled ? "secondary" : "default"}>
+                                {isDisabled ? "Deshabilitada" : "Activa"}
+                              </Badge>
+                              {isSuspended && (
+                                <Badge variant="destructive">
+                                  Suspendido
                                 </Badge>
                               )}
                             </div>
                           </td>
-                          <td className="p-4 text-sm text-muted-foreground">{queue.comment || "-"}</td>
-                          <td className="p-4 text-right">
+                          <td className="p-3 text-sm text-muted-foreground">{queue.comment || "-"}</td>
+                          <td className="p-3">
                             <div className="flex gap-1 justify-end">
+                              {isSuspended ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemoveFromAddressList(queue)}
+                                  className="text-green-600 hover:text-green-700"
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Reactivar
+                                </Button>
+                              ) : (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm">
+                                      <Ban className="w-4 h-4 mr-1" />
+                                      Suspender
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="bg-popover z-50">
+                                    <div className="px-2 py-1.5 text-sm font-semibold">
+                                      Agregar IP a lista:
+                                    </div>
+                                    <DropdownMenuSeparator />
+                                    {addressLists && addressLists.length > 0 ? (
+                                      addressLists.map((list: string) => (
+                                        <DropdownMenuItem 
+                                          key={list} 
+                                          onClick={() => handleAddToAddressList(queue, list)}
+                                          className="cursor-pointer"
+                                        >
+                                          <ListPlus className="w-4 h-4 mr-2" />
+                                          {list}
+                                        </DropdownMenuItem>
+                                      ))
+                                    ) : (
+                                      <DropdownMenuItem 
+                                        onClick={() => handleAddToAddressList(queue, "__nuevo__")}
+                                        className="cursor-pointer"
+                                      >
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Crear lista "Morosos"
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleToggle(queue[".id"], isDisabled)}
-                                title={isDisabled ? "Activar" : "Desactivar"}
                               >
-                                {isDisabled ? (
-                                  <CheckCircle className="w-4 h-4 text-green-500" />
-                                ) : (
-                                  <Ban className="w-4 h-4 text-orange-500" />
-                                )}
+                                {isDisabled ? "Habilitar" : "Deshabilitar"}
                               </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    title="Gestionar Address List"
-                                  >
-                                    <ListPlus className="w-4 h-4 text-orange-500" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-56">
-                                  <div className="px-2 py-1.5 text-sm font-semibold">
-                                    Agregar a lista:
-                                  </div>
-                                  <DropdownMenuSeparator />
-                                  {addressLists && addressLists.length > 0 ? (
-                                    addressLists.map((list: string) => (
-                                      <DropdownMenuItem
-                                        key={list}
-                                        onClick={() => handleAddToAddressList(queue, list)}
-                                      >
-                                        {list}
-                                      </DropdownMenuItem>
-                                    ))
-                                  ) : (
-                                    <DropdownMenuItem disabled>
-                                      No hay listas disponibles
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => handleAddToAddressList(queue, "__nuevo__")}
-                                    className="text-primary"
-                                  >
-                                    + Nueva lista: Morosos
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
                                 onClick={() => handleDelete(queue[".id"])}
                               >
-                                <Trash2 className="w-4 h-4 text-destructive" />
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                             </div>
                           </td>
                         </tr>
                       );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

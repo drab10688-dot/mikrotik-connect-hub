@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Database, Download, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getMikroTikCredentials, getPPPoEUsers, getHotspotUsers } from "@/lib/mikrotik";
+import { getSelectedDeviceId, getPPPoEUsers, getHotspotUsers } from "@/lib/mikrotik";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,12 +16,12 @@ export function BackupRestoreCard() {
   const [isImporting, setIsImporting] = useState(false);
   const [importScript, setImportScript] = useState("");
 
-  const isConnected = !!getMikroTikCredentials();
+  const mikrotikId = getSelectedDeviceId();
+  const isConnected = !!mikrotikId;
 
   const convertToRSC = (data: any[], command: string, format: string = "api"): string => {
     let rsc = `\n# ${command}\n`;
     
-    // Ajustar el comando según el formato
     const terminalCommand = format === "terminal" 
       ? command.replace(/\/add$/, ' add').replace(/\//g, ' ').trim()
       : command;
@@ -30,7 +30,6 @@ export function BackupRestoreCard() {
       let cmd = format === "terminal" ? `/${terminalCommand}` : command;
       
       for (const [key, value] of Object.entries(item)) {
-        // Omitir campos internos y de solo lectura
         if (key.startsWith('.') || key === 'dynamic' || key === 'invalid' || key === 'default') continue;
         if (key.includes('bytes') || key.includes('packets') || key.includes('rate')) continue;
         if (key === 'uptime' || key === 'encoding' || key === 'session-id' || key === 'radius') continue;
@@ -41,17 +40,14 @@ export function BackupRestoreCard() {
         
         const val = String(value);
         
-        // Omitir valores vacíos y predeterminados
         if (!val || val === '' || val === 'none' || val === 'false') continue;
         if (val === '0' || val === '0s' || val === '0/0' || val === '0s/0s') continue;
         if (val === '0.0.0.0' || val === '::' || val === '0.1/0.1') continue;
         
-        // Formato terminal: sin comillas para valores simples, con comillas para valores con espacios
         if (format === "terminal") {
           const needsQuotes = val.includes(' ') || val.includes('/') || val.includes('\\');
           cmd += needsQuotes ? ` ${key}="${val}"` : ` ${key}=${val}`;
         } else {
-          // Formato API: siempre con comillas y escapadas
           const escapedVal = val.replace(/"/g, '\\"');
           cmd += ` ${key}="${escapedVal}"`;
         }
@@ -64,7 +60,7 @@ export function BackupRestoreCard() {
   };
 
   const handleExport = async () => {
-    if (!isConnected) {
+    if (!mikrotikId) {
       toast.error("Debes conectarte a un MikroTik primero");
       return;
     }
@@ -76,16 +72,12 @@ export function BackupRestoreCard() {
       rscContent += `# Formato: ${exportFormat === "terminal" ? "Terminal CLI" : "API"}\n`;
       rscContent += `# Generado por MikroTik Manager\n\n`;
       
-      const credentials = getMikroTikCredentials();
-      
       if (exportSection === 'all') {
-        // Hacer todas las llamadas en paralelo para reducir tiempo
         const [pppoeUsers, pppoeProfiles, hotspotUsers, hotspotProfiles, simpleQueues] = await Promise.all([
           getPPPoEUsers(),
           supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: 'pppoe-profiles',
               params: {}
             }
@@ -93,16 +85,14 @@ export function BackupRestoreCard() {
           getHotspotUsers(),
           supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: 'hotspot-profiles',
               params: {}
             }
           }),
           supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: 'simple-queues',
               params: {}
             }
@@ -121,15 +111,13 @@ export function BackupRestoreCard() {
           rscContent += convertToRSC(simpleQueues.data.data, '/queue/simple/add', exportFormat);
         }
       } else {
-        // Exportar sección individual
         if (exportSection === 'pppoe-users') {
           const users = await getPPPoEUsers();
           rscContent += convertToRSC(users, '/ppp/secret/add', exportFormat);
         } else if (exportSection === 'pppoe-profiles') {
           const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: 'pppoe-profiles',
               params: {}
             }
@@ -143,8 +131,7 @@ export function BackupRestoreCard() {
         } else if (exportSection === 'hotspot-profiles') {
           const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: 'hotspot-profiles',
               params: {}
             }
@@ -155,8 +142,7 @@ export function BackupRestoreCard() {
         } else if (exportSection === 'simple-queues') {
           const { data } = await supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: 'simple-queues',
               params: {}
             }
@@ -189,7 +175,7 @@ export function BackupRestoreCard() {
   };
 
   const handleImport = async () => {
-    if (!isConnected) {
+    if (!mikrotikId) {
       toast.error("Debes conectarte a un MikroTik primero");
       return;
     }
@@ -201,7 +187,6 @@ export function BackupRestoreCard() {
 
     setIsImporting(true);
     try {
-      const credentials = getMikroTikCredentials();
       const lines = importScript.split('\n').filter(line => {
         const trimmed = line.trim();
         return trimmed && !trimmed.startsWith('#') && trimmed.length > 10;
@@ -214,8 +199,7 @@ export function BackupRestoreCard() {
         try {
           const { data, error } = await supabase.functions.invoke('mikrotik-v6-api', {
             body: {
-              ...credentials,
-              port: parseInt(credentials!.port),
+              mikrotikId,
               command: line.trim(),
               params: {}
             }

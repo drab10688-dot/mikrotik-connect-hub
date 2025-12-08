@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { getSelectedDeviceId } from "@/lib/mikrotik";
 import {
   Accordion,
   AccordionContent,
@@ -41,24 +42,25 @@ const AddressList = () => {
   });
   const [newListName, setNewListName] = useState("");
 
+  const mikrotikId = getSelectedDeviceId();
+
   const { data: addressEntries, isLoading, refetch } = useQuery({
-    queryKey: ["address-list-entries"],
+    queryKey: ["address-list-entries", mikrotikId],
     queryFn: async () => {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
+      if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
       
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
+          mikrotikId,
           command: "address-list-print",
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       return data.data || [];
     },
+    enabled: !!mikrotikId,
     refetchInterval: 5000,
   });
 
@@ -135,16 +137,15 @@ const AddressList = () => {
       return;
     }
 
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      // Crear una entrada dummy temporal para crear la lista
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
+          mikrotikId,
           command: "address-list-add",
           params: {
             list: newListName.trim(),
@@ -155,6 +156,7 @@ const AddressList = () => {
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       
       toast.success(`Lista "${newListName}" creada exitosamente`);
       setNewListName("");
@@ -173,11 +175,14 @@ const AddressList = () => {
       return;
     }
 
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     const loadingToast = toast.loading("Agregando IPs...");
 
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
       const addressList = isBulkMode 
         ? expandIPRange(formData.addresses)
         : formData.addresses.split("\n").filter(addr => addr.trim());
@@ -195,10 +200,7 @@ const AddressList = () => {
         try {
           const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
-              host: device.host,
-              username: device.username,
-              password: device.password,
-              port: device.port,
+              mikrotikId,
               command: "address-list-add",
               params: {
                 address: address.trim(),
@@ -243,21 +245,22 @@ const AddressList = () => {
   };
 
   const handleDeleteEntry = async (entryId: string) => {
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
+
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
-      
-      const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
+          mikrotikId,
           command: "address-list-remove",
           params: { ".id": entryId },
         },
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error);
       
       toast.success("IP eliminada");
       refetch();
@@ -268,6 +271,10 @@ const AddressList = () => {
 
   const handleDeleteList = async () => {
     if (!deleteListName) return;
+    if (!mikrotikId) {
+      toast.error("No hay dispositivo MikroTik seleccionado");
+      return;
+    }
 
     const entriesToDelete = groupedByList[deleteListName] || [];
     
@@ -280,23 +287,19 @@ const AddressList = () => {
     const loadingToast = toast.loading(`Eliminando ${entriesToDelete.length} entrada(s)...`);
 
     try {
-      const device = JSON.parse(localStorage.getItem("mikrotik_config") || "{}");
       let successCount = 0;
 
       for (const entry of entriesToDelete) {
         try {
-          const { error } = await supabase.functions.invoke("mikrotik-v6-api", {
+          const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
             body: {
-              host: device.host,
-              username: device.username,
-              password: device.password,
-              port: device.port,
+              mikrotikId,
               command: "address-list-remove",
               params: { ".id": entry[".id"] },
             },
           });
 
-          if (!error) successCount++;
+          if (!error && data?.success) successCount++;
         } catch {
           // Continuar con la siguiente
         }
@@ -311,6 +314,27 @@ const AddressList = () => {
       toast.error(error.message || "Error al eliminar lista");
     }
   };
+
+  if (!mikrotikId) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="p-4 md:p-8 md:ml-64">
+          <Card>
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">Sin conexión</h3>
+                <p className="text-muted-foreground">
+                  Conecta un dispositivo MikroTik desde Configuración
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -485,80 +509,70 @@ const AddressList = () => {
               </div>
             ) : filteredLists.length === 0 ? (
               <div className="text-center p-8 text-muted-foreground">
-                <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No hay listas configuradas</p>
+                No hay listas de direcciones configuradas
               </div>
             ) : (
-              <Accordion type="multiple" className="space-y-2">
+              <Accordion type="multiple" className="w-full">
                 {filteredLists.map((listName) => {
-                  const entries = groupedByList[listName];
-                  const filteredEntries = searchTerm 
-                    ? entries.filter((e: any) => e.address?.toLowerCase().includes(searchTerm.toLowerCase()))
-                    : entries;
-
+                  const entries = groupedByList[listName] || [];
+                  const isBlockList = listName.toLowerCase().includes('block') || 
+                                      listName.toLowerCase().includes('moroso') ||
+                                      listName.toLowerCase().includes('suspend');
+                  
                   return (
-                    <AccordionItem key={listName} value={listName} className="border rounded-lg px-4">
+                    <AccordionItem key={listName} value={listName}>
                       <AccordionTrigger className="hover:no-underline">
-                        <div className="flex items-center justify-between w-full pr-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                              {listName.toLowerCase().includes("moros") || listName.toLowerCase().includes("block") ? (
-                                <Ban className="w-5 h-5 text-destructive" />
-                              ) : (
-                                <Shield className="w-5 h-5 text-primary" />
-                              )}
-                            </div>
-                            <div className="text-left">
-                              <div className="font-semibold">{listName}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {entries.length} IP{entries.length !== 1 ? 's' : ''} en la lista
-                              </div>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteListName(listName);
-                            }}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                        <div className="flex items-center gap-3">
+                          {isBlockList ? (
+                            <Ban className="w-5 h-5 text-destructive" />
+                          ) : (
+                            <Shield className="w-5 h-5 text-primary" />
+                          )}
+                          <span className="font-medium">{listName}</span>
+                          <Badge variant="secondary">{entries.length} IPs</Badge>
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>
-                        <div className="space-y-2 pt-4">
-                          {filteredEntries.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              No hay IPs que coincidan con la búsqueda
-                            </p>
-                          ) : (
-                            filteredEntries.map((entry: any) => (
-                              <div
-                                key={entry[".id"]}
-                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                              >
-                                <div className="flex-1">
-                                  <div className="font-mono font-medium">{entry.address}</div>
-                                  {entry.comment && (
-                                    <div className="text-sm text-muted-foreground mt-1">
-                                      {entry.comment}
-                                    </div>
-                                  )}
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteEntry(entry[".id"])}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            ))
-                          )}
+                        <div className="space-y-2 pt-2">
+                          <div className="flex justify-end mb-2">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setDeleteListName(listName)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Eliminar Lista Completa
+                            </Button>
+                          </div>
+                          <div className="rounded-md border">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="p-2 text-left text-sm font-medium">Dirección</th>
+                                  <th className="p-2 text-left text-sm font-medium">Comentario</th>
+                                  <th className="p-2 text-right text-sm font-medium">Acciones</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {entries.map((entry: any, idx: number) => (
+                                  <tr key={entry[".id"] || idx} className="border-b last:border-0">
+                                    <td className="p-2 font-mono text-sm">{entry.address}</td>
+                                    <td className="p-2 text-sm text-muted-foreground">{entry.comment || "-"}</td>
+                                    <td className="p-2 text-right">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-destructive hover:text-destructive"
+                                        onClick={() => handleDeleteEntry(entry[".id"])}
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       </AccordionContent>
                     </AccordionItem>
@@ -568,25 +582,25 @@ const AddressList = () => {
             )}
           </CardContent>
         </Card>
-
-        <AlertDialog open={!!deleteListName} onOpenChange={() => setDeleteListName(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar lista completa?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Estás a punto de eliminar la lista "{deleteListName}" y todas sus {groupedByList[deleteListName || ""]?.length || 0} entrada(s).
-                Esta acción no se puede deshacer.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteList} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Eliminar Lista
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
+
+      <AlertDialog open={!!deleteListName} onOpenChange={() => setDeleteListName(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar lista "{deleteListName}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará todas las {groupedByList[deleteListName || ""]?.length || 0} IPs de esta lista.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteList} className="bg-destructive hover:bg-destructive/90">
+              Eliminar Lista
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
