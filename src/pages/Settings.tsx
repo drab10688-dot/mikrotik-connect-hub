@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
-import { saveSelectedDevice, cleanupLegacyStorage } from "@/lib/mikrotik";
+import { saveSelectedDevice, cleanupLegacyStorage, clearSelectedDevice } from "@/lib/mikrotik";
 import { Router, Wifi } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
@@ -73,6 +73,22 @@ export default function Settings() {
     },
     enabled: !!user,
   });
+
+  // Validate stored device on load and clear if user doesn't have access
+  useEffect(() => {
+    if (isLoading || !devices) return;
+    
+    const storedDeviceId = localStorage.getItem("mikrotik_device_id");
+    if (storedDeviceId) {
+      // Check if stored device is in user's accessible devices
+      const hasAccess = devices.some((d: any) => d.id === storedDeviceId);
+      if (!hasAccess) {
+        // Clear invalid device selection
+        clearSelectedDevice();
+        toast.info("Selecciona un dispositivo disponible");
+      }
+    }
+  }, [devices, isLoading]);
 
   // Auto-select and connect when user has exactly one active device
   useEffect(() => {
