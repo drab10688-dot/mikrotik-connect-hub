@@ -36,23 +36,10 @@ export default function HotspotProfiles() {
     queryFn: async () => {
       if (!selectedMikrotik) return [];
       
-      const { data: device } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .eq('id', selectedMikrotik)
-        .single();
-      
-      if (!device) return [];
-      
-      const functionName = device.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-      const { data, error } = await supabase.functions.invoke(functionName, {
+      const { data, error } = await supabase.functions.invoke('mikrotik-v6-api', {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profiles',
-          action: device.version === 'v7' ? 'list-profiles' : undefined,
+          mikrotikId: selectedMikrotik,
+          command: 'hotspot-profiles',
         },
       });
       
@@ -64,16 +51,6 @@ export default function HotspotProfiles() {
 
   const createProfileMutation = useMutation({
     mutationFn: async () => {
-      const { data: device } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .eq('id', selectedMikrotik)
-        .single();
-      
-      if (!device) throw new Error('Dispositivo no encontrado');
-      
-      const functionName = device.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-      
       const profileData: any = {
         name: profileName,
         'shared-users': sharedUsers,
@@ -83,14 +60,10 @@ export default function HotspotProfiles() {
       if (sessionTimeout) profileData['session-timeout'] = sessionTimeout;
       if (idleTimeout) profileData['idle-timeout'] = idleTimeout;
 
-      const { error } = await supabase.functions.invoke(functionName, {
+      const { error } = await supabase.functions.invoke('mikrotik-v6-api', {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profile-add',
-          action: device.version === 'v7' ? 'add-profile' : undefined,
+          mikrotikId: selectedMikrotik,
+          command: 'hotspot-profile-add',
           params: profileData,
         },
       });
@@ -110,24 +83,10 @@ export default function HotspotProfiles() {
 
   const deleteProfileMutation = useMutation({
     mutationFn: async (profileId: string) => {
-      const { data: device } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .eq('id', selectedMikrotik)
-        .single();
-      
-      if (!device) throw new Error('Dispositivo no encontrado');
-      
-      const functionName = device.version === 'v7' ? 'mikrotik-hotspot-users' : 'mikrotik-v6-api';
-      
-      const { error } = await supabase.functions.invoke(functionName, {
+      const { error } = await supabase.functions.invoke('mikrotik-v6-api', {
         body: {
-          host: device.host,
-          username: device.username,
-          password: device.password,
-          port: device.port,
-          command: device.version === 'v7' ? undefined : 'hotspot-profile-delete',
-          action: device.version === 'v7' ? 'remove-profile' : undefined,
+          mikrotikId: selectedMikrotik,
+          command: 'hotspot-profile-delete',
           params: { '.id': profileId },
         },
       });
