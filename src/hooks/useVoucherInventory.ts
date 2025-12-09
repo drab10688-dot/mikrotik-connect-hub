@@ -99,7 +99,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
       return data?.data || [];
     },
     enabled: !!mikrotikId,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 10000, // Refresh every 10 seconds for more accurate time tracking
   });
 
   // Compute vouchers with updated status based on MikroTik data
