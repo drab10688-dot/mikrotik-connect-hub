@@ -289,8 +289,68 @@ export type Database = {
           },
         ]
       }
+      voucher_sales_history: {
+        Row: {
+          activated_at: string | null
+          created_at: string
+          created_by: string
+          expired_at: string
+          id: string
+          mikrotik_id: string
+          price: number
+          profile: string
+          sold_at: string | null
+          sold_by: string | null
+          total_uptime: string | null
+          validity: string
+          voucher_code: string
+          voucher_password: string
+        }
+        Insert: {
+          activated_at?: string | null
+          created_at?: string
+          created_by: string
+          expired_at?: string
+          id?: string
+          mikrotik_id: string
+          price?: number
+          profile: string
+          sold_at?: string | null
+          sold_by?: string | null
+          total_uptime?: string | null
+          validity: string
+          voucher_code: string
+          voucher_password: string
+        }
+        Update: {
+          activated_at?: string | null
+          created_at?: string
+          created_by?: string
+          expired_at?: string
+          id?: string
+          mikrotik_id?: string
+          price?: number
+          profile?: string
+          sold_at?: string | null
+          sold_by?: string | null
+          total_uptime?: string | null
+          validity?: string
+          voucher_code?: string
+          voucher_password?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voucher_sales_history_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vouchers: {
         Row: {
+          activated_at: string | null
           code: string
           created_at: string | null
           created_by: string
@@ -305,8 +365,10 @@ export type Database = {
           sold_by: string | null
           status: string
           updated_at: string | null
+          validity: string | null
         }
         Insert: {
+          activated_at?: string | null
           code: string
           created_at?: string | null
           created_by: string
@@ -321,8 +383,10 @@ export type Database = {
           sold_by?: string | null
           status?: string
           updated_at?: string | null
+          validity?: string | null
         }
         Update: {
+          activated_at?: string | null
           code?: string
           created_at?: string | null
           created_by?: string
@@ -337,6 +401,7 @@ export type Database = {
           sold_by?: string | null
           status?: string
           updated_at?: string | null
+          validity?: string | null
         }
         Relationships: [
           {

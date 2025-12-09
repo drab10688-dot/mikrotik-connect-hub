@@ -12,6 +12,43 @@ interface GenerateVouchersParams {
   price?: number;
 }
 
+// Helper to parse uptime string to milliseconds
+function parseUptimeToMs(uptime: string): number {
+  if (!uptime || uptime === '0s') return 0;
+  
+  let totalMs = 0;
+  const weekMatch = uptime.match(/(\d+)w/);
+  const dayMatch = uptime.match(/(\d+)d/);
+  const hourMatch = uptime.match(/(\d+)h/);
+  const minMatch = uptime.match(/(\d+)m(?!s)/);
+  const secMatch = uptime.match(/(\d+)s/);
+
+  if (weekMatch) totalMs += parseInt(weekMatch[1]) * 7 * 24 * 60 * 60 * 1000;
+  if (dayMatch) totalMs += parseInt(dayMatch[1]) * 24 * 60 * 60 * 1000;
+  if (hourMatch) totalMs += parseInt(hourMatch[1]) * 60 * 60 * 1000;
+  if (minMatch) totalMs += parseInt(minMatch[1]) * 60 * 1000;
+  if (secMatch) totalMs += parseInt(secMatch[1]) * 1000;
+
+  return totalMs;
+}
+
+// Helper to parse validity string to milliseconds
+function parseValidityToMs(validity: string): number {
+  if (!validity) return 0;
+  
+  const hourMatch = validity.match(/^(\d+)h$/);
+  const dayMatch = validity.match(/^(\d+)d$/);
+  const weekMatch = validity.match(/^(\d+)w$/);
+  const monthMatch = validity.match(/^(\d+)m$/);
+
+  if (hourMatch) return parseInt(hourMatch[1]) * 60 * 60 * 1000;
+  if (dayMatch) return parseInt(dayMatch[1]) * 24 * 60 * 60 * 1000;
+  if (weekMatch) return parseInt(weekMatch[1]) * 7 * 24 * 60 * 60 * 1000;
+  if (monthMatch) return parseInt(monthMatch[1]) * 30 * 24 * 60 * 60 * 1000;
+
+  return 0;
+}
+
 interface SellVoucherParams {
   voucherId: string;
   price: number;
@@ -66,14 +103,23 @@ export const useVoucherInventory = (mikrotikId?: string) => {
   });
 
   // Compute vouchers with updated status based on MikroTik data
+  // Also check for expired vouchers and archive them
   const vouchersWithStatus = vouchers?.map(voucher => {
     // Find the corresponding hotspot user in MikroTik
     const mikrotikUser = hotspotUsers?.find((u: any) => u.name === voucher.code);
     
     if (mikrotikUser) {
-      // If uptime exists and is not "0s", the voucher has been used
       const uptime = mikrotikUser.uptime || '0s';
       const hasBeenUsed = uptime !== '0s' && uptime !== '';
+      const uptimeMs = parseUptimeToMs(uptime);
+      const validityMs = parseValidityToMs(voucher.validity || '1h');
+      
+      // Check if voucher has expired (uptime >= validity)
+      const isExpired = validityMs > 0 && uptimeMs >= validityMs;
+      
+      if (isExpired) {
+        return { ...voucher, status: 'expired', uptime: mikrotikUser.uptime, shouldArchive: true };
+      }
       
       if (hasBeenUsed && voucher.status !== 'used') {
         return { ...voucher, status: 'used', uptime: mikrotikUser.uptime };
@@ -84,6 +130,82 @@ export const useVoucherInventory = (mikrotikId?: string) => {
     
     return voucher;
   });
+
+  // Archive expired vouchers mutation
+  const archiveExpiredVoucherMutation = useMutation({
+    mutationFn: async (voucher: any) => {
+      // First, save to history
+      const { error: historyError } = await supabase
+        .from('voucher_sales_history')
+        .insert({
+          voucher_code: voucher.code,
+          voucher_password: voucher.password,
+          profile: voucher.profile,
+          validity: voucher.validity || '1h',
+          price: voucher.price || 0,
+          mikrotik_id: voucher.mikrotik_id,
+          created_by: voucher.created_by,
+          sold_by: voucher.sold_by,
+          sold_at: voucher.sold_at,
+          activated_at: voucher.activated_at,
+          total_uptime: voucher.uptime,
+          expired_at: new Date().toISOString(),
+        });
+
+      if (historyError) throw historyError;
+
+      // Delete from MikroTik
+      try {
+        const { data: usersData } = await supabase.functions.invoke('mikrotik-v6-api', {
+          body: {
+            mikrotikId: voucher.mikrotik_id,
+            command: 'hotspot-users',
+          },
+        });
+
+        if (usersData?.data) {
+          const mikrotikUser = usersData.data.find((u: any) => u.name === voucher.code);
+          if (mikrotikUser && mikrotikUser['.id']) {
+            await supabase.functions.invoke('mikrotik-v6-api', {
+              body: {
+                mikrotikId: voucher.mikrotik_id,
+                command: 'hotspot-user-remove',
+                params: { '.id': mikrotikUser['.id'] },
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error eliminando de MikroTik:', error);
+      }
+
+      // Delete from vouchers table
+      const { error: deleteError } = await supabase
+        .from('vouchers')
+        .delete()
+        .eq('id', voucher.id);
+
+      if (deleteError) throw deleteError;
+
+      return voucher;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['voucher-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['voucher-sales-history'] });
+      queryClient.invalidateQueries({ queryKey: ['hotspot-users-status'] });
+    },
+  });
+
+  // Auto-archive expired vouchers
+  const expiredVouchers = vouchersWithStatus?.filter((v: any) => v.shouldArchive) || [];
+  if (expiredVouchers.length > 0 && !archiveExpiredVoucherMutation.isPending) {
+    expiredVouchers.forEach((voucher: any) => {
+      archiveExpiredVoucherMutation.mutate(voucher);
+    });
+  }
+
+  // Filter out expired vouchers from the displayed list
+  const activeVouchers = vouchersWithStatus?.filter((v: any) => !v.shouldArchive);
 
   // Generate vouchers mutation
   const generateVouchersMutation = useMutation({
@@ -109,6 +231,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
           created_by: user?.id,
           expires_at: null,
           price: params.price || 0,
+          validity: params.validity,
         });
 
         mikrotikUsers.push({
@@ -351,7 +474,7 @@ export const useVoucherInventory = (mikrotikId?: string) => {
   };
 
   return {
-    vouchers: vouchersWithStatus,
+    vouchers: activeVouchers,
     isLoading,
     stats,
     generateVouchers: generateVouchersMutation.mutate,

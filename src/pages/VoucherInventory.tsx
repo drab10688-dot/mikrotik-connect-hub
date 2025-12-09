@@ -15,6 +15,7 @@ import { VoucherTable } from '@/components/vouchers/VoucherTable';
 import { PrintVoucherTicket } from '@/components/vouchers/PrintVoucherTicket';
 import { VoucherPresetsManager } from '@/components/vouchers/VoucherPresetsManager';
 import { VoucherReports } from '@/components/vouchers/VoucherReports';
+import { VoucherSalesHistory } from '@/components/vouchers/VoucherSalesHistory';
 import { VoucherQRDialog } from '@/components/vouchers/VoucherQRDialog';
 import { ResellerManagement } from '@/components/vouchers/ResellerManagement';
 import { useAuth } from '@/hooks/useAuth';
@@ -369,6 +370,9 @@ export default function VoucherInventory() {
 
               {/* Sales Report */}
               <VoucherReports vouchers={vouchers || []} />
+
+              {/* Sales History */}
+              <VoucherSalesHistory mikrotikId={selectedMikrotik} />
 
               {/* Presets */}
               <VoucherPresetsManager 
