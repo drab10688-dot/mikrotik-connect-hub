@@ -5,7 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { Trash2, Search, Printer, QrCode, Clock } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Trash2, Search, Printer, QrCode, Clock, CalendarIcon, X } from 'lucide-react';
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, isSameDay, isWithinInterval } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface VoucherTableProps {
   vouchers: any[];
@@ -80,6 +86,8 @@ export const VoucherTable = ({
   onSelectAll,
 }: VoucherTableProps) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState<'all' | 'day' | 'month' | 'year' | 'custom'>('all');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [, forceUpdate] = useState(0);
 
   // Force re-render every second to update remaining time
@@ -90,11 +98,35 @@ export const VoucherTable = ({
     return () => clearInterval(interval);
   }, []);
 
-  const filteredVouchers = vouchers?.filter(voucher =>
-    voucher.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    voucher.profile.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    voucher.status.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  const getDateRange = () => {
+    switch (dateFilter) {
+      case 'day':
+        return { start: startOfDay(selectedDate), end: endOfDay(selectedDate) };
+      case 'month':
+        return { start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) };
+      case 'year':
+        return { start: startOfYear(selectedDate), end: endOfYear(selectedDate) };
+      default:
+        return null;
+    }
+  };
+
+  const filteredVouchers = vouchers?.filter(voucher => {
+    // Text search filter
+    const matchesSearch = 
+      voucher.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      voucher.profile.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      voucher.status.toLowerCase().includes(searchTerm.toLowerCase());
+
+    // Date filter
+    const dateRange = getDateRange();
+    if (!dateRange) return matchesSearch;
+
+    const voucherDate = new Date(voucher.created_at);
+    const matchesDate = isWithinInterval(voucherDate, { start: dateRange.start, end: dateRange.end });
+
+    return matchesSearch && matchesDate;
+  }) || [];
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: any; label: string; className?: string }> = {
@@ -128,10 +160,23 @@ export const VoucherTable = ({
     };
   };
 
+  const getDateFilterLabel = () => {
+    switch (dateFilter) {
+      case 'day':
+        return format(selectedDate, "dd 'de' MMMM, yyyy", { locale: es });
+      case 'month':
+        return format(selectedDate, "MMMM yyyy", { locale: es });
+      case 'year':
+        return format(selectedDate, "yyyy", { locale: es });
+      default:
+        return 'Todos';
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+        <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por código, perfil o estado..."
@@ -140,7 +185,59 @@ export const VoucherTable = ({
             className="pl-10"
           />
         </div>
+        
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Filtrar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="day">Por Día</SelectItem>
+              <SelectItem value="month">Por Mes</SelectItem>
+              <SelectItem value="year">Por Año</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {dateFilter !== 'all' && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <CalendarIcon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{getDateFilterLabel()}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  locale={es}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {dateFilter !== 'all' && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setDateFilter('all')}
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
+
+      {dateFilter !== 'all' && (
+        <div className="text-sm text-muted-foreground">
+          Mostrando vouchers de: <span className="font-medium text-foreground">{getDateFilterLabel()}</span>
+          {' '}({filteredVouchers.length} resultados)
+        </div>
+      )}
 
       {filteredVouchers.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
