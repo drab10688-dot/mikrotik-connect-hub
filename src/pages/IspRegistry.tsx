@@ -10,12 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Search, Plus, Users, Cable, Gauge, Settings2, AlertCircle, Key, Save } from "lucide-react";
+import { Search, Plus, Users, Cable, Gauge, AlertCircle, Key, Save, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { usePPPoEProfiles } from "@/hooks/useMikrotikData";
+import { ClientRegistrationForm } from "@/components/isp/ClientRegistrationForm";
 
 const BANDWIDTH_OPTIONS = [
   { value: "1M", label: "1 Mbps" },
@@ -260,12 +261,17 @@ export default function IspRegistry() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="users" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="registro" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="registro" className="flex items-center gap-2">
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Nuevo Cliente</span>
+              <span className="sm:hidden">Nuevo</span>
+            </TabsTrigger>
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Usuarios PPPoE</span>
-              <span className="sm:hidden">PPPoE</span>
+              <span className="hidden sm:inline">Clientes</span>
+              <span className="sm:hidden">Clientes</span>
             </TabsTrigger>
             <TabsTrigger value="profiles" className="flex items-center gap-2">
               <Cable className="w-4 h-4" />
@@ -274,10 +280,19 @@ export default function IspRegistry() {
             </TabsTrigger>
             <TabsTrigger value="queues" className="flex items-center gap-2">
               <Gauge className="w-4 h-4" />
-              <span className="hidden sm:inline">Colas (Queues)</span>
+              <span className="hidden sm:inline">Colas</span>
               <span className="sm:hidden">Colas</span>
             </TabsTrigger>
           </TabsList>
+
+          {/* Tab Registro de Cliente */}
+          <TabsContent value="registro" className="space-y-4">
+            <ClientRegistrationForm 
+              useStandardPassword={useStandardPassword}
+              standardPassword={standardPassword}
+              onSuccess={() => refetchUsers()}
+            />
+          </TabsContent>
 
           {/* Tab Usuarios PPPoE */}
           <TabsContent value="users" className="space-y-4">
