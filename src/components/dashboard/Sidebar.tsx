@@ -13,7 +13,8 @@ import {
   Ticket,
   ListChecks,
   Gauge,
-  Database
+  Database,
+  UserPlus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +28,7 @@ import { Shield } from "lucide-react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: UserPlus, label: "Registro ISP", path: "/isp-registry" },
   { icon: Users, label: "Usuarios Hotspot", path: "/users" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },

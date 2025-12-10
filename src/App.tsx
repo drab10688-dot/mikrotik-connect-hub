@@ -19,6 +19,7 @@ import Reports from "./pages/Reports";
 import AddressList from "./pages/AddressList";
 import SimpleQueues from "./pages/SimpleQueues";
 import Backup from "./pages/Backup";
+import IspRegistry from "./pages/IspRegistry";
 import UsersAdmin from "./pages/Admin/Users";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
@@ -38,6 +39,7 @@ const App = () => (
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
         <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
         <Route path="/vouchers" element={<ProtectedRoute><Vouchers /></ProtectedRoute>} />
