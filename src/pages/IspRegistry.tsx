@@ -75,7 +75,7 @@ export default function IspRegistry() {
       const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
           mikrotikId,
-          command: "ppp-secret-print",
+          command: "ppp-secrets",
         },
       });
 
