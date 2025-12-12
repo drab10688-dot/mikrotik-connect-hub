@@ -95,20 +95,40 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     );
   };
 
-  // Función para sanitizar texto (reemplazar ñ por n y otros caracteres problemáticos)
-  const sanitizeForMikrotik = (text: string): string => {
-    return text
-      .toLowerCase()
-      .replace(/ñ/g, 'n')
-      .replace(/Ñ/g, 'N')
-      .replace(/á/g, 'a')
-      .replace(/é/g, 'e')
-      .replace(/í/g, 'i')
-      .replace(/ó/g, 'o')
-      .replace(/ú/g, 'u')
-      .replace(/ü/g, 'u')
-      .replace(/\s+/g, '')
-      .replace(/[^a-zA-Z0-9_-]/g, '');
+  // Función para sanitizar y formatear nombre para MikroTik (Nombre.Apellido.Etc)
+  const formatUsernameForMikrotik = (nombre: string, apellidos: string): string => {
+    const sanitizeWord = (word: string): string => {
+      return word
+        .replace(/ñ/g, 'n')
+        .replace(/Ñ/g, 'N')
+        .replace(/á/g, 'a')
+        .replace(/é/g, 'e')
+        .replace(/í/g, 'i')
+        .replace(/ó/g, 'o')
+        .replace(/ú/g, 'u')
+        .replace(/ü/g, 'u')
+        .replace(/Á/g, 'A')
+        .replace(/É/g, 'E')
+        .replace(/Í/g, 'I')
+        .replace(/Ó/g, 'O')
+        .replace(/Ú/g, 'U')
+        .replace(/Ü/g, 'U')
+        .replace(/[^a-zA-Z]/g, '');
+    };
+
+    const capitalize = (word: string): string => {
+      if (!word) return '';
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    };
+
+    // Combinar nombre y apellidos, dividir por espacios
+    const fullName = `${nombre} ${apellidos}`.trim();
+    const words = fullName.split(/\s+/).filter(w => w.length > 0);
+    
+    // Sanitizar y capitalizar cada palabra, luego unir con puntos
+    const formattedParts = words.map(word => capitalize(sanitizeWord(word))).filter(w => w.length > 0);
+    
+    return formattedParts.join('.');
   };
 
   // Función para convertir IP a número para comparación
@@ -187,9 +207,8 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       // Obtener la siguiente IP disponible
       const nextIP = await getNextAvailableIP();
       
-      // Generar nombre de usuario sanitizado (nombre + identificación)
-      const sanitizedName = sanitizeForMikrotik(data.nombre);
-      const username = `${sanitizedName}_${data.numeroIdentificacion}`;
+      // Generar nombre de usuario con formato Nombre.Apellido (ej: Daira.Yulieth.Jurado)
+      const username = formatUsernameForMikrotik(data.nombre, data.apellidos);
       const password = standardPassword;
       
       // Crear comentario con toda la información del cliente
