@@ -111,7 +111,28 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       .replace(/[^a-zA-Z0-9_-]/g, '');
   };
 
-  // Función para obtener la siguiente IP disponible
+  // Función para convertir IP a número para comparación
+  const ipToNumber = (ip: string): number => {
+    const parts = ip.split('.').map(Number);
+    return parts[0] * 16777216 + parts[1] * 65536 + parts[2] * 256 + parts[3];
+  };
+
+  // Función para incrementar una IP
+  const incrementIP = (ip: string): string => {
+    const parts = ip.split('.').map(Number);
+    parts[3]++;
+    if (parts[3] > 254) {
+      parts[3] = 1;
+      parts[2]++;
+      if (parts[2] > 255) {
+        parts[2] = 0;
+        parts[1]++;
+      }
+    }
+    return parts.join('.');
+  };
+
+  // Función para obtener la siguiente IP disponible basada en usuarios PPPoE
   const getNextAvailableIP = async (): Promise<string> => {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) throw new Error("No hay sesión activa");
@@ -125,31 +146,34 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     });
 
     if (!response.data?.success) {
-      // Si no hay usuarios, empezar con una IP base
-      return "10.10.10.2";
+      throw new Error("No se pudo obtener la lista de usuarios PPPoE");
     }
 
     const secrets = response.data.data || [];
-    let highestIP = 0;
-    const baseIP = "10.10.10.";
+    let highestIP = "";
+    let highestIPValue = 0;
 
     secrets.forEach((secret: any) => {
       // Solo considerar usuarios con servicio PPPoE
-      const service = secret.service || '';
-      if (service.toLowerCase() !== 'pppoe') return;
+      const service = (secret.service || '').toLowerCase();
+      if (service !== 'pppoe') return;
 
       const remoteAddress = secret['remote-address'] || secret.remoteAddress || '';
-      if (remoteAddress.startsWith(baseIP)) {
-        const lastOctet = parseInt(remoteAddress.split('.')[3], 10);
-        if (!isNaN(lastOctet) && lastOctet > highestIP) {
-          highestIP = lastOctet;
-        }
+      if (!remoteAddress || remoteAddress === '') return;
+
+      const ipValue = ipToNumber(remoteAddress);
+      if (ipValue > highestIPValue) {
+        highestIPValue = ipValue;
+        highestIP = remoteAddress;
       }
     });
 
+    if (!highestIP) {
+      throw new Error("No se encontraron usuarios PPPoE con IP remota asignada");
+    }
+
     // La siguiente IP disponible
-    const nextOctet = highestIP > 0 ? highestIP + 1 : 2;
-    return `${baseIP}${nextOctet}`;
+    return incrementIP(highestIP);
   };
 
   const createClientMutation = useMutation({
