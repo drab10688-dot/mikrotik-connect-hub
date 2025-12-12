@@ -95,13 +95,34 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     );
   };
 
+  // Función para sanitizar texto (reemplazar ñ por n y otros caracteres problemáticos)
+  const sanitizeForMikrotik = (text: string): string => {
+    return text
+      .toLowerCase()
+      .replace(/ñ/g, 'n')
+      .replace(/Ñ/g, 'N')
+      .replace(/á/g, 'a')
+      .replace(/é/g, 'e')
+      .replace(/í/g, 'i')
+      .replace(/ó/g, 'o')
+      .replace(/ú/g, 'u')
+      .replace(/ü/g, 'u')
+      .replace(/\s+/g, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '');
+  };
+
   const createClientMutation = useMutation({
     mutationFn: async (data: ClientFormData) => {
       if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
       
-      // Generar nombre de usuario basado en nombre + número de identificación
-      const username = `${data.nombre.toLowerCase().replace(/\s+/g, '')}_${data.numeroIdentificacion}`;
-      const password = useStandardPassword ? standardPassword : data.numeroIdentificacion;
+      if (!useStandardPassword || !standardPassword) {
+        throw new Error("Configure una contraseña estándar antes de registrar clientes");
+      }
+      
+      // Generar nombre de usuario sanitizado (nombre + identificación)
+      const sanitizedName = sanitizeForMikrotik(data.nombre);
+      const username = `${sanitizedName}_${data.numeroIdentificacion}`;
+      const password = standardPassword;
       
       // Crear comentario con toda la información del cliente
       const clientInfo = [
