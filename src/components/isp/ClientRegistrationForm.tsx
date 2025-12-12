@@ -198,16 +198,46 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       if (error) throw error;
       if (!result.success) throw new Error(result.error);
       
-      return { username, password };
+      return { username, password, remoteIP: nextIP, clientName: `${data.nombre} ${data.apellidos}` };
     },
     onSuccess: (result) => {
+      const message = `🌐 *Datos de conexión PPPoE*\n\n👤 Cliente: ${result.clientName}\n📧 Usuario: ${result.username}\n🔑 Contraseña: ${result.password}\n🌍 IP Asignada: ${result.remoteIP}\n\n¡Gracias por confiar en nosotros!`;
+      
+      const copyToClipboard = () => {
+        navigator.clipboard.writeText(message.replace(/\*/g, ''));
+        toast.success("Copiado al portapapeles");
+      };
+
+      const shareWhatsApp = () => {
+        const encodedMessage = encodeURIComponent(message);
+        window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
+      };
+
       toast.success(
-        <div>
-          <p className="font-semibold">Cliente registrado exitosamente</p>
-          <p className="text-sm">Usuario: {result.username}</p>
-          <p className="text-sm">Contraseña: {result.password}</p>
+        <div className="space-y-3">
+          <p className="font-semibold">✅ Cliente registrado exitosamente</p>
+          <div className="text-sm space-y-1 bg-muted p-2 rounded">
+            <p><strong>Cliente:</strong> {result.clientName}</p>
+            <p><strong>Usuario:</strong> {result.username}</p>
+            <p><strong>Contraseña:</strong> {result.password}</p>
+            <p><strong>IP:</strong> {result.remoteIP}</p>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={copyToClipboard}
+              className="flex-1 px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90"
+            >
+              📋 Copiar
+            </button>
+            <button
+              onClick={shareWhatsApp}
+              className="flex-1 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
+            >
+              📱 WhatsApp
+            </button>
+          </div>
         </div>,
-        { duration: 10000 }
+        { duration: 30000 }
       );
       queryClient.invalidateQueries({ queryKey: ["isp-pppoe-users"] });
       setFormData({
