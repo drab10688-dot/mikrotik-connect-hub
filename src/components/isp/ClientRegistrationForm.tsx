@@ -111,6 +111,43 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       .replace(/[^a-zA-Z0-9_-]/g, '');
   };
 
+  // Función para obtener la siguiente IP disponible
+  const getNextAvailableIP = async (): Promise<string> => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error("No hay sesión activa");
+
+    const response = await supabase.functions.invoke('mikrotik-v6-api', {
+      body: {
+        mikrotikId,
+        command: 'ppp-secrets',
+        action: 'list'
+      }
+    });
+
+    if (!response.data?.success) {
+      // Si no hay usuarios, empezar con una IP base
+      return "10.10.10.2";
+    }
+
+    const secrets = response.data.data || [];
+    let highestIP = 0;
+    const baseIP = "10.10.10.";
+
+    secrets.forEach((secret: any) => {
+      const remoteAddress = secret['remote-address'] || secret.remoteAddress || '';
+      if (remoteAddress.startsWith(baseIP)) {
+        const lastOctet = parseInt(remoteAddress.split('.')[3], 10);
+        if (!isNaN(lastOctet) && lastOctet > highestIP) {
+          highestIP = lastOctet;
+        }
+      }
+    });
+
+    // La siguiente IP disponible
+    const nextOctet = highestIP > 0 ? highestIP + 1 : 2;
+    return `${baseIP}${nextOctet}`;
+  };
+
   const createClientMutation = useMutation({
     mutationFn: async (data: ClientFormData) => {
       if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
@@ -118,6 +155,9 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       if (!useStandardPassword || !standardPassword) {
         throw new Error("Configure una contraseña estándar antes de registrar clientes");
       }
+      
+      // Obtener la siguiente IP disponible
+      const nextIP = await getNextAvailableIP();
       
       // Generar nombre de usuario sanitizado (nombre + identificación)
       const sanitizedName = sanitizeForMikrotik(data.nombre);
@@ -135,7 +175,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
         data.latitud && data.longitud ? `GPS: ${data.latitud}, ${data.longitud}` : ''
       ].filter(Boolean).join(' | ');
 
-      // Crear usuario PPPoE en MikroTik
+      // Crear usuario PPPoE en MikroTik con IP remota estática
       const { data: result, error } = await supabase.functions.invoke("mikrotik-v6-api", {
         body: {
           mikrotikId,
@@ -145,6 +185,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
             password: password,
             service: "pppoe",
             profile: data.plan || undefined,
+            "remote-address": nextIP,
             comment: clientInfo,
           },
         },
