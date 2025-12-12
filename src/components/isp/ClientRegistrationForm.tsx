@@ -134,6 +134,10 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     const baseIP = "10.10.10.";
 
     secrets.forEach((secret: any) => {
+      // Solo considerar usuarios con servicio PPPoE
+      const service = secret.service || '';
+      if (service.toLowerCase() !== 'pppoe') return;
+
       const remoteAddress = secret['remote-address'] || secret.remoteAddress || '';
       if (remoteAddress.startsWith(baseIP)) {
         const lastOctet = parseInt(remoteAddress.split('.')[3], 10);
