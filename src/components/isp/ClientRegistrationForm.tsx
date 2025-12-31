@@ -439,8 +439,8 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
   return (
     <Card className="border-2">
       <CardHeader className="text-center pb-2">
-        <CardTitle className="text-xl md:text-2xl text-primary">Registro de Nuevo Cliente</CardTitle>
-        <CardDescription>Complete el formulario para iniciar su registro</CardDescription>
+        <CardTitle className="text-xl md:text-2xl text-primary">Registrar Nuevo Cliente</CardTitle>
+        <CardDescription>Complete el formulario para registrar un nuevo cliente</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
