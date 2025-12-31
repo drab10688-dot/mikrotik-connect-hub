@@ -14,7 +14,9 @@ import {
   ListChecks,
   Gauge,
   Database,
-  UserPlus
+  UserPlus,
+  ImagePlus,
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -25,6 +27,7 @@ import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { Shield } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -47,9 +50,45 @@ export const Sidebar = () => {
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [customLogo, setCustomLogo] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState<string>("MikroTik");
   
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
+
+  // Load saved logo and business name from localStorage
+  useEffect(() => {
+    const savedLogo = localStorage.getItem("sidebar_logo");
+    const savedName = localStorage.getItem("sidebar_business_name");
+    if (savedLogo) setCustomLogo(savedLogo);
+    if (savedName) setBusinessName(savedName);
+  }, []);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 500000) {
+        toast.error("La imagen debe ser menor a 500KB");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setCustomLogo(base64);
+        localStorage.setItem("sidebar_logo", base64);
+        toast.success("Logo actualizado");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setCustomLogo(null);
+    localStorage.removeItem("sidebar_logo");
+    toast.info("Logo eliminado");
+  };
 
   // Filtrar menú para secretarias - Dashboard, PPPoE y Queues
   const filteredMenuItems = isSecretary 
@@ -73,11 +112,39 @@ export const Sidebar = () => {
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
-              <Router className="w-6 h-6 text-primary-foreground" />
+            {/* Logo container with upload option */}
+            <div className="relative group">
+              {customLogo ? (
+                <div className="w-10 h-10 rounded-lg overflow-hidden relative">
+                  <img src={customLogo} alt="Logo" className="w-full h-full object-cover" />
+                  <button
+                    onClick={handleRemoveLogo}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
+                  >
+                    <X className="w-3 h-3 text-destructive-foreground" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
+                  <Router className="w-6 h-6 text-primary-foreground" />
+                </div>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 bg-black/50 rounded-lg items-center justify-center hidden group-hover:flex"
+              >
+                <ImagePlus className="w-4 h-4 text-white" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                className="hidden"
+              />
             </div>
             <div>
-              <h2 className="font-bold text-lg">MikroTik</h2>
+              <h2 className="font-bold text-lg">{businessName}</h2>
               <p className="text-xs text-sidebar-foreground/70">{host}</p>
             </div>
           </div>
