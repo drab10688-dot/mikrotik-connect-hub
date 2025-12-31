@@ -149,9 +149,9 @@ export default function Login() {
           Volver
         </Button>
 
-        {/* Small logo */}
+        {/* Logo */}
         <div className="mb-6 animate-fade-in">
-          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-cyan-400/30 shadow-lg shadow-cyan-500/20 bg-slate-800/50 p-1">
+          <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
             <img 
               src={omnilinkLogo} 
               alt="OmniLink" 
