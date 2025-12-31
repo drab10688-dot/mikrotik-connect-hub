@@ -62,7 +62,7 @@ serve(async (req) => {
     }
 
     // Obtener datos del nuevo usuario
-    const { email, password, fullName, role } = await req.json();
+    const { email, password, fullName, role, mikrotikId } = await req.json();
 
     if (!email || !password || !role) {
       return new Response(
@@ -231,6 +231,45 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
+    }
+
+    // Assign MikroTik device if provided
+    if (mikrotikId) {
+      // Determine which table to use based on role
+      if (role === 'admin') {
+        const { error: accessError } = await supabaseClient
+          .from('user_mikrotik_access')
+          .insert({
+            user_id: userId,
+            mikrotik_id: mikrotikId,
+            granted_by: requestingUser.id,
+          });
+        if (accessError) {
+          console.error('Error assigning device access:', accessError);
+        }
+      } else if (role === 'secretary') {
+        const { error: assignError } = await supabaseClient
+          .from('secretary_assignments')
+          .insert({
+            secretary_id: userId,
+            mikrotik_id: mikrotikId,
+            assigned_by: requestingUser.id,
+          });
+        if (assignError) {
+          console.error('Error assigning secretary:', assignError);
+        }
+      } else if (role === 'reseller') {
+        const { error: assignError } = await supabaseClient
+          .from('reseller_assignments')
+          .insert({
+            reseller_id: userId,
+            mikrotik_id: mikrotikId,
+            assigned_by: requestingUser.id,
+          });
+        if (assignError) {
+          console.error('Error assigning reseller:', assignError);
+        }
+      }
     }
 
     return new Response(

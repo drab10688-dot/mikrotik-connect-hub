@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,18 +9,48 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { toast } from 'sonner';
-import { UserPlus, ArrowLeft } from 'lucide-react';
+import { UserPlus, ArrowLeft, Router } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function RegisterUser() {
   const navigate = useNavigate();
-  const { isSuperAdmin, isAdmin, loading } = useAuth();
+  const { user, isSuperAdmin, isAdmin, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     fullName: '',
     role: 'user' as 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary',
+  });
+
+  // Fetch devices available for assignment
+  const { data: devices = [] } = useQuery({
+    queryKey: ['devices-for-assignment', user?.id],
+    queryFn: async () => {
+      if (isSuperAdmin) {
+        // Super admin can see all active devices
+        const { data, error } = await supabase
+          .from('mikrotik_devices')
+          .select('id, name, host, status')
+          .eq('status', 'active')
+          .order('name');
+        if (error) throw error;
+        return data || [];
+      } else if (isAdmin) {
+        // Admin can only see their assigned devices
+        const { data, error } = await supabase
+          .from('mikrotik_devices')
+          .select('id, name, host, status, user_mikrotik_access!inner(user_id)')
+          .eq('status', 'active')
+          .eq('user_mikrotik_access.user_id', user?.id)
+          .order('name');
+        if (error) throw error;
+        return data || [];
+      }
+      return [];
+    },
+    enabled: !loading && !!user && (isSuperAdmin || isAdmin),
   });
 
   const allowedRoles = useMemo(() => {
@@ -76,6 +107,7 @@ export default function RegisterUser() {
           password: formData.password,
           fullName: formData.fullName,
           role: formData.role,
+          mikrotikId: selectedDeviceId || null,
         },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -94,6 +126,7 @@ export default function RegisterUser() {
         fullName: '',
         role: 'user',
       });
+      setSelectedDeviceId('');
 
       // Esperar un momento y redirigir
       setTimeout(() => {
@@ -207,6 +240,35 @@ export default function RegisterUser() {
                     Define los permisos del usuario en el sistema
                   </p>
                 </div>
+
+                {/* Device assignment - only show for roles that need it */}
+                {['admin', 'secretary', 'reseller'].includes(formData.role) && devices.length > 0 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="device" className="flex items-center gap-2">
+                      <Router className="h-4 w-4" />
+                      Asignar Dispositivo MikroTik (Opcional)
+                    </Label>
+                    <Select
+                      value={selectedDeviceId}
+                      onValueChange={setSelectedDeviceId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar dispositivo..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Sin asignar</SelectItem>
+                        {devices.map((device) => (
+                          <SelectItem key={device.id} value={device.id}>
+                            {device.name} ({device.host})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Asigna un dispositivo MikroTik al usuario. Puedes asignar más dispositivos después.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-4">
                   <Button
