@@ -109,48 +109,49 @@ export const Sidebar = () => {
 
   return (
     <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex flex-col border-r border-sidebar-border hidden md:flex">
-      <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Logo container with upload option */}
-            <div className="relative group">
-              {customLogo ? (
-                <div className="w-10 h-10 rounded-lg overflow-hidden relative">
-                  <img src={customLogo} alt="Logo" className="w-full h-full object-cover" />
-                  <button
-                    onClick={handleRemoveLogo}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
-                  >
-                    <X className="w-3 h-3 text-destructive-foreground" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
-                  <Router className="w-6 h-6 text-primary-foreground" />
-                </div>
-              )}
+      {/* Logo section - Large branding area */}
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="relative group w-full">
+          {customLogo ? (
+            <div className="w-full h-24 rounded-xl overflow-hidden relative bg-sidebar-accent/30">
+              <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-2" />
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute inset-0 bg-black/50 rounded-lg items-center justify-center hidden group-hover:flex"
+                onClick={handleRemoveLogo}
+                className="absolute top-1 right-1 w-5 h-5 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
               >
-                <ImagePlus className="w-4 h-4 text-white" />
+                <X className="w-3 h-3 text-destructive-foreground" />
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoUpload}
-                className="hidden"
-              />
             </div>
-            <div>
-              <h2 className="font-bold text-lg">{businessName}</h2>
-              <p className="text-xs text-sidebar-foreground/70">{host}</p>
+          ) : (
+            <div className="w-full h-24 rounded-xl bg-gradient-primary flex items-center justify-center gap-2">
+              <Router className="w-10 h-10 text-primary-foreground" />
+              <span className="text-primary-foreground font-bold text-xl">Tu Logo</span>
             </div>
+          )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute inset-0 bg-black/50 rounded-xl items-center justify-center hidden group-hover:flex"
+          >
+            <ImagePlus className="w-6 h-6 text-white" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleLogoUpload}
+            className="hidden"
+          />
+        </div>
+        
+        {/* Host and version info */}
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70">
+            <Router className="w-4 h-4" />
+            <span>{host}</span>
           </div>
           <NotificationCenter />
         </div>
-        <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground">
+        <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground text-center">
           RouterOS {version}
         </div>
       </div>
