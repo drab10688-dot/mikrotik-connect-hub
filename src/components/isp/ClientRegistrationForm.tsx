@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -438,11 +438,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
 
   return (
     <Card className="border-2">
-      <CardHeader className="text-center pb-2">
-        <CardTitle className="text-xl md:text-2xl text-primary">Registrar Cliente</CardTitle>
-        <CardDescription>Complete el formulario para registrar un nuevo cliente</CardDescription>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Sección General */}
           <div className="space-y-4">
