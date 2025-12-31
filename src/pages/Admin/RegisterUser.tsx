@@ -249,14 +249,14 @@ export default function RegisterUser() {
                       Asignar Dispositivo MikroTik (Opcional)
                     </Label>
                     <Select
-                      value={selectedDeviceId}
-                      onValueChange={setSelectedDeviceId}
+                      value={selectedDeviceId || "none"}
+                      onValueChange={(value) => setSelectedDeviceId(value === "none" ? "" : value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar dispositivo..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Sin asignar</SelectItem>
+                        <SelectItem value="none">Sin asignar</SelectItem>
                         {devices.map((device) => (
                           <SelectItem key={device.id} value={device.id}>
                             {device.name} ({device.host})
