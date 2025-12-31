@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Switch } from "@/components/ui/switch";
+
 import { MapPin, UserPlus, AlertCircle, Gauge, Cable } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -519,41 +519,84 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
           <div className="space-y-4">
             <h3 className="font-semibold text-foreground border-b pb-2">Tipo de Conexión</h3>
             
-            {/* Toggle Simple Queues vs PPPoE */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${useSimpleQueues ? 'bg-orange-500/20' : 'bg-cyan-500/20'}`}>
-                    {useSimpleQueues ? <Gauge className="h-5 w-5 text-orange-500" /> : <Cable className="h-5 w-5 text-cyan-500" />}
+            {/* Selector de tipo de conexión */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Opción PPPoE */}
+              <button
+                type="button"
+                onClick={() => setUseSimpleQueues(false)}
+                className={`p-4 rounded-lg border-2 text-left transition-all ${
+                  !useSimpleQueues 
+                    ? 'border-cyan-500 bg-cyan-500/10 ring-2 ring-cyan-500/20' 
+                    : 'border-muted hover:border-cyan-500/50 hover:bg-muted/50'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`p-2 rounded-lg ${!useSimpleQueues ? 'bg-cyan-500/20' : 'bg-muted'}`}>
+                    <Cable className={`h-5 w-5 ${!useSimpleQueues ? 'text-cyan-500' : 'text-muted-foreground'}`} />
                   </div>
-                  <div>
-                    <p className="font-medium">
-                      {useSimpleQueues ? 'Simple Queues' : 'PPPoE'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {useSimpleQueues 
-                        ? 'Crear cola de ancho de banda con IP estática' 
-                        : 'Crear usuario PPPoE con perfil de velocidad'}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-semibold ${!useSimpleQueues ? 'text-cyan-600 dark:text-cyan-400' : 'text-foreground'}`}>
+                        PPPoE
+                      </p>
+                      {!useSimpleQueues && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-cyan-500 text-white rounded-full">
+                          Seleccionado
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Crear usuario PPPoE con perfil de velocidad
                     </p>
                   </div>
                 </div>
-                <Switch
-                  checked={useSimpleQueues}
-                  onCheckedChange={setUseSimpleQueues}
-                />
-              </div>
-              
-              <div className={`text-sm p-3 rounded-lg ${useSimpleQueues ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-cyan-500/10 border border-cyan-500/20'}`}>
-                {useSimpleQueues ? (
-                  <p className="text-orange-700 dark:text-orange-400">
-                    <strong>Simple Queue:</strong> Se creará una cola con límite de velocidad. La IP se asignará automáticamente basándose en las colas existentes.
-                  </p>
-                ) : (
-                  <p className="text-cyan-700 dark:text-cyan-400">
-                    <strong>PPPoE:</strong> Se creará un usuario PPPoE. La IP se asignará automáticamente basándose en los usuarios existentes.
-                  </p>
-                )}
-              </div>
+              </button>
+
+              {/* Opción Simple Queues */}
+              <button
+                type="button"
+                onClick={() => setUseSimpleQueues(true)}
+                className={`p-4 rounded-lg border-2 text-left transition-all ${
+                  useSimpleQueues 
+                    ? 'border-orange-500 bg-orange-500/10 ring-2 ring-orange-500/20' 
+                    : 'border-muted hover:border-orange-500/50 hover:bg-muted/50'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`p-2 rounded-lg ${useSimpleQueues ? 'bg-orange-500/20' : 'bg-muted'}`}>
+                    <Gauge className={`h-5 w-5 ${useSimpleQueues ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-semibold ${useSimpleQueues ? 'text-orange-600 dark:text-orange-400' : 'text-foreground'}`}>
+                        Simple Queues
+                      </p>
+                      {useSimpleQueues && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-orange-500 text-white rounded-full">
+                          Seleccionado
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Crear cola de ancho de banda con IP estática
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            
+            {/* Información del tipo seleccionado */}
+            <div className={`text-sm p-3 rounded-lg ${useSimpleQueues ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-cyan-500/10 border border-cyan-500/20'}`}>
+              {useSimpleQueues ? (
+                <p className="text-orange-700 dark:text-orange-400">
+                  <strong>Simple Queue:</strong> Se creará una cola con límite de velocidad. La IP se asignará automáticamente basándose en las colas existentes.
+                </p>
+              ) : (
+                <p className="text-cyan-700 dark:text-cyan-400">
+                  <strong>PPPoE:</strong> Se creará un usuario PPPoE. La IP se asignará automáticamente basándose en los usuarios existentes.
+                </p>
+              )}
             </div>
           </div>
 
