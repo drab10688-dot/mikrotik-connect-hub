@@ -90,32 +90,18 @@ export default function Settings() {
     }
   }, [devices, isLoading]);
 
-  // Auto-select and connect when user has exactly one active device
+  // Auto-select (but not auto-connect) when user has exactly one active device
   useEffect(() => {
-    if (isLoading || autoConnecting || !devices) return;
+    if (isLoading || !devices) return;
     
     const activeDevices = devices.filter((d: any) => d.status === 'active');
     
-    // If user has exactly one active device, auto-select and connect
+    // If user has exactly one active device, just auto-select it (don't auto-connect)
     if (activeDevices.length === 1 && !selectedDevice) {
       const device = activeDevices[0];
       setSelectedDevice(device.id);
-      setAutoConnecting(true);
-      
-      // Auto-connect after a brief delay to show the selection
-      setTimeout(() => {
-        saveSelectedDevice({
-          id: device.id,
-          name: device.name,
-          host: device.host,
-          port: device.port.toString(),
-          version: device.version,
-        });
-        toast.success(`Conectado automáticamente a ${device.name}`);
-        navigate("/dashboard");
-      }, 500);
     }
-  }, [devices, isLoading, selectedDevice, autoConnecting, navigate]);
+  }, [devices, isLoading, selectedDevice]);
 
   const handleConnect = async () => {
     if (!selectedDevice) {
