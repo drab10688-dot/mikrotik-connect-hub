@@ -14,6 +14,77 @@ export type Database = {
   }
   public: {
     Tables: {
+      isp_clients: {
+        Row: {
+          address: string | null
+          assigned_ip: string | null
+          city: string | null
+          client_name: string
+          comment: string | null
+          connection_type: string
+          created_at: string
+          created_by: string
+          email: string | null
+          id: string
+          identification_number: string | null
+          is_potential_client: boolean | null
+          latitude: string | null
+          longitude: string | null
+          mikrotik_id: string
+          phone: string | null
+          plan_or_speed: string | null
+          username: string
+        }
+        Insert: {
+          address?: string | null
+          assigned_ip?: string | null
+          city?: string | null
+          client_name: string
+          comment?: string | null
+          connection_type: string
+          created_at?: string
+          created_by: string
+          email?: string | null
+          id?: string
+          identification_number?: string | null
+          is_potential_client?: boolean | null
+          latitude?: string | null
+          longitude?: string | null
+          mikrotik_id: string
+          phone?: string | null
+          plan_or_speed?: string | null
+          username: string
+        }
+        Update: {
+          address?: string | null
+          assigned_ip?: string | null
+          city?: string | null
+          client_name?: string
+          comment?: string | null
+          connection_type?: string
+          created_at?: string
+          created_by?: string
+          email?: string | null
+          id?: string
+          identification_number?: string | null
+          is_potential_client?: boolean | null
+          latitude?: string | null
+          longitude?: string | null
+          mikrotik_id?: string
+          phone?: string | null
+          plan_or_speed?: string | null
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "isp_clients_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mikrotik_devices: {
         Row: {
           created_at: string | null

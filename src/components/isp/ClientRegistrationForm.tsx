@@ -352,7 +352,34 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
         };
       }
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      // Guardar en el historial de clientes
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          await supabase.from('isp_clients').insert({
+            mikrotik_id: mikrotikId,
+            created_by: userData.user.id,
+            client_name: result.clientName,
+            identification_number: formData.numeroIdentificacion,
+            phone: formData.telefono,
+            email: formData.correoElectronico,
+            address: `${formData.calle}${formData.calle2 ? ', ' + formData.calle2 : ''}`,
+            city: formData.ciudad,
+            latitude: formData.latitud,
+            longitude: formData.longitud,
+            connection_type: result.type === 'pppoe' ? 'pppoe' : 'simple_queue',
+            username: result.username,
+            assigned_ip: result.remoteIP,
+            plan_or_speed: result.type === 'pppoe' ? formData.plan : result.speed,
+            is_potential_client: formData.clientePotencial,
+            comment: formData.numeroCajaNap ? `NAP: ${formData.numeroCajaNap}-${formData.numeroPuertoCajaNap}` : null
+          });
+        }
+      } catch (err) {
+        console.error('Error saving client to history:', err);
+      }
+
       const isPPPoE = result.type === 'pppoe';
       const message = isPPPoE 
         ? `🌐 *Datos de conexión PPPoE*\n\n👤 Cliente: ${result.clientName}\n📧 Usuario: ${result.username}\n🔑 Contraseña: ${result.password}\n🌍 IP Asignada: ${result.remoteIP}\n\n¡Gracias por confiar en nosotros!`
@@ -401,6 +428,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       } else {
         queryClient.invalidateQueries({ queryKey: ["isp-pppoe-users"] });
       }
+      queryClient.invalidateQueries({ queryKey: ["isp-clients"] });
       
       resetFormData();
       onSuccess?.();
