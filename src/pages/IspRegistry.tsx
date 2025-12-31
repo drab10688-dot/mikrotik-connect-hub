@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Search, Plus, Users, Cable, Gauge, AlertCircle, Key, Save, UserPlus } from "lucide-react";
+import { Search, Plus, Users, Cable, Gauge, AlertCircle, Key, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,20 +39,11 @@ export default function IspRegistry() {
   const queryClient = useQueryClient();
   const mikrotikId = getSelectedDeviceId();
   const [searchTerm, setSearchTerm] = useState("");
-  const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [isAddQueueDialogOpen, setIsAddQueueDialogOpen] = useState(false);
   const [useStandardPassword, setUseStandardPassword] = useState(true);
   const [standardPassword, setStandardPassword] = useState(
     localStorage.getItem("isp_standard_password") || ""
   );
-  
-  // Formulario para nuevo usuario PPPoE
-  const [userForm, setUserForm] = useState({
-    name: "",
-    password: "",
-    profile: "",
-    comment: "",
-  });
   
   // Formulario para nueva cola
   const [queueForm, setQueueForm] = useState({
@@ -67,8 +58,8 @@ export default function IspRegistry() {
   const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
   const pppoeProfiles = (pppoeProfilesData as any[]) || [];
 
-  // Obtener usuarios PPPoE
-  const { data: pppoeUsers, isLoading: loadingUsers, refetch: refetchUsers } = useQuery({
+  // Obtener usuarios PPPoE para el formulario
+  const { refetch: refetchUsers } = useQuery({
     queryKey: ["isp-pppoe-users", mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
@@ -85,7 +76,6 @@ export default function IspRegistry() {
       return data.data || [];
     },
     enabled: !!mikrotikId,
-    refetchInterval: 15000,
   });
 
   // Obtener colas simples
@@ -110,41 +100,6 @@ export default function IspRegistry() {
     refetchInterval: 15000,
   });
 
-  // Mutación para agregar usuario PPPoE
-  const addUserMutation = useMutation({
-    mutationFn: async (userData: typeof userForm) => {
-      if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
-      
-      const finalPassword = useStandardPassword ? standardPassword : userData.password;
-      
-      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
-        body: {
-          mikrotikId,
-          command: "ppp-secret-add",
-          params: {
-            name: userData.name.trim(),
-            password: finalPassword,
-            service: "pppoe",
-            profile: userData.profile || undefined,
-            comment: userData.comment?.trim() || undefined,
-          },
-        },
-      });
-
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-      return data;
-    },
-    onSuccess: () => {
-      toast.success("Usuario PPPoE creado exitosamente");
-      setIsAddUserDialogOpen(false);
-      setUserForm({ name: "", password: "", profile: "", comment: "" });
-      refetchUsers();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || "Error al crear usuario");
-    },
-  });
 
   // Mutación para agregar cola simple
   const addQueueMutation = useMutation({
@@ -188,11 +143,6 @@ export default function IspRegistry() {
   };
 
   // Filtros
-  const filteredUsers = (pppoeUsers || []).filter((user: any) =>
-    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.comment?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const filteredQueues = (simpleQueues || []).filter((queue: any) =>
     queue.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     queue.target?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -262,26 +212,18 @@ export default function IspRegistry() {
         </Card>
 
         <Tabs defaultValue="registro" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="registro" className="flex items-center gap-2">
-              <UserPlus className="w-4 h-4" />
-              <span className="hidden sm:inline">Nuevo Cliente</span>
-              <span className="sm:hidden">Nuevo</span>
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Clientes</span>
-              <span className="sm:hidden">Clientes</span>
+              <span>Clientes</span>
             </TabsTrigger>
             <TabsTrigger value="profiles" className="flex items-center gap-2">
               <Cable className="w-4 h-4" />
-              <span className="hidden sm:inline">Perfiles</span>
-              <span className="sm:hidden">Perfiles</span>
+              <span>Perfiles</span>
             </TabsTrigger>
             <TabsTrigger value="queues" className="flex items-center gap-2">
               <Gauge className="w-4 h-4" />
-              <span className="hidden sm:inline">Colas</span>
-              <span className="sm:hidden">Colas</span>
+              <span>Colas</span>
             </TabsTrigger>
           </TabsList>
 
@@ -292,174 +234,6 @@ export default function IspRegistry() {
               standardPassword={standardPassword}
               onSuccess={() => refetchUsers()}
             />
-          </TabsContent>
-
-          {/* Tab Usuarios PPPoE */}
-          <TabsContent value="users" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <CardTitle>Usuarios PPPoE</CardTitle>
-                    <CardDescription>Lista de usuarios PPPoE registrados</CardDescription>
-                  </div>
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <div className="relative flex-1 sm:w-64">
-                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Buscar usuario..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                    <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button>
-                          <Plus className="w-4 h-4 mr-2" />
-                          Nuevo
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Nuevo Usuario PPPoE</DialogTitle>
-                          <DialogDescription>
-                            Registra un nuevo usuario de internet
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={(e) => { e.preventDefault(); addUserMutation.mutate(userForm); }} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="userName">Nombre de usuario *</Label>
-                            <Input
-                              id="userName"
-                              placeholder="usuario123"
-                              value={userForm.name}
-                              onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                              required
-                            />
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="useStandard">Usar contraseña estándar</Label>
-                              <Switch
-                                id="useStandard"
-                                checked={useStandardPassword}
-                                onCheckedChange={setUseStandardPassword}
-                              />
-                            </div>
-                            {useStandardPassword ? (
-                              <div className="p-3 bg-muted rounded-lg">
-                                <p className="text-sm text-muted-foreground">
-                                  Se usará la contraseña: <span className="font-mono font-medium">{standardPassword || "(No configurada)"}</span>
-                                </p>
-                              </div>
-                            ) : (
-                              <Input
-                                id="userPassword"
-                                placeholder="Contraseña personalizada"
-                                value={userForm.password}
-                                onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                                required={!useStandardPassword}
-                              />
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="userProfile">Perfil PPPoE</Label>
-                            <Select
-                              value={userForm.profile}
-                              onValueChange={(value) => setUserForm({ ...userForm, profile: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar perfil" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {pppoeProfiles.map((profile: any) => (
-                                  <SelectItem key={profile[".id"]} value={profile.name}>
-                                    {profile.name} {profile["rate-limit"] && `(${profile["rate-limit"]})`}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="userComment">Comentario</Label>
-                            <Input
-                              id="userComment"
-                              placeholder="Nombre del cliente, dirección, etc."
-                              value={userForm.comment}
-                              onChange={(e) => setUserForm({ ...userForm, comment: e.target.value })}
-                            />
-                          </div>
-
-                          <div className="flex gap-2 justify-end">
-                            <Button type="button" variant="outline" onClick={() => setIsAddUserDialogOpen(false)}>
-                              Cancelar
-                            </Button>
-                            <Button type="submit" disabled={addUserMutation.isPending || !userForm.name || (!useStandardPassword && !userForm.password)}>
-                              {addUserMutation.isPending ? "Creando..." : "Crear Usuario"}
-                            </Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loadingUsers ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                    <p className="text-muted-foreground mt-2">Cargando usuarios...</p>
-                  </div>
-                ) : filteredUsers.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No se encontraron usuarios PPPoE
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Usuario</TableHead>
-                          <TableHead>Perfil</TableHead>
-                          <TableHead>Servicio</TableHead>
-                          <TableHead>Comentario</TableHead>
-                          <TableHead>Estado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredUsers.map((user: any) => (
-                          <TableRow key={user[".id"]}>
-                            <TableCell className="font-medium">{user.name}</TableCell>
-                            <TableCell>
-                              {user.profile ? (
-                                <Badge variant="secondary">{user.profile}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>{user.service || "pppoe"}</TableCell>
-                            <TableCell className="max-w-[200px] truncate">
-                              {user.comment || <span className="text-muted-foreground">-</span>}
-                            </TableCell>
-                            <TableCell>
-                              {user.disabled === "true" || user.disabled === true ? (
-                                <Badge variant="destructive">Deshabilitado</Badge>
-                              ) : (
-                                <Badge variant="default">Activo</Badge>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </TabsContent>
 
           {/* Tab Perfiles PPPoE */}
