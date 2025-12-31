@@ -794,7 +794,9 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
           {/* Botón de registro */}
           <Button 
             type="submit" 
-            className="w-full" 
+            className={`w-full ${useSimpleQueues 
+              ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600' 
+              : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600'}`}
             size="lg"
             disabled={
               createClientMutation.isPending || 
@@ -804,12 +806,12 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
               (useSimpleQueues ? (!formData.uploadSpeed || !formData.downloadSpeed) : !formData.plan)
             }
           >
-            {useSimpleQueues ? <Gauge className="w-5 h-5 mr-2" /> : <UserPlus className="w-5 h-5 mr-2" />}
+            {useSimpleQueues ? <Gauge className="w-5 h-5 mr-2" /> : <Cable className="w-5 h-5 mr-2" />}
             {createClientMutation.isPending 
               ? "Registrando..." 
               : useSimpleQueues 
-                ? "Registrar Cliente (Simple Queue)" 
-                : "Registrar Cliente (PPPoE)"}
+                ? "Registrar con Simple Queue" 
+                : "Registrar con PPPoE"}
           </Button>
         </form>
       </CardContent>
