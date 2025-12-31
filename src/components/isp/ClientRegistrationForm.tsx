@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { MapPin, UserPlus, AlertCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { MapPin, UserPlus, AlertCircle, Gauge, Cable } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,6 +32,9 @@ interface ClientFormData {
   pais: string;
   latitud: string;
   longitud: string;
+  // Campos adicionales para Simple Queues
+  uploadSpeed: string;
+  downloadSpeed: string;
 }
 
 interface ClientRegistrationFormProps {
@@ -44,6 +48,9 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
   const mikrotikId = getSelectedDeviceId();
   const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
   const pppoeProfiles = (pppoeProfilesData as any[]) || [];
+
+  // Toggle para Simple Queues vs PPPoE
+  const [useSimpleQueues, setUseSimpleQueues] = useState(false);
 
   const [formData, setFormData] = useState<ClientFormData>({
     nombre: "",
@@ -63,6 +70,8 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     pais: "Colombia",
     latitud: "",
     longitud: "",
+    uploadSpeed: "10M",
+    downloadSpeed: "10M",
   });
 
   const [isGettingLocation, setIsGettingLocation] = useState(false);
@@ -153,7 +162,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
   };
 
   // Función para obtener la siguiente IP disponible basada en usuarios PPPoE
-  const getNextAvailableIP = async (): Promise<string> => {
+  const getNextAvailableIPFromPPPoE = async (): Promise<string> => {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) throw new Error("No hay sesión activa");
 
@@ -174,7 +183,6 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     let highestIPValue = 0;
 
     secrets.forEach((secret: any) => {
-      // Solo considerar usuarios con servicio PPPoE
       const service = (secret.service || '').toLowerCase();
       if (service !== 'pppoe') return;
 
@@ -192,24 +200,82 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       throw new Error("No se encontraron usuarios PPPoE con IP remota asignada");
     }
 
-    // La siguiente IP disponible
     return incrementIP(highestIP);
+  };
+
+  // Función para obtener la siguiente IP disponible basada en Simple Queues
+  const getNextAvailableIPFromQueues = async (): Promise<string> => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error("No hay sesión activa");
+
+    const response = await supabase.functions.invoke('mikrotik-v6-api', {
+      body: {
+        mikrotikId,
+        command: 'simple-queues',
+      }
+    });
+
+    if (!response.data?.success) {
+      throw new Error("No se pudo obtener la lista de Simple Queues");
+    }
+
+    const queues = response.data.data || [];
+    let highestIP = "";
+    let highestIPValue = 0;
+
+    queues.forEach((queue: any) => {
+      // El target puede ser una IP como "192.168.1.100/32" o "192.168.1.100"
+      const target = queue.target || '';
+      if (!target) return;
+
+      // Extraer la IP del target (quitar /32 o cualquier máscara)
+      const ipMatch = target.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+      if (!ipMatch) return;
+
+      const ip = ipMatch[1];
+      const ipValue = ipToNumber(ip);
+      if (ipValue > highestIPValue) {
+        highestIPValue = ipValue;
+        highestIP = ip;
+      }
+    });
+
+    if (!highestIP) {
+      throw new Error("No se encontraron Simple Queues con IP asignada. Configure al menos una cola manualmente primero.");
+    }
+
+    return incrementIP(highestIP);
+  };
+
+  const resetFormData = () => {
+    setFormData({
+      nombre: "",
+      apellidos: "",
+      clientePotencial: false,
+      numeroIdentificacion: "",
+      numeroCajaNap: "",
+      numeroPuertoCajaNap: "",
+      plan: "",
+      opcionTv: "solo-internet",
+      correoElectronico: "",
+      telefono: "",
+      calle: "",
+      calle2: "",
+      ciudad: "",
+      codigoPostal: "",
+      pais: "Colombia",
+      latitud: "",
+      longitud: "",
+      uploadSpeed: "10M",
+      downloadSpeed: "10M",
+    });
   };
 
   const createClientMutation = useMutation({
     mutationFn: async (data: ClientFormData) => {
       if (!mikrotikId) throw new Error("No hay dispositivo MikroTik seleccionado");
       
-      if (!useStandardPassword || !standardPassword) {
-        throw new Error("Configure una contraseña estándar antes de registrar clientes");
-      }
-      
-      // Obtener la siguiente IP disponible
-      const nextIP = await getNextAvailableIP();
-      
-      // Generar nombre de usuario con formato Nombre.Apellido (ej: Daira.Yulieth.Jurado)
       const username = formatUsernameForMikrotik(data.nombre, data.apellidos);
-      const password = standardPassword;
       
       // Crear comentario con toda la información del cliente
       const clientInfo = [
@@ -222,29 +288,75 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
         data.latitud && data.longitud ? `GPS: ${data.latitud}, ${data.longitud}` : ''
       ].filter(Boolean).join(' | ');
 
-      // Crear usuario PPPoE en MikroTik con IP remota estática
-      const { data: result, error } = await supabase.functions.invoke("mikrotik-v6-api", {
-        body: {
-          mikrotikId,
-          command: "ppp-secret-add",
-          params: {
-            name: username,
-            password: password,
-            service: "pppoe",
-            profile: data.plan || undefined,
-            "remote-address": nextIP,
-            comment: clientInfo,
+      if (useSimpleQueues) {
+        // Crear Simple Queue
+        const nextIP = await getNextAvailableIPFromQueues();
+        const maxLimit = `${data.uploadSpeed}/${data.downloadSpeed}`;
+        
+        const { data: result, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+          body: {
+            mikrotikId,
+            command: "simple-queue-add",
+            params: {
+              name: username,
+              target: `${nextIP}/32`,
+              "max-limit": maxLimit,
+              comment: clientInfo,
+            },
           },
-        },
-      });
+        });
 
-      if (error) throw error;
-      if (!result.success) throw new Error(result.error);
-      
-      return { username, password, remoteIP: nextIP, clientName: `${data.nombre} ${data.apellidos}` };
+        if (error) throw error;
+        if (!result.success) throw new Error(result.error);
+        
+        return { 
+          username, 
+          remoteIP: nextIP, 
+          clientName: `${data.nombre} ${data.apellidos}`,
+          type: 'queue' as const,
+          speed: maxLimit
+        };
+      } else {
+        // Crear PPPoE
+        if (!useStandardPassword || !standardPassword) {
+          throw new Error("Configure una contraseña estándar antes de registrar clientes PPPoE");
+        }
+        
+        const nextIP = await getNextAvailableIPFromPPPoE();
+        const password = standardPassword;
+        
+        const { data: result, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+          body: {
+            mikrotikId,
+            command: "ppp-secret-add",
+            params: {
+              name: username,
+              password: password,
+              service: "pppoe",
+              profile: data.plan || undefined,
+              "remote-address": nextIP,
+              comment: clientInfo,
+            },
+          },
+        });
+
+        if (error) throw error;
+        if (!result.success) throw new Error(result.error);
+        
+        return { 
+          username, 
+          password, 
+          remoteIP: nextIP, 
+          clientName: `${data.nombre} ${data.apellidos}`,
+          type: 'pppoe' as const
+        };
+      }
     },
     onSuccess: (result) => {
-      const message = `🌐 *Datos de conexión PPPoE*\n\n👤 Cliente: ${result.clientName}\n📧 Usuario: ${result.username}\n🔑 Contraseña: ${result.password}\n🌍 IP Asignada: ${result.remoteIP}\n\n¡Gracias por confiar en nosotros!`;
+      const isPPPoE = result.type === 'pppoe';
+      const message = isPPPoE 
+        ? `🌐 *Datos de conexión PPPoE*\n\n👤 Cliente: ${result.clientName}\n📧 Usuario: ${result.username}\n🔑 Contraseña: ${result.password}\n🌍 IP Asignada: ${result.remoteIP}\n\n¡Gracias por confiar en nosotros!`
+        : `🌐 *Datos de conexión*\n\n👤 Cliente: ${result.clientName}\n📧 Nombre: ${result.username}\n🌍 IP Asignada: ${result.remoteIP}\n⚡ Velocidad: ${result.speed}\n\n¡Gracias por confiar en nosotros!`;
       
       const copyToClipboard = () => {
         navigator.clipboard.writeText(message.replace(/\*/g, ''));
@@ -258,12 +370,13 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
 
       toast.success(
         <div className="space-y-3">
-          <p className="font-semibold">✅ Cliente registrado exitosamente</p>
+          <p className="font-semibold">✅ Cliente registrado exitosamente ({isPPPoE ? 'PPPoE' : 'Simple Queue'})</p>
           <div className="text-sm space-y-1 bg-muted p-2 rounded">
             <p><strong>Cliente:</strong> {result.clientName}</p>
-            <p><strong>Usuario:</strong> {result.username}</p>
-            <p><strong>Contraseña:</strong> {result.password}</p>
+            <p><strong>{isPPPoE ? 'Usuario' : 'Nombre'}:</strong> {result.username}</p>
+            {isPPPoE && <p><strong>Contraseña:</strong> {result.password}</p>}
             <p><strong>IP:</strong> {result.remoteIP}</p>
+            {!isPPPoE && <p><strong>Velocidad:</strong> {result.speed}</p>}
           </div>
           <div className="flex gap-2 pt-2">
             <button
@@ -282,26 +395,14 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
         </div>,
         { duration: 30000 }
       );
-      queryClient.invalidateQueries({ queryKey: ["isp-pppoe-users"] });
-      setFormData({
-        nombre: "",
-        apellidos: "",
-        clientePotencial: false,
-        numeroIdentificacion: "",
-        numeroCajaNap: "",
-        numeroPuertoCajaNap: "",
-        plan: "",
-        opcionTv: "solo-internet",
-        correoElectronico: "",
-        telefono: "",
-        calle: "",
-        calle2: "",
-        ciudad: "",
-        codigoPostal: "",
-        pais: "Colombia",
-        latitud: "",
-        longitud: "",
-      });
+      
+      if (useSimpleQueues) {
+        queryClient.invalidateQueries({ queryKey: ["isp-simple-queues"] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["isp-pppoe-users"] });
+      }
+      
+      resetFormData();
       onSuccess?.();
     },
     onError: (error: any) => {
@@ -317,8 +418,14 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       return;
     }
 
-    if (!formData.plan) {
+    // Validar según el tipo de conexión
+    if (!useSimpleQueues && !formData.plan) {
       toast.error("Seleccione un plan de servicio");
+      return;
+    }
+
+    if (useSimpleQueues && (!formData.uploadSpeed || !formData.downloadSpeed)) {
+      toast.error("Seleccione las velocidades de subida y bajada");
       return;
     }
 
@@ -408,31 +515,112 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
             </div>
           </div>
 
+          {/* Sección Tipo de Conexión */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-foreground border-b pb-2">Tipo de Conexión</h3>
+            
+            {/* Toggle Simple Queues vs PPPoE */}
+            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${useSimpleQueues ? 'bg-orange-500/20' : 'bg-cyan-500/20'}`}>
+                    {useSimpleQueues ? <Gauge className="h-5 w-5 text-orange-500" /> : <Cable className="h-5 w-5 text-cyan-500" />}
+                  </div>
+                  <div>
+                    <p className="font-medium">
+                      {useSimpleQueues ? 'Simple Queues' : 'PPPoE'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {useSimpleQueues 
+                        ? 'Crear cola de ancho de banda con IP estática' 
+                        : 'Crear usuario PPPoE con perfil de velocidad'}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={useSimpleQueues}
+                  onCheckedChange={setUseSimpleQueues}
+                />
+              </div>
+              
+              <div className={`text-sm p-3 rounded-lg ${useSimpleQueues ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-cyan-500/10 border border-cyan-500/20'}`}>
+                {useSimpleQueues ? (
+                  <p className="text-orange-700 dark:text-orange-400">
+                    <strong>Simple Queue:</strong> Se creará una cola con límite de velocidad. La IP se asignará automáticamente basándose en las colas existentes.
+                  </p>
+                ) : (
+                  <p className="text-cyan-700 dark:text-cyan-400">
+                    <strong>PPPoE:</strong> Se creará un usuario PPPoE. La IP se asignará automáticamente basándose en los usuarios existentes.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Sección Plan de Servicio */}
           <div className="space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">Plan de Servicio</h3>
+            <h3 className="font-semibold text-foreground border-b pb-2">
+              {useSimpleQueues ? 'Configuración de Velocidad' : 'Plan de Servicio'}
+            </h3>
             
-            <div className="space-y-2">
-              <Label htmlFor="plan">Seleccione su plan *</Label>
-              <Select value={formData.plan} onValueChange={(value) => updateField("plan", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccione un plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {loadingProfiles ? (
-                    <SelectItem value="loading" disabled>Cargando perfiles...</SelectItem>
-                  ) : pppoeProfiles.length === 0 ? (
-                    <SelectItem value="empty" disabled>No hay perfiles disponibles</SelectItem>
-                  ) : (
-                    pppoeProfiles.map((profile: any) => (
-                      <SelectItem key={profile[".id"]} value={profile.name}>
-                        {profile.name} {profile["rate-limit"] && `(${profile["rate-limit"]})`}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            {useSimpleQueues ? (
+              /* Campos de velocidad para Simple Queues */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="uploadSpeed">Velocidad de Subida *</Label>
+                  <Select value={formData.uploadSpeed} onValueChange={(value) => updateField("uploadSpeed", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione velocidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {['1M', '2M', '3M', '4M', '5M', '6M', '8M', '10M', '15M', '20M', '25M', '30M', '50M', '100M'].map((speed) => (
+                        <SelectItem key={speed} value={speed}>
+                          {speed.replace('M', ' Mbps')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="downloadSpeed">Velocidad de Bajada *</Label>
+                  <Select value={formData.downloadSpeed} onValueChange={(value) => updateField("downloadSpeed", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione velocidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {['1M', '2M', '3M', '4M', '5M', '6M', '8M', '10M', '15M', '20M', '25M', '30M', '50M', '100M'].map((speed) => (
+                        <SelectItem key={speed} value={speed}>
+                          {speed.replace('M', ' Mbps')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : (
+              /* Selector de perfil PPPoE */
+              <div className="space-y-2">
+                <Label htmlFor="plan">Seleccione su plan *</Label>
+                <Select value={formData.plan} onValueChange={(value) => updateField("plan", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccione un plan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingProfiles ? (
+                      <SelectItem value="loading" disabled>Cargando perfiles...</SelectItem>
+                    ) : pppoeProfiles.length === 0 ? (
+                      <SelectItem value="empty" disabled>No hay perfiles disponibles</SelectItem>
+                    ) : (
+                      pppoeProfiles.map((profile: any) => (
+                        <SelectItem key={profile[".id"]} value={profile.name}>
+                          {profile.name} {profile["rate-limit"] && `(${profile["rate-limit"]})`}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-3">
               <Label>Opciones de Televisión *</Label>
@@ -608,10 +796,20 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
             type="submit" 
             className="w-full" 
             size="lg"
-            disabled={createClientMutation.isPending || !formData.nombre || !formData.apellidos || !formData.numeroIdentificacion || !formData.plan}
+            disabled={
+              createClientMutation.isPending || 
+              !formData.nombre || 
+              !formData.apellidos || 
+              !formData.numeroIdentificacion || 
+              (useSimpleQueues ? (!formData.uploadSpeed || !formData.downloadSpeed) : !formData.plan)
+            }
           >
-            <UserPlus className="w-5 h-5 mr-2" />
-            {createClientMutation.isPending ? "Registrando..." : "Registrar Cliente"}
+            {useSimpleQueues ? <Gauge className="w-5 h-5 mr-2" /> : <UserPlus className="w-5 h-5 mr-2" />}
+            {createClientMutation.isPending 
+              ? "Registrando..." 
+              : useSimpleQueues 
+                ? "Registrar Cliente (Simple Queue)" 
+                : "Registrar Cliente (PPPoE)"}
           </Button>
         </form>
       </CardContent>
