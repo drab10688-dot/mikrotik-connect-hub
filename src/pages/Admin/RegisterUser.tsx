@@ -19,7 +19,7 @@ export default function RegisterUser() {
     email: '',
     password: '',
     fullName: '',
-    role: 'user' as 'super_admin' | 'admin' | 'user',
+    role: 'user' as 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary',
   });
 
   // Redirigir si no es super admin
@@ -152,7 +152,7 @@ export default function RegisterUser() {
                   <Label htmlFor="role">Rol</Label>
                   <Select
                     value={formData.role}
-                    onValueChange={(value: 'super_admin' | 'admin' | 'user') => 
+                    onValueChange={(value: 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary') => 
                       setFormData({ ...formData, role: value })
                     }
                   >
@@ -163,6 +163,8 @@ export default function RegisterUser() {
                       <SelectItem value="user">Usuario</SelectItem>
                       <SelectItem value="admin">Administrador</SelectItem>
                       <SelectItem value="super_admin">Super Administrador</SelectItem>
+                      <SelectItem value="reseller">Revendedor</SelectItem>
+                      <SelectItem value="secretary">Secretaria</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">

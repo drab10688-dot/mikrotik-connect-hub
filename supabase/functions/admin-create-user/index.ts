@@ -72,10 +72,22 @@ serve(async (req) => {
       );
     }
 
-    // Si es admin (no super_admin), solo puede crear secretarias
-    if (!isSuperAdmin && role !== 'secretary') {
+    // Validar roles permitidos
+    const validRoles = ['super_admin', 'admin', 'user', 'reseller', 'secretary'];
+    if (!validRoles.includes(role)) {
       return new Response(
-        JSON.stringify({ error: 'Solo puedes crear usuarios con rol de secretaria' }),
+        JSON.stringify({ error: 'Rol no válido' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Si es admin (no super_admin), solo puede crear secretarias y revendedores
+    if (!isSuperAdmin && !['secretary', 'reseller', 'user'].includes(role)) {
+      return new Response(
+        JSON.stringify({ error: 'Solo puedes crear usuarios con rol de secretaria, revendedor o usuario' }),
         { 
           status: 403, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
