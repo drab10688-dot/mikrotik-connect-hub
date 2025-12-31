@@ -109,38 +109,40 @@ export const Sidebar = () => {
 
   return (
     <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex flex-col border-r border-sidebar-border hidden md:flex">
-      {/* Logo section - Large branding area */}
+      {/* Logo section - Circular branding area */}
       <div className="p-4 border-b border-sidebar-border">
-        <div className="relative group w-full">
-          {customLogo ? (
-            <div className="w-full h-24 rounded-xl overflow-hidden relative bg-sidebar-accent/30">
-              <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-2" />
-              <button
-                onClick={handleRemoveLogo}
-                className="absolute top-1 right-1 w-5 h-5 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
-              >
-                <X className="w-3 h-3 text-destructive-foreground" />
-              </button>
-            </div>
-          ) : (
-            <div className="w-full h-24 rounded-xl bg-gradient-primary flex items-center justify-center gap-2">
-              <Router className="w-10 h-10 text-primary-foreground" />
-              <span className="text-primary-foreground font-bold text-xl">Tu Logo</span>
-            </div>
-          )}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute inset-0 bg-black/50 rounded-xl items-center justify-center hidden group-hover:flex"
-          >
-            <ImagePlus className="w-6 h-6 text-white" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleLogoUpload}
-            className="hidden"
-          />
+        <div className="flex justify-center">
+          <div className="relative group">
+            {customLogo ? (
+              <div className="w-28 h-28 rounded-full overflow-hidden relative bg-sidebar-accent/30 border-2 border-sidebar-border">
+                <img src={customLogo} alt="Logo" className="w-full h-full object-cover" />
+                <button
+                  onClick={handleRemoveLogo}
+                  className="absolute top-0 right-0 w-6 h-6 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
+                >
+                  <X className="w-3 h-3 text-destructive-foreground" />
+                </button>
+              </div>
+            ) : (
+              <div className="w-28 h-28 rounded-full bg-gradient-primary flex flex-col items-center justify-center">
+                <Router className="w-12 h-12 text-primary-foreground" />
+                <span className="text-primary-foreground font-bold text-xs mt-1">Tu Logo</span>
+              </div>
+            )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex"
+            >
+              <ImagePlus className="w-6 h-6 text-white" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              className="hidden"
+            />
+          </div>
         </div>
         
         {/* Host and version info */}
