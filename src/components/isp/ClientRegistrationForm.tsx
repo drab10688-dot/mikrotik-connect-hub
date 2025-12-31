@@ -439,7 +439,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
   return (
     <Card className="border-2">
       <CardHeader className="text-center pb-2">
-        <CardTitle className="text-xl md:text-2xl text-primary">Registrar Nuevo Cliente</CardTitle>
+        <CardTitle className="text-xl md:text-2xl text-primary">Registrar Cliente</CardTitle>
         <CardDescription>Complete el formulario para registrar un nuevo cliente</CardDescription>
       </CardHeader>
       <CardContent>
