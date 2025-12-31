@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 export default function RegisterUser() {
   const navigate = useNavigate();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, isAdmin, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -22,21 +22,50 @@ export default function RegisterUser() {
     role: 'user' as 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary',
   });
 
-  // Redirigir si no es super admin
-  if (!isSuperAdmin) {
-    navigate('/dashboard');
-    return null;
+  const allowedRoles = useMemo(() => {
+    // Super admin puede crear cualquier rol; admin solo roles operativos
+    return isSuperAdmin
+      ? (['user', 'admin', 'super_admin', 'reseller', 'secretary'] as const)
+      : (['user', 'reseller', 'secretary'] as const);
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!isSuperAdmin && !isAdmin) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [loading, isSuperAdmin, isAdmin, navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-background">
+        <Sidebar />
+        <div className="flex-1 p-4 md:p-8 md:ml-64">
+          <div className="max-w-2xl mx-auto">
+            <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+          </div>
+        </div>
+      </div>
+    );
   }
+
+  // Si no tiene permisos, no renderizar (useEffect ya redirige)
+  if (!isSuperAdmin && !isAdmin) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
+      // Validar rol permitido según permisos del usuario actual
+      if (!allowedRoles.includes(formData.role as any)) {
+        throw new Error('No tienes permisos para asignar ese rol');
+      }
+
       // Obtener el token de sesión actual
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
+
+      if (!session?.access_token) {
         throw new Error('No hay sesión activa');
       }
 
@@ -47,6 +76,9 @@ export default function RegisterUser() {
           password: formData.password,
           fullName: formData.fullName,
           role: formData.role,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
         },
       });
 
@@ -161,10 +193,14 @@ export default function RegisterUser() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="user">Usuario</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="super_admin">Super Administrador</SelectItem>
                       <SelectItem value="reseller">Revendedor</SelectItem>
                       <SelectItem value="secretary">Secretaria</SelectItem>
+                      {isSuperAdmin && (
+                        <>
+                          <SelectItem value="admin">Administrador</SelectItem>
+                          <SelectItem value="super_admin">Super Administrador</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
