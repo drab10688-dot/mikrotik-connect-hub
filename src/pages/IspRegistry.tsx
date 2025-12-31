@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { ClientRegistrationForm } from "@/components/isp/ClientRegistrationForm";
+import { ClientHistoryTable } from "@/components/isp/ClientHistoryTable";
 
 export default function IspRegistry() {
   const mikrotikId = getSelectedDeviceId();
@@ -112,6 +113,8 @@ export default function IspRegistry() {
           standardPassword={standardPassword}
           onSuccess={() => refetchUsers()}
         />
+
+        <ClientHistoryTable />
       </div>
     </div>
   );
