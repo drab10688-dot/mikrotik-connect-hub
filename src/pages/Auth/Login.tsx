@@ -85,9 +85,6 @@ export default function Login() {
           
           {/* Promotional message */}
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <p className="text-xl md:text-2xl text-slate-300 max-w-lg">
-              Conexión Total, Mundo Digital
-            </p>
             <p className="text-base md:text-lg text-slate-400 max-w-md">
               Tu plataforma integral de gestión de redes MikroTik
             </p>
