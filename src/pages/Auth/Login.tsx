@@ -85,9 +85,6 @@ export default function Login() {
           
           {/* Promotional message */}
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-cyan-400 via-green-400 to-yellow-400 bg-clip-text text-transparent">
-              OmniLink
-            </h1>
             <p className="text-xl md:text-2xl text-slate-300 max-w-lg">
               Conexión Total, Mundo Digital
             </p>
