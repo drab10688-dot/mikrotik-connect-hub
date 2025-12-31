@@ -69,13 +69,15 @@ export default function Login() {
         
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center h-full min-h-[400px] lg:min-h-screen p-8">
-          {/* Logo */}
+          {/* Logo circular */}
           <div className="mb-8 animate-fade-in">
-            <img 
-              src={omnilinkLogo} 
-              alt="OmniLink - Conexión Total, Mundo Digital" 
-              className="w-full max-w-md lg:max-w-lg rounded-2xl shadow-2xl shadow-cyan-500/20"
-            />
+            <div className="w-48 h-48 lg:w-64 lg:h-64 rounded-full overflow-hidden border-4 border-cyan-400/30 shadow-2xl shadow-cyan-500/30 bg-slate-800/50 p-2">
+              <img 
+                src={omnilinkLogo} 
+                alt="OmniLink - Conexión Total, Mundo Digital" 
+                className="w-full h-full object-cover rounded-full"
+              />
+            </div>
           </div>
           
           {/* Promotional message */}
