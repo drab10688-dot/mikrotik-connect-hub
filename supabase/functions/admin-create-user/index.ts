@@ -40,16 +40,18 @@ serve(async (req) => {
     }
 
     // Verificar que el usuario sea super_admin o admin
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', requestingUser.id)
-      .single();
+    const { data: effectiveRole, error: roleError } = await supabaseClient.rpc('get_user_role', {
+      _user_id: requestingUser.id,
+    });
 
-    const isSuperAdmin = roleData?.role === 'super_admin';
-    const isAdmin = roleData?.role === 'admin' || isSuperAdmin;
+    if (roleError) {
+      console.error('Error fetching role:', roleError);
+    }
 
-    if (roleError || !isAdmin) {
+    const isSuperAdmin = effectiveRole === 'super_admin';
+    const isAdmin = effectiveRole === 'admin' || isSuperAdmin;
+
+    if (!isAdmin) {
       return new Response(
         JSON.stringify({ error: 'No tienes permisos para crear usuarios' }),
         { 
