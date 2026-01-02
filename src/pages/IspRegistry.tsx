@@ -4,13 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Key, Save } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertCircle, Key, Save, UserPlus, History, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { ClientRegistrationForm } from "@/components/isp/ClientRegistrationForm";
 import { ClientHistoryTable } from "@/components/isp/ClientHistoryTable";
+import { ContractGenerator } from "@/components/isp/contracts";
 
 export default function IspRegistry() {
   const mikrotikId = getSelectedDeviceId();
@@ -18,6 +20,7 @@ export default function IspRegistry() {
   const [standardPassword, setStandardPassword] = useState(
     localStorage.getItem("isp_standard_password") || ""
   );
+  const [activeTab, setActiveTab] = useState("register");
 
   // Obtener usuarios PPPoE para el formulario
   const { refetch: refetchUsers } = useQuery({
@@ -71,50 +74,81 @@ export default function IspRegistry() {
       <Sidebar />
       <div className="p-4 md:p-8 md:ml-64">
         <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Registrar Cliente</h1>
-          <p className="text-muted-foreground">Complete el formulario para registrar un nuevo cliente</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Registro ISP</h1>
+          <p className="text-muted-foreground">Gestiona clientes, contratos e historial</p>
         </div>
 
-        {/* Configuración de contraseña estándar */}
-        <Card className="mb-6">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Key className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">Contraseña Estándar PPPoE</CardTitle>
-                <CardDescription>Configura una contraseña predeterminada para nuevos usuarios</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <Label htmlFor="standardPassword">Contraseña estándar</Label>
-                <Input
-                  id="standardPassword"
-                  type="text"
-                  placeholder="Ingresa la contraseña estándar"
-                  value={standardPassword}
-                  onChange={(e) => setStandardPassword(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleSaveStandardPassword} disabled={!standardPassword}>
-                <Save className="w-4 h-4 mr-2" />
-                Guardar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="register" className="flex items-center gap-2">
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Registrar Cliente</span>
+              <span className="sm:hidden">Registrar</span>
+            </TabsTrigger>
+            <TabsTrigger value="contracts" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Contratos</span>
+              <span className="sm:hidden">Contratos</span>
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline">Historial</span>
+              <span className="sm:hidden">Historial</span>
+            </TabsTrigger>
+          </TabsList>
 
-        <ClientRegistrationForm 
-          useStandardPassword={useStandardPassword}
-          standardPassword={standardPassword}
-          onSuccess={() => refetchUsers()}
-        />
+          {/* Tab: Registrar Cliente */}
+          <TabsContent value="register" className="space-y-6">
+            {/* Configuración de contraseña estándar */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Key className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Contraseña Estándar PPPoE</CardTitle>
+                    <CardDescription>Configura una contraseña predeterminada para nuevos usuarios</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="standardPassword">Contraseña estándar</Label>
+                    <Input
+                      id="standardPassword"
+                      type="text"
+                      placeholder="Ingresa la contraseña estándar"
+                      value={standardPassword}
+                      onChange={(e) => setStandardPassword(e.target.value)}
+                    />
+                  </div>
+                  <Button onClick={handleSaveStandardPassword} disabled={!standardPassword}>
+                    <Save className="w-4 h-4 mr-2" />
+                    Guardar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-        <ClientHistoryTable />
+            <ClientRegistrationForm 
+              useStandardPassword={useStandardPassword}
+              standardPassword={standardPassword}
+              onSuccess={() => refetchUsers()}
+            />
+          </TabsContent>
+
+          {/* Tab: Contratos */}
+          <TabsContent value="contracts">
+            <ContractGenerator />
+          </TabsContent>
+
+          {/* Tab: Historial */}
+          <TabsContent value="history">
+            <ClientHistoryTable />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
