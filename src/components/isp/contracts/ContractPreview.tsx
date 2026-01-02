@@ -40,8 +40,18 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         className="bg-white text-black p-8 max-w-4xl mx-auto text-sm leading-relaxed"
         style={{ fontFamily: "Arial, sans-serif" }}
       >
-        {/* Header */}
+        {/* Header con Logo */}
         <div className="text-center mb-6 border-b-2 border-gray-300 pb-4">
+          {companyInfo.logoUrl && (
+            <div className="mb-4 flex justify-center">
+              <img
+                src={companyInfo.logoUrl}
+                alt="Logo de la empresa"
+                className="max-h-24 max-w-[200px] object-contain"
+                crossOrigin="anonymous"
+              />
+            </div>
+          )}
           <h1 className="text-2xl font-bold text-gray-800">{companyInfo.name}</h1>
           <p className="text-gray-600">NIT: {companyInfo.nit}</p>
         </div>
@@ -203,8 +213,18 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer con Logo */}
         <div className="mt-8 pt-4 border-t text-center text-xs text-gray-500">
+          {companyInfo.logoUrl && (
+            <div className="mb-2 flex justify-center">
+              <img
+                src={companyInfo.logoUrl}
+                alt="Logo"
+                className="max-h-10 max-w-[80px] object-contain opacity-60"
+                crossOrigin="anonymous"
+              />
+            </div>
+          )}
           <p>{companyInfo.name}</p>
           <p>NIT: {companyInfo.nit} | Contacto: {companyInfo.contact} | Email: {companyInfo.email}</p>
           <p className="mt-2">Generado el {formatDate(new Date().toISOString())}</p>
