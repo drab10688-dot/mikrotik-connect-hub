@@ -33,16 +33,25 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
   const [equipment, setEquipment] = useState<string[]>(["Router WiFi"]);
   const [newEquipment, setNewEquipment] = useState("");
 
-  // Términos y configuración de la empresa
-  const [terms, setTerms] = useState<ContractTerms>(() => {
+  // Términos y configuración de la empresa - se recargan al cambiar de tab
+  const getTerms = (): ContractTerms => {
     const saved = localStorage.getItem("isp_contract_terms");
     return saved ? JSON.parse(saved) : DEFAULT_TERMS;
-  });
+  };
 
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(() => {
+  const getCompanyInfo = (): CompanyInfo => {
     const saved = localStorage.getItem("isp_company_info");
     return saved ? JSON.parse(saved) : DEFAULT_COMPANY_INFO;
-  });
+  };
+
+  const [terms, setTerms] = useState<ContractTerms>(getTerms);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(getCompanyInfo);
+
+  // Recargar datos cuando cambian en localStorage (desde el editor de términos)
+  const refreshCompanyData = () => {
+    setTerms(getTerms());
+    setCompanyInfo(getCompanyInfo());
+  };
 
   // Datos completos del contrato
   const [contractFormData, setContractFormData] = useState<ClientContractData>({
@@ -176,7 +185,11 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="generate" className="w-full">
+      <Tabs defaultValue="generate" className="w-full" onValueChange={(value) => {
+        if (value === "generate") {
+          refreshCompanyData();
+        }
+      }}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="generate">
             <FileText className="w-4 h-4 mr-2" />

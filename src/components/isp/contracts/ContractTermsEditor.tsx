@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Save, RotateCcw, FileText, Building2 } from "lucide-react";
+import { Save, RotateCcw, FileText, Building2, Upload, X, Loader2, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface CompanyInfo {
   name: string;
@@ -15,6 +16,7 @@ export interface CompanyInfo {
   email: string;
   website: string;
   address: string;
+  logoUrl?: string;
 }
 
 export interface ContractTerms {
@@ -38,6 +40,7 @@ const DEFAULT_COMPANY_INFO: CompanyInfo = {
   email: "administracion@sur-os.com",
   website: "https://suros-comunicaciones.com",
   address: "Dirección de la empresa",
+  logoUrl: "",
 };
 
 const DEFAULT_TERMS: ContractTerms = {
@@ -59,6 +62,9 @@ interface ContractTermsEditorProps {
 }
 
 export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(() => {
     const saved = localStorage.getItem("isp_company_info");
     return saved ? JSON.parse(saved) : DEFAULT_COMPANY_INFO;
@@ -92,10 +98,78 @@ export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
     setCompanyInfo(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Por favor seleccione una imagen válida");
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("La imagen debe ser menor a 2MB");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Debes iniciar sesión para subir un logo");
+        return;
+      }
+
+      // Generate unique filename
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${userData.user.id}/company-logo-${Date.now()}.${fileExt}`;
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from("company-assets")
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("company-assets")
+        .getPublicUrl(data.path);
+
+      // Update company info with logo URL
+      const newCompanyInfo = { ...companyInfo, logoUrl: urlData.publicUrl };
+      setCompanyInfo(newCompanyInfo);
+      localStorage.setItem("isp_company_info", JSON.stringify(newCompanyInfo));
+
+      toast.success("Logo subido correctamente");
+    } catch (error: any) {
+      console.error("Error uploading logo:", error);
+      toast.error("Error al subir el logo: " + (error.message || "Error desconocido"));
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    const newCompanyInfo = { ...companyInfo, logoUrl: "" };
+    setCompanyInfo(newCompanyInfo);
+    localStorage.setItem("isp_company_info", JSON.stringify(newCompanyInfo));
+    toast.success("Logo eliminado");
+  };
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
               <FileText className="h-5 w-5 text-primary" />
@@ -118,6 +192,78 @@ export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Logo de la Empresa */}
+        <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Logo de la Empresa</h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Este logo aparecerá en la cabecera de todos los contratos generados
+          </p>
+          
+          <div className="flex items-center gap-4">
+            {companyInfo.logoUrl ? (
+              <div className="relative">
+                <div className="w-32 h-32 border-2 border-dashed border-muted-foreground/30 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                  <img
+                    src={companyInfo.logoUrl}
+                    alt="Logo de la empresa"
+                    className="max-w-full max-h-full object-contain p-2"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  className="absolute -top-2 -right-2 h-6 w-6"
+                  onClick={handleRemoveLogo}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <div className="w-32 h-32 border-2 border-dashed border-muted-foreground/30 rounded-lg flex items-center justify-center bg-muted/30">
+                <div className="text-center text-muted-foreground">
+                  <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                  <span className="text-xs">Sin logo</span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Subiendo...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    {companyInfo.logoUrl ? "Cambiar Logo" : "Subir Logo"}
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Formatos: JPG, PNG, WebP. Máximo 2MB.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Información de la Empresa */}
         <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-2">
