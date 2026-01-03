@@ -16,7 +16,8 @@ import {
   Database,
   UserPlus,
   ImagePlus,
-  X
+  X,
+  CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -39,6 +40,7 @@ const menuItems = [
   { icon: ShieldCheck, label: "Perfiles PPPoE", path: "/profiles" },
   { icon: ListChecks, label: "Address List", path: "/address-list" },
   { icon: Gauge, label: "Simple Queues", path: "/simple-queues" },
+  { icon: CreditCard, label: "Pagos", path: "/payments" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },

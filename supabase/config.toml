@@ -29,3 +29,9 @@ verify_jwt = true
 
 [functions.admin-update-user-role]
 verify_jwt = true
+
+[functions.payment-gateway]
+verify_jwt = false
+
+[functions.payment-webhook]
+verify_jwt = false

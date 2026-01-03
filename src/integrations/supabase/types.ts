@@ -14,6 +14,128 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_billing_settings: {
+        Row: {
+          billing_day: number
+          client_id: string | null
+          created_at: string
+          grace_period_days: number
+          id: string
+          is_suspended: boolean
+          last_payment_date: string | null
+          mikrotik_id: string
+          monthly_amount: number
+          next_billing_date: string | null
+          suspended_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          billing_day?: number
+          client_id?: string | null
+          created_at?: string
+          grace_period_days?: number
+          id?: string
+          is_suspended?: boolean
+          last_payment_date?: string | null
+          mikrotik_id: string
+          monthly_amount: number
+          next_billing_date?: string | null
+          suspended_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          billing_day?: number
+          client_id?: string | null
+          created_at?: string
+          grace_period_days?: number
+          id?: string
+          is_suspended?: boolean
+          last_payment_date?: string | null
+          mikrotik_id?: string
+          monthly_amount?: number
+          next_billing_date?: string | null
+          suspended_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_billing_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "isp_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_invoices: {
+        Row: {
+          amount: number
+          billing_period_end: string
+          billing_period_start: string
+          client_id: string | null
+          contract_id: string | null
+          created_at: string
+          due_date: string
+          id: string
+          invoice_number: string
+          mikrotik_id: string
+          paid_at: string | null
+          paid_via: string | null
+          payment_reference: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          billing_period_end: string
+          billing_period_start: string
+          client_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          due_date: string
+          id?: string
+          invoice_number: string
+          mikrotik_id: string
+          paid_at?: string | null
+          paid_via?: string | null
+          payment_reference?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          billing_period_end?: string
+          billing_period_start?: string
+          client_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          due_date?: string
+          id?: string
+          invoice_number?: string
+          mikrotik_id?: string
+          paid_at?: string | null
+          paid_via?: string | null
+          payment_reference?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_invoices_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "isp_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_invoices_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "isp_contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       isp_clients: {
         Row: {
           address: string | null
@@ -209,6 +331,107 @@ export type Database = {
           version?: string
         }
         Relationships: []
+      }
+      payment_platforms: {
+        Row: {
+          created_at: string
+          created_by: string
+          environment: string
+          id: string
+          is_active: boolean
+          mikrotik_id: string
+          platform: string
+          private_key: string | null
+          public_key: string | null
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          mikrotik_id: string
+          platform: string
+          private_key?: string | null
+          public_key?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          mikrotik_id?: string
+          platform?: string
+          private_key?: string | null
+          public_key?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: []
+      }
+      payment_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          external_reference: string | null
+          id: string
+          invoice_id: string | null
+          mikrotik_id: string
+          payer_email: string | null
+          payer_name: string | null
+          platform: string
+          raw_response: Json | null
+          status: string
+          transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          currency?: string
+          external_reference?: string | null
+          id?: string
+          invoice_id?: string | null
+          mikrotik_id: string
+          payer_email?: string | null
+          payer_name?: string | null
+          platform: string
+          raw_response?: Json | null
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          external_reference?: string | null
+          id?: string
+          invoice_id?: string | null
+          mikrotik_id?: string
+          payer_email?: string | null
+          payer_name?: string | null
+          platform?: string
+          raw_response?: Json | null
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_transactions_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "client_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
