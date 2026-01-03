@@ -49,6 +49,19 @@ interface Invoice {
   billing_period_start: string;
   billing_period_end: string;
   client_id: string | null;
+  contract_id: string | null;
+}
+
+interface Contract {
+  id: string;
+  client_name: string;
+  identification: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  plan: string;
+  speed: string | null;
+  price: string | null;
 }
 
 interface IspClient {
@@ -111,12 +124,12 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       if (!mikrotikId) return [];
       const { data, error } = await supabase
         .from('client_invoices')
-        .select('*')
+        .select('*, isp_contracts(id, client_name, identification, address, phone, email, plan, speed, price)')
         .eq('mikrotik_id', mikrotikId)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data as Invoice[];
+      return data;
     },
     enabled: !!mikrotikId
   });
@@ -522,14 +535,19 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                           variant="outline"
                           className="text-primary border-primary hover:bg-primary/10"
                           onClick={async () => {
+                            // Prefer contract data, fallback to client data
+                            const contract = (invoice as any).isp_contracts;
                             const clientData = {
-                              client_name: client?.client_name || "Cliente",
-                              phone: client?.phone || null,
-                              identification_number: client?.identification_number || null,
-                              address: client?.address || null,
-                              email: client?.email || null
+                              client_name: contract?.client_name || client?.client_name || "Cliente",
+                              phone: contract?.phone || client?.phone || null,
+                              identification_number: contract?.identification || client?.identification_number || null,
+                              address: contract?.address || client?.address || null,
+                              email: contract?.email || client?.email || null
                             };
-                            await generateInvoicePDF(invoice, clientData);
+                            const serviceDescription = contract?.plan 
+                              ? `Servicio de Internet - ${contract.plan}${contract.speed ? ` (${contract.speed})` : ''}`
+                              : "Servicio de Internet - Plan Mensual";
+                            await generateInvoicePDF(invoice, clientData, undefined, serviceDescription);
                           }}
                           title="Descargar PDF"
                         >

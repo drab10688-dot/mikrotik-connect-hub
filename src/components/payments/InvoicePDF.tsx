@@ -44,7 +44,8 @@ const defaultCompany: CompanyData = {
 export async function generateInvoicePDF(
   invoice: InvoiceData,
   client: ClientData,
-  company: CompanyData = defaultCompany
+  company: CompanyData = defaultCompany,
+  serviceDescription: string = "Servicio de Internet - Plan Mensual"
 ): Promise<void> {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -229,7 +230,7 @@ export async function generateInvoicePDF(
   doc.setTextColor(...darkColor);
   doc.setFont("helvetica", "normal");
   doc.rect(margin, y, pageWidth - margin * 2, 12, "S");
-  doc.text("Servicio de Internet - Plan Mensual", margin + 5, y + 8);
+  doc.text(serviceDescription, margin + 5, y + 8);
   doc.text("1", pageWidth - margin - 80, y + 8, { align: "center" });
   doc.text(`$${invoice.amount.toLocaleString("es-CO")}`, pageWidth - margin - 5, y + 8, { align: "right" });
 
