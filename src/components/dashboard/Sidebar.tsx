@@ -31,7 +31,7 @@ import { useState, useEffect, useRef } from "react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: UserPlus, label: "Registro ISP", path: "/isp-registry" },
+  { icon: UserPlus, label: "Registrar Cliente", path: "/isp-registry" },
   { icon: Users, label: "Usuarios Hotspot", path: "/users" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },
