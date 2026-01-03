@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip } from "lucide-react";
+import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip, Wallet } from "lucide-react";
+import { NequiPaymentVerification } from "./NequiPaymentVerification";
 import { generateInvoicePDF, generateInvoicePDFBlob } from "./InvoicePDF";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -92,6 +93,10 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   const [telegramMessage, setTelegramMessage] = useState("");
   const [attachPdfTelegram, setAttachPdfTelegram] = useState(true);
   const [isSendingWithPdf, setIsSendingWithPdf] = useState(false);
+  
+  // Nequi verification state
+  const [nequiDialogOpen, setNequiDialogOpen] = useState(false);
+  const [selectedInvoiceForNequi, setSelectedInvoiceForNequi] = useState<Invoice | null>(null);
   const { data: clients, isLoading: loadingClients } = useQuery({
     queryKey: ['isp-clients-billing', mikrotikId],
     queryFn: async () => {
@@ -690,6 +695,21 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 flex-wrap">
+                        {/* Nequi Verification Button - only for pending/overdue invoices */}
+                        {invoice.status !== 'paid' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-purple-600 border-purple-600 hover:bg-purple-50"
+                            onClick={() => {
+                              setSelectedInvoiceForNequi(invoice);
+                              setNequiDialogOpen(true);
+                            }}
+                            title="Verificar pago Nequi"
+                          >
+                            <Wallet className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -883,6 +903,22 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Nequi Payment Verification Dialog */}
+      <NequiPaymentVerification
+        open={nequiDialogOpen}
+        onOpenChange={setNequiDialogOpen}
+        invoice={selectedInvoiceForNequi ? {
+          id: selectedInvoiceForNequi.id,
+          invoice_number: selectedInvoiceForNequi.invoice_number,
+          amount: selectedInvoiceForNequi.amount,
+          client_id: selectedInvoiceForNequi.client_id,
+          mikrotik_id: mikrotikId!
+        } : null}
+        onPaymentVerified={() => {
+          setSelectedInvoiceForNequi(null);
+        }}
+      />
     </div>
   );
 }
