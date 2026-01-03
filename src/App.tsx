@@ -21,6 +21,8 @@ import SimpleQueues from "./pages/SimpleQueues";
 import Backup from "./pages/Backup";
 import IspRegistry from "./pages/IspRegistry";
 import VerifyContract from "./pages/VerifyContract";
+import Payments from "./pages/Payments";
+import ClientPaymentPortal from "./pages/ClientPaymentPortal";
 import UsersAdmin from "./pages/Admin/Users";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
@@ -40,6 +42,7 @@ const App = () => (
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/verify-contract" element={<VerifyContract />} />
+        <Route path="/pay" element={<ClientPaymentPortal />} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
@@ -53,6 +56,7 @@ const App = () => (
         <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/backup" element={<ProtectedRoute><Backup /></ProtectedRoute>} />
+        <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
         <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
