@@ -2,10 +2,12 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { 
   BarChart, 
   Bar, 
@@ -17,13 +19,9 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   Legend
 } from "recharts";
 import { 
-  TrendingUp, 
-  TrendingDown, 
   DollarSign, 
   Users, 
   AlertTriangle, 
@@ -31,9 +29,10 @@ import {
   Clock,
   Ban,
   FileDown,
-  FileSpreadsheet
+  FileSpreadsheet,
+  CalendarIcon
 } from "lucide-react";
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfYear, subMonths, eachMonthOfInterval, isSameMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
@@ -43,23 +42,23 @@ interface PaymentReportsDashboardProps {
 }
 
 export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardProps) {
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [startDate, setStartDate] = useState<Date>(startOfYear(new Date()));
+  const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
+
+  const dateRangeKey = `${format(startDate, 'yyyy-MM-dd')}_${format(endDate, 'yyyy-MM-dd')}`;
 
   // Fetch invoices for reports
   const { data: invoices, isLoading: loadingInvoices } = useQuery({
-    queryKey: ['payment-reports-invoices', mikrotikId, selectedYear],
+    queryKey: ['payment-reports-invoices', mikrotikId, dateRangeKey],
     queryFn: async () => {
       if (!mikrotikId) return [];
-      
-      const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear}-12-31`;
       
       const { data, error } = await supabase
         .from('client_invoices')
         .select('*')
         .eq('mikrotik_id', mikrotikId)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
+        .gte('created_at', format(startDate, 'yyyy-MM-dd'))
+        .lte('created_at', format(endDate, 'yyyy-MM-dd'))
         .order('created_at', { ascending: true });
       
       if (error) throw error;
@@ -70,20 +69,17 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
 
   // Fetch transactions for payment method breakdown
   const { data: transactions, isLoading: loadingTransactions } = useQuery({
-    queryKey: ['payment-reports-transactions', mikrotikId, selectedYear],
+    queryKey: ['payment-reports-transactions', mikrotikId, dateRangeKey],
     queryFn: async () => {
       if (!mikrotikId) return [];
-      
-      const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear}-12-31`;
       
       const { data, error } = await supabase
         .from('payment_transactions')
         .select('*')
         .eq('mikrotik_id', mikrotikId)
         .eq('status', 'approved')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate);
+        .gte('created_at', format(startDate, 'yyyy-MM-dd'))
+        .lte('created_at', format(endDate, 'yyyy-MM-dd'));
       
       if (error) throw error;
       return data || [];
@@ -114,13 +110,16 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     enabled: !!mikrotikId,
   });
 
-  // Calculate monthly revenue data
+  // Calculate monthly revenue data based on date range
   const monthlyData = useMemo(() => {
     if (!invoices) return [];
     
-    const months = Array.from({ length: 12 }, (_, i) => ({
-      month: format(new Date(parseInt(selectedYear), i, 1), 'MMM', { locale: es }),
-      monthNum: i + 1,
+    // Get all months in the date range
+    const monthsInRange = eachMonthOfInterval({ start: startDate, end: endDate });
+    
+    const months = monthsInRange.map(date => ({
+      month: format(date, 'MMM yy', { locale: es }),
+      date,
       facturado: 0,
       cobrado: 0,
       pendiente: 0,
@@ -129,21 +128,23 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
 
     invoices.forEach((invoice: any) => {
       const invoiceDate = new Date(invoice.created_at);
-      const monthIndex = invoiceDate.getMonth();
+      const monthEntry = months.find(m => isSameMonth(m.date, invoiceDate));
       
-      months[monthIndex].facturado += Number(invoice.amount);
-      
-      if (invoice.status === 'paid') {
-        months[monthIndex].cobrado += Number(invoice.amount);
-      } else if (invoice.status === 'pending') {
-        months[monthIndex].pendiente += Number(invoice.amount);
-      } else if (invoice.status === 'overdue') {
-        months[monthIndex].vencido += Number(invoice.amount);
+      if (monthEntry) {
+        monthEntry.facturado += Number(invoice.amount);
+        
+        if (invoice.status === 'paid') {
+          monthEntry.cobrado += Number(invoice.amount);
+        } else if (invoice.status === 'pending') {
+          monthEntry.pendiente += Number(invoice.amount);
+        } else if (invoice.status === 'overdue') {
+          monthEntry.vencido += Number(invoice.amount);
+        }
       }
     });
 
     return months;
-  }, [invoices, selectedYear]);
+  }, [invoices, startDate, endDate]);
 
   // Calculate summary stats
   const summaryStats = useMemo(() => {
@@ -209,7 +210,7 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     ? ((summaryStats.collected / summaryStats.total) * 100).toFixed(1)
     : '0';
 
-  const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
+  const dateRangeLabel = `${format(startDate, 'dd/MM/yyyy')} - ${format(endDate, 'dd/MM/yyyy')}`;
 
   // Export to Excel (CSV format)
   const exportToExcel = () => {
@@ -230,7 +231,7 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     ]);
 
     const csvContent = [
-      `Reporte de Facturación - Año ${selectedYear}`,
+      `Reporte de Facturación - ${dateRangeLabel}`,
       "",
       `Total Facturado: $${summaryStats.total.toLocaleString()}`,
       `Total Recaudado: $${summaryStats.collected.toLocaleString()}`,
@@ -246,7 +247,7 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `reporte_facturacion_${selectedYear}.csv`;
+    link.download = `reporte_facturacion_${format(startDate, 'yyyy-MM-dd')}_${format(endDate, 'yyyy-MM-dd')}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     toast.success("Archivo Excel exportado correctamente");
@@ -264,7 +265,9 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     
     // Title
     doc.setFontSize(18);
-    doc.text(`Reporte de Facturación - Año ${selectedYear}`, pageWidth / 2, 20, { align: "center" });
+    doc.text(`Reporte de Facturación`, pageWidth / 2, 20, { align: "center" });
+    doc.setFontSize(12);
+    doc.text(dateRangeLabel, pageWidth / 2, 28, { align: "center" });
     
     // Summary
     doc.setFontSize(12);
@@ -324,7 +327,7 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     doc.setFontSize(8);
     doc.text(`Generado el ${format(new Date(), "dd/MM/yyyy HH:mm")}`, pageWidth / 2, 285, { align: "center" });
 
-    doc.save(`reporte_facturacion_${selectedYear}.pdf`);
+    doc.save(`reporte_facturacion_${format(startDate, 'yyyy-MM-dd')}_${format(endDate, 'yyyy-MM-dd')}.pdf`);
     toast.success("PDF exportado correctamente");
   };
 
@@ -344,9 +347,9 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
 
   return (
     <div className="space-y-6">
-      {/* Year selector and export buttons */}
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <div className="flex gap-2">
+      {/* Date range filters and export buttons */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportToPDF} disabled={isLoading || !invoices?.length}>
             <FileDown className="h-4 w-4 mr-2" />
             Exportar PDF
@@ -356,16 +359,54 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
             Exportar Excel
           </Button>
         </div>
-        <Select value={selectedYear} onValueChange={setSelectedYear}>
-          <SelectTrigger className="w-[120px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {years.map(year => (
-              <SelectItem key={year} value={year}>{year}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {startDate ? format(startDate, "dd/MM/yyyy") : "Fecha inicio"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={startDate}
+                onSelect={(date) => date && setStartDate(date)}
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+          <span className="text-muted-foreground">a</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {endDate ? format(endDate, "dd/MM/yyyy") : "Fecha fin"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={endDate}
+                onSelect={(date) => date && setEndDate(date)}
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="sm" onClick={() => { setStartDate(startOfMonth(new Date())); setEndDate(endOfMonth(new Date())); }}>
+              Este mes
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { setStartDate(startOfYear(new Date())); setEndDate(endOfMonth(new Date())); }}>
+              Este año
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { setStartDate(subMonths(startOfMonth(new Date()), 2)); setEndDate(endOfMonth(new Date())); }}>
+              Últimos 3 meses
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -384,7 +425,7 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
                   ${summaryStats.total.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Año {selectedYear}
+                  {dateRangeLabel}
                 </p>
               </>
             )}
