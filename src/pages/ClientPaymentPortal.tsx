@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Search, CreditCard, Receipt, CheckCircle, AlertTriangle, Loader2, Calendar, DollarSign, Building2, ExternalLink, Smartphone } from "lucide-react";
+import { Search, CreditCard, Receipt, CheckCircle, AlertTriangle, Loader2, Calendar, DollarSign, Building2, ExternalLink, Smartphone, QrCode } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Separator } from "@/components/ui/separator";
@@ -65,6 +65,9 @@ export default function ClientPaymentPortal() {
   const [nequiTransactionId, setNequiTransactionId] = useState<string | null>(null);
   const [nequiReference, setNequiReference] = useState<string | null>(null);
   const [nequiStatus, setNequiStatus] = useState<string | null>(null);
+  const [nequiQrCode, setNequiQrCode] = useState<string | null>(null);
+  const [nequiQrImageUrl, setNequiQrImageUrl] = useState<string | null>(null);
+  const [nequiQrDialogOpen, setNequiQrDialogOpen] = useState(false);
 
   // Auto-search if contract parameter is present in URL
   useEffect(() => {
@@ -187,14 +190,65 @@ export default function ClientPaymentPortal() {
   };
 
   const initiatePayment = async (invoice: Invoice, platform: string) => {
-    // For Nequi, show phone dialog first
+    // For Nequi, process payment directly to get QR code
     if (platform === 'nequi') {
       setNequiPendingInvoice(invoice);
-      setNequiDialogOpen(true);
+      await processNequiQrPayment(invoice);
       return;
     }
 
     await processPayment(invoice, platform);
+  };
+
+  const processNequiQrPayment = async (invoice: Invoice) => {
+    setIsProcessingPayment(true);
+    setSelectedInvoice(invoice);
+    setNequiStatus('generating');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('payment-gateway', {
+        body: {
+          action: 'create-payment',
+          platform: 'nequi',
+          invoice_id: invoice.id,
+          amount: invoice.amount,
+          description: `Pago factura ${invoice.invoice_number}`,
+          customer_email: '',
+          mikrotik_id: clientInfo?.mikrotik_id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.payment_method === 'nequi_qr' && data?.qr_code) {
+        // QR code generated successfully
+        setNequiTransactionId(data.transaction_id);
+        setNequiReference(data.reference);
+        setNequiQrCode(data.qr_code);
+        setNequiQrImageUrl(data.qr_image_url);
+        setNequiQrDialogOpen(true);
+        setNequiStatus('waiting');
+
+        // Start polling for payment status
+        pollNequiPayment(data.transaction_id, data.reference);
+        toast.success("Escanea el código QR con tu app Nequi");
+      } else if (data?.requires_phone) {
+        // Fallback to push notification if QR fails
+        setNequiTransactionId(data.transaction_id);
+        setNequiReference(data.reference);
+        setNequiDialogOpen(true);
+        toast.info(data.message);
+      } else {
+        throw new Error('Respuesta inesperada del servidor');
+      }
+
+    } catch (error: any) {
+      console.error('Nequi payment error:', error);
+      toast.error(`Error: ${error.message}`);
+      setNequiStatus(null);
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const processPayment = async (invoice: Invoice, platform: string, phoneNumber?: string) => {
@@ -500,11 +554,11 @@ export default function ClientPaymentPortal() {
                                   {isProcessingPayment && selectedInvoice?.id === invoice.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : platform.platform === 'nequi' ? (
-                                    <Smartphone className="h-4 w-4" />
+                                    <QrCode className="h-4 w-4" />
                                   ) : (
                                     <CreditCard className="h-4 w-4" />
                                   )}
-                                  {platform.platform === 'wompi' ? 'Wompi' : platform.platform === 'nequi' ? 'Nequi' : 'Mercado Pago'}
+                                  {platform.platform === 'wompi' ? 'Wompi' : platform.platform === 'nequi' ? 'Nequi QR' : 'Mercado Pago'}
                                   {platform.platform !== 'nequi' && <ExternalLink className="h-3 w-3" />}
                                 </Button>
                               ))}
@@ -589,7 +643,88 @@ export default function ClientPaymentPortal() {
           </div>
         )}
 
-        {/* Nequi Phone Dialog */}
+        {/* Nequi QR Code Dialog */}
+        <Dialog open={nequiQrDialogOpen} onOpenChange={(open) => {
+          if (!open && nequiPolling) {
+            // Don't allow closing while polling
+            return;
+          }
+          setNequiQrDialogOpen(open);
+          if (!open) {
+            setNequiQrCode(null);
+            setNequiQrImageUrl(null);
+          }
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-pink-500" />
+                Pagar con Nequi
+              </DialogTitle>
+              <DialogDescription>
+                Escanea este código QR con tu app Nequi para completar el pago
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col items-center space-y-4 py-4">
+              {nequiQrImageUrl ? (
+                <div className="bg-white p-4 rounded-lg">
+                  <img 
+                    src={nequiQrImageUrl} 
+                    alt="Código QR Nequi" 
+                    className="w-64 h-64"
+                  />
+                </div>
+              ) : (
+                <div className="w-64 h-64 bg-muted rounded-lg flex items-center justify-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-pink-500" />
+                </div>
+              )}
+              
+              {nequiPendingInvoice && (
+                <div className="bg-muted p-4 rounded-lg w-full text-center">
+                  <p className="text-sm text-muted-foreground">Monto a pagar:</p>
+                  <p className="text-2xl font-bold">${nequiPendingInvoice.amount.toLocaleString()} COP</p>
+                </div>
+              )}
+
+              {nequiPolling && (
+                <div className="flex items-center gap-2 text-pink-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Esperando confirmación de pago...</span>
+                </div>
+              )}
+
+              {nequiStatus === 'approved' && (
+                <div className="flex items-center gap-2 text-green-500">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="font-medium">¡Pago confirmado!</span>
+                </div>
+              )}
+
+              <div className="text-center text-sm text-muted-foreground space-y-1">
+                <p>1. Abre tu app Nequi</p>
+                <p>2. Selecciona "Pagar" y escanea el QR</p>
+                <p>3. Confirma el pago en tu celular</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setNequiQrDialogOpen(false);
+                  setNequiQrCode(null);
+                  setNequiQrImageUrl(null);
+                  setNequiPolling(false);
+                }}
+                disabled={nequiPolling}
+              >
+                Cerrar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Nequi Phone Dialog (Fallback) */}
         <Dialog open={nequiDialogOpen} onOpenChange={setNequiDialogOpen}>
           <DialogContent>
             <DialogHeader>
