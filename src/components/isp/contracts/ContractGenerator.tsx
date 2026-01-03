@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,8 +53,8 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     setCompanyInfo(getCompanyInfo());
   };
 
-  // Datos completos del contrato
-  const [contractFormData, setContractFormData] = useState<ClientContractData>({
+  // Datos completos del contrato - se actualizan cuando llegan datos del cliente
+  const [contractFormData, setContractFormData] = useState<ClientContractData>(() => ({
     clientName: clientData?.clientName || "",
     identification: clientData?.identification || "",
     address: clientData?.address || "",
@@ -63,10 +63,34 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     plan: clientData?.plan || "",
     speed: clientData?.speed || "",
     price: clientData?.price || "",
-    equipment: equipment,
+    equipment: ["Router WiFi"],
     contractNumber: generateContractNumber(),
     date: new Date().toISOString(),
-  });
+  }));
+
+  // Actualizar datos cuando cambian los datos del cliente registrado
+  const updateFromClientData = () => {
+    if (clientData) {
+      setContractFormData(prev => ({
+        ...prev,
+        clientName: clientData.clientName || prev.clientName,
+        identification: clientData.identification || prev.identification,
+        address: clientData.address || prev.address,
+        phone: clientData.phone || prev.phone,
+        email: clientData.email || prev.email,
+        plan: clientData.plan || prev.plan,
+        speed: clientData.speed || prev.speed,
+        price: clientData.price || prev.price,
+      }));
+    }
+  };
+
+  // Efecto para actualizar datos cuando cambian los props
+  useEffect(() => {
+    if (clientData) {
+      updateFromClientData();
+    }
+  }, [clientData]);
 
   function generateContractNumber() {
     const prefix = "SUROS";
@@ -188,6 +212,7 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
       <Tabs defaultValue="generate" className="w-full" onValueChange={(value) => {
         if (value === "generate") {
           refreshCompanyData();
+          updateFromClientData();
         }
       }}>
         <TabsList className="grid w-full grid-cols-2">
