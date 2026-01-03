@@ -3,18 +3,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Download, Eye, PenTool, Printer, CheckCircle2, Loader2 } from "lucide-react";
+import { FileText, Download, Eye, PenTool, Printer, CheckCircle2, Loader2, Save, History, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { getSelectedDeviceId } from "@/lib/mikrotik";
+import { useAuth } from "@/hooks/useAuth";
 
 import { SignaturePad } from "./SignaturePad";
 import { ContractPreview, type ClientContractData } from "./ContractPreview";
 import { ContractTermsEditor, DEFAULT_TERMS, DEFAULT_COMPANY_INFO, type ContractTerms, type CompanyInfo } from "./ContractTermsEditor";
+import { ContractHistory } from "./ContractHistory";
 
 interface ContractGeneratorProps {
   clientData?: Partial<ClientContractData>;
@@ -23,17 +27,25 @@ interface ContractGeneratorProps {
 
 export function ContractGenerator({ clientData, onContractSigned }: ContractGeneratorProps) {
   const contractRef = useRef<HTMLDivElement>(null);
+  const mikrotikId = getSelectedDeviceId();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [showSignature, setShowSignature] = useState(false);
+  const [showClientSignature, setShowClientSignature] = useState(false);
+  const [showManagerSignature, setShowManagerSignature] = useState(false);
   const [clientSignature, setClientSignature] = useState<string | undefined>();
-  const [isSigned, setIsSigned] = useState(false);
+  const [managerSignature, setManagerSignature] = useState<string | undefined>();
+  const [managerName, setManagerName] = useState(localStorage.getItem("isp_manager_name") || "");
+  const [isClientSigned, setIsClientSigned] = useState(false);
+  const [isManagerSigned, setIsManagerSigned] = useState(false);
 
   // Equipos en préstamo
   const [equipment, setEquipment] = useState<string[]>(["Router WiFi"]);
   const [newEquipment, setNewEquipment] = useState("");
 
-  // Términos y configuración de la empresa - se recargan al cambiar de tab
+  // Términos y configuración de la empresa
   const getTerms = (): ContractTerms => {
     const saved = localStorage.getItem("isp_contract_terms");
     return saved ? JSON.parse(saved) : DEFAULT_TERMS;
@@ -47,13 +59,12 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
   const [terms, setTerms] = useState<ContractTerms>(getTerms);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(getCompanyInfo);
 
-  // Recargar datos cuando cambian en localStorage (desde el editor de términos)
   const refreshCompanyData = () => {
     setTerms(getTerms());
     setCompanyInfo(getCompanyInfo());
   };
 
-  // Datos completos del contrato - se actualizan cuando llegan datos del cliente
+  // Datos del contrato
   const [contractFormData, setContractFormData] = useState<ClientContractData>(() => ({
     clientName: clientData?.clientName || "",
     identification: clientData?.identification || "",
@@ -68,7 +79,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     date: new Date().toISOString(),
   }));
 
-  // Actualizar datos cuando cambian los datos del cliente registrado
   const updateFromClientData = () => {
     if (clientData) {
       setContractFormData(prev => ({
@@ -85,7 +95,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     }
   };
 
-  // Efecto para actualizar datos cuando cambian los props
   useEffect(() => {
     if (clientData) {
       updateFromClientData();
@@ -100,6 +109,46 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     const random = Math.floor(1000 + Math.random() * 9000);
     return `${prefix}-${year}${month}-${random}`;
   }
+
+  // Mutation para guardar contrato
+  const saveContractMutation = useMutation({
+    mutationFn: async (data: {
+      contractData: ClientContractData;
+      clientSignature?: string;
+      managerSignature?: string;
+      status: string;
+    }) => {
+      if (!mikrotikId || !user) throw new Error("Faltan datos requeridos");
+
+      const { error } = await supabase.from("isp_contracts").insert({
+        mikrotik_id: mikrotikId,
+        created_by: user.id,
+        contract_number: data.contractData.contractNumber,
+        client_name: data.contractData.clientName,
+        identification: data.contractData.identification,
+        address: data.contractData.address,
+        phone: data.contractData.phone,
+        email: data.contractData.email,
+        plan: data.contractData.plan,
+        speed: data.contractData.speed,
+        price: data.contractData.price,
+        equipment: data.contractData.equipment,
+        client_signature_url: data.clientSignature,
+        manager_signature_url: data.managerSignature,
+        signed_at: data.clientSignature && data.managerSignature ? new Date().toISOString() : null,
+        status: data.status,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["isp-contracts"] });
+      toast.success("Contrato guardado en el historial");
+    },
+    onError: (error: Error) => {
+      toast.error("Error al guardar: " + error.message);
+    },
+  });
 
   const handleAddEquipment = () => {
     if (newEquipment.trim()) {
@@ -116,15 +165,23 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     setContractFormData(prev => ({ ...prev, equipment: updated }));
   };
 
-  const handleSignatureComplete = (signatureDataUrl: string) => {
+  const handleClientSignatureComplete = (signatureDataUrl: string) => {
     setClientSignature(signatureDataUrl);
-    setIsSigned(true);
-    setShowSignature(false);
-    toast.success("Firma registrada correctamente");
+    setIsClientSigned(true);
+    setShowClientSignature(false);
+    toast.success("Firma del cliente registrada");
     onContractSigned?.(contractFormData, signatureDataUrl);
   };
 
-  const generatePDF = async () => {
+  const handleManagerSignatureComplete = (signatureDataUrl: string) => {
+    setManagerSignature(signatureDataUrl);
+    setIsManagerSigned(true);
+    setShowManagerSignature(false);
+    localStorage.setItem("isp_manager_name", managerName);
+    toast.success("Firma del gerente registrada");
+  };
+
+  const generatePDF = async (shouldSave = false) => {
     if (!contractRef.current) return;
 
     setIsGenerating(true);
@@ -150,7 +207,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
       const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
       const imgX = (pdfWidth - imgWidth * ratio) / 2;
 
-      // Calculate total pages needed
       const totalPages = Math.ceil((imgHeight * ratio) / pdfHeight);
 
       for (let page = 0; page < totalPages; page++) {
@@ -161,7 +217,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
         const sourceY = page * (pdfHeight / ratio);
         const sourceHeight = Math.min(pdfHeight / ratio, imgHeight - sourceY);
 
-        // Create a temporary canvas for this page section
         const pageCanvas = document.createElement("canvas");
         pageCanvas.width = imgWidth;
         pageCanvas.height = sourceHeight;
@@ -192,8 +247,20 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
         }
       }
 
+      const isSigned = isClientSigned && isManagerSigned;
       const fileName = `contrato_${isSigned ? "firmado_" : ""}${contractFormData.contractNumber}.pdf`;
       pdf.save(fileName);
+
+      // Guardar en base de datos si está firmado
+      if (shouldSave && mikrotikId && user) {
+        await saveContractMutation.mutateAsync({
+          contractData: contractFormData,
+          clientSignature,
+          managerSignature,
+          status: isSigned ? "signed" : "draft",
+        });
+      }
+
       toast.success("Contrato PDF generado correctamente");
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -207,6 +274,8 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     setContractFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const isBothSigned = isClientSigned && isManagerSigned;
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="generate" className="w-full" onValueChange={(value) => {
@@ -215,14 +284,21 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
           updateFromClientData();
         }
       }}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="generate">
             <FileText className="w-4 h-4 mr-2" />
-            Generar Contrato
+            <span className="hidden sm:inline">Generar Contrato</span>
+            <span className="sm:hidden">Generar</span>
+          </TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">Historial</span>
+            <span className="sm:hidden">Historial</span>
           </TabsTrigger>
           <TabsTrigger value="terms">
             <PenTool className="w-4 h-4 mr-2" />
-            Editar Términos
+            <span className="hidden sm:inline">Editar Términos</span>
+            <span className="sm:hidden">Términos</span>
           </TabsTrigger>
         </TabsList>
 
@@ -353,16 +429,37 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                 </div>
               </div>
 
-              {/* Estado de la firma */}
-              {isSigned && (
-                <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-700 dark:text-green-400">Contrato Firmado</p>
-                    <p className="text-sm text-green-600 dark:text-green-500">El cliente ha firmado el contrato digitalmente</p>
+              {/* Nombre del Gerente */}
+              <div className="space-y-2">
+                <Label>Nombre del Representante Legal / Gerente</Label>
+                <Input
+                  value={managerName}
+                  onChange={(e) => setManagerName(e.target.value)}
+                  placeholder="Nombre del gerente que firmará el contrato"
+                />
+              </div>
+
+              {/* Estado de las firmas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {isClientSigned && (
+                  <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-3">
+                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                    <div>
+                      <p className="font-medium text-green-700 dark:text-green-400">Firma del Cliente</p>
+                      <p className="text-sm text-green-600 dark:text-green-500">Registrada correctamente</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+                {isManagerSigned && (
+                  <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center gap-3">
+                    <UserCheck className="w-6 h-6 text-blue-600" />
+                    <div>
+                      <p className="font-medium text-blue-700 dark:text-blue-400">Firma del Gerente</p>
+                      <p className="text-sm text-blue-600 dark:text-blue-500">Registrada correctamente</p>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Acciones */}
               <div className="flex flex-wrap gap-3 pt-4 border-t">
@@ -384,6 +481,8 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                         terms={terms}
                         companyInfo={companyInfo}
                         clientSignature={clientSignature}
+                        managerSignature={managerSignature}
+                        managerName={managerName}
                       />
                     </ScrollArea>
                     <div className="flex justify-end gap-2 pt-4">
@@ -391,7 +490,7 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                         <Printer className="w-4 h-4 mr-2" />
                         Imprimir
                       </Button>
-                      <Button onClick={generatePDF} disabled={isGenerating}>
+                      <Button onClick={() => generatePDF(false)} disabled={isGenerating}>
                         {isGenerating ? (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         ) : (
@@ -403,11 +502,12 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                   </DialogContent>
                 </Dialog>
 
-                <Dialog open={showSignature} onOpenChange={setShowSignature}>
+                {/* Firma del Cliente */}
+                <Dialog open={showClientSignature} onOpenChange={setShowClientSignature}>
                   <DialogTrigger asChild>
-                    <Button variant={isSigned ? "outline" : "default"}>
+                    <Button variant={isClientSigned ? "outline" : "default"}>
                       <PenTool className="w-4 h-4 mr-2" />
-                      {isSigned ? "Actualizar Firma" : "Firmar Contrato"}
+                      {isClientSigned ? "Actualizar Firma Cliente" : "Firma del Cliente"}
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-lg">
@@ -415,23 +515,57 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                       <DialogTitle>Firma Digital del Cliente</DialogTitle>
                     </DialogHeader>
                     <SignaturePad
-                      onSignatureComplete={handleSignatureComplete}
+                      onSignatureComplete={handleClientSignatureComplete}
                       onClear={() => setClientSignature(undefined)}
+                      title="Firma del Suscriptor"
+                      description="El cliente debe firmar dentro del recuadro"
                     />
                   </DialogContent>
                 </Dialog>
 
+                {/* Firma del Gerente */}
+                <Dialog open={showManagerSignature} onOpenChange={setShowManagerSignature}>
+                  <DialogTrigger asChild>
+                    <Button variant={isManagerSigned ? "outline" : "secondary"}>
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      {isManagerSigned ? "Actualizar Firma Gerente" : "Firma del Gerente"}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Firma Digital del Representante Legal</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Nombre del Gerente</Label>
+                        <Input
+                          value={managerName}
+                          onChange={(e) => setManagerName(e.target.value)}
+                          placeholder="Nombre completo del gerente"
+                        />
+                      </div>
+                      <SignaturePad
+                        onSignatureComplete={handleManagerSignatureComplete}
+                        onClear={() => setManagerSignature(undefined)}
+                        title="Firma del Representante Legal"
+                        description="El gerente debe firmar dentro del recuadro"
+                      />
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Generar y Guardar PDF */}
                 <Button
-                  onClick={generatePDF}
+                  onClick={() => generatePDF(true)}
                   disabled={isGenerating || !contractFormData.clientName || !contractFormData.identification}
                   className="bg-gradient-to-r from-primary to-primary/80"
                 >
                   {isGenerating ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   ) : (
-                    <Download className="w-4 h-4 mr-2" />
+                    <Save className="w-4 h-4 mr-2" />
                   )}
-                  Generar PDF
+                  {isBothSigned ? "Guardar y Descargar" : "Generar PDF"}
                 </Button>
               </div>
             </CardContent>
@@ -445,17 +579,18 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
               terms={terms}
               companyInfo={companyInfo}
               clientSignature={clientSignature}
+              managerSignature={managerSignature}
+              managerName={managerName}
             />
           </div>
         </TabsContent>
 
+        <TabsContent value="history" className="mt-6">
+          <ContractHistory />
+        </TabsContent>
+
         <TabsContent value="terms" className="mt-6">
-          <ContractTermsEditor
-            onSave={(newTerms, newCompanyInfo) => {
-              setTerms(newTerms);
-              setCompanyInfo(newCompanyInfo);
-            }}
-          />
+          <ContractTermsEditor />
         </TabsContent>
       </Tabs>
     </div>
