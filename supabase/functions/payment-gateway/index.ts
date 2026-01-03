@@ -507,6 +507,79 @@ serve(async (req) => {
               // Don't fail the payment verification if Telegram fails
             }
           }
+
+          // Send WhatsApp notification if configured and client has phone
+          if (invoice?.isp_clients?.phone) {
+            try {
+              // Get WhatsApp config
+              const { data: whatsappConfig } = await supabase
+                .from('whatsapp_config')
+                .select('*')
+                .eq('mikrotik_id', transaction.mikrotik_id)
+                .eq('is_active', true)
+                .single();
+
+              if (whatsappConfig) {
+                const platformName = platform === 'nequi' ? 'Nequi' : 
+                                    platform === 'wompi' ? 'Wompi' : 'Mercado Pago';
+                
+                const whatsappMessage = `✅ *¡Pago Confirmado!*\n\n` +
+                  `Hola ${invoice.isp_clients.client_name},\n\n` +
+                  `Tu pago ha sido procesado exitosamente:\n\n` +
+                  `📄 *Factura:* ${invoice.invoice_number}\n` +
+                  `💰 *Monto:* $${transaction.amount.toLocaleString()} COP\n` +
+                  `💳 *Método:* ${platformName}\n` +
+                  `📅 *Fecha:* ${new Date().toLocaleDateString('es-CO')}\n` +
+                  `🔖 *Referencia:* ${external_reference}\n\n` +
+                  `¡Gracias por tu pago! Tu servicio está activo. 🌐`;
+
+                // Format phone number
+                const formattedPhone = invoice.isp_clients.phone.replace(/[\s\-\(\)]/g, "").replace(/^\+/, "");
+
+                // Send via WhatsApp Business API
+                const whatsappUrl = `https://graph.facebook.com/v18.0/${whatsappConfig.phone_number_id}/messages`;
+                
+                const whatsappResponse = await fetch(whatsappUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${whatsappConfig.access_token}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to: formattedPhone,
+                    type: 'text',
+                    text: {
+                      preview_url: false,
+                      body: whatsappMessage
+                    }
+                  })
+                });
+
+                const whatsappResult = await whatsappResponse.json();
+                console.log('WhatsApp payment notification result:', whatsappResult);
+
+                // Log the message
+                await supabase.from('whatsapp_messages').insert({
+                  mikrotik_id: transaction.mikrotik_id,
+                  client_id: invoice.isp_clients.id,
+                  phone_number: formattedPhone,
+                  message_type: 'payment_confirmation',
+                  message_content: whatsappMessage,
+                  related_invoice_id: transaction.invoice_id,
+                  status: whatsappResponse.ok ? 'sent' : 'failed',
+                  whatsapp_message_id: whatsappResult.messages?.[0]?.id || null,
+                  error_message: !whatsappResponse.ok ? whatsappResult.error?.message : null,
+                  sent_at: whatsappResponse.ok ? new Date().toISOString() : null,
+                  created_by: invoice.isp_clients.created_by
+                });
+              }
+            } catch (whatsappError) {
+              console.error('Error sending WhatsApp notification:', whatsappError);
+              // Don't fail the payment verification if WhatsApp fails
+            }
+          }
         }
 
         return new Response(
