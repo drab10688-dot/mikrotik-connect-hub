@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 import { PaymentPlatformsConfig } from "@/components/payments/PaymentPlatformsConfig";
 import { ClientBillingManager } from "@/components/payments/ClientBillingManager";
-import { CreditCard, Receipt } from "lucide-react";
+import { PaymentReportsDashboard } from "@/components/payments/PaymentReportsDashboard";
+import { CreditCard, Receipt, BarChart3 } from "lucide-react";
 import { saveSelectedDevice, MikroTikDeviceConfig } from "@/lib/mikrotik";
 
 export default function Payments() {
@@ -57,7 +58,7 @@ export default function Payments() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+          <TabsList className="grid w-full grid-cols-3 md:w-[500px]">
             <TabsTrigger value="platforms" className="flex items-center gap-2">
               <CreditCard className="h-4 w-4" />
               Plataformas
@@ -65,6 +66,10 @@ export default function Payments() {
             <TabsTrigger value="billing" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Facturación
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Reportes
             </TabsTrigger>
           </TabsList>
 
@@ -74,6 +79,10 @@ export default function Payments() {
 
           <TabsContent value="billing">
             <ClientBillingManager mikrotikId={device?.id || null} />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <PaymentReportsDashboard mikrotikId={device?.id || null} />
           </TabsContent>
         </Tabs>
       </div>
