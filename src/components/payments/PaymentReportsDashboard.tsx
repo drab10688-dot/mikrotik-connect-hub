@@ -698,6 +698,71 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
         </CardContent>
       </Card>
 
+      {/* Detailed Invoices Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Detalle de Facturas</CardTitle>
+          <CardDescription>
+            Listado de {filteredInvoices.length} facturas en el período seleccionado
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : filteredInvoices.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2 font-medium">N° Factura</th>
+                    <th className="text-left py-3 px-2 font-medium">Fecha</th>
+                    <th className="text-right py-3 px-2 font-medium">Monto</th>
+                    <th className="text-center py-3 px-2 font-medium">Estado</th>
+                    <th className="text-left py-3 px-2 font-medium">Vencimiento</th>
+                    <th className="text-left py-3 px-2 font-medium">Pago</th>
+                    <th className="text-left py-3 px-2 font-medium">Método</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInvoices.map((invoice: any) => (
+                    <tr key={invoice.id} className="border-b hover:bg-muted/50">
+                      <td className="py-3 px-2 font-mono text-xs">{invoice.invoice_number}</td>
+                      <td className="py-3 px-2">{format(new Date(invoice.created_at), 'dd/MM/yyyy')}</td>
+                      <td className="py-3 px-2 text-right font-medium">${Number(invoice.amount).toLocaleString()}</td>
+                      <td className="py-3 px-2 text-center">
+                        <Badge 
+                          variant={
+                            invoice.status === 'paid' ? 'default' : 
+                            invoice.status === 'pending' ? 'secondary' : 
+                            'destructive'
+                          }
+                          className={
+                            invoice.status === 'paid' ? 'bg-green-500 hover:bg-green-600' : ''
+                          }
+                        >
+                          {invoice.status === 'paid' ? 'Pagada' : 
+                           invoice.status === 'pending' ? 'Pendiente' : 
+                           'Vencida'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-2">{format(new Date(invoice.due_date), 'dd/MM/yyyy')}</td>
+                      <td className="py-3 px-2">
+                        {invoice.paid_at ? format(new Date(invoice.paid_at), 'dd/MM/yyyy') : '-'}
+                      </td>
+                      <td className="py-3 px-2">{invoice.paid_via || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No hay facturas que coincidan con los filtros seleccionados
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Suspended Clients List */}
       {billingSettings && billingSettings.filter((b: any) => b.is_suspended).length > 0 && (
         <Card>
