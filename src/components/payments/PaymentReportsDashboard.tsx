@@ -32,7 +32,9 @@ import {
   Ban,
   FileDown,
   FileSpreadsheet,
-  CalendarIcon
+  CalendarIcon,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfYear, subMonths, eachMonthOfInterval, isSameMonth } from "date-fns";
 import { es } from "date-fns/locale";
@@ -47,6 +49,8 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
   const [startDate, setStartDate] = useState<Date>(startOfYear(new Date()));
   const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
   const [statusFilter, setStatusFilter] = useState<string[]>(['paid', 'pending', 'overdue']);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const dateRangeKey = `${format(startDate, 'yyyy-MM-dd')}_${format(endDate, 'yyyy-MM-dd')}`;
 
@@ -116,8 +120,16 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
   // Filter invoices by status
   const filteredInvoices = useMemo(() => {
     if (!invoices) return [];
+    setCurrentPage(1); // Reset page when filters change
     return invoices.filter((inv: any) => statusFilter.includes(inv.status));
   }, [invoices, statusFilter]);
+
+  // Paginated invoices for table display
+  const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
+  const paginatedInvoices = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredInvoices.slice(start, start + itemsPerPage);
+  }, [filteredInvoices, currentPage, itemsPerPage]);
 
   // Calculate monthly revenue data based on date range
   const monthlyData = useMemo(() => {
@@ -710,50 +722,106 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : filteredInvoices.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-2 font-medium">N° Factura</th>
-                    <th className="text-left py-3 px-2 font-medium">Fecha</th>
-                    <th className="text-right py-3 px-2 font-medium">Monto</th>
-                    <th className="text-center py-3 px-2 font-medium">Estado</th>
-                    <th className="text-left py-3 px-2 font-medium">Vencimiento</th>
-                    <th className="text-left py-3 px-2 font-medium">Pago</th>
-                    <th className="text-left py-3 px-2 font-medium">Método</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvoices.map((invoice: any) => (
-                    <tr key={invoice.id} className="border-b hover:bg-muted/50">
-                      <td className="py-3 px-2 font-mono text-xs">{invoice.invoice_number}</td>
-                      <td className="py-3 px-2">{format(new Date(invoice.created_at), 'dd/MM/yyyy')}</td>
-                      <td className="py-3 px-2 text-right font-medium">${Number(invoice.amount).toLocaleString()}</td>
-                      <td className="py-3 px-2 text-center">
-                        <Badge 
-                          variant={
-                            invoice.status === 'paid' ? 'default' : 
-                            invoice.status === 'pending' ? 'secondary' : 
-                            'destructive'
-                          }
-                          className={
-                            invoice.status === 'paid' ? 'bg-green-500 hover:bg-green-600' : ''
-                          }
-                        >
-                          {invoice.status === 'paid' ? 'Pagada' : 
-                           invoice.status === 'pending' ? 'Pendiente' : 
-                           'Vencida'}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-2">{format(new Date(invoice.due_date), 'dd/MM/yyyy')}</td>
-                      <td className="py-3 px-2">
-                        {invoice.paid_at ? format(new Date(invoice.paid_at), 'dd/MM/yyyy') : '-'}
-                      </td>
-                      <td className="py-3 px-2">{invoice.paid_via || '-'}</td>
+            <div className="space-y-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2 font-medium">N° Factura</th>
+                      <th className="text-left py-3 px-2 font-medium">Fecha</th>
+                      <th className="text-right py-3 px-2 font-medium">Monto</th>
+                      <th className="text-center py-3 px-2 font-medium">Estado</th>
+                      <th className="text-left py-3 px-2 font-medium">Vencimiento</th>
+                      <th className="text-left py-3 px-2 font-medium">Pago</th>
+                      <th className="text-left py-3 px-2 font-medium">Método</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {paginatedInvoices.map((invoice: any) => (
+                      <tr key={invoice.id} className="border-b hover:bg-muted/50">
+                        <td className="py-3 px-2 font-mono text-xs">{invoice.invoice_number}</td>
+                        <td className="py-3 px-2">{format(new Date(invoice.created_at), 'dd/MM/yyyy')}</td>
+                        <td className="py-3 px-2 text-right font-medium">${Number(invoice.amount).toLocaleString()}</td>
+                        <td className="py-3 px-2 text-center">
+                          <Badge 
+                            variant={
+                              invoice.status === 'paid' ? 'default' : 
+                              invoice.status === 'pending' ? 'secondary' : 
+                              'destructive'
+                            }
+                            className={
+                              invoice.status === 'paid' ? 'bg-green-500 hover:bg-green-600' : ''
+                            }
+                          >
+                            {invoice.status === 'paid' ? 'Pagada' : 
+                             invoice.status === 'pending' ? 'Pendiente' : 
+                             'Vencida'}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-2">{format(new Date(invoice.due_date), 'dd/MM/yyyy')}</td>
+                        <td className="py-3 px-2">
+                          {invoice.paid_at ? format(new Date(invoice.paid_at), 'dd/MM/yyyy') : '-'}
+                        </td>
+                        <td className="py-3 px-2">{invoice.paid_via || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Mostrando {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredInvoices.length)} de {filteredInvoices.length} facturas
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Anterior
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            className="w-8 h-8 p-0"
+                            onClick={() => setCurrentPage(pageNum)}
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
