@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-import { MapPin, UserPlus, AlertCircle, Gauge, Cable, Save } from "lucide-react";
+import { MapPin, UserPlus, AlertCircle, Gauge, Cable } from "lucide-react";
+import { PlanPricesManager } from "./PlanPricesManager";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,37 +66,21 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
   // Toggle para Simple Queues vs PPPoE
   const [useSimpleQueues, setUseSimpleQueues] = useState(false);
 
-  // Sistema de precios guardados
-  const [speedPrices, setSpeedPrices] = useState<Record<string, string>>(() => {
+  // Sistema de precios guardados - versión actualizada para refrescar
+  const [pricesVersion, setPricesVersion] = useState(0);
+
+  const getSpeedPrices = (): Record<string, string> => {
     const saved = localStorage.getItem("isp_speed_prices");
     return saved ? JSON.parse(saved) : {};
-  });
+  };
 
-  const [planPrices, setPlanPrices] = useState<Record<string, string>>(() => {
+  const getPlanPrices = (): Record<string, string> => {
     const saved = localStorage.getItem("isp_plan_prices");
     return saved ? JSON.parse(saved) : {};
-  });
-
-  const saveSpeedPrice = (speed: string, price: string) => {
-    const updated = { ...speedPrices, [speed]: price };
-    setSpeedPrices(updated);
-    localStorage.setItem("isp_speed_prices", JSON.stringify(updated));
   };
 
-  const savePlanPrice = (plan: string, price: string) => {
-    const updated = { ...planPrices, [plan]: price };
-    setPlanPrices(updated);
-    localStorage.setItem("isp_plan_prices", JSON.stringify(updated));
-  };
-
-  // Obtener precio según velocidad de bajada o plan
-  const getAutoPrice = (): string => {
-    if (useSimpleQueues) {
-      return speedPrices[formData.downloadSpeed] || "";
-    } else {
-      return planPrices[formData.plan] || "";
-    }
-  };
+  // Lista de velocidades disponibles
+  const availableSpeeds = ['1M', '2M', '3M', '4M', '5M', '6M', '8M', '10M', '15M', '20M', '25M', '30M', '50M', '100M'];
 
   const [formData, setFormData] = useState<ClientFormData>({
     nombre: "",
@@ -128,7 +113,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       
       // Auto-completar precio cuando cambia la velocidad de bajada (Simple Queues)
       if (field === "downloadSpeed" && typeof value === "string") {
-        const savedPrice = speedPrices[value];
+        const savedPrice = getSpeedPrices()[value];
         if (savedPrice) {
           updated.precio = savedPrice;
         }
@@ -136,7 +121,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       
       // Auto-completar precio cuando cambia el plan (PPPoE)
       if (field === "plan" && typeof value === "string") {
-        const savedPrice = planPrices[value];
+        const savedPrice = getPlanPrices()[value];
         if (savedPrice) {
           updated.precio = savedPrice;
         }
@@ -769,60 +754,39 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
               </div>
             )}
 
-            {/* Campo de precio del plan con opción de guardar */}
+            {/* Campo de precio del plan con gestor de precios */}
             <div className="space-y-2">
-              <Label htmlFor="precio">Precio Mensual del Plan</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="precio"
-                  placeholder="Ej: $50.000 COP/mes"
-                  value={formData.precio}
-                  onChange={(e) => updateField("precio", e.target.value)}
-                  className="flex-1"
+              <div className="flex items-center justify-between">
+                <Label htmlFor="precio">Precio Mensual del Plan</Label>
+                <PlanPricesManager
+                  plans={pppoeProfiles.map((p: any) => ({ 
+                    name: p.name, 
+                    rateLimit: p["rate-limit"] 
+                  }))}
+                  speeds={availableSpeeds}
+                  useSimpleQueues={useSimpleQueues}
+                  onPricesChange={() => setPricesVersion(v => v + 1)}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => {
-                    if (!formData.precio) {
-                      toast.error("Ingrese un precio primero");
-                      return;
-                    }
-                    if (useSimpleQueues) {
-                      if (!formData.downloadSpeed) {
-                        toast.error("Seleccione una velocidad primero");
-                        return;
-                      }
-                      saveSpeedPrice(formData.downloadSpeed, formData.precio);
-                      toast.success(`Precio guardado para ${formData.downloadSpeed.replace('M', ' Mbps')}`);
-                    } else {
-                      if (!formData.plan) {
-                        toast.error("Seleccione un plan primero");
-                        return;
-                      }
-                      savePlanPrice(formData.plan, formData.precio);
-                      toast.success(`Precio guardado para ${formData.plan}`);
-                    }
-                  }}
-                  title="Guardar precio para esta velocidad/plan"
-                >
-                  <Save className="h-4 w-4" />
-                </Button>
               </div>
+              <Input
+                id="precio"
+                placeholder="Ej: $50.000 COP/mes"
+                value={formData.precio}
+                onChange={(e) => updateField("precio", e.target.value)}
+              />
               {/* Mostrar si hay precio guardado */}
-              {useSimpleQueues && formData.downloadSpeed && speedPrices[formData.downloadSpeed] && (
+              {useSimpleQueues && formData.downloadSpeed && getSpeedPrices()[formData.downloadSpeed] && (
                 <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                  <span>✓</span> Precio guardado: {speedPrices[formData.downloadSpeed]}
+                  <span>✓</span> Precio configurado: {getSpeedPrices()[formData.downloadSpeed]}
                 </p>
               )}
-              {!useSimpleQueues && formData.plan && planPrices[formData.plan] && (
+              {!useSimpleQueues && formData.plan && getPlanPrices()[formData.plan] && (
                 <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                  <span>✓</span> Precio guardado: {planPrices[formData.plan]}
+                  <span>✓</span> Precio configurado: {getPlanPrices()[formData.plan]}
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Haz clic en el icono de guardar para recordar este precio para futuras registraciones
+                El precio se carga automáticamente según el plan/velocidad configurado
               </p>
             </div>
 
