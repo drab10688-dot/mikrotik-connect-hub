@@ -185,11 +185,17 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
       toast.error("Ingresa un Chat ID de Telegram");
       return;
     }
+    // Validate that chat ID is numeric (can be negative for groups)
+    const cleanChatId = customChatId.trim().replace("@", "");
+    if (!/^-?\d+$/.test(cleanChatId)) {
+      toast.error("El Chat ID debe ser un número (ej: 123456789). Los usernames (@nombre) no son válidos.");
+      return;
+    }
     if (!messageContent.trim()) {
       toast.error("El mensaje no puede estar vacío");
       return;
     }
-    sendMessageMutation.mutate({ chatId: customChatId, message: messageContent });
+    sendMessageMutation.mutate({ chatId: cleanChatId, message: messageContent });
   };
 
   const getStatusBadge = (status: string) => {
@@ -335,14 +341,17 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Chat ID de Telegram</Label>
+                  <Label>Chat ID de Telegram (numérico)</Label>
                   <Input
                     placeholder="123456789"
                     value={customChatId}
                     onChange={(e) => setCustomChatId(e.target.value)}
+                    type="text"
+                    inputMode="numeric"
                   />
                   <p className="text-xs text-muted-foreground">
-                    El cliente debe iniciar chat con el bot primero. Usa @userinfobot para obtener el Chat ID.
+                    ⚠️ <strong>Importante:</strong> El Chat ID es un número, NO un username (@nombre).
+                    El cliente debe enviar /start al bot, luego usar <strong>@userinfobot</strong> o <strong>@getidsbot</strong> para obtener su ID numérico.
                   </p>
                 </div>
 
