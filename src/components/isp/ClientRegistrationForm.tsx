@@ -27,6 +27,7 @@ interface ClientFormData {
   opcionTv: string;
   correoElectronico: string;
   telefono: string;
+  telegramChatId: string;
   calle: string;
   calle2: string;
   ciudad: string;
@@ -94,6 +95,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
     opcionTv: "solo-internet",
     correoElectronico: "",
     telefono: "",
+    telegramChatId: "",
     calle: "",
     calle2: "",
     ciudad: "",
@@ -311,6 +313,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       opcionTv: "solo-internet",
       correoElectronico: "",
       telefono: "",
+      telegramChatId: "",
       calle: "",
       calle2: "",
       ciudad: "",
@@ -416,6 +419,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
             identification_number: formData.numeroIdentificacion,
             phone: formData.telefono,
             email: formData.correoElectronico,
+            telegram_chat_id: formData.telegramChatId || null,
             address: `${formData.calle}${formData.calle2 ? ', ' + formData.calle2 : ''}`,
             city: formData.ciudad,
             latitude: formData.latitud,
@@ -853,6 +857,19 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
                   onChange={(e) => updateField("telefono", e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="telegramChatId">Telegram Chat ID (para notificaciones automáticas)</Label>
+              <Input
+                id="telegramChatId"
+                placeholder="123456789"
+                value={formData.telegramChatId}
+                onChange={(e) => updateField("telegramChatId", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                El cliente debe iniciar una conversación con el bot de Telegram para obtener su Chat ID
+              </p>
             </div>
           </div>
 

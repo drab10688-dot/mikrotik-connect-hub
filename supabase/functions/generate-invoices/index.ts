@@ -6,6 +6,82 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Function to send Telegram notification
+async function sendTelegramNotification(
+  supabase: any,
+  mikrotikId: string,
+  chatId: string,
+  clientName: string,
+  invoiceNumber: string,
+  amount: number,
+  dueDate: string,
+  clientId: string,
+  invoiceId: string,
+  createdBy: string
+) {
+  try {
+    // Get Telegram config for this mikrotik
+    const { data: telegramConfig } = await supabase
+      .from('telegram_config')
+      .select('bot_token, is_active')
+      .eq('mikrotik_id', mikrotikId)
+      .eq('is_active', true)
+      .single();
+
+    if (!telegramConfig) {
+      console.log(`No active Telegram config for mikrotik ${mikrotikId}`);
+      return { success: false, reason: 'No Telegram config' };
+    }
+
+    const message = `📄 *Nueva Factura Generada*
+
+👤 Cliente: ${clientName}
+📋 Factura: ${invoiceNumber}
+💰 Monto: $${amount.toFixed(2)}
+📅 Vencimiento: ${dueDate}
+
+Por favor realice su pago antes de la fecha de vencimiento para evitar suspensión del servicio.
+
+¡Gracias por su preferencia!`;
+
+    const telegramUrl = `https://api.telegram.org/bot${telegramConfig.bot_token}/sendMessage`;
+    
+    const response = await fetch(telegramUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown'
+      })
+    });
+
+    const result = await response.json();
+
+    // Log the message
+    await supabase.from('telegram_messages').insert({
+      mikrotik_id: mikrotikId,
+      chat_id: chatId,
+      message_content: message,
+      message_type: 'invoice',
+      status: result.ok ? 'sent' : 'failed',
+      sent_at: result.ok ? new Date().toISOString() : null,
+      telegram_message_id: result.result?.message_id?.toString() || null,
+      error_message: result.ok ? null : result.description,
+      client_id: clientId,
+      related_invoice_id: invoiceId,
+      created_by: createdBy
+    });
+
+    console.log(`Telegram notification ${result.ok ? 'sent' : 'failed'} for ${clientName}`);
+    return { success: result.ok, messageId: result.result?.message_id };
+  } catch (error: unknown) {
+    console.error('Error sending Telegram notification:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: errorMsg };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -53,6 +129,7 @@ serve(async (req) => {
       total_clients: billingSettings?.length || 0,
       invoices_created: 0,
       already_billed: 0,
+      telegram_sent: 0,
       errors: [] as string[],
       created_invoices: [] as string[]
     };
@@ -81,10 +158,10 @@ serve(async (req) => {
         continue;
       }
 
-      // Get client info
+      // Get client info including telegram_chat_id
       const { data: client, error: clientError } = await supabase
         .from('isp_clients')
-        .select('id, client_name, username, email')
+        .select('id, client_name, username, email, telegram_chat_id')
         .eq('id', billing.client_id)
         .single();
 
@@ -134,6 +211,25 @@ serve(async (req) => {
         results.invoices_created++;
         results.created_invoices.push(`${invoiceNumber} - ${client.client_name}`);
         console.log(`Created invoice ${invoiceNumber} for ${client.client_name}`);
+
+        // Send Telegram notification if client has chat_id
+        if (client.telegram_chat_id && invoice) {
+          const telegramResult = await sendTelegramNotification(
+            supabase,
+            billing.mikrotik_id,
+            client.telegram_chat_id,
+            client.client_name,
+            invoiceNumber,
+            billing.monthly_amount,
+            dueDate.toISOString().split('T')[0],
+            client.id,
+            invoice.id,
+            'system' // created_by for automatic invoices
+          );
+          if (telegramResult.success) {
+            results.telegram_sent++;
+          }
+        }
 
       } catch (error: unknown) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';

@@ -155,6 +155,7 @@ export type Database = {
           mikrotik_id: string
           phone: string | null
           plan_or_speed: string | null
+          telegram_chat_id: string | null
           username: string
         }
         Insert: {
@@ -175,6 +176,7 @@ export type Database = {
           mikrotik_id: string
           phone?: string | null
           plan_or_speed?: string | null
+          telegram_chat_id?: string | null
           username: string
         }
         Update: {
@@ -195,6 +197,7 @@ export type Database = {
           mikrotik_id?: string
           phone?: string | null
           plan_or_speed?: string | null
+          telegram_chat_id?: string | null
           username?: string
         }
         Relationships: [
