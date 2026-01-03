@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,7 +61,7 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
   });
 
   // Update local state when data loads
-  useState(() => {
+  useEffect(() => {
     if (platforms) {
       const wompi = platforms.find(p => p.platform === 'wompi');
       const mp = platforms.find(p => p.platform === 'mercadopago');
@@ -88,7 +88,7 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
         });
       }
     }
-  });
+  }, [platforms]);
 
   const saveMutation = useMutation({
     mutationFn: async (config: PlatformConfig) => {
