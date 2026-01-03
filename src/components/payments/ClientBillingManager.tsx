@@ -235,11 +235,26 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
 
       const invoiceNumber = `FAC-${format(now, 'yyyyMM')}-${clientId.slice(0, 8).toUpperCase()}`;
 
+      // Link invoice to the latest contract (needed for QR + payment link)
+      const { data: latestContract, error: contractError } = await supabase
+        .from('isp_contracts')
+        .select('id')
+        .eq('mikrotik_id', mikrotikId)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (contractError) {
+        console.warn('No se pudo obtener contrato para la factura:', contractError);
+      }
+
       const { error } = await supabase
         .from('client_invoices')
         .insert({
           mikrotik_id: mikrotikId,
           client_id: clientId,
+          contract_id: latestContract?.id ?? null,
           invoice_number: invoiceNumber,
           amount: setting.monthly_amount,
           due_date: format(dueDate, 'yyyy-MM-dd'),
@@ -326,67 +341,96 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     },
   });
 
-  const openTelegramDialog = (invoice: Invoice) => {
-    const client = ispClients?.find(c => c.id === invoice.client_id);
-    const { invoiceWithContract } = getInvoicePdfData(invoice);
-    const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
-    
-    let defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
-    
-    // Add payment link if contract exists and invoice is not paid
-    if (paymentLink && invoice.status !== 'paid') {
-      defaultMessage += `\n\n💳 *Pagar en línea:*\n${paymentLink}`;
+  const fetchLatestContractForClient = async (clientId: string) => {
+    if (!mikrotikId) return null;
+
+    const { data, error } = await supabase
+      .from("isp_contracts")
+      .select(
+        "id, contract_number, client_name, identification, address, phone, email, plan, speed, price"
+      )
+      .eq("mikrotik_id", mikrotikId)
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("No se pudo obtener el contrato del cliente:", error);
+      return null;
     }
-    
-    setSelectedInvoice(invoice);
-    setTelegramMessage(defaultMessage);
-    // Pre-fill the Chat ID if the client has one linked
-    setTelegramChatId(client?.telegram_chat_id || "");
-    setTelegramDialogOpen(true);
+
+    return data;
   };
 
-  // Helper function to get client and contract data for PDF
-  const getInvoicePdfData = (invoice: Invoice) => {
-    const contract = (invoice as any).isp_contracts;
-    const clientInfo = ispClients?.find(c => c.id === invoice.client_id);
+  // Resolve client + contract info for PDF + payment links.
+  // Falls back to fetching latest contract when invoice.contract_id is null (legacy invoices).
+  const resolveInvoicePdfData = async (invoice: Invoice) => {
+    const joinedContract = (invoice as any).isp_contracts ?? null;
+    const contract =
+      joinedContract ||
+      (invoice.client_id ? await fetchLatestContractForClient(invoice.client_id) : null);
+
+    const clientInfo = ispClients?.find((c) => c.id === invoice.client_id);
+
     const clientData = {
       client_name: contract?.client_name || clientInfo?.client_name || "Cliente",
       phone: contract?.phone || clientInfo?.phone || null,
       identification_number: contract?.identification || clientInfo?.identification_number || null,
       address: contract?.address || clientInfo?.address || null,
-      email: contract?.email || clientInfo?.email || null
+      email: contract?.email || clientInfo?.email || null,
     };
-    const serviceDescription = contract?.plan 
-      ? `Servicio de Internet - ${contract.plan}${contract.speed ? ` (${contract.speed})` : ''}`
+
+    const serviceDescription = contract?.plan
+      ? `Servicio de Internet - ${contract.plan}${contract.speed ? ` (${contract.speed})` : ""}`
       : "Servicio de Internet - Plan Mensual";
-    // Add contract number to invoice data for PDF
+
     const invoiceWithContract = {
       ...invoice,
-      contract_number: contract?.contract_number || null
+      contract_id: invoice.contract_id || contract?.id || null,
+      contract_number: contract?.contract_number || null,
     };
+
     return { clientData, serviceDescription, invoiceWithContract };
+  };
+
+  const openTelegramDialog = async (invoice: Invoice) => {
+    const client = ispClients?.find((c) => c.id === invoice.client_id);
+    const { invoiceWithContract } = await resolveInvoicePdfData(invoice);
+    const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+
+    let defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), "dd/MM/yyyy")}\nPeriodo: ${format(parseISO(invoice.billing_period_start), "dd MMM")} - ${format(parseISO(invoice.billing_period_end), "dd MMM yyyy", { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+
+    if (paymentLink && invoice.status !== "paid") {
+      defaultMessage += `\n\n💳 Pagar en línea:\n${paymentLink}`;
+    }
+
+    setSelectedInvoice(invoice);
+    setTelegramMessage(defaultMessage);
+    setTelegramChatId(client?.telegram_chat_id || "");
+    setTelegramDialogOpen(true);
   };
 
   // Upload PDF and get public URL
   const uploadInvoicePdf = async (invoice: Invoice): Promise<string> => {
-    const { clientData, serviceDescription, invoiceWithContract } = getInvoicePdfData(invoice);
+    const { clientData, serviceDescription, invoiceWithContract } = await resolveInvoicePdfData(invoice);
     const pdfBlob = await generateInvoicePDFBlob(invoiceWithContract, clientData, undefined, serviceDescription);
-    
+
     const fileName = `invoices/${mikrotikId}/${invoice.invoice_number.replace(/\//g, '-')}.pdf`;
-    
+
     const { data, error } = await supabase.storage
       .from('company-assets')
       .upload(fileName, pdfBlob, {
         contentType: 'application/pdf',
         upsert: true
       });
-    
+
     if (error) throw new Error(`Error al subir PDF: ${error.message}`);
-    
+
     const { data: urlData } = supabase.storage
       .from('company-assets')
       .getPublicUrl(data.path);
-    
+
     return urlData.publicUrl;
   };
 
@@ -414,11 +458,11 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       }
       
       // Add payment link to message if contract number exists
-      const { invoiceWithContract } = getInvoicePdfData(selectedInvoice);
+      const { invoiceWithContract } = await resolveInvoicePdfData(selectedInvoice);
       const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
       let messageWithLink = telegramMessage;
       if (paymentLink && selectedInvoice.status !== 'paid') {
-        messageWithLink += `\n\n💳 <b>Pagar en línea:</b>\n${paymentLink}`;
+        messageWithLink += `\n\n💳 Pagar en línea:\n${paymentLink}`;
       }
       
       sendTelegramMutation.mutate({
@@ -443,7 +487,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     }
     
     // Get contract number for payment link
-    const { invoiceWithContract } = getInvoicePdfData(invoice);
+    const { invoiceWithContract } = await resolveInvoicePdfData(invoice);
     const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
     
     let message = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
@@ -679,7 +723,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                           variant="outline"
                           className="text-primary border-primary hover:bg-primary/10"
                           onClick={async () => {
-                            const { clientData, serviceDescription, invoiceWithContract } = getInvoicePdfData(invoice);
+                            const { clientData, serviceDescription, invoiceWithContract } = await resolveInvoicePdfData(invoice);
                             await generateInvoicePDF(invoiceWithContract, clientData, undefined, serviceDescription);
                           }}
                           title="Descargar PDF"
