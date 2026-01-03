@@ -396,8 +396,11 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
 
   const openTelegramDialog = async (invoice: Invoice) => {
     const client = ispClients?.find((c) => c.id === invoice.client_id);
-    const { invoiceWithContract } = await resolveInvoicePdfData(invoice);
-    const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+    const { clientData, invoiceWithContract } = await resolveInvoicePdfData(invoice);
+
+    // Use contract number if available, otherwise fall back to identification number.
+    // The /pay portal accepts a single query param and searches by identification first.
+    const paymentLink = getPaymentLink(invoiceWithContract.contract_number || clientData.identification_number);
 
     let defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), "dd/MM/yyyy")}\nPeriodo: ${format(parseISO(invoice.billing_period_start), "dd MMM")} - ${format(parseISO(invoice.billing_period_end), "dd MMM yyyy", { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
 
@@ -435,10 +438,10 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   };
 
   // Generate payment portal link
-  const getPaymentLink = (contractNumber: string | null) => {
-    if (!contractNumber) return null;
+  const getPaymentLink = (query: string | null) => {
+    if (!query) return null;
     const baseUrl = window.location.origin;
-    return `${baseUrl}/pay?contract=${encodeURIComponent(contractNumber)}`;
+    return `${baseUrl}/pay?contract=${encodeURIComponent(query)}`;
   };
 
   const handleSendTelegram = async () => {
@@ -457,11 +460,11 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
         documentName = `Factura_${selectedInvoice.invoice_number.replace(/\//g, '-')}.pdf`;
       }
       
-      // Add payment link to message if contract number exists
-      const { invoiceWithContract } = await resolveInvoicePdfData(selectedInvoice);
-      const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+      // Add payment link to message if available (avoid duplicating)
+      const { clientData, invoiceWithContract } = await resolveInvoicePdfData(selectedInvoice);
+      const paymentLink = getPaymentLink(invoiceWithContract.contract_number || clientData.identification_number);
       let messageWithLink = telegramMessage;
-      if (paymentLink && selectedInvoice.status !== 'paid') {
+      if (paymentLink && selectedInvoice.status !== 'paid' && !messageWithLink.includes(paymentLink)) {
         messageWithLink += `\n\n💳 Pagar en línea:\n${paymentLink}`;
       }
       
@@ -486,13 +489,11 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       return;
     }
     
-    // Get contract number for payment link
-    const { invoiceWithContract } = await resolveInvoicePdfData(invoice);
-    const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+    const { clientData, invoiceWithContract } = await resolveInvoicePdfData(invoice);
+    const paymentLink = getPaymentLink(invoiceWithContract.contract_number || clientData.identification_number);
     
     let message = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
     
-    // Add payment link if contract number exists and invoice is not paid
     if (paymentLink && invoice.status !== 'paid') {
       message += `\n\n💳 *Pagar en línea:*\n${paymentLink}`;
     }

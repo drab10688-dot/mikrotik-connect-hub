@@ -420,12 +420,13 @@ async function buildInvoicePDF(
     y += 18;
   }
 
-  // Payment QR Code section (only if unpaid and has contract number)
-  if (invoice.status !== "paid" && invoice.contract_number) {
+  // Payment QR Code section (only if unpaid and has contract number or identification)
+  if (invoice.status !== "paid" && (invoice.contract_number || client.identification_number)) {
     const baseUrl = getPaymentPortalBaseUrl();
-    const qrDataUrl = await generatePaymentQR(invoice.contract_number, baseUrl);
+    const payQuery = invoice.contract_number || client.identification_number;
+    const qrDataUrl = payQuery ? await generatePaymentQR(payQuery, baseUrl) : null;
     
-    if (qrDataUrl) {
+    if (qrDataUrl && payQuery) {
       const qrBoxWidth = 60;
       const qrBoxHeight = 55;
       
@@ -461,14 +462,16 @@ async function buildInvoicePDF(
       doc.text(`Consultas: ${companyData.phone}`, notesX + 4, y + 28);
       doc.text(`${companyData.email}`, notesX + 4, y + 34);
       
-      // Payment portal URL
+      // Payment portal URL (pre-fills search in /pay)
       doc.setTextColor(...primaryDark);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
-      doc.text("Portal de pagos:", notesX + 4, y + 44);
+      doc.text("Link de pago:", notesX + 4, y + 44);
       doc.setFont("helvetica", "normal");
-      const paymentUrl = `${baseUrl}/pay`;
-      doc.text(paymentUrl, notesX + 4, y + 50);
+      doc.setFontSize(6);
+      const paymentUrl = `${baseUrl}/pay?contract=${encodeURIComponent(payQuery)}`;
+      const paymentUrlLines = doc.splitTextToSize(paymentUrl, notesWidth - 8);
+      doc.text(paymentUrlLines, notesX + 4, y + 50);
       
       y += qrBoxHeight + 5;
     } else {
