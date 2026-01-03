@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-import { MapPin, UserPlus, AlertCircle, Gauge, Cable } from "lucide-react";
+import { MapPin, UserPlus, AlertCircle, Gauge, Cable, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,6 +65,38 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
   // Toggle para Simple Queues vs PPPoE
   const [useSimpleQueues, setUseSimpleQueues] = useState(false);
 
+  // Sistema de precios guardados
+  const [speedPrices, setSpeedPrices] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem("isp_speed_prices");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [planPrices, setPlanPrices] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem("isp_plan_prices");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const saveSpeedPrice = (speed: string, price: string) => {
+    const updated = { ...speedPrices, [speed]: price };
+    setSpeedPrices(updated);
+    localStorage.setItem("isp_speed_prices", JSON.stringify(updated));
+  };
+
+  const savePlanPrice = (plan: string, price: string) => {
+    const updated = { ...planPrices, [plan]: price };
+    setPlanPrices(updated);
+    localStorage.setItem("isp_plan_prices", JSON.stringify(updated));
+  };
+
+  // Obtener precio según velocidad de bajada o plan
+  const getAutoPrice = (): string => {
+    if (useSimpleQueues) {
+      return speedPrices[formData.downloadSpeed] || "";
+    } else {
+      return planPrices[formData.plan] || "";
+    }
+  };
+
   const [formData, setFormData] = useState<ClientFormData>({
     nombre: "",
     apellidos: "",
@@ -91,7 +123,27 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   const updateField = (field: keyof ClientFormData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      
+      // Auto-completar precio cuando cambia la velocidad de bajada (Simple Queues)
+      if (field === "downloadSpeed" && typeof value === "string") {
+        const savedPrice = speedPrices[value];
+        if (savedPrice) {
+          updated.precio = savedPrice;
+        }
+      }
+      
+      // Auto-completar precio cuando cambia el plan (PPPoE)
+      if (field === "plan" && typeof value === "string") {
+        const savedPrice = planPrices[value];
+        if (savedPrice) {
+          updated.precio = savedPrice;
+        }
+      }
+      
+      return updated;
+    });
   };
 
   const handleGetLocation = () => {
@@ -717,17 +769,60 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
               </div>
             )}
 
-            {/* Campo de precio del plan */}
+            {/* Campo de precio del plan con opción de guardar */}
             <div className="space-y-2">
               <Label htmlFor="precio">Precio Mensual del Plan</Label>
-              <Input
-                id="precio"
-                placeholder="Ej: $50.000 COP/mes"
-                value={formData.precio}
-                onChange={(e) => updateField("precio", e.target.value)}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="precio"
+                  placeholder="Ej: $50.000 COP/mes"
+                  value={formData.precio}
+                  onChange={(e) => updateField("precio", e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    if (!formData.precio) {
+                      toast.error("Ingrese un precio primero");
+                      return;
+                    }
+                    if (useSimpleQueues) {
+                      if (!formData.downloadSpeed) {
+                        toast.error("Seleccione una velocidad primero");
+                        return;
+                      }
+                      saveSpeedPrice(formData.downloadSpeed, formData.precio);
+                      toast.success(`Precio guardado para ${formData.downloadSpeed.replace('M', ' Mbps')}`);
+                    } else {
+                      if (!formData.plan) {
+                        toast.error("Seleccione un plan primero");
+                        return;
+                      }
+                      savePlanPrice(formData.plan, formData.precio);
+                      toast.success(`Precio guardado para ${formData.plan}`);
+                    }
+                  }}
+                  title="Guardar precio para esta velocidad/plan"
+                >
+                  <Save className="h-4 w-4" />
+                </Button>
+              </div>
+              {/* Mostrar si hay precio guardado */}
+              {useSimpleQueues && formData.downloadSpeed && speedPrices[formData.downloadSpeed] && (
+                <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <span>✓</span> Precio guardado: {speedPrices[formData.downloadSpeed]}
+                </p>
+              )}
+              {!useSimpleQueues && formData.plan && planPrices[formData.plan] && (
+                <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <span>✓</span> Precio guardado: {planPrices[formData.plan]}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
-                Este precio se usará para generar el contrato del cliente
+                Haz clic en el icono de guardar para recordar este precio para futuras registraciones
               </p>
             </div>
 
