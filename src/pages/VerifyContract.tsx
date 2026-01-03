@@ -27,7 +27,7 @@ export default function VerifyContract() {
     }
 
     try {
-      const decoded = atob(dataParam);
+      const decoded = decodeURIComponent(atob(dataParam));
       const parsed: ContractVerificationData = JSON.parse(decoded);
       
       // Validar que tenga todos los campos requeridos
