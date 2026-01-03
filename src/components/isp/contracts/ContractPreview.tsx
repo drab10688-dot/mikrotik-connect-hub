@@ -389,20 +389,9 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           className="mt-12 pt-6 text-center"
           style={{ borderTop: "1px solid #e2e8f0" }}
         >
-          <div className="flex items-center justify-center gap-4 mb-3">
-            {companyInfo.logoUrl && (
-              <img
-                src={companyInfo.logoUrl}
-                alt="Logo"
-                className="object-contain opacity-50"
-                style={{ maxHeight: "30px", maxWidth: "60px" }}
-                crossOrigin="anonymous"
-              />
-            )}
-            <div className="text-xs" style={{ color: "#718096" }}>
-              <p className="font-semibold">{companyInfo.name}</p>
-              <p>NIT: {companyInfo.nit} | {companyInfo.contact} | {companyInfo.email}</p>
-            </div>
+          <div className="text-xs mb-3" style={{ color: "#718096" }}>
+            <p className="font-semibold">{companyInfo.name}</p>
+            <p>NIT: {companyInfo.nit} | {companyInfo.contact} | {companyInfo.email}</p>
           </div>
           <p className="text-xs" style={{ color: "#a0aec0" }}>
             Documento generado electrónicamente el {formatDate(new Date().toISOString())}
