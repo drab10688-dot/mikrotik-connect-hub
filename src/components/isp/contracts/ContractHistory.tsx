@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
@@ -9,11 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, Download, Trash2, Search, Calendar, User, CheckCircle2, Clock, Loader2 } from "lucide-react";
+import { FileText, Download, Trash2, Search, Calendar, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { ContractPreview, type ClientContractData } from "./ContractPreview";
+import { DEFAULT_TERMS, DEFAULT_COMPANY_INFO } from "./ContractTermsEditor";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 interface Contract {
   id: string;
@@ -40,6 +44,9 @@ export function ContractHistory() {
   const { isAdmin, isSuperAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [deletingContract, setDeletingContract] = useState<Contract | null>(null);
+  const [downloadingContract, setDownloadingContract] = useState<Contract | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const pdfRef = useRef<HTMLDivElement>(null);
 
   const { data: contracts, isLoading } = useQuery({
     queryKey: ["isp-contracts", mikrotikId],
@@ -119,44 +126,108 @@ export function ContractHistory() {
     }
   };
 
-  const handleDownload = async (contract: Contract) => {
-    // For now, create a simple text download - in a full implementation,
-    // you would regenerate the PDF or use a stored PDF URL
-    const content = `
-CONTRATO DE PRESTACIÓN DE SERVICIOS DE INTERNET
-================================================
+  // Generate PDF from contract data
+  const generatePdfFromContract = async () => {
+    if (!downloadingContract || !pdfRef.current) return;
 
-Número de Contrato: ${contract.contract_number}
-Fecha: ${format(new Date(contract.created_at), "PPP", { locale: es })}
-
-DATOS DEL CLIENTE:
-- Nombre: ${contract.client_name}
-- Identificación: ${contract.identification}
-- Dirección: ${contract.address}
-- Teléfono: ${contract.phone}
-- Email: ${contract.email || "No registrado"}
-
-SERVICIO CONTRATADO:
-- Plan: ${contract.plan}
-- Velocidad: ${contract.speed || "N/A"}
-- Precio: ${contract.price || "N/A"}
-
-${contract.equipment?.length ? `EQUIPOS EN COMODATO:\n${contract.equipment.map(e => `- ${e}`).join("\n")}` : ""}
-
-Estado: ${contract.signed_at ? "FIRMADO" : "BORRADOR"}
-${contract.signed_at ? `Fecha de firma: ${format(new Date(contract.signed_at), "PPP", { locale: es })}` : ""}
-    `.trim();
-
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `contrato_${contract.contract_number}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setIsGeneratingPdf(true);
     
-    toast.success("Contrato descargado");
+    try {
+      // Wait for QR code and content to render
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      const canvas = await html2canvas(pdfRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        onclone: (clonedDoc) => {
+          const imgs = clonedDoc.querySelectorAll("img");
+          imgs.forEach((img) => {
+            if (!img.complete) {
+              img.style.display = "none";
+            }
+          });
+        },
+      });
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "letter",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+
+      // Paginate if needed
+      const pageHeightInPixels = pdfHeight / ratio;
+      const totalPages = Math.ceil(imgHeight / pageHeightInPixels);
+
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage();
+
+        const sourceY = page * pageHeightInPixels;
+        const sourceHeight = Math.min(pageHeightInPixels, imgHeight - sourceY);
+        const destHeight = sourceHeight * ratio;
+
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = imgWidth;
+        pageCanvas.height = sourceHeight;
+        const ctx = pageCanvas.getContext("2d");
+        
+        if (ctx) {
+          ctx.drawImage(
+            canvas,
+            0, sourceY, imgWidth, sourceHeight,
+            0, 0, imgWidth, sourceHeight
+          );
+          
+          const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.95);
+          pdf.addImage(pageImgData, "JPEG", 0, 0, pdfWidth, destHeight);
+        }
+      }
+
+      pdf.save(`contrato_${downloadingContract.contract_number}.pdf`);
+      toast.success("PDF descargado correctamente");
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Error al generar el PDF");
+    } finally {
+      setIsGeneratingPdf(false);
+      setDownloadingContract(null);
+    }
   };
+
+  // Trigger PDF generation when contract is set
+  useEffect(() => {
+    if (downloadingContract && pdfRef.current) {
+      generatePdfFromContract();
+    }
+  }, [downloadingContract]);
+
+  const handleDownload = (contract: Contract) => {
+    setDownloadingContract(contract);
+  };
+
+  // Convert contract to ClientContractData format
+  const contractToClientData = (contract: Contract): ClientContractData => ({
+    clientName: contract.client_name,
+    identification: contract.identification,
+    address: contract.address || "",
+    phone: contract.phone || "",
+    email: contract.email || "",
+    plan: contract.plan,
+    speed: contract.speed || undefined,
+    price: contract.price || undefined,
+    equipment: contract.equipment || undefined,
+    contractNumber: contract.contract_number,
+    date: contract.created_at,
+  });
 
   if (isLoading) {
     return (
@@ -257,8 +328,13 @@ ${contract.signed_at ? `Fecha de firma: ${format(new Date(contract.signed_at), "
                           variant="outline"
                           size="sm"
                           onClick={() => handleDownload(contract)}
+                          disabled={isGeneratingPdf && downloadingContract?.id === contract.id}
                         >
-                          <Download className="w-4 h-4" />
+                          {isGeneratingPdf && downloadingContract?.id === contract.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
                         </Button>
                         {(isAdmin || isSuperAdmin) && (
                           <Button
@@ -307,6 +383,20 @@ ${contract.signed_at ? `Fecha de firma: ${format(new Date(contract.signed_at), "
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Hidden container for PDF generation */}
+      {downloadingContract && (
+        <div className="fixed -left-[10000px] top-0 w-[896px]">
+          <ContractPreview
+            ref={pdfRef}
+            clientData={contractToClientData(downloadingContract)}
+            terms={DEFAULT_TERMS}
+            companyInfo={DEFAULT_COMPANY_INFO}
+            clientSignature={downloadingContract.client_signature_url || undefined}
+            managerSignature={downloadingContract.manager_signature_url || undefined}
+          />
+        </div>
+      )}
     </Card>
   );
 }
