@@ -182,15 +182,32 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
   };
 
   const generatePDF = async (shouldSave = false) => {
-    if (!contractRef.current) return;
+    if (!contractRef.current) {
+      toast.error("Error: No se encontró la vista previa del contrato");
+      return;
+    }
 
     setIsGenerating(true);
+    
     try {
+      // Esperar un momento para asegurar que el QR esté renderizado
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       const canvas = await html2canvas(contractRef.current, {
         scale: 2,
         useCORS: true,
+        allowTaint: true,
         logging: false,
         backgroundColor: "#ffffff",
+        onclone: (clonedDoc) => {
+          // Asegurar que las imágenes estén listas en el clon
+          const images = clonedDoc.querySelectorAll('img');
+          images.forEach(img => {
+            if (!img.complete) {
+              img.style.display = 'none';
+            }
+          });
+        }
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -205,7 +222,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
       const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
 
       const totalPages = Math.ceil((imgHeight * ratio) / pdfHeight);
 
@@ -239,7 +255,7 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
           pdf.addImage(
             pageImgData,
             "PNG",
-            imgX,
+            (pdfWidth - imgWidth * ratio) / 2,
             0,
             imgWidth * ratio,
             sourceHeight * ratio
@@ -264,7 +280,7 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
       toast.success("Contrato PDF generado correctamente");
     } catch (error) {
       console.error("Error generating PDF:", error);
-      toast.error("Error al generar el PDF");
+      toast.error("Error al generar el PDF: " + (error instanceof Error ? error.message : "Error desconocido"));
     } finally {
       setIsGenerating(false);
     }

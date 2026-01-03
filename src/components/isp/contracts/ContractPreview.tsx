@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useLayoutEffect, useState } from "react";
 import QRCode from "qrcode";
 import type { ContractTerms, CompanyInfo } from "./ContractTermsEditor";
 
@@ -29,21 +29,21 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
   ({ clientData, terms, companyInfo, clientSignature, managerSignature, managerName }, ref) => {
     const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
 
-    // Generar QR con datos de verificación
-    useEffect(() => {
+    // Generar QR con datos de verificación - usando useLayoutEffect para asegurar que esté listo antes del render
+    useLayoutEffect(() => {
       const generateQR = async () => {
-        const verificationData = JSON.stringify({
-          contract: clientData.contractNumber,
-          client: clientData.clientName,
-          id: clientData.identification,
-          date: clientData.date,
-          company: companyInfo.nit,
-        });
-        
-        // Crear URL de verificación (base64 encoded)
-        const verificationUrl = `${window.location.origin}/verify-contract?data=${btoa(verificationData)}`;
-        
         try {
+          const verificationData = JSON.stringify({
+            contract: clientData.contractNumber,
+            client: clientData.clientName,
+            id: clientData.identification,
+            date: clientData.date,
+            company: companyInfo.nit,
+          });
+          
+          // Crear URL de verificación (base64 encoded)
+          const verificationUrl = `${window.location.origin}/verify-contract?data=${btoa(encodeURIComponent(verificationData))}`;
+          
           const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
             width: 100,
             margin: 1,
@@ -55,6 +55,8 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           setQrCodeUrl(qrDataUrl);
         } catch (err) {
           console.error("Error generating QR:", err);
+          // Establecer un QR vacío en caso de error para no bloquear el PDF
+          setQrCodeUrl("");
         }
       };
 
