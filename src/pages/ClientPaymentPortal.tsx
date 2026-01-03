@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Search, CreditCard, Receipt, CheckCircle, AlertTriangle, Loader2, Calendar, DollarSign, Building2, ExternalLink } from "lucide-react";
+import { Search, CreditCard, Receipt, CheckCircle, AlertTriangle, Loader2, Calendar, DollarSign, Building2, ExternalLink, Smartphone } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface ClientInfo {
   id: string;
@@ -57,6 +58,9 @@ export default function ClientPaymentPortal() {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [nequiDialogOpen, setNequiDialogOpen] = useState(false);
+  const [nequiPhone, setNequiPhone] = useState("");
+  const [nequiPendingInvoice, setNequiPendingInvoice] = useState<Invoice | null>(null);
 
   // Auto-search if contract parameter is present in URL
   useEffect(() => {
@@ -179,25 +183,45 @@ export default function ClientPaymentPortal() {
   };
 
   const initiatePayment = async (invoice: Invoice, platform: string) => {
+    // For Nequi, show phone dialog first
+    if (platform === 'nequi') {
+      setNequiPendingInvoice(invoice);
+      setNequiDialogOpen(true);
+      return;
+    }
+
+    await processPayment(invoice, platform);
+  };
+
+  const processPayment = async (invoice: Invoice, platform: string, phoneNumber?: string) => {
     setIsProcessingPayment(true);
     setSelectedInvoice(invoice);
 
     try {
-      const { data, error } = await supabase.functions.invoke('payment-gateway', {
-        body: {
-          action: 'create-payment',
-          platform,
-          invoice_id: invoice.id,
-          amount: invoice.amount,
-          description: `Pago factura ${invoice.invoice_number}`,
-          customer_email: '',
-          mikrotik_id: clientInfo?.mikrotik_id
-        }
-      });
+      const body: any = {
+        action: 'create-payment',
+        platform,
+        invoice_id: invoice.id,
+        amount: invoice.amount,
+        description: `Pago factura ${invoice.invoice_number}`,
+        customer_email: '',
+        mikrotik_id: clientInfo?.mikrotik_id
+      };
+
+      if (phoneNumber) {
+        body.phone_number = phoneNumber;
+      }
+
+      const { data, error } = await supabase.functions.invoke('payment-gateway', { body });
 
       if (error) throw error;
 
-      if (data?.redirect_url) {
+      if (data?.requires_phone) {
+        // Nequi push - show confirmation
+        toast.success("Se enviará una notificación a tu app Nequi. Apruébala para completar el pago.");
+        setNequiDialogOpen(false);
+        setNequiPhone("");
+      } else if (data?.redirect_url) {
         window.location.href = data.redirect_url;
       } else if (data?.checkout_url) {
         window.open(data.checkout_url, '_blank');
@@ -210,6 +234,16 @@ export default function ClientPaymentPortal() {
       toast.error(`Error al procesar pago: ${error.message}`);
     } finally {
       setIsProcessingPayment(false);
+    }
+  };
+
+  const handleNequiPayment = () => {
+    if (!nequiPhone || nequiPhone.length < 10) {
+      toast.error("Ingresa un número de celular válido");
+      return;
+    }
+    if (nequiPendingInvoice) {
+      processPayment(nequiPendingInvoice, 'nequi', nequiPhone);
     }
   };
 
@@ -371,11 +405,13 @@ export default function ClientPaymentPortal() {
                                 >
                                   {isProcessingPayment && selectedInvoice?.id === invoice.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : platform.platform === 'nequi' ? (
+                                    <Smartphone className="h-4 w-4" />
                                   ) : (
                                     <CreditCard className="h-4 w-4" />
                                   )}
-                                  {platform.platform === 'wompi' ? 'Wompi' : 'Mercado Pago'}
-                                  <ExternalLink className="h-3 w-3" />
+                                  {platform.platform === 'wompi' ? 'Wompi' : platform.platform === 'nequi' ? 'Nequi' : 'Mercado Pago'}
+                                  {platform.platform !== 'nequi' && <ExternalLink className="h-3 w-3" />}
                                 </Button>
                               ))}
                             </div>
@@ -409,6 +445,56 @@ export default function ClientPaymentPortal() {
             )}
           </div>
         )}
+
+        {/* Nequi Phone Dialog */}
+        <Dialog open={nequiDialogOpen} onOpenChange={setNequiDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Smartphone className="h-5 w-5 text-pink-500" />
+                Pago con Nequi
+              </DialogTitle>
+              <DialogDescription>
+                Ingresa tu número de celular registrado en Nequi para recibir la solicitud de pago
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="nequi-phone">Número de celular</Label>
+                <Input
+                  id="nequi-phone"
+                  placeholder="3001234567"
+                  value={nequiPhone}
+                  onChange={(e) => setNequiPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  maxLength={10}
+                />
+              </div>
+              {nequiPendingInvoice && (
+                <div className="bg-muted p-3 rounded-lg">
+                  <p className="text-sm text-muted-foreground">Monto a pagar:</p>
+                  <p className="text-xl font-bold">${nequiPendingInvoice.amount.toLocaleString()} COP</p>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNequiDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleNequiPayment} 
+                disabled={isProcessingPayment || nequiPhone.length < 10}
+                className="bg-pink-500 hover:bg-pink-600"
+              >
+                {isProcessingPayment ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Smartphone className="h-4 w-4 mr-2" />
+                )}
+                Solicitar Pago
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
