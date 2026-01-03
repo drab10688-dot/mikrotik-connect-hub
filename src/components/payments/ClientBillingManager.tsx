@@ -54,6 +54,7 @@ interface IspClient {
   id: string;
   client_name: string;
   phone: string | null;
+  telegram_chat_id: string | null;
 }
 
 export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) {
@@ -123,7 +124,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       if (!mikrotikId) return [];
       const { data, error } = await supabase
         .from('isp_clients')
-        .select('id, client_name, phone')
+        .select('id, client_name, phone, telegram_chat_id')
         .eq('mikrotik_id', mikrotikId);
       if (error) throw error;
       return data as IspClient[];
@@ -294,6 +295,8 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     
     setSelectedInvoice(invoice);
     setTelegramMessage(defaultMessage);
+    // Pre-fill the Chat ID if the client has one linked
+    setTelegramChatId(client?.telegram_chat_id || "");
     setTelegramDialogOpen(true);
   };
 
