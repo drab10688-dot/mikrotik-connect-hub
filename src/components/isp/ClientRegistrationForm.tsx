@@ -740,11 +740,11 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
                   <SelectContent>
                     {loadingProfiles ? (
                       <SelectItem value="loading" disabled>Cargando perfiles...</SelectItem>
-                    ) : pppoeProfiles.length === 0 ? (
+                    ) : !pppoeProfiles || pppoeProfiles.length === 0 ? (
                       <SelectItem value="empty" disabled>No hay perfiles disponibles</SelectItem>
                     ) : (
-                      pppoeProfiles.map((profile: any) => (
-                        <SelectItem key={profile[".id"]} value={profile.name}>
+                      pppoeProfiles.map((profile: any, index: number) => (
+                        <SelectItem key={profile[".id"] || profile.name || `profile-${index}`} value={profile.name || ""}>
                           {profile.name} {profile["rate-limit"] && `(${profile["rate-limit"]})`}
                         </SelectItem>
                       ))
