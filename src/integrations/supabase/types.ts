@@ -85,6 +85,86 @@ export type Database = {
           },
         ]
       }
+      isp_contracts: {
+        Row: {
+          address: string | null
+          client_id: string | null
+          client_name: string
+          client_signature_url: string | null
+          contract_number: string
+          created_at: string
+          created_by: string
+          email: string | null
+          equipment: string[] | null
+          id: string
+          identification: string
+          manager_signature_url: string | null
+          mikrotik_id: string
+          pdf_url: string | null
+          phone: string | null
+          plan: string
+          price: string | null
+          signed_at: string | null
+          speed: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          client_id?: string | null
+          client_name: string
+          client_signature_url?: string | null
+          contract_number: string
+          created_at?: string
+          created_by: string
+          email?: string | null
+          equipment?: string[] | null
+          id?: string
+          identification: string
+          manager_signature_url?: string | null
+          mikrotik_id: string
+          pdf_url?: string | null
+          phone?: string | null
+          plan: string
+          price?: string | null
+          signed_at?: string | null
+          speed?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          client_id?: string | null
+          client_name?: string
+          client_signature_url?: string | null
+          contract_number?: string
+          created_at?: string
+          created_by?: string
+          email?: string | null
+          equipment?: string[] | null
+          id?: string
+          identification?: string
+          manager_signature_url?: string | null
+          mikrotik_id?: string
+          pdf_url?: string | null
+          phone?: string | null
+          plan?: string
+          price?: string | null
+          signed_at?: string | null
+          speed?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "isp_contracts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "isp_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mikrotik_devices: {
         Row: {
           created_at: string | null
