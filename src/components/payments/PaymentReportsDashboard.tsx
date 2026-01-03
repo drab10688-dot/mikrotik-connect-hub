@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -28,10 +29,14 @@ import {
   AlertTriangle, 
   CheckCircle,
   Clock,
-  Ban
+  Ban,
+  FileDown,
+  FileSpreadsheet
 } from "lucide-react";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
+import jsPDF from "jspdf";
+import { toast } from "sonner";
 
 interface PaymentReportsDashboardProps {
   mikrotikId: string | null;
@@ -206,6 +211,123 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
 
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
 
+  // Export to Excel (CSV format)
+  const exportToExcel = () => {
+    if (!invoices || invoices.length === 0) {
+      toast.error("No hay datos para exportar");
+      return;
+    }
+
+    const headers = ["Número Factura", "Fecha", "Monto", "Estado", "Fecha Vencimiento", "Fecha Pago", "Método Pago"];
+    const rows = invoices.map((inv: any) => [
+      inv.invoice_number,
+      format(new Date(inv.created_at), "dd/MM/yyyy"),
+      inv.amount,
+      inv.status === 'paid' ? 'Pagada' : inv.status === 'pending' ? 'Pendiente' : 'Vencida',
+      format(new Date(inv.due_date), "dd/MM/yyyy"),
+      inv.paid_at ? format(new Date(inv.paid_at), "dd/MM/yyyy") : '-',
+      inv.paid_via || '-'
+    ]);
+
+    const csvContent = [
+      `Reporte de Facturación - Año ${selectedYear}`,
+      "",
+      `Total Facturado: $${summaryStats.total.toLocaleString()}`,
+      `Total Recaudado: $${summaryStats.collected.toLocaleString()}`,
+      `Total Pendiente: $${summaryStats.pending.toLocaleString()}`,
+      `Total Vencido: $${summaryStats.overdue.toLocaleString()}`,
+      `Tasa de Cobro: ${collectionRate}%`,
+      "",
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `reporte_facturacion_${selectedYear}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Archivo Excel exportado correctamente");
+  };
+
+  // Export to PDF
+  const exportToPDF = () => {
+    if (!invoices || invoices.length === 0) {
+      toast.error("No hay datos para exportar");
+      return;
+    }
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    // Title
+    doc.setFontSize(18);
+    doc.text(`Reporte de Facturación - Año ${selectedYear}`, pageWidth / 2, 20, { align: "center" });
+    
+    // Summary
+    doc.setFontSize(12);
+    let y = 40;
+    doc.text(`Total Facturado: $${summaryStats.total.toLocaleString()}`, 20, y);
+    doc.text(`Total Recaudado: $${summaryStats.collected.toLocaleString()}`, 20, y + 10);
+    doc.text(`Total Pendiente: $${summaryStats.pending.toLocaleString()}`, 20, y + 20);
+    doc.text(`Total Vencido: $${summaryStats.overdue.toLocaleString()}`, 20, y + 30);
+    doc.text(`Tasa de Cobro: ${collectionRate}%`, 20, y + 40);
+
+    // Monthly breakdown
+    y = 100;
+    doc.setFontSize(14);
+    doc.text("Desglose Mensual", 20, y);
+    
+    doc.setFontSize(10);
+    y += 10;
+    doc.text("Mes", 20, y);
+    doc.text("Facturado", 50, y);
+    doc.text("Cobrado", 90, y);
+    doc.text("Pendiente", 130, y);
+    doc.text("Vencido", 170, y);
+    
+    y += 5;
+    doc.line(20, y, 190, y);
+    y += 5;
+
+    monthlyData.forEach((month: any) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(month.month, 20, y);
+      doc.text(`$${month.facturado.toLocaleString()}`, 50, y);
+      doc.text(`$${month.cobrado.toLocaleString()}`, 90, y);
+      doc.text(`$${month.pendiente.toLocaleString()}`, 130, y);
+      doc.text(`$${month.vencido.toLocaleString()}`, 170, y);
+      y += 8;
+    });
+
+    // Portfolio status
+    if (y > 230) {
+      doc.addPage();
+      y = 20;
+    } else {
+      y += 20;
+    }
+    doc.setFontSize(14);
+    doc.text("Estado de Cartera", 20, y);
+    doc.setFontSize(10);
+    y += 10;
+    doc.text(`Clientes Activos: ${portfolioStatus.active}`, 20, y);
+    doc.text(`Clientes Suspendidos: ${portfolioStatus.suspended}`, 20, y + 8);
+    doc.text(`Facturación Mensual Esperada: $${portfolioStatus.totalMonthly.toLocaleString()}`, 20, y + 16);
+
+    // Footer
+    doc.setFontSize(8);
+    doc.text(`Generado el ${format(new Date(), "dd/MM/yyyy HH:mm")}`, pageWidth / 2, 285, { align: "center" });
+
+    doc.save(`reporte_facturacion_${selectedYear}.pdf`);
+    toast.success("PDF exportado correctamente");
+  };
+
   if (!mikrotikId) {
     return (
       <Card>
@@ -222,8 +344,18 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
 
   return (
     <div className="space-y-6">
-      {/* Year selector */}
-      <div className="flex justify-end">
+      {/* Year selector and export buttons */}
+      <div className="flex justify-between items-center flex-wrap gap-4">
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportToPDF} disabled={isLoading || !invoices?.length}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Exportar PDF
+          </Button>
+          <Button variant="outline" onClick={exportToExcel} disabled={isLoading || !invoices?.length}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Exportar Excel
+          </Button>
+        </div>
         <Select value={selectedYear} onValueChange={setSelectedYear}>
           <SelectTrigger className="w-[120px]">
             <SelectValue />
