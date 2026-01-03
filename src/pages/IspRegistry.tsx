@@ -108,7 +108,7 @@ export default function IspRegistry() {
       <Sidebar />
       <div className="p-4 md:p-8 md:ml-64">
         <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Registro ISP</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Registrar Cliente</h1>
           <p className="text-muted-foreground">Gestiona clientes, contratos e historial</p>
         </div>
 
