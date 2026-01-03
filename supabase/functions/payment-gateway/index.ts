@@ -128,32 +128,126 @@ serve(async (req) => {
           paymentUrl = preference.init_point || preference.sandbox_init_point;
         
         } else if (platform === 'nequi') {
-          // Nequi Push Payment integration
+          // Nequi QR Code Payment integration
           const nequiUrl = platformConfig.environment === 'production'
             ? 'https://api.nequi.com.co'
             : 'https://api.sandbox.nequi.com.co';
 
           const reference = `INV-${invoice_id.slice(0, 8)}-${Date.now()}`;
 
-          // Store reference for webhook matching
-          await supabase
-            .from('payment_transactions')
-            .update({ external_reference: reference })
-            .eq('id', transaction.id);
+          try {
+            // Get OAuth token first
+            const tokenResponse = await fetch(`${nequiUrl}/oauth/token`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${btoa(`${platformConfig.public_key}:${platformConfig.private_key}`)}`
+              },
+              body: 'grant_type=client_credentials'
+            });
 
-          // For Nequi, we return a special response indicating the client 
-          // needs to enter their phone number to receive the push notification
-          return new Response(
-            JSON.stringify({ 
-              success: true, 
-              transaction_id: transaction.id,
-              payment_method: 'nequi_push',
-              requires_phone: true,
-              reference: reference,
-              message: 'Ingresa tu número de celular Nequi para recibir la solicitud de pago'
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+            if (!tokenResponse.ok) {
+              const errorData = await tokenResponse.text();
+              console.error('Nequi OAuth error:', errorData);
+              throw new Error('Error al autenticar con Nequi');
+            }
+
+            const tokenData = await tokenResponse.json();
+            const accessToken = tokenData.access_token;
+
+            // Generate QR Code using Nequi API
+            const qrResponse = await fetch(`${nequiUrl}/payments/v2/-services-paymentservice-generatecodeqr`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`,
+                'x-api-key': platformConfig.public_key
+              },
+              body: JSON.stringify({
+                RequestMessage: {
+                  RequestHeader: {
+                    Channel: 'PNP04-C001',
+                    RequestDate: new Date().toISOString(),
+                    MessageID: `msg-${Date.now()}`,
+                    ClientID: platformConfig.public_key,
+                    Destination: {
+                      ServiceName: 'PaymentsService',
+                      ServiceOperation: 'generateCodeQR',
+                      ServiceRegion: 'C001',
+                      ServiceVersion: '1.0.0'
+                    }
+                  },
+                  RequestBody: {
+                    any: {
+                      generateCodeQRRQ: {
+                        code: reference,
+                        value: String(Math.round(amount)),
+                        expirationDate: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 min expiry
+                      }
+                    }
+                  }
+                }
+              })
+            });
+
+            const qrResult = await qrResponse.json();
+            console.log('Nequi QR response:', JSON.stringify(qrResult));
+
+            if (!qrResponse.ok || qrResult?.ResponseMessage?.ResponseHeader?.Status?.StatusCode !== '0') {
+              const errorMsg = qrResult?.ResponseMessage?.ResponseHeader?.Status?.StatusDesc || 
+                              qrResult?.ResponseMessage?.ResponseBody?.any?.generateCodeQRRS?.message ||
+                              'Error al generar código QR';
+              console.error('Nequi QR error:', qrResult);
+              throw new Error(errorMsg);
+            }
+
+            // Extract QR code from response
+            const qrCode = qrResult?.ResponseMessage?.ResponseBody?.any?.generateCodeQRRS?.codeQR;
+            
+            if (!qrCode) {
+              console.error('No QR code in response:', qrResult);
+              throw new Error('No se recibió código QR de Nequi');
+            }
+
+            // Store reference and QR info for verification
+            await supabase
+              .from('payment_transactions')
+              .update({ 
+                external_reference: reference,
+                raw_response: qrResult,
+                status: 'awaiting_scan'
+              })
+              .eq('id', transaction.id);
+
+            // Return QR code for client to display
+            return new Response(
+              JSON.stringify({ 
+                success: true, 
+                transaction_id: transaction.id,
+                payment_method: 'nequi_qr',
+                qr_code: qrCode,
+                qr_image_url: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent('bancadigital-' + qrCode)}`,
+                reference: reference,
+                expires_in_minutes: 30,
+                message: 'Escanea este código QR con tu app Nequi para pagar'
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+
+          } catch (nequiError: any) {
+            console.error('Nequi QR generation error:', nequiError);
+            
+            // Update transaction as failed
+            await supabase
+              .from('payment_transactions')
+              .update({ 
+                status: 'failed',
+                raw_response: { error: nequiError.message }
+              })
+              .eq('id', transaction.id);
+
+            throw new Error(nequiError.message || 'Error al generar QR de Nequi');
+          }
         }
 
         return new Response(
@@ -168,6 +262,8 @@ serve(async (req) => {
       }
 
       case 'nequi-push': {
+        // Legacy nequi-push action - now redirects to QR
+        // Kept for backwards compatibility but recommends using QR
         const { transaction_id, phone_number, amount, mikrotik_id, reference } = params;
 
         // Get platform config
@@ -342,7 +438,7 @@ serve(async (req) => {
             }
           }
         } else if (platform === 'nequi') {
-          // Verify Nequi payment status
+          // Verify Nequi QR payment status
           const nequiUrl = platformConfig.environment === 'production'
             ? 'https://api.nequi.com.co'
             : 'https://api.sandbox.nequi.com.co';
@@ -396,10 +492,23 @@ serve(async (req) => {
 
             if (statusResponse.ok) {
               const statusData = await statusResponse.json();
-              const nequiStatus = statusData?.ResponseMessage?.ResponseBody?.any?.getStatusPaymentRS?.status;
+              console.log('Nequi status response:', JSON.stringify(statusData));
               
-              if (nequiStatus === '35') {
-                paymentStatus = 'approved';
+              const nequiStatus = statusData?.ResponseMessage?.ResponseBody?.any?.getStatusPaymentRS?.status;
+              const statusCode = statusData?.ResponseMessage?.ResponseHeader?.Status?.StatusCode;
+              
+              // Nequi status codes:
+              // 35 = Approved/Paid
+              // 36 = Rejected
+              // 37 = Cancelled
+              // Pending statuses: waiting for user action
+              
+              if (nequiStatus === '35' || statusCode === '0') {
+                // Check if there's a successful transaction indicator
+                const transactionStatus = statusData?.ResponseMessage?.ResponseBody?.any?.getStatusPaymentRS?.transactionStatus;
+                if (transactionStatus === 'APPROVED' || nequiStatus === '35') {
+                  paymentStatus = 'approved';
+                }
               } else if (nequiStatus === '36' || nequiStatus === '37') {
                 paymentStatus = 'rejected';
               } else {
