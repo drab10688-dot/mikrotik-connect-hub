@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { 
   BarChart, 
@@ -44,6 +46,7 @@ interface PaymentReportsDashboardProps {
 export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardProps) {
   const [startDate, setStartDate] = useState<Date>(startOfYear(new Date()));
   const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
+  const [statusFilter, setStatusFilter] = useState<string[]>(['paid', 'pending', 'overdue']);
 
   const dateRangeKey = `${format(startDate, 'yyyy-MM-dd')}_${format(endDate, 'yyyy-MM-dd')}`;
 
@@ -110,9 +113,15 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     enabled: !!mikrotikId,
   });
 
+  // Filter invoices by status
+  const filteredInvoices = useMemo(() => {
+    if (!invoices) return [];
+    return invoices.filter((inv: any) => statusFilter.includes(inv.status));
+  }, [invoices, statusFilter]);
+
   // Calculate monthly revenue data based on date range
   const monthlyData = useMemo(() => {
-    if (!invoices) return [];
+    if (!filteredInvoices.length) return [];
     
     // Get all months in the date range
     const monthsInRange = eachMonthOfInterval({ start: startDate, end: endDate });
@@ -126,7 +135,7 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
       vencido: 0
     }));
 
-    invoices.forEach((invoice: any) => {
+    filteredInvoices.forEach((invoice: any) => {
       const invoiceDate = new Date(invoice.created_at);
       const monthEntry = months.find(m => isSameMonth(m.date, invoiceDate));
       
@@ -144,26 +153,26 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
     });
 
     return months;
-  }, [invoices, startDate, endDate]);
+  }, [filteredInvoices, startDate, endDate]);
 
-  // Calculate summary stats
+  // Calculate summary stats based on filtered invoices
   const summaryStats = useMemo(() => {
-    if (!invoices) return { total: 0, collected: 0, pending: 0, overdue: 0 };
+    if (!filteredInvoices.length) return { total: 0, collected: 0, pending: 0, overdue: 0 };
     
-    return invoices.reduce((acc: any, invoice: any) => {
+    return filteredInvoices.reduce((acc: any, invoice: any) => {
       acc.total += Number(invoice.amount);
       if (invoice.status === 'paid') acc.collected += Number(invoice.amount);
       else if (invoice.status === 'pending') acc.pending += Number(invoice.amount);
       else if (invoice.status === 'overdue') acc.overdue += Number(invoice.amount);
       return acc;
     }, { total: 0, collected: 0, pending: 0, overdue: 0 });
-  }, [invoices]);
+  }, [filteredInvoices]);
 
   // Invoice status distribution for pie chart
   const statusDistribution = useMemo(() => {
-    if (!invoices) return [];
+    if (!filteredInvoices.length) return [];
     
-    const statusCount = invoices.reduce((acc: any, invoice: any) => {
+    const statusCount = filteredInvoices.reduce((acc: any, invoice: any) => {
       acc[invoice.status] = (acc[invoice.status] || 0) + 1;
       return acc;
     }, {});
@@ -173,7 +182,15 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
       { name: 'Pendientes', value: statusCount.pending || 0, color: 'hsl(var(--chart-3))' },
       { name: 'Vencidas', value: statusCount.overdue || 0, color: 'hsl(var(--chart-1))' },
     ].filter(item => item.value > 0);
-  }, [invoices]);
+  }, [filteredInvoices]);
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilter(prev => 
+      prev.includes(status) 
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    );
+  };
 
   // Payment method breakdown
   const paymentMethodData = useMemo(() => {
@@ -409,7 +426,46 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Status filter */}
+      <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg">
+        <span className="text-sm font-medium">Filtrar por estado:</span>
+        <div className="flex items-center gap-2">
+          <Checkbox 
+            id="filter-paid" 
+            checked={statusFilter.includes('paid')}
+            onCheckedChange={() => toggleStatusFilter('paid')}
+          />
+          <Label htmlFor="filter-paid" className="text-sm flex items-center gap-1">
+            <CheckCircle className="h-3 w-3 text-green-500" />
+            Pagadas
+          </Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox 
+            id="filter-pending" 
+            checked={statusFilter.includes('pending')}
+            onCheckedChange={() => toggleStatusFilter('pending')}
+          />
+          <Label htmlFor="filter-pending" className="text-sm flex items-center gap-1">
+            <Clock className="h-3 w-3 text-yellow-500" />
+            Pendientes
+          </Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox 
+            id="filter-overdue" 
+            checked={statusFilter.includes('overdue')}
+            onCheckedChange={() => toggleStatusFilter('overdue')}
+          />
+          <Label htmlFor="filter-overdue" className="text-sm flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 text-red-500" />
+            Vencidas
+          </Label>
+        </div>
+        <Badge variant="secondary" className="ml-auto">
+          {filteredInvoices.length} facturas
+        </Badge>
+      </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
