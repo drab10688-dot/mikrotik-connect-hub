@@ -382,6 +382,13 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     return urlData.publicUrl;
   };
 
+  // Generate payment portal link
+  const getPaymentLink = (contractNumber: string | null) => {
+    if (!contractNumber) return null;
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/pay?contract=${encodeURIComponent(contractNumber)}`;
+  };
+
   const handleSendTelegram = async () => {
     if (!telegramChatId || !selectedInvoice) {
       toast.error("Ingresa el Chat ID de Telegram");
@@ -398,9 +405,17 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
         documentName = `Factura_${selectedInvoice.invoice_number.replace(/\//g, '-')}.pdf`;
       }
       
+      // Add payment link to message if contract number exists
+      const { invoiceWithContract } = getInvoicePdfData(selectedInvoice);
+      const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+      let messageWithLink = telegramMessage;
+      if (paymentLink && selectedInvoice.status !== 'paid') {
+        messageWithLink += `\n\n💳 <b>Pagar en línea:</b>\n${paymentLink}`;
+      }
+      
       sendTelegramMutation.mutate({
         chatId: telegramChatId,
-        message: telegramMessage,
+        message: messageWithLink,
         invoiceId: selectedInvoice.id,
         documentUrl,
         documentName,
@@ -418,7 +433,17 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       toast.error("El cliente no tiene número de teléfono registrado");
       return;
     }
-    const message = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+    
+    // Get contract number for payment link
+    const { invoiceWithContract } = getInvoicePdfData(invoice);
+    const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+    
+    let message = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+    
+    // Add payment link if contract number exists and invoice is not paid
+    if (paymentLink && invoice.status !== 'paid') {
+      message += `\n\n💳 *Pagar en línea:*\n${paymentLink}`;
+    }
     
     try {
       let documentUrl: string | undefined;

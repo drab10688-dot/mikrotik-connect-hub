@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ interface PaymentPlatform {
 }
 
 export default function ClientPaymentPortal() {
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<'identification' | 'contract'>('identification');
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
@@ -56,8 +58,20 @@ export default function ClientPaymentPortal() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+  // Auto-search if contract parameter is present in URL
+  useEffect(() => {
+    const contractParam = searchParams.get('contract');
+    if (contractParam) {
+      setSearchQuery(contractParam);
+      // Trigger search after setting the query
+      setTimeout(() => {
+        handleSearchWithQuery(contractParam);
+      }, 100);
+    }
+  }, [searchParams]);
+
+  const handleSearchWithQuery = async (query: string) => {
+    if (!query.trim()) {
       toast.error("Ingresa un número de identificación o contrato");
       return;
     }
@@ -73,16 +87,18 @@ export default function ClientPaymentPortal() {
       const { data: clientData, error: clientError } = await supabase
         .from('isp_clients')
         .select('id, client_name, username, plan_or_speed, connection_type, mikrotik_id')
-        .eq('identification_number', searchQuery.trim())
+        .eq('identification_number', query.trim())
         .eq('is_potential_client', false)
         .single();
+
+      let foundClient: ClientInfo | null = null;
 
       if (clientError || !clientData) {
         // Try searching by contract number
         const { data: contractData, error: contractError } = await supabase
           .from('isp_contracts')
           .select('client_id, mikrotik_id')
-          .eq('contract_number', searchQuery.trim())
+          .eq('contract_number', query.trim())
           .single();
 
         if (contractError || !contractData) {
@@ -104,18 +120,14 @@ export default function ClientPaymentPortal() {
           return;
         }
 
+        foundClient = clientFromContract;
         setClientInfo(clientFromContract);
       } else {
+        foundClient = clientData;
         setClientInfo(clientData);
       }
 
-      const client = clientData || (await supabase
-        .from('isp_clients')
-        .select('id, client_name, username, plan_or_speed, connection_type, mikrotik_id')
-        .eq('identification_number', searchQuery.trim())
-        .single()).data;
-
-      if (!client) {
+      if (!foundClient) {
         setIsSearching(false);
         return;
       }
@@ -124,7 +136,7 @@ export default function ClientPaymentPortal() {
       const { data: billing } = await supabase
         .from('client_billing_settings')
         .select('monthly_amount, billing_day, is_suspended')
-        .eq('client_id', client.id)
+        .eq('client_id', foundClient.id)
         .single();
 
       if (billing) {
@@ -135,7 +147,7 @@ export default function ClientPaymentPortal() {
       const { data: invoiceData } = await supabase
         .from('client_invoices')
         .select('id, invoice_number, amount, due_date, status, billing_period_start, billing_period_end, paid_at')
-        .eq('client_id', client.id)
+        .eq('client_id', foundClient.id)
         .in('status', ['pending', 'overdue'])
         .order('due_date', { ascending: true });
 
@@ -147,7 +159,7 @@ export default function ClientPaymentPortal() {
       const { data: platformsData } = await supabase
         .from('payment_platforms')
         .select('platform, is_active, public_key, environment')
-        .eq('mikrotik_id', client.mikrotik_id)
+        .eq('mikrotik_id', foundClient.mikrotik_id)
         .eq('is_active', true);
 
       if (platformsData) {
@@ -160,6 +172,10 @@ export default function ClientPaymentPortal() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleSearch = () => {
+    handleSearchWithQuery(searchQuery);
   };
 
   const initiatePayment = async (invoice: Invoice, platform: string) => {
