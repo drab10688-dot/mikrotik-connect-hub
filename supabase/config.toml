@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.whatsapp-send]
 verify_jwt = true
+
+[functions.telegram-send]
+verify_jwt = true

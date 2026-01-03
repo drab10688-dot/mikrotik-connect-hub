@@ -566,6 +566,127 @@ export type Database = {
           },
         ]
       }
+      telegram_config: {
+        Row: {
+          bot_token: string
+          bot_username: string | null
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          mikrotik_id: string
+          updated_at: string
+        }
+        Insert: {
+          bot_token: string
+          bot_username?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          mikrotik_id: string
+          updated_at?: string
+        }
+        Update: {
+          bot_token?: string
+          bot_username?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          mikrotik_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_config_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: true
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_messages: {
+        Row: {
+          chat_id: string
+          client_id: string | null
+          created_at: string
+          created_by: string
+          error_message: string | null
+          id: string
+          message_content: string
+          message_type: string
+          mikrotik_id: string
+          related_contract_id: string | null
+          related_invoice_id: string | null
+          sent_at: string | null
+          status: string
+          telegram_message_id: string | null
+        }
+        Insert: {
+          chat_id: string
+          client_id?: string | null
+          created_at?: string
+          created_by: string
+          error_message?: string | null
+          id?: string
+          message_content: string
+          message_type?: string
+          mikrotik_id: string
+          related_contract_id?: string | null
+          related_invoice_id?: string | null
+          sent_at?: string | null
+          status?: string
+          telegram_message_id?: string | null
+        }
+        Update: {
+          chat_id?: string
+          client_id?: string | null
+          created_at?: string
+          created_by?: string
+          error_message?: string | null
+          id?: string
+          message_content?: string
+          message_type?: string
+          mikrotik_id?: string
+          related_contract_id?: string | null
+          related_invoice_id?: string | null
+          sent_at?: string | null
+          status?: string
+          telegram_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "isp_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_messages_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_messages_related_contract_id_fkey"
+            columns: ["related_contract_id"]
+            isOneToOne: false
+            referencedRelation: "isp_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_messages_related_invoice_id_fkey"
+            columns: ["related_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "client_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_mikrotik_access: {
         Row: {
           created_at: string | null

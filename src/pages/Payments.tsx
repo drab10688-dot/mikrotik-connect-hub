@@ -7,7 +7,8 @@ import { PaymentPlatformsConfig } from "@/components/payments/PaymentPlatformsCo
 import { ClientBillingManager } from "@/components/payments/ClientBillingManager";
 import { PaymentReportsDashboard } from "@/components/payments/PaymentReportsDashboard";
 import { WhatsAppConfig } from "@/components/payments/WhatsAppConfig";
-import { CreditCard, Receipt, BarChart3, ExternalLink, MessageCircle } from "lucide-react";
+import { TelegramConfig } from "@/components/payments/TelegramConfig";
+import { CreditCard, Receipt, BarChart3, ExternalLink, MessageCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { saveSelectedDevice, MikroTikDeviceConfig } from "@/lib/mikrotik";
@@ -69,22 +70,26 @@ export default function Payments() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 md:w-[650px]">
+          <TabsList className="grid w-full grid-cols-5 md:w-[800px]">
             <TabsTrigger value="platforms" className="flex items-center gap-2">
               <CreditCard className="h-4 w-4" />
-              Plataformas
+              <span className="hidden sm:inline">Plataformas</span>
             </TabsTrigger>
             <TabsTrigger value="billing" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
-              Facturación
+              <span className="hidden sm:inline">Facturación</span>
             </TabsTrigger>
             <TabsTrigger value="whatsapp" className="flex items-center gap-2">
               <MessageCircle className="h-4 w-4" />
-              WhatsApp
+              <span className="hidden sm:inline">WhatsApp</span>
+            </TabsTrigger>
+            <TabsTrigger value="telegram" className="flex items-center gap-2">
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">Telegram</span>
             </TabsTrigger>
             <TabsTrigger value="reports" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
-              Reportes
+              <span className="hidden sm:inline">Reportes</span>
             </TabsTrigger>
           </TabsList>
 
@@ -98,6 +103,10 @@ export default function Payments() {
 
           <TabsContent value="whatsapp">
             <WhatsAppConfig mikrotikId={device?.id || null} />
+          </TabsContent>
+
+          <TabsContent value="telegram">
+            <TelegramConfig mikrotikId={device?.id || null} />
           </TabsContent>
 
           <TabsContent value="reports">
