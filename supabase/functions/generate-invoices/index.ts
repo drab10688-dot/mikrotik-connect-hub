@@ -20,7 +20,6 @@ async function sendTelegramNotification(
   createdBy: string
 ) {
   try {
-    // Get Telegram config for this mikrotik
     const { data: telegramConfig } = await supabase
       .from('telegram_config')
       .select('bot_token, is_active')
@@ -58,7 +57,6 @@ Por favor realice su pago antes de la fecha de vencimiento para evitar suspensi�
 
     const result = await response.json();
 
-    // Log the message
     await supabase.from('telegram_messages').insert({
       mikrotik_id: mikrotikId,
       chat_id: chatId,
@@ -77,6 +75,89 @@ Por favor realice su pago antes de la fecha de vencimiento para evitar suspensi�
     return { success: result.ok, messageId: result.result?.message_id };
   } catch (error: unknown) {
     console.error('Error sending Telegram notification:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: errorMsg };
+  }
+}
+
+// Function to send WhatsApp notification
+async function sendWhatsAppNotification(
+  supabase: any,
+  mikrotikId: string,
+  phoneNumber: string,
+  clientName: string,
+  invoiceNumber: string,
+  amount: number,
+  dueDate: string,
+  clientId: string,
+  invoiceId: string,
+  createdBy: string
+) {
+  try {
+    const { data: whatsappConfig } = await supabase
+      .from('whatsapp_config')
+      .select('access_token, phone_number_id, is_active')
+      .eq('mikrotik_id', mikrotikId)
+      .eq('is_active', true)
+      .single();
+
+    if (!whatsappConfig) {
+      console.log(`No active WhatsApp config for mikrotik ${mikrotikId}`);
+      return { success: false, reason: 'No WhatsApp config' };
+    }
+
+    const message = `📄 *Nueva Factura Generada*
+
+👤 Cliente: ${clientName}
+📋 Factura: ${invoiceNumber}
+💰 Monto: $${amount.toFixed(2)}
+📅 Vencimiento: ${dueDate}
+
+Por favor realice su pago antes de la fecha de vencimiento para evitar suspensión del servicio.
+
+¡Gracias por su preferencia!`;
+
+    // Format phone number (remove + and any spaces)
+    const formattedPhone = phoneNumber.replace(/[\s+\-()]/g, '');
+
+    const whatsappUrl = `https://graph.facebook.com/v18.0/${whatsappConfig.phone_number_id}/messages`;
+    
+    const response = await fetch(whatsappUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${whatsappConfig.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedPhone,
+        type: 'text',
+        text: { body: message }
+      })
+    });
+
+    const result = await response.json();
+    const success = !result.error;
+
+    await supabase.from('whatsapp_messages').insert({
+      mikrotik_id: mikrotikId,
+      phone_number: formattedPhone,
+      message_content: message,
+      message_type: 'invoice',
+      status: success ? 'sent' : 'failed',
+      sent_at: success ? new Date().toISOString() : null,
+      whatsapp_message_id: result.messages?.[0]?.id || null,
+      error_message: success ? null : result.error?.message,
+      client_id: clientId,
+      related_invoice_id: invoiceId,
+      created_by: createdBy
+    });
+
+    console.log(`WhatsApp notification ${success ? 'sent' : 'failed'} for ${clientName}`);
+    return { success, messageId: result.messages?.[0]?.id };
+  } catch (error: unknown) {
+    console.error('Error sending WhatsApp notification:', error);
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: errorMsg };
   }
@@ -130,6 +211,7 @@ serve(async (req) => {
       invoices_created: 0,
       already_billed: 0,
       telegram_sent: 0,
+      whatsapp_sent: 0,
       errors: [] as string[],
       created_invoices: [] as string[]
     };
@@ -158,10 +240,10 @@ serve(async (req) => {
         continue;
       }
 
-      // Get client info including telegram_chat_id
+      // Get client info including telegram_chat_id and phone
       const { data: client, error: clientError } = await supabase
         .from('isp_clients')
-        .select('id, client_name, username, email, telegram_chat_id')
+        .select('id, client_name, username, email, telegram_chat_id, phone')
         .eq('id', billing.client_id)
         .single();
 
@@ -224,10 +306,29 @@ serve(async (req) => {
             dueDate.toISOString().split('T')[0],
             client.id,
             invoice.id,
-            'system' // created_by for automatic invoices
+            'system'
           );
           if (telegramResult.success) {
             results.telegram_sent++;
+          }
+        }
+
+        // Send WhatsApp notification if client has phone number
+        if (client.phone && invoice) {
+          const whatsappResult = await sendWhatsAppNotification(
+            supabase,
+            billing.mikrotik_id,
+            client.phone,
+            client.client_name,
+            invoiceNumber,
+            billing.monthly_amount,
+            dueDate.toISOString().split('T')[0],
+            client.id,
+            invoice.id,
+            'system'
+          );
+          if (whatsappResult.success) {
+            results.whatsapp_sent++;
           }
         }
 
