@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { validateHost, validatePort, validateUUID } from '../_shared/security.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -115,6 +116,32 @@ Deno.serve(async (req) => {
     }
 
     const { host, username, password, port, type, mikrotikId } = await req.json();
+
+    // Validate input parameters (SSRF prevention)
+    const hostError = validateHost(host);
+    if (hostError) {
+      console.error(`SSRF attempt blocked: ${host}`);
+      return new Response(
+        JSON.stringify({ success: false, error: hostError }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    const portError = validatePort(port);
+    if (portError) {
+      return new Response(
+        JSON.stringify({ success: false, error: portError }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    const mikrotikIdError = validateUUID(mikrotikId, 'mikrotikId');
+    if (mikrotikIdError) {
+      return new Response(
+        JSON.stringify({ success: false, error: mikrotikIdError }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
 
     console.log(`User ${user.id} - Getting MikroTik system info - Type: ${type}`);
 

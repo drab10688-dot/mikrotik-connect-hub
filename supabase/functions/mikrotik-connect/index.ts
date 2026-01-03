@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { validateHost, validateUUID } from '../_shared/security.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -167,9 +168,11 @@ Deno.serve(async (req) => {
 
     const { mikrotikId } = await req.json();
 
-    if (!mikrotikId) {
+    // Validate mikrotikId
+    const mikrotikIdError = validateUUID(mikrotikId, 'mikrotikId');
+    if (mikrotikIdError) {
       return new Response(
-        JSON.stringify({ success: false, error: 'mikrotikId es requerido' }),
+        JSON.stringify({ success: false, error: mikrotikIdError }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
@@ -197,6 +200,16 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: 'Dispositivo no encontrado' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
+    }
+
+    // Validate host from database (SSRF prevention)
+    const hostError = validateHost(credentials.host);
+    if (hostError) {
+      console.error(`SSRF attempt blocked - Invalid host in database: ${credentials.host}`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Configuración de host inválida en el dispositivo' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
