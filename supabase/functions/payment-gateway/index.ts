@@ -126,6 +126,53 @@ serve(async (req) => {
             .eq('id', transaction.id);
 
           paymentUrl = preference.init_point || preference.sandbox_init_point;
+        
+        } else if (platform === 'nequi') {
+          // Nequi Push Payment integration
+          const nequiUrl = platformConfig.environment === 'production'
+            ? 'https://api.nequi.com'
+            : 'https://api.sandbox.nequi.com';
+
+          const reference = `INV-${invoice_id.slice(0, 8)}-${Date.now()}`;
+
+          // Get OAuth token first
+          const tokenResponse = await fetch(`${nequiUrl}/oauth/token`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${btoa(`${platformConfig.public_key}:${platformConfig.private_key}`)}`
+            },
+            body: 'grant_type=client_credentials'
+          });
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error('Nequi OAuth error:', errorData);
+            throw new Error('Error al autenticar con Nequi');
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+
+          // Store reference for webhook matching
+          await supabase
+            .from('payment_transactions')
+            .update({ external_reference: reference })
+            .eq('id', transaction.id);
+
+          // For Nequi, we return a special response indicating the client 
+          // needs to enter their phone number to receive the push notification
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              transaction_id: transaction.id,
+              payment_method: 'nequi_push',
+              requires_phone: true,
+              reference: reference,
+              message: 'Ingresa tu número de celular Nequi para recibir la solicitud de pago'
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
 
         return new Response(

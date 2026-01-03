@@ -18,7 +18,7 @@ interface PaymentPlatformsConfigProps {
 
 interface PlatformConfig {
   id?: string;
-  platform: 'wompi' | 'mercadopago';
+  platform: 'wompi' | 'mercadopago' | 'nequi';
   is_active: boolean;
   public_key: string;
   private_key: string;
@@ -45,6 +45,14 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
     webhook_secret: '',
     environment: 'sandbox'
   });
+  const [nequiConfig, setNequiConfig] = useState<PlatformConfig>({
+    platform: 'nequi',
+    is_active: false,
+    public_key: '',
+    private_key: '',
+    webhook_secret: '',
+    environment: 'sandbox'
+  });
 
   const { data: platforms, isLoading } = useQuery({
     queryKey: ['payment-platforms', mikrotikId],
@@ -65,6 +73,7 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
     if (platforms) {
       const wompi = platforms.find(p => p.platform === 'wompi');
       const mp = platforms.find(p => p.platform === 'mercadopago');
+      const nequi = platforms.find(p => p.platform === 'nequi');
       if (wompi) {
         setWompiConfig({
           id: wompi.id,
@@ -85,6 +94,17 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
           private_key: mp.private_key || '',
           webhook_secret: mp.webhook_secret || '',
           environment: mp.environment as 'sandbox' | 'production'
+        });
+      }
+      if (nequi) {
+        setNequiConfig({
+          id: nequi.id,
+          platform: 'nequi',
+          is_active: nequi.is_active,
+          public_key: nequi.public_key || '',
+          private_key: nequi.private_key || '',
+          webhook_secret: nequi.webhook_secret || '',
+          environment: nequi.environment as 'sandbox' | 'production'
         });
       }
     }
@@ -122,7 +142,12 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
       }
     },
     onSuccess: (_, config) => {
-      toast.success(`Configuración de ${config.platform === 'wompi' ? 'Wompi' : 'Mercado Pago'} guardada`);
+      const platformNames: Record<string, string> = {
+        wompi: 'Wompi',
+        mercadopago: 'Mercado Pago',
+        nequi: 'Nequi'
+      };
+      toast.success(`Configuración de ${platformNames[config.platform]} guardada`);
       queryClient.invalidateQueries({ queryKey: ['payment-platforms'] });
     },
     onError: (error) => {
@@ -152,6 +177,8 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
               <CardDescription>
                 {config.platform === 'wompi' 
                   ? 'PSE, Tarjetas, Nequi, Bancolombia' 
+                  : config.platform === 'nequi'
+                  ? 'Pagos directos con Nequi Push'
                   : 'Tarjetas, PSE, Efecty, Baloto'}
               </CardDescription>
             </div>
@@ -189,13 +216,13 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
         </div>
 
         <div className="space-y-2">
-          <Label>Llave Pública</Label>
+          <Label>{config.platform === 'nequi' ? 'Client ID / API Key' : 'Llave Pública'}</Label>
           <div className="flex gap-2">
             <Input
               type={showSecrets[`${config.platform}-public`] ? 'text' : 'password'}
               value={config.public_key}
               onChange={(e) => setConfig(prev => ({ ...prev, public_key: e.target.value }))}
-              placeholder={config.platform === 'wompi' ? 'pub_test_...' : 'APP_USR-...'}
+              placeholder={config.platform === 'wompi' ? 'pub_test_...' : config.platform === 'nequi' ? 'Client ID de Nequi' : 'APP_USR-...'}
             />
             <Button
               type="button"
@@ -209,13 +236,13 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
         </div>
 
         <div className="space-y-2">
-          <Label>Llave Privada / Secret Key</Label>
+          <Label>{config.platform === 'nequi' ? 'Client Secret / API Secret' : 'Llave Privada / Secret Key'}</Label>
           <div className="flex gap-2">
             <Input
               type={showSecrets[`${config.platform}-private`] ? 'text' : 'password'}
               value={config.private_key}
               onChange={(e) => setConfig(prev => ({ ...prev, private_key: e.target.value }))}
-              placeholder={config.platform === 'wompi' ? 'prv_test_...' : 'ACCESS_TOKEN'}
+              placeholder={config.platform === 'wompi' ? 'prv_test_...' : config.platform === 'nequi' ? 'Client Secret de Nequi' : 'ACCESS_TOKEN'}
             />
             <Button
               type="button"
@@ -304,15 +331,19 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
       </div>
 
       <Tabs defaultValue="wompi" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="wompi">Wompi</TabsTrigger>
           <TabsTrigger value="mercadopago">Mercado Pago</TabsTrigger>
+          <TabsTrigger value="nequi">Nequi</TabsTrigger>
         </TabsList>
         <TabsContent value="wompi" className="mt-4">
           {renderPlatformForm(wompiConfig, setWompiConfig, 'Wompi', 'bg-orange-500')}
         </TabsContent>
         <TabsContent value="mercadopago" className="mt-4">
           {renderPlatformForm(mercadopagoConfig, setMercadopagoConfig, 'Mercado Pago', 'bg-blue-500')}
+        </TabsContent>
+        <TabsContent value="nequi" className="mt-4">
+          {renderPlatformForm(nequiConfig, setNequiConfig, 'Nequi', 'bg-pink-500')}
         </TabsContent>
       </Tabs>
     </div>
