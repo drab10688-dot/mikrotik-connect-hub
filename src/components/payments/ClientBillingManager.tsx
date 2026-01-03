@@ -127,7 +127,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       if (!mikrotikId) return [];
       const { data, error } = await supabase
         .from('client_invoices')
-        .select('*, isp_contracts(id, client_name, identification, address, phone, email, plan, speed, price)')
+        .select('*, isp_contracts(id, contract_number, client_name, identification, address, phone, email, plan, speed, price)')
         .eq('mikrotik_id', mikrotikId)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -351,13 +351,18 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     const serviceDescription = contract?.plan 
       ? `Servicio de Internet - ${contract.plan}${contract.speed ? ` (${contract.speed})` : ''}`
       : "Servicio de Internet - Plan Mensual";
-    return { clientData, serviceDescription };
+    // Add contract number to invoice data for PDF
+    const invoiceWithContract = {
+      ...invoice,
+      contract_number: contract?.contract_number || null
+    };
+    return { clientData, serviceDescription, invoiceWithContract };
   };
 
   // Upload PDF and get public URL
   const uploadInvoicePdf = async (invoice: Invoice): Promise<string> => {
-    const { clientData, serviceDescription } = getInvoicePdfData(invoice);
-    const pdfBlob = await generateInvoicePDFBlob(invoice, clientData, undefined, serviceDescription);
+    const { clientData, serviceDescription, invoiceWithContract } = getInvoicePdfData(invoice);
+    const pdfBlob = await generateInvoicePDFBlob(invoiceWithContract, clientData, undefined, serviceDescription);
     
     const fileName = `invoices/${mikrotikId}/${invoice.invoice_number.replace(/\//g, '-')}.pdf`;
     
@@ -641,8 +646,8 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                           variant="outline"
                           className="text-primary border-primary hover:bg-primary/10"
                           onClick={async () => {
-                            const { clientData, serviceDescription } = getInvoicePdfData(invoice);
-                            await generateInvoicePDF(invoice, clientData, undefined, serviceDescription);
+                            const { clientData, serviceDescription, invoiceWithContract } = getInvoicePdfData(invoice);
+                            await generateInvoicePDF(invoiceWithContract, clientData, undefined, serviceDescription);
                           }}
                           title="Descargar PDF"
                         >

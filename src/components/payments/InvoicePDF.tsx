@@ -11,6 +11,7 @@ interface InvoiceData {
   status: string;
   paid_at: string | null;
   paid_via: string | null;
+  contract_number?: string | null;
 }
 
 interface ClientData {
@@ -213,9 +214,9 @@ async function buildInvoicePDF(
   // Two-column layout: Client info and Invoice dates
   const colWidth = (pageWidth - margin * 2 - 10) / 2;
 
-  // Client info box
+  // Client info box - taller to match
   doc.setFillColor(...lightGray);
-  doc.roundedRect(margin, y, colWidth, 42, 2, 2, "F");
+  doc.roundedRect(margin, y, colWidth, 50, 2, 2, "F");
 
   doc.setFontSize(9);
   doc.setTextColor(...accentColor);
@@ -247,10 +248,10 @@ async function buildInvoicePDF(
     doc.text(client.email, margin + 5, clientY);
   }
 
-  // Invoice dates box
+  // Invoice dates box - taller to accommodate contract number
   const datesX = margin + colWidth + 10;
   doc.setFillColor(...lightGray);
-  doc.roundedRect(datesX, y, colWidth, 42, 2, 2, "F");
+  doc.roundedRect(datesX, y, colWidth, 50, 2, 2, "F");
 
   doc.setFontSize(9);
   doc.setTextColor(...accentColor);
@@ -282,13 +283,21 @@ async function buildInvoicePDF(
   const periodEnd = format(parseISO(invoice.billing_period_end), "dd MMM yyyy", { locale: es });
   doc.text(`${periodStart} - ${periodEnd}`, valueX, y + 29, { align: "right" });
 
-  if (invoice.status === "paid" && invoice.paid_at) {
-    doc.setTextColor(34, 197, 94);
-    doc.text("Fecha de pago:", labelX, y + 36);
-    doc.text(format(parseISO(invoice.paid_at), "dd/MM/yyyy"), valueX, y + 36, { align: "right" });
+  if (invoice.contract_number) {
+    doc.setTextColor(...accentColor);
+    doc.setFont("helvetica", "bold");
+    doc.text("N° Contrato:", labelX, y + 36);
+    doc.setTextColor(...darkColor);
+    doc.text(invoice.contract_number, valueX, y + 36, { align: "right" });
   }
 
-  y += 52;
+  if (invoice.status === "paid" && invoice.paid_at) {
+    doc.setTextColor(34, 197, 94);
+    doc.text("Fecha de pago:", labelX, invoice.contract_number ? y + 43 : y + 36);
+    doc.text(format(parseISO(invoice.paid_at), "dd/MM/yyyy"), valueX, invoice.contract_number ? y + 43 : y + 36, { align: "right" });
+  }
+
+  y += 58; // Adjusted for taller info boxes
 
   // Items table
   const tableWidth = pageWidth - margin * 2;
