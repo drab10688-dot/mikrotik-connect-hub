@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import QRCode from "qrcode";
 
 interface InvoiceData {
   invoice_number: string;
@@ -88,6 +89,33 @@ async function loadAndCompressLogo(url: string, maxWidth: number = 180): Promise
     img.onerror = () => resolve(null);
     img.src = url;
   });
+}
+
+// Generate QR code as data URL
+async function generatePaymentQR(contractNumber: string, baseUrl: string): Promise<string | null> {
+  try {
+    const paymentUrl = `${baseUrl}/pay?contract=${encodeURIComponent(contractNumber)}`;
+    return await QRCode.toDataURL(paymentUrl, {
+      width: 150,
+      margin: 1,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    });
+  } catch (error) {
+    console.error("Error generating QR code:", error);
+    return null;
+  }
+}
+
+// Get base URL for payment portal
+function getPaymentPortalBaseUrl(): string {
+  // Use current origin for the payment portal URL
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return '';
 }
 
 // Internal function to build the PDF document
@@ -392,16 +420,82 @@ async function buildInvoicePDF(
     y += 18;
   }
 
-  // Notes section
-  doc.setFillColor(254, 252, 232);
-  doc.roundedRect(margin, y, tableWidth, 18, 2, 2, "F");
-  doc.setTextColor(146, 64, 14);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text("NOTA:", margin + 4, y + 6);
-  doc.setFont("helvetica", "normal");
-  doc.text("El servicio puede ser suspendido si no se realiza el pago antes del vencimiento.", margin + 18, y + 6);
-  doc.text(`Para consultas: ${companyData.phone} | ${companyData.email}`, margin + 4, y + 13);
+  // Payment QR Code section (only if unpaid and has contract number)
+  if (invoice.status !== "paid" && invoice.contract_number) {
+    const baseUrl = getPaymentPortalBaseUrl();
+    const qrDataUrl = await generatePaymentQR(invoice.contract_number, baseUrl);
+    
+    if (qrDataUrl) {
+      const qrBoxWidth = 60;
+      const qrBoxHeight = 55;
+      
+      // QR Code box on the left
+      doc.setFillColor(...lightGray);
+      doc.roundedRect(margin, y, qrBoxWidth, qrBoxHeight, 2, 2, "F");
+      
+      // QR Code image
+      doc.addImage(qrDataUrl, "PNG", margin + 7, y + 3, 46, 46);
+      
+      // QR label
+      doc.setTextColor(...accentColor);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.text("ESCANEA PARA PAGAR", margin + qrBoxWidth / 2, y + 52, { align: "center" });
+      
+      // Notes section (beside QR)
+      const notesX = margin + qrBoxWidth + 5;
+      const notesWidth = tableWidth - qrBoxWidth - 5;
+      
+      doc.setFillColor(254, 252, 232);
+      doc.roundedRect(notesX, y, notesWidth, qrBoxHeight, 2, 2, "F");
+      doc.setTextColor(146, 64, 14);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text("NOTA:", notesX + 4, y + 8);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      const noteLines = doc.splitTextToSize("El servicio puede ser suspendido si no se realiza el pago antes del vencimiento.", notesWidth - 8);
+      doc.text(noteLines, notesX + 4, y + 15);
+      
+      doc.setFontSize(7);
+      doc.text(`Consultas: ${companyData.phone}`, notesX + 4, y + 28);
+      doc.text(`${companyData.email}`, notesX + 4, y + 34);
+      
+      // Payment portal URL
+      doc.setTextColor(...primaryDark);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.text("Portal de pagos:", notesX + 4, y + 44);
+      doc.setFont("helvetica", "normal");
+      const paymentUrl = `${baseUrl}/pay`;
+      doc.text(paymentUrl, notesX + 4, y + 50);
+      
+      y += qrBoxHeight + 5;
+    } else {
+      // Fallback: notes section without QR
+      doc.setFillColor(254, 252, 232);
+      doc.roundedRect(margin, y, tableWidth, 18, 2, 2, "F");
+      doc.setTextColor(146, 64, 14);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text("NOTA:", margin + 4, y + 6);
+      doc.setFont("helvetica", "normal");
+      doc.text("El servicio puede ser suspendido si no se realiza el pago antes del vencimiento.", margin + 18, y + 6);
+      doc.text(`Para consultas: ${companyData.phone} | ${companyData.email}`, margin + 4, y + 13);
+      y += 23;
+    }
+  } else {
+    // Notes section (no QR for paid invoices)
+    doc.setFillColor(254, 252, 232);
+    doc.roundedRect(margin, y, tableWidth, 18, 2, 2, "F");
+    doc.setTextColor(146, 64, 14);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("NOTA:", margin + 4, y + 6);
+    doc.setFont("helvetica", "normal");
+    doc.text("El servicio puede ser suspendido si no se realiza el pago antes del vencimiento.", margin + 18, y + 6);
+    doc.text(`Para consultas: ${companyData.phone} | ${companyData.email}`, margin + 4, y + 13);
+  }
 
   // Futuristic footer with gradient effect
   const footerY = pageHeight - 15;
