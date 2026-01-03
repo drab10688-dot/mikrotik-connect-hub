@@ -10,8 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download } from "lucide-react";
-import { generateInvoicePDF } from "./InvoicePDF";
+import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip } from "lucide-react";
+import { generateInvoicePDF, generateInvoicePDFBlob } from "./InvoicePDF";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format, addMonths, setDate, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -89,6 +90,8 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [telegramChatId, setTelegramChatId] = useState("");
   const [telegramMessage, setTelegramMessage] = useState("");
+  const [attachPdfTelegram, setAttachPdfTelegram] = useState(true);
+  const [isSendingWithPdf, setIsSendingWithPdf] = useState(false);
   const { data: clients, isLoading: loadingClients } = useQuery({
     queryKey: ['isp-clients-billing', mikrotikId],
     queryFn: async () => {
@@ -258,13 +261,21 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
 
   // Send Telegram message mutation
   const sendTelegramMutation = useMutation({
-    mutationFn: async ({ chatId, message, invoiceId }: { chatId: string; message: string; invoiceId: string }) => {
+    mutationFn: async ({ chatId, message, invoiceId, documentUrl, documentName }: { 
+      chatId: string; 
+      message: string; 
+      invoiceId: string;
+      documentUrl?: string;
+      documentName?: string;
+    }) => {
       const { data, error } = await supabase.functions.invoke("telegram-send", {
         body: {
           mikrotikId,
           chatId,
           message,
           invoiceId,
+          documentUrl,
+          documentName,
         },
       });
       if (error) throw error;
@@ -277,6 +288,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       setTelegramChatId("");
       setTelegramMessage("");
       setSelectedInvoice(null);
+      setAttachPdfTelegram(true);
     },
     onError: (error: any) => {
       toast.error(`Error al enviar: ${error.message}`);
@@ -285,13 +297,21 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
 
   // Send WhatsApp message mutation
   const sendWhatsAppMutation = useMutation({
-    mutationFn: async ({ phone, message, invoiceId }: { phone: string; message: string; invoiceId: string }) => {
+    mutationFn: async ({ phone, message, invoiceId, documentUrl, documentName }: { 
+      phone: string; 
+      message: string; 
+      invoiceId: string;
+      documentUrl?: string;
+      documentName?: string;
+    }) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-send", {
         body: {
           mikrotikId,
           phoneNumber: phone,
           message,
           invoiceId,
+          documentUrl,
+          documentName,
         },
       });
       if (error) throw error;
@@ -317,31 +337,106 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     setTelegramDialogOpen(true);
   };
 
-  const handleSendTelegram = () => {
+  // Helper function to get client and contract data for PDF
+  const getInvoicePdfData = (invoice: Invoice) => {
+    const contract = (invoice as any).isp_contracts;
+    const clientInfo = ispClients?.find(c => c.id === invoice.client_id);
+    const clientData = {
+      client_name: contract?.client_name || clientInfo?.client_name || "Cliente",
+      phone: contract?.phone || clientInfo?.phone || null,
+      identification_number: contract?.identification || clientInfo?.identification_number || null,
+      address: contract?.address || clientInfo?.address || null,
+      email: contract?.email || clientInfo?.email || null
+    };
+    const serviceDescription = contract?.plan 
+      ? `Servicio de Internet - ${contract.plan}${contract.speed ? ` (${contract.speed})` : ''}`
+      : "Servicio de Internet - Plan Mensual";
+    return { clientData, serviceDescription };
+  };
+
+  // Upload PDF and get public URL
+  const uploadInvoicePdf = async (invoice: Invoice): Promise<string> => {
+    const { clientData, serviceDescription } = getInvoicePdfData(invoice);
+    const pdfBlob = await generateInvoicePDFBlob(invoice, clientData, undefined, serviceDescription);
+    
+    const fileName = `invoices/${mikrotikId}/${invoice.invoice_number.replace(/\//g, '-')}.pdf`;
+    
+    const { data, error } = await supabase.storage
+      .from('company-assets')
+      .upload(fileName, pdfBlob, {
+        contentType: 'application/pdf',
+        upsert: true
+      });
+    
+    if (error) throw new Error(`Error al subir PDF: ${error.message}`);
+    
+    const { data: urlData } = supabase.storage
+      .from('company-assets')
+      .getPublicUrl(data.path);
+    
+    return urlData.publicUrl;
+  };
+
+  const handleSendTelegram = async () => {
     if (!telegramChatId || !selectedInvoice) {
       toast.error("Ingresa el Chat ID de Telegram");
       return;
     }
-    sendTelegramMutation.mutate({
-      chatId: telegramChatId,
-      message: telegramMessage,
-      invoiceId: selectedInvoice.id,
-    });
+    
+    try {
+      setIsSendingWithPdf(true);
+      let documentUrl: string | undefined;
+      let documentName: string | undefined;
+      
+      if (attachPdfTelegram) {
+        documentUrl = await uploadInvoicePdf(selectedInvoice);
+        documentName = `Factura_${selectedInvoice.invoice_number.replace(/\//g, '-')}.pdf`;
+      }
+      
+      sendTelegramMutation.mutate({
+        chatId: telegramChatId,
+        message: telegramMessage,
+        invoiceId: selectedInvoice.id,
+        documentUrl,
+        documentName,
+      });
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsSendingWithPdf(false);
+    }
   };
 
-  const handleSendWhatsApp = (invoice: Invoice) => {
-    const client = ispClients?.find(c => c.id === invoice.client_id);
-    if (!client?.phone) {
+  const handleSendWhatsApp = async (invoice: Invoice, withPdf: boolean = false) => {
+    const clientInfo = ispClients?.find(c => c.id === invoice.client_id);
+    if (!clientInfo?.phone) {
       toast.error("El cliente no tiene número de teléfono registrado");
       return;
     }
     const message = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
     
-    sendWhatsAppMutation.mutate({
-      phone: client.phone,
-      message,
-      invoiceId: invoice.id,
-    });
+    try {
+      let documentUrl: string | undefined;
+      let documentName: string | undefined;
+      
+      if (withPdf) {
+        setIsSendingWithPdf(true);
+        documentUrl = await uploadInvoicePdf(invoice);
+        documentName = `Factura_${invoice.invoice_number.replace(/\//g, '-')}.pdf`;
+      }
+      
+      sendWhatsAppMutation.mutate({
+        phone: clientInfo.phone,
+        message,
+        invoiceId: invoice.id,
+        documentUrl,
+        documentName,
+      });
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsSendingWithPdf(false);
+    }
   };
 
   const openBillingDialog = (client: Client) => {
@@ -511,42 +606,42 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                         : '-'}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 flex-wrap">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => openTelegramDialog(invoice)}
                           disabled={!telegramConfig?.is_active}
-                          title={telegramConfig?.is_active ? "Enviar por Telegram" : "Telegram no configurado"}
+                          title={telegramConfig?.is_active ? "Enviar por Telegram (con opción de PDF)" : "Telegram no configurado"}
                         >
                           <Send className="h-4 w-4" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleSendWhatsApp(invoice)}
-                          disabled={!whatsappConfig?.is_active || !client?.phone || sendWhatsAppMutation.isPending}
-                          title={whatsappConfig?.is_active ? "Enviar por WhatsApp" : "WhatsApp no configurado"}
+                          onClick={() => handleSendWhatsApp(invoice, false)}
+                          disabled={!whatsappConfig?.is_active || !client?.phone || sendWhatsAppMutation.isPending || isSendingWithPdf}
+                          title={whatsappConfig?.is_active ? "Enviar texto por WhatsApp" : "WhatsApp no configurado"}
                         >
                           <MessageCircle className="h-4 w-4" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
+                          className="text-green-600 border-green-600 hover:bg-green-50"
+                          onClick={() => handleSendWhatsApp(invoice, true)}
+                          disabled={!whatsappConfig?.is_active || !client?.phone || sendWhatsAppMutation.isPending || isSendingWithPdf}
+                          title="Enviar con PDF adjunto por WhatsApp"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          <Paperclip className="h-3 w-3 -ml-1" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="text-primary border-primary hover:bg-primary/10"
                           onClick={async () => {
-                            // Prefer contract data, fallback to client data
-                            const contract = (invoice as any).isp_contracts;
-                            const clientData = {
-                              client_name: contract?.client_name || client?.client_name || "Cliente",
-                              phone: contract?.phone || client?.phone || null,
-                              identification_number: contract?.identification || client?.identification_number || null,
-                              address: contract?.address || client?.address || null,
-                              email: contract?.email || client?.email || null
-                            };
-                            const serviceDescription = contract?.plan 
-                              ? `Servicio de Internet - ${contract.plan}${contract.speed ? ` (${contract.speed})` : ''}`
-                              : "Servicio de Internet - Plan Mensual";
+                            const { clientData, serviceDescription } = getInvoicePdfData(invoice);
                             await generateInvoicePDF(invoice, clientData, undefined, serviceDescription);
                           }}
                           title="Descargar PDF"
@@ -675,17 +770,32 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
               />
             </div>
 
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="attach-pdf"
+                checked={attachPdfTelegram}
+                onCheckedChange={(checked) => setAttachPdfTelegram(checked === true)}
+              />
+              <label
+                htmlFor="attach-pdf"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2"
+              >
+                <Paperclip className="h-4 w-4" />
+                Adjuntar factura PDF
+              </label>
+            </div>
+
             <Button 
               className="w-full bg-blue-600 hover:bg-blue-700" 
               onClick={handleSendTelegram}
-              disabled={sendTelegramMutation.isPending}
+              disabled={sendTelegramMutation.isPending || isSendingWithPdf}
             >
-              {sendTelegramMutation.isPending ? (
+              {(sendTelegramMutation.isPending || isSendingWithPdf) ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <Send className="h-4 w-4 mr-2" />
               )}
-              Enviar por Telegram
+              {isSendingWithPdf ? "Subiendo PDF..." : "Enviar por Telegram"}
             </Button>
           </div>
         </DialogContent>
