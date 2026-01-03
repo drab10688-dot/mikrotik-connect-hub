@@ -22,7 +22,9 @@ import {
   Ban,
   QrCode,
   Camera,
-  X
+  X,
+  Upload,
+  ImageIcon
 } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 
@@ -54,10 +56,13 @@ export function NequiPaymentVerification({
 }: NequiPaymentVerificationProps) {
   const queryClient = useQueryClient();
   const [nequiReference, setNequiReference] = useState("");
+  const [extractedAmount, setExtractedAmount] = useState<number | null>(null);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
+  const [isExtractingFromImage, setIsExtractingFromImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = "nequi-qr-scanner";
 
@@ -225,11 +230,91 @@ export function NequiPaymentVerification({
   const handleClose = () => {
     stopScanner();
     setNequiReference("");
+    setExtractedAmount(null);
     setVerificationResult(null);
     setIsVerifying(false);
     setShowScanner(false);
     setScannerError(null);
+    setIsExtractingFromImage(false);
     onOpenChange(false);
+  };
+
+  // Image upload and extraction
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Por favor selecciona una imagen válida");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("La imagen es muy grande. Máximo 5MB.");
+      return;
+    }
+
+    setIsExtractingFromImage(true);
+    setVerificationResult(null);
+
+    try {
+      // Convert to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Call edge function to extract data
+      const { data, error } = await supabase.functions.invoke("extract-nequi-receipt", {
+        body: { imageBase64: base64 }
+      });
+
+      if (error) throw error;
+
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      // Set extracted values
+      if (data.reference) {
+        setNequiReference(data.reference);
+        toast.success("¡Referencia extraída correctamente!");
+      }
+
+      if (data.amount && typeof data.amount === "number") {
+        setExtractedAmount(data.amount);
+        
+        // Check if amount matches invoice
+        if (invoice && data.amount !== invoice.amount) {
+          toast.warning(
+            `El monto extraído ($${data.amount.toLocaleString()}) no coincide con la factura ($${invoice.amount.toLocaleString()})`,
+            { duration: 5000 }
+          );
+        } else if (invoice && data.amount === invoice.amount) {
+          toast.success("¡El monto coincide con la factura!");
+        }
+      }
+
+      if (!data.reference && !data.amount) {
+        toast.warning("No se pudo extraer información del comprobante. Intenta con otra imagen.");
+      }
+
+    } catch (error: any) {
+      console.error("Error extracting from image:", error);
+      toast.error("Error al procesar la imagen. Intenta de nuevo.");
+    } finally {
+      setIsExtractingFromImage(false);
+    }
   };
 
   // QR Scanner functions
@@ -383,6 +468,69 @@ export function NequiPaymentVerification({
             </div>
           ) : (
             <>
+              {/* Image upload for extracting data */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Subir comprobante Nequi
+                </Label>
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isExtractingFromImage || confirmPaymentMutation.isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isExtractingFromImage || confirmPaymentMutation.isPending}
+                  >
+                    {isExtractingFromImage ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Analizando imagen...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Subir imagen del comprobante
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  La IA extraerá automáticamente la referencia y el monto del comprobante.
+                </p>
+              </div>
+
+              {/* Extracted amount display */}
+              {extractedAmount !== null && (
+                <Alert className={extractedAmount === invoice?.amount 
+                  ? "border-green-500 bg-green-50 dark:bg-green-950" 
+                  : "border-yellow-500 bg-yellow-50 dark:bg-yellow-950"
+                }>
+                  <CheckCircle className={`h-4 w-4 ${extractedAmount === invoice?.amount ? "text-green-600" : "text-yellow-600"}`} />
+                  <AlertDescription>
+                    <strong>Monto extraído:</strong> ${extractedAmount.toLocaleString()} COP
+                    {invoice && extractedAmount !== invoice.amount && (
+                      <span className="block text-yellow-700 dark:text-yellow-300 text-sm mt-1">
+                        ⚠️ No coincide con la factura (${invoice.amount.toLocaleString()} COP)
+                      </span>
+                    )}
+                    {invoice && extractedAmount === invoice.amount && (
+                      <span className="block text-green-700 dark:text-green-300 text-sm mt-1">
+                        ✓ Coincide con el valor de la factura
+                      </span>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Scanner Error */}
               {scannerError && (
                 <Alert variant="destructive">
@@ -404,13 +552,13 @@ export function NequiPaymentVerification({
                     }}
                     placeholder="Ej: NQ123456789"
                     className="flex-1"
-                    disabled={confirmPaymentMutation.isPending}
+                    disabled={confirmPaymentMutation.isPending || isExtractingFromImage}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     onClick={startScanner}
-                    disabled={confirmPaymentMutation.isPending}
+                    disabled={confirmPaymentMutation.isPending || isExtractingFromImage}
                     title="Escanear QR"
                   >
                     <QrCode className="h-4 w-4" />
@@ -419,7 +567,7 @@ export function NequiPaymentVerification({
                     type="button"
                     variant="outline"
                     onClick={handleVerify}
-                    disabled={!nequiReference.trim() || isVerifying || confirmPaymentMutation.isPending}
+                    disabled={!nequiReference.trim() || isVerifying || confirmPaymentMutation.isPending || isExtractingFromImage}
                   >
                     {isVerifying ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -429,7 +577,7 @@ export function NequiPaymentVerification({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Escanea el QR del comprobante o ingresa la referencia manualmente.
+                  Escanea el QR, sube una imagen o ingresa la referencia manualmente.
                 </p>
               </div>
             </>
