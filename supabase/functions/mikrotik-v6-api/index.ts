@@ -332,13 +332,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
+    // Extract JWT token from header
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Use service role client to verify the JWT and get user
+    const serviceSupabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    const { data: { user }, error: authError } = await serviceSupabase.auth.getUser(token);
     if (authError || !user) {
       console.error('Auth error:', authError);
       return new Response(
@@ -357,12 +360,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`User ${user.id} - Command: ${command} on device ${mikrotikId}`);
-
-    // Create service role client for authorization checks (bypasses RLS)
-    const serviceSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const accessCheck = await verifyUserAccess(serviceSupabase, user.id, mikrotikId);
     if (!accessCheck.authorized) {
