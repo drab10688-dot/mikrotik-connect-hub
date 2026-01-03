@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -58,14 +59,14 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
     enabled: !!mikrotikId,
   });
 
-  // Fetch clients
+  // Fetch clients with telegram_chat_id
   const { data: clients } = useQuery({
-    queryKey: ["isp-clients", mikrotikId],
+    queryKey: ["isp-clients-telegram", mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) return [];
       const { data, error } = await supabase
         .from("isp_clients")
-        .select("id, client_name, phone")
+        .select("id, client_name, phone, telegram_chat_id")
         .eq("mikrotik_id", mikrotikId);
       if (error) throw error;
       return data || [];
@@ -287,13 +288,16 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bot_username">Nombre de usuario del bot (opcional)</Label>
+                <Label htmlFor="bot_username">Nombre de usuario del bot (requerido para enlaces)</Label>
                 <Input
                   id="bot_username"
                   value={config.bot_username}
                   onChange={(e) => setConfig({ ...config, bot_username: e.target.value })}
-                  placeholder="@mi_bot"
+                  placeholder="mi_bot (sin @)"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Necesario para generar enlaces de activación automática
+                </p>
               </div>
 
               <div className="flex items-center justify-between">
@@ -313,6 +317,153 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                 {saveConfigMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Guardar Configuración
               </Button>
+
+              <Separator className="my-4" />
+
+              {/* Webhook Configuration Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Link className="h-5 w-5 text-blue-500" />
+                  <h3 className="font-semibold">Configuración del Webhook</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Configura el webhook en BotFather para capturar automáticamente el Chat ID de los clientes.
+                </p>
+                
+                <div className="space-y-2">
+                  <Label>URL del Webhook</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={`https://qybuufofocxsctwnpwon.supabase.co/functions/v1/telegram-webhook`}
+                      className="font-mono text-xs"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          `https://qybuufofocxsctwnpwon.supabase.co/functions/v1/telegram-webhook`
+                        );
+                        toast.success("URL copiada al portapapeles");
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                  <p className="text-sm font-medium">Instrucciones para configurar el webhook:</p>
+                  <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
+                    <li>Abre Telegram y busca <strong>@BotFather</strong></li>
+                    <li>Envía el comando: <code className="bg-muted px-1 rounded">/setwebhook</code></li>
+                    <li>Selecciona tu bot</li>
+                    <li>Pega la URL del webhook que copiaste arriba</li>
+                  </ol>
+                </div>
+              </div>
+
+              <Separator className="my-4" />
+
+              {/* Client Links Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-green-500" />
+                  <h3 className="font-semibold">Enlaces de Activación por Cliente</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Envía estos enlaces a tus clientes. Cuando abran el enlace y presionen "Iniciar", 
+                  su Chat ID se capturará automáticamente.
+                </p>
+
+                {!config.bot_username ? (
+                  <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg">
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                      ⚠️ Ingresa el nombre de usuario del bot arriba para generar enlaces de activación.
+                    </p>
+                  </div>
+                ) : clients && clients.length > 0 ? (
+                  <div className="rounded-md border max-h-[300px] overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Teléfono</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead className="text-right">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clients.map((client) => {
+                          const botUsername = config.bot_username.replace("@", "");
+                          const phoneClean = client.phone?.replace(/[^\d]/g, "") || "";
+                          const telegramLink = `https://t.me/${botUsername}?start=${phoneClean}`;
+                          const isLinked = !!client.telegram_chat_id;
+                          
+                          return (
+                            <TableRow key={client.id}>
+                              <TableCell className="font-medium">{client.client_name}</TableCell>
+                              <TableCell>{client.phone || "-"}</TableCell>
+                              <TableCell>
+                                {isLinked ? (
+                                  <Badge className="bg-green-500">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Vinculado
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary">
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    Pendiente
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right space-x-2">
+                                {client.phone && (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(telegramLink);
+                                        toast.success("Enlace copiado");
+                                      }}
+                                    >
+                                      <Copy className="h-3 w-3 mr-1" />
+                                      Copiar
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-green-600 border-green-600 hover:bg-green-50"
+                                      onClick={() => {
+                                        const message = encodeURIComponent(
+                                          `¡Hola ${client.client_name}!\n\nPara recibir notificaciones de pago por Telegram, haz clic en el siguiente enlace:\n\n${telegramLink}\n\nSolo debes presionar "Iniciar" y listo! 👍`
+                                        );
+                                        window.open(
+                                          `https://wa.me/${phoneClean}?text=${message}`,
+                                          "_blank"
+                                        );
+                                      }}
+                                    >
+                                      <MessageSquare className="h-3 w-3 mr-1" />
+                                      WhatsApp
+                                    </Button>
+                                  </>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No hay clientes registrados
+                  </p>
+                )}
+              </div>
             </div>
           </TabsContent>
 
