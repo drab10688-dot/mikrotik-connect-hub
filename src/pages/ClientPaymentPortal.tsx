@@ -61,6 +61,10 @@ export default function ClientPaymentPortal() {
   const [nequiDialogOpen, setNequiDialogOpen] = useState(false);
   const [nequiPhone, setNequiPhone] = useState("");
   const [nequiPendingInvoice, setNequiPendingInvoice] = useState<Invoice | null>(null);
+  const [nequiPolling, setNequiPolling] = useState(false);
+  const [nequiTransactionId, setNequiTransactionId] = useState<string | null>(null);
+  const [nequiReference, setNequiReference] = useState<string | null>(null);
+  const [nequiStatus, setNequiStatus] = useState<string | null>(null);
 
   // Auto-search if contract parameter is present in URL
   useEffect(() => {
@@ -217,10 +221,10 @@ export default function ClientPaymentPortal() {
       if (error) throw error;
 
       if (data?.requires_phone) {
-        // Nequi push - show confirmation
-        toast.success("Se enviará una notificación a tu app Nequi. Apruébala para completar el pago.");
-        setNequiDialogOpen(false);
-        setNequiPhone("");
+        // Nequi needs phone number - store transaction info for later
+        setNequiTransactionId(data.transaction_id);
+        setNequiReference(data.reference);
+        toast.info(data.message);
       } else if (data?.redirect_url) {
         window.location.href = data.redirect_url;
       } else if (data?.checkout_url) {
@@ -237,14 +241,104 @@ export default function ClientPaymentPortal() {
     }
   };
 
-  const handleNequiPayment = () => {
+  const handleNequiPayment = async () => {
     if (!nequiPhone || nequiPhone.length < 10) {
       toast.error("Ingresa un número de celular válido");
       return;
     }
-    if (nequiPendingInvoice) {
-      processPayment(nequiPendingInvoice, 'nequi', nequiPhone);
+    if (!nequiPendingInvoice || !nequiTransactionId || !nequiReference) {
+      toast.error("Error: información de transacción incompleta");
+      return;
     }
+
+    setIsProcessingPayment(true);
+    setNequiDialogOpen(false);
+    setNequiPolling(true);
+    setNequiStatus('sending');
+
+    try {
+      // Send push notification
+      const { data, error } = await supabase.functions.invoke('payment-gateway', {
+        body: {
+          action: 'nequi-push',
+          transaction_id: nequiTransactionId,
+          phone_number: nequiPhone,
+          amount: nequiPendingInvoice.amount,
+          mikrotik_id: clientInfo?.mikrotik_id,
+          reference: nequiReference
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(data?.message || "Notificación enviada a tu app Nequi");
+      setNequiStatus('waiting');
+
+      // Start polling for payment status
+      pollNequiPayment(nequiTransactionId, nequiReference);
+
+    } catch (error: any) {
+      console.error('Nequi push error:', error);
+      toast.error(`Error: ${error.message}`);
+      setNequiPolling(false);
+      setNequiStatus(null);
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const pollNequiPayment = async (transactionId: string, reference: string) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 5 minutes (10 seconds interval)
+
+    const checkStatus = async () => {
+      if (attempts >= maxAttempts) {
+        setNequiPolling(false);
+        setNequiStatus('timeout');
+        toast.error("Tiempo de espera agotado. Si aprobaste el pago, el estado se actualizará pronto.");
+        return;
+      }
+
+      attempts++;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('payment-gateway', {
+          body: {
+            action: 'verify-payment',
+            transaction_id: transactionId,
+            platform: 'nequi',
+            external_reference: reference
+          }
+        });
+
+        if (error) {
+          console.error('Status check error:', error);
+          setTimeout(checkStatus, 10000);
+          return;
+        }
+
+        if (data?.status === 'approved') {
+          setNequiPolling(false);
+          setNequiStatus('approved');
+          toast.success("¡Pago aprobado! Tu servicio ha sido reactivado.");
+          // Refresh invoices
+          handleSearchWithQuery(searchQuery);
+        } else if (data?.status === 'rejected') {
+          setNequiPolling(false);
+          setNequiStatus('rejected');
+          toast.error("El pago fue rechazado");
+        } else {
+          // Still pending, continue polling
+          setTimeout(checkStatus, 10000);
+        }
+
+      } catch (err) {
+        console.error('Polling error:', err);
+        setTimeout(checkStatus, 10000);
+      }
+    };
+
+    checkStatus();
   };
 
   const getStatusBadge = (status: string) => {
@@ -439,6 +533,55 @@ export default function ClientPaymentPortal() {
                   <p className="text-sm text-muted-foreground">
                     Actualmente no hay métodos de pago en línea disponibles. 
                     Contacta a tu proveedor para realizar el pago.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Nequi Payment Status Card */}
+            {nequiPolling && (
+              <Card className="border-pink-500/50 bg-pink-500/10">
+                <CardContent className="py-6 text-center">
+                  <Loader2 className="h-10 w-10 text-pink-500 mx-auto mb-4 animate-spin" />
+                  <p className="text-lg font-medium">Esperando confirmación de Nequi</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Revisa tu app Nequi y aprueba el pago. Esta página se actualizará automáticamente.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {nequiStatus === 'approved' && !nequiPolling && (
+              <Card className="border-green-500/50 bg-green-500/10">
+                <CardContent className="py-6 text-center">
+                  <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-4" />
+                  <p className="text-lg font-medium">¡Pago Exitoso!</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Tu pago con Nequi fue procesado correctamente.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {nequiStatus === 'rejected' && !nequiPolling && (
+              <Card className="border-destructive/50 bg-destructive/10">
+                <CardContent className="py-6 text-center">
+                  <AlertTriangle className="h-10 w-10 text-destructive mx-auto mb-4" />
+                  <p className="text-lg font-medium">Pago Rechazado</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    El pago fue rechazado. Intenta nuevamente.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {nequiStatus === 'timeout' && !nequiPolling && (
+              <Card className="border-yellow-500/50 bg-yellow-500/10">
+                <CardContent className="py-6 text-center">
+                  <AlertTriangle className="h-10 w-10 text-yellow-500 mx-auto mb-4" />
+                  <p className="text-lg font-medium">Tiempo Expirado</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    No recibimos respuesta. Si aprobaste el pago, el estado se actualizará pronto.
                   </p>
                 </CardContent>
               </Card>

@@ -130,29 +130,10 @@ serve(async (req) => {
         } else if (platform === 'nequi') {
           // Nequi Push Payment integration
           const nequiUrl = platformConfig.environment === 'production'
-            ? 'https://api.nequi.com'
-            : 'https://api.sandbox.nequi.com';
+            ? 'https://api.nequi.com.co'
+            : 'https://api.sandbox.nequi.com.co';
 
           const reference = `INV-${invoice_id.slice(0, 8)}-${Date.now()}`;
-
-          // Get OAuth token first
-          const tokenResponse = await fetch(`${nequiUrl}/oauth/token`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Authorization': `Basic ${btoa(`${platformConfig.public_key}:${platformConfig.private_key}`)}`
-            },
-            body: 'grant_type=client_credentials'
-          });
-
-          if (!tokenResponse.ok) {
-            const errorData = await tokenResponse.text();
-            console.error('Nequi OAuth error:', errorData);
-            throw new Error('Error al autenticar con Nequi');
-          }
-
-          const tokenData = await tokenResponse.json();
-          const accessToken = tokenData.access_token;
 
           // Store reference for webhook matching
           await supabase
@@ -181,6 +162,109 @@ serve(async (req) => {
             transaction_id: transaction.id,
             redirect_url: paymentUrl,
             checkout_url: paymentUrl 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'nequi-push': {
+        const { transaction_id, phone_number, amount, mikrotik_id, reference } = params;
+
+        // Get platform config
+        const { data: platformConfig, error: configError } = await supabase
+          .from('payment_platforms')
+          .select('*')
+          .eq('mikrotik_id', mikrotik_id)
+          .eq('platform', 'nequi')
+          .eq('is_active', true)
+          .single();
+
+        if (configError || !platformConfig) {
+          throw new Error('Plataforma Nequi no configurada o inactiva');
+        }
+
+        const nequiUrl = platformConfig.environment === 'production'
+          ? 'https://api.nequi.com.co'
+          : 'https://api.sandbox.nequi.com.co';
+
+        // Get OAuth token
+        const tokenResponse = await fetch(`${nequiUrl}/oauth/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${btoa(`${platformConfig.public_key}:${platformConfig.private_key}`)}`
+          },
+          body: 'grant_type=client_credentials'
+        });
+
+        if (!tokenResponse.ok) {
+          const errorData = await tokenResponse.text();
+          console.error('Nequi OAuth error:', errorData);
+          throw new Error('Error al autenticar con Nequi');
+        }
+
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+
+        // Send push notification to Nequi user
+        const pushResponse = await fetch(`${nequiUrl}/payments/v2/-services-paymentservice-unregisteredpayment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'x-api-key': platformConfig.public_key
+          },
+          body: JSON.stringify({
+            RequestMessage: {
+              RequestHeader: {
+                Channel: 'PNP04-C001',
+                RequestDate: new Date().toISOString(),
+                MessageID: `msg-${Date.now()}`,
+                ClientID: platformConfig.public_key,
+                Destination: {
+                  ServiceName: 'PaymentsService',
+                  ServiceOperation: 'unregisteredPayment',
+                  ServiceRegion: 'C001',
+                  ServiceVersion: '1.0.0'
+                }
+              },
+              RequestBody: {
+                any: {
+                  unregisteredPaymentRQ: {
+                    phoneNumber: phone_number.replace(/\D/g, ''),
+                    code: reference,
+                    value: String(Math.round(amount * 100)),
+                    expirationDate: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 min expiry
+                  }
+                }
+              }
+            }
+          })
+        });
+
+        const pushResult = await pushResponse.json();
+        console.log('Nequi push response:', pushResult);
+
+        if (!pushResponse.ok) {
+          console.error('Nequi push error:', pushResult);
+          throw new Error(pushResult?.ResponseMessage?.ResponseBody?.any?.unregisteredPaymentRS?.message || 'Error al enviar notificación Nequi');
+        }
+
+        // Update transaction with push info
+        await supabase
+          .from('payment_transactions')
+          .update({ 
+            status: 'awaiting_confirmation',
+            raw_response: pushResult
+          })
+          .eq('id', transaction_id);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            transaction_id,
+            reference,
+            message: 'Notificación enviada. Revisa tu app Nequi para aprobar el pago.'
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -255,6 +339,72 @@ serve(async (req) => {
               const payment = data.results[0];
               paymentStatus = payment.status === 'approved' ? 'approved' :
                              payment.status === 'rejected' ? 'rejected' : 'pending';
+            }
+          }
+        } else if (platform === 'nequi') {
+          // Verify Nequi payment status
+          const nequiUrl = platformConfig.environment === 'production'
+            ? 'https://api.nequi.com.co'
+            : 'https://api.sandbox.nequi.com.co';
+
+          // Get OAuth token first
+          const tokenResponse = await fetch(`${nequiUrl}/oauth/token`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${btoa(`${platformConfig.public_key}:${platformConfig.private_key}`)}`
+            },
+            body: 'grant_type=client_credentials'
+          });
+
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            const accessToken = tokenData.access_token;
+
+            // Check payment status using Nequi's query endpoint
+            const statusResponse = await fetch(`${nequiUrl}/payments/v2/-services-paymentservice-getstatuspayment`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`,
+                'x-api-key': platformConfig.public_key
+              },
+              body: JSON.stringify({
+                RequestMessage: {
+                  RequestHeader: {
+                    Channel: 'PNP04-C001',
+                    RequestDate: new Date().toISOString(),
+                    MessageID: `msg-${Date.now()}`,
+                    ClientID: platformConfig.public_key,
+                    Destination: {
+                      ServiceName: 'PaymentsService',
+                      ServiceOperation: 'getStatusPayment',
+                      ServiceRegion: 'C001',
+                      ServiceVersion: '1.0.0'
+                    }
+                  },
+                  RequestBody: {
+                    any: {
+                      getStatusPaymentRQ: {
+                        codeQR: external_reference
+                      }
+                    }
+                  }
+                }
+              })
+            });
+
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              const nequiStatus = statusData?.ResponseMessage?.ResponseBody?.any?.getStatusPaymentRS?.status;
+              
+              if (nequiStatus === '35') {
+                paymentStatus = 'approved';
+              } else if (nequiStatus === '36' || nequiStatus === '37') {
+                paymentStatus = 'rejected';
+              } else {
+                paymentStatus = 'pending';
+              }
             }
           }
         }
