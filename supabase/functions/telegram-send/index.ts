@@ -77,25 +77,61 @@ Deno.serve(async (req) => {
     let telegramResult: any;
     let telegramResponse: Response;
 
-    // If document URL is provided, send document first
+    // If document URL is provided, download and send as multipart
     if (documentUrl) {
-      const telegramDocUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`;
+      console.log(`Downloading document from: ${documentUrl}`);
       
-      telegramResponse = await fetch(telegramDocUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          chat_id: chatId,
-          document: documentUrl,
-          caption: message,
-          parse_mode: "HTML",
-        }),
-      });
+      try {
+        // Download the file from the URL
+        const fileResponse = await fetch(documentUrl);
+        if (!fileResponse.ok) {
+          console.error(`Failed to download file: ${fileResponse.status} ${fileResponse.statusText}`);
+          throw new Error(`No se pudo descargar el archivo: ${fileResponse.statusText}`);
+        }
+        
+        const fileBuffer = await fileResponse.arrayBuffer();
+        const fileName = documentName || "document.pdf";
+        
+        console.log(`Downloaded file: ${fileName}, size: ${fileBuffer.byteLength} bytes`);
+        
+        // Create FormData and append the file
+        const formData = new FormData();
+        formData.append("chat_id", chatId);
+        formData.append("caption", message);
+        formData.append("parse_mode", "HTML");
+        formData.append("document", new Blob([fileBuffer], { type: "application/pdf" }), fileName);
+        
+        const telegramDocUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`;
+        
+        telegramResponse = await fetch(telegramDocUrl, {
+          method: "POST",
+          body: formData,
+        });
 
-      telegramResult = await telegramResponse.json();
-      console.log("Telegram sendDocument response:", JSON.stringify(telegramResult));
+        telegramResult = await telegramResponse.json();
+        console.log("Telegram sendDocument response:", JSON.stringify(telegramResult));
+      } catch (downloadError: any) {
+        console.error("Error downloading/sending document:", downloadError);
+        
+        // Fallback to sending just the text message
+        console.log("Falling back to text message only");
+        const telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendMessage`;
+        
+        telegramResponse = await fetch(telegramUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: message + "\n\n📎 Enlace al documento: " + documentUrl,
+            parse_mode: "HTML",
+          }),
+        });
+
+        telegramResult = await telegramResponse.json();
+        console.log("Telegram fallback response:", JSON.stringify(telegramResult));
+      }
     } else {
       // Send text message only
       const telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendMessage`;
