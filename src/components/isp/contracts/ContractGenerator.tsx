@@ -26,7 +26,8 @@ interface ContractGeneratorProps {
 }
 
 export function ContractGenerator({ clientData, onContractSigned }: ContractGeneratorProps) {
-  const contractRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
   const mikrotikId = getSelectedDeviceId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -182,18 +183,25 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
   };
 
   const generatePDF = async (shouldSave = false) => {
-    if (!contractRef.current) {
+    const el = pdfRef.current;
+    if (!el) {
       toast.error("Error: No se encontró la vista previa del contrato");
       return;
     }
 
+    const rect = el.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) {
+      toast.error("Error: La vista previa no tiene tamaño. Abra la Vista Previa e intente de nuevo.");
+      return;
+    }
+
     setIsGenerating(true);
-    
+
     try {
       // Esperar un momento para asegurar que el QR esté renderizado
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const canvas = await html2canvas(contractRef.current, {
+
+      const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
@@ -492,7 +500,7 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                     </DialogHeader>
                     <ScrollArea className="h-[70vh]">
                       <ContractPreview
-                        ref={contractRef}
+                        ref={previewRef}
                         clientData={contractFormData}
                         terms={terms}
                         companyInfo={companyInfo}
@@ -587,10 +595,10 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
             </CardContent>
           </Card>
 
-          {/* Preview oculto para generación de PDF */}
-          <div className="hidden">
+          {/* Preview offscreen para generación de PDF (no usar display:none) */}
+          <div className="fixed -left-[10000px] top-0 w-[896px]">
             <ContractPreview
-              ref={contractRef}
+              ref={pdfRef}
               clientData={contractFormData}
               terms={terms}
               companyInfo={companyInfo}
