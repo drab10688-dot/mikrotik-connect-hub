@@ -135,44 +135,29 @@ async function buildInvoicePDF(
     }
   }
 
-  // Company name and info
-  const companyX = margin + logoWidth;
-  doc.setFontSize(16);
-  doc.setTextColor(...darkColor);
-  doc.setFont("helvetica", "bold");
-  doc.text(companyData.name, companyX, y + 6);
-
-  doc.setFontSize(8);
-  doc.setTextColor(...grayColor);
-  doc.setFont("helvetica", "normal");
-  doc.text(`NIT: ${companyData.nit}`, companyX, y + 12);
-  doc.text(`${companyData.address} | Tel: ${companyData.phone}`, companyX, y + 17);
-  doc.text(`${companyData.email}${companyData.website ? ' | ' + companyData.website : ''}`, companyX, y + 22);
-
-  // Invoice header box (right side)
-  const boxWidth = 52;
+  // Invoice header box (right side) - draw first to know available width
+  const boxWidth = 58;
   const boxX = pageWidth - margin - boxWidth;
   
   doc.setFillColor(...primaryColor);
-  doc.roundedRect(boxX, y - 5, boxWidth, 35, 2, 2, "F");
+  doc.roundedRect(boxX, y - 5, boxWidth, 38, 2, 2, "F");
   
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
-  doc.text("FACTURA DE VENTA", boxX + boxWidth / 2, y + 3, { align: "center" });
+  doc.text("FACTURA DE VENTA", boxX + boxWidth / 2, y + 4, { align: "center" });
   
-  doc.setFontSize(11);
-  doc.text(invoice.invoice_number, boxX + boxWidth / 2, y + 11, { align: "center" });
+  doc.setFontSize(10);
+  doc.text(invoice.invoice_number, boxX + boxWidth / 2, y + 12, { align: "center" });
 
   // Status badge
-  doc.setFontSize(8);
-  const statusY = y + 20;
+  const statusY = y + 18;
   let statusText = "PENDIENTE";
   let statusBg: [number, number, number] = [251, 191, 36];
   let statusFg: [number, number, number] = [0, 0, 0];
   
   if (invoice.status === "paid") {
-    statusText = "✓ PAGADA";
+    statusText = "PAGADA";
     statusBg = [34, 197, 94];
     statusFg = [255, 255, 255];
   } else if (invoice.status === "overdue") {
@@ -182,10 +167,34 @@ async function buildInvoicePDF(
   }
   
   doc.setFillColor(...statusBg);
-  doc.roundedRect(boxX + 8, statusY, boxWidth - 16, 8, 1, 1, "F");
+  doc.roundedRect(boxX + 6, statusY, boxWidth - 12, 10, 2, 2, "F");
   doc.setTextColor(...statusFg);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
-  doc.text(statusText, boxX + boxWidth / 2, statusY + 5.5, { align: "center" });
+  doc.text(statusText, boxX + boxWidth / 2, statusY + 7, { align: "center" });
+
+  // Company name and info (with max width to not overlap invoice box)
+  const companyX = margin + logoWidth;
+  const maxCompanyWidth = boxX - companyX - 5;
+  
+  doc.setFontSize(14);
+  doc.setTextColor(...darkColor);
+  doc.setFont("helvetica", "bold");
+  // Split company name if too long
+  const companyNameLines = doc.splitTextToSize(companyData.name, maxCompanyWidth);
+  doc.text(companyNameLines, companyX, y + 5);
+  
+  const nameOffset = companyNameLines.length > 1 ? 5 : 0;
+
+  doc.setFontSize(8);
+  doc.setTextColor(...grayColor);
+  doc.setFont("helvetica", "normal");
+  doc.text(`NIT: ${companyData.nit}`, companyX, y + 11 + nameOffset);
+  doc.text(`${companyData.address} | Tel: ${companyData.phone}`, companyX, y + 16 + nameOffset);
+  doc.text(`${companyData.email}`, companyX, y + 21 + nameOffset);
+  if (companyData.website) {
+    doc.text(companyData.website, companyX, y + 26 + nameOffset);
+  }
 
   y = 58;
 
@@ -278,33 +287,36 @@ async function buildInvoicePDF(
 
   // Items table
   const tableWidth = pageWidth - margin * 2;
+  const col1Width = tableWidth - 60; // Description
+  const col2Width = 25; // Cantidad
+  const col3Width = 35; // Valor
   
   // Table header
   doc.setFillColor(...primaryColor);
-  doc.rect(margin, y, tableWidth, 9, "F");
+  doc.rect(margin, y, tableWidth, 10, "F");
   
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
-  doc.text("DESCRIPCIÓN DEL SERVICIO", margin + 4, y + 6);
-  doc.text("CANT.", margin + tableWidth - 55, y + 6, { align: "center" });
-  doc.text("VALOR UNITARIO", margin + tableWidth - 25, y + 6, { align: "right" });
+  doc.text("DESCRIPCIÓN DEL SERVICIO", margin + 4, y + 7);
+  doc.text("CANT.", margin + col1Width + col2Width / 2, y + 7, { align: "center" });
+  doc.text("VALOR", margin + tableWidth - 4, y + 7, { align: "right" });
 
-  y += 9;
+  y += 10;
 
   // Table row
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(229, 231, 235);
-  doc.setLineWidth(0.2);
+  doc.setLineWidth(0.3);
   doc.rect(margin, y, tableWidth, 12, "S");
   
   doc.setTextColor(...darkColor);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(serviceDescription, margin + 4, y + 7);
-  doc.text("1", margin + tableWidth - 55, y + 7, { align: "center" });
+  doc.text(serviceDescription, margin + 4, y + 8);
+  doc.text("1", margin + col1Width + col2Width / 2, y + 8, { align: "center" });
   doc.setFont("helvetica", "bold");
-  doc.text(`$${invoice.amount.toLocaleString("es-CO")}`, margin + tableWidth - 4, y + 7, { align: "right" });
+  doc.text(`$${invoice.amount.toLocaleString("es-CO")}`, margin + tableWidth - 4, y + 8, { align: "right" });
 
   y += 12;
 
