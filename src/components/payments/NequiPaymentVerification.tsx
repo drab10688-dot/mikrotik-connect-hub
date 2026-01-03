@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,8 +19,12 @@ import {
   AlertTriangle, 
   Search,
   ShieldCheck,
-  Ban
+  Ban,
+  QrCode,
+  Camera,
+  X
 } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
 
 interface NequiPaymentVerificationProps {
   open: boolean;
@@ -52,6 +56,10 @@ export function NequiPaymentVerification({
   const [nequiReference, setNequiReference] = useState("");
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerContainerId = "nequi-qr-scanner";
 
   // Check if reference already exists in database
   const checkDuplicateReference = async (reference: string): Promise<VerificationResult> => {
@@ -215,11 +223,113 @@ export function NequiPaymentVerification({
   });
 
   const handleClose = () => {
+    stopScanner();
     setNequiReference("");
     setVerificationResult(null);
     setIsVerifying(false);
+    setShowScanner(false);
+    setScannerError(null);
     onOpenChange(false);
   };
+
+  // QR Scanner functions
+  const startScanner = async () => {
+    setScannerError(null);
+    setShowScanner(true);
+
+    // Small delay to ensure the container is rendered
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    try {
+      scannerRef.current = new Html5Qrcode(scannerContainerId);
+      
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        (decodedText) => {
+          // Extract reference from QR - Nequi QRs usually contain payment info
+          const reference = extractNequiReference(decodedText);
+          if (reference) {
+            setNequiReference(reference);
+            toast.success("¡QR escaneado exitosamente!");
+            stopScanner();
+          } else {
+            // Still use the raw text if no pattern matches
+            setNequiReference(decodedText);
+            toast.info("QR leído. Verifica que sea la referencia correcta.");
+            stopScanner();
+          }
+        },
+        () => {
+          // Ignore QR errors - just means no QR found yet
+        }
+      );
+    } catch (err: any) {
+      console.error("Scanner error:", err);
+      if (err.toString().includes("NotAllowedError")) {
+        setScannerError("Permiso de cámara denegado. Por favor, permite el acceso a la cámara.");
+      } else if (err.toString().includes("NotFoundError")) {
+        setScannerError("No se encontró cámara en este dispositivo.");
+      } else {
+        setScannerError("Error al iniciar la cámara. Intenta de nuevo.");
+      }
+      setShowScanner(false);
+    }
+  };
+
+  const stopScanner = async () => {
+    if (scannerRef.current?.isScanning) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current.clear();
+      } catch (err) {
+        console.error("Error stopping scanner:", err);
+      }
+    }
+    scannerRef.current = null;
+    setShowScanner(false);
+  };
+
+  const extractNequiReference = (qrContent: string): string | null => {
+    // Try to extract reference from common Nequi QR formats
+    // Format 1: Direct reference number
+    const refMatch = qrContent.match(/NQ\d+/i);
+    if (refMatch) return refMatch[0].toUpperCase();
+
+    // Format 2: URL with reference parameter
+    const urlRefMatch = qrContent.match(/[?&]ref(?:erence)?=([^&]+)/i);
+    if (urlRefMatch) return urlRefMatch[1].toUpperCase();
+
+    // Format 3: JSON format
+    try {
+      const json = JSON.parse(qrContent);
+      if (json.reference) return json.reference.toUpperCase();
+      if (json.ref) return json.ref.toUpperCase();
+      if (json.transactionId) return json.transactionId.toUpperCase();
+    } catch {
+      // Not JSON, continue
+    }
+
+    // Format 4: If it's a clean alphanumeric string (likely a reference)
+    const cleanContent = qrContent.trim();
+    if (/^[A-Za-z0-9]{6,30}$/.test(cleanContent)) {
+      return cleanContent.toUpperCase();
+    }
+
+    return null;
+  };
+
+  // Cleanup scanner on unmount
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().catch(console.error);
+      }
+    };
+  }, []);
 
   const handleVerify = () => {
     verifyMutation.mutate();
@@ -245,38 +355,85 @@ export function NequiPaymentVerification({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Reference Input */}
-          <div className="space-y-2">
-            <Label htmlFor="nequi-ref">Referencia de Pago Nequi</Label>
-            <div className="flex gap-2">
-              <Input
-                id="nequi-ref"
-                value={nequiReference}
-                onChange={(e) => {
-                  setNequiReference(e.target.value);
-                  setVerificationResult(null); // Reset verification on change
-                }}
-                placeholder="Ej: NQ123456789"
-                className="flex-1"
-                disabled={confirmPaymentMutation.isPending}
+          {/* QR Scanner Section */}
+          {showScanner ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <Camera className="h-4 w-4" />
+                  Escaneando QR...
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={stopScanner}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancelar
+                </Button>
+              </div>
+              <div 
+                id={scannerContainerId} 
+                className="w-full aspect-square rounded-lg overflow-hidden bg-muted"
               />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleVerify}
-                disabled={!nequiReference.trim() || isVerifying || confirmPaymentMutation.isPending}
-              >
-                {isVerifying ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Apunta la cámara al código QR del comprobante Nequi
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Ingresa el número de referencia que aparece en el comprobante de pago Nequi del cliente.
-            </p>
-          </div>
+          ) : (
+            <>
+              {/* Scanner Error */}
+              {scannerError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{scannerError}</AlertDescription>
+                </Alert>
+              )}
+
+              {/* Reference Input */}
+              <div className="space-y-2">
+                <Label htmlFor="nequi-ref">Referencia de Pago Nequi</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="nequi-ref"
+                    value={nequiReference}
+                    onChange={(e) => {
+                      setNequiReference(e.target.value);
+                      setVerificationResult(null);
+                    }}
+                    placeholder="Ej: NQ123456789"
+                    className="flex-1"
+                    disabled={confirmPaymentMutation.isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={startScanner}
+                    disabled={confirmPaymentMutation.isPending}
+                    title="Escanear QR"
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleVerify}
+                    disabled={!nequiReference.trim() || isVerifying || confirmPaymentMutation.isPending}
+                  >
+                    {isVerifying ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Escanea el QR del comprobante o ingresa la referencia manualmente.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Verification Result */}
           {verificationResult && (
