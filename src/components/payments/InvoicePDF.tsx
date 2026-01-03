@@ -1,7 +1,6 @@
 import { jsPDF } from "jspdf";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import omnilinkLogo from "@/assets/omnilink-logo.jpeg";
 
 interface InvoiceData {
   invoice_number: string;
@@ -28,25 +27,51 @@ interface CompanyData {
   address: string;
   phone: string;
   email: string;
-  city: string;
+  website?: string;
+  logoUrl?: string;
 }
 
-// Default company data - can be customized later
-const defaultCompany: CompanyData = {
-  name: "OmniLink S.A.S",
-  nit: "901.234.567-8",
-  address: "Calle Principal #123",
-  phone: "+57 300 123 4567",
-  email: "facturacion@omnilink.com",
-  city: "Colombia"
-};
+// Load company data from localStorage (same source as ContractTermsEditor)
+function getCompanyFromStorage(): CompanyData {
+  const DEFAULT_COMPANY: CompanyData = {
+    name: "Suros Comunicaciones SAS ZOMAC",
+    nit: "901692609",
+    address: "Dirección de la empresa",
+    phone: "312 6189282",
+    email: "administracion@sur-os.com",
+    website: "https://suros-comunicaciones.com",
+    logoUrl: "",
+  };
+
+  try {
+    const saved = localStorage.getItem("isp_company_info");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        name: parsed.name || DEFAULT_COMPANY.name,
+        nit: parsed.nit || DEFAULT_COMPANY.nit,
+        address: parsed.address || DEFAULT_COMPANY.address,
+        phone: parsed.contact || DEFAULT_COMPANY.phone,
+        email: parsed.email || DEFAULT_COMPANY.email,
+        website: parsed.website || DEFAULT_COMPANY.website,
+        logoUrl: parsed.logoUrl || "",
+      };
+    }
+  } catch (e) {
+    console.error("Error loading company info:", e);
+  }
+  return DEFAULT_COMPANY;
+}
 
 export async function generateInvoicePDF(
   invoice: InvoiceData,
   client: ClientData,
-  company: CompanyData = defaultCompany,
+  company?: CompanyData,
   serviceDescription: string = "Servicio de Internet - Plan Mensual"
 ): Promise<void> {
+  // Use provided company or load from storage
+  const companyData = company || getCompanyFromStorage();
+
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -58,19 +83,24 @@ export async function generateInvoicePDF(
   let y = 20;
 
   // Colors
-  const primaryColor: [number, number, number] = [0, 150, 199]; // Cyan-like color
-  const darkColor: [number, number, number] = [30, 41, 59]; // Slate-800
-  const mutedColor: [number, number, number] = [100, 116, 139]; // Slate-500
+  const primaryColor: [number, number, number] = [0, 150, 199];
+  const darkColor: [number, number, number] = [30, 41, 59];
+  const mutedColor: [number, number, number] = [100, 116, 139];
 
-  // Load and add logo
+  // Load and add logo from company data or fallback
   try {
-    const img = new Image();
-    img.src = omnilinkLogo;
-    await new Promise((resolve) => {
-      img.onload = resolve;
-      img.onerror = resolve;
-    });
-    doc.addImage(img, "JPEG", margin, y, 45, 45);
+    if (companyData.logoUrl) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = companyData.logoUrl;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
+      if (img.complete && img.naturalWidth > 0) {
+        doc.addImage(img, "PNG", margin, y, 45, 45);
+      }
+    }
   } catch (error) {
     console.error("Error loading logo:", error);
   }
@@ -79,16 +109,18 @@ export async function generateInvoicePDF(
   doc.setFontSize(18);
   doc.setTextColor(...darkColor);
   doc.setFont("helvetica", "bold");
-  doc.text(company.name, margin + 55, y + 10);
+  doc.text(companyData.name, margin + 55, y + 10);
 
   doc.setFontSize(9);
   doc.setTextColor(...mutedColor);
   doc.setFont("helvetica", "normal");
-  doc.text(`NIT: ${company.nit}`, margin + 55, y + 18);
-  doc.text(company.address, margin + 55, y + 24);
-  doc.text(`${company.city}`, margin + 55, y + 30);
-  doc.text(`Tel: ${company.phone}`, margin + 55, y + 36);
-  doc.text(company.email, margin + 55, y + 42);
+  doc.text(`NIT: ${companyData.nit}`, margin + 55, y + 18);
+  doc.text(companyData.address, margin + 55, y + 24);
+  doc.text(`Tel: ${companyData.phone}`, margin + 55, y + 30);
+  doc.text(companyData.email, margin + 55, y + 36);
+  if (companyData.website) {
+    doc.text(companyData.website, margin + 55, y + 42);
+  }
 
   // Invoice title and number box (right side)
   const boxWidth = 55;
@@ -319,7 +351,7 @@ export async function generateInvoicePDF(
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.text(`Factura generada el ${format(new Date(), "dd/MM/yyyy 'a las' HH:mm")}`, pageWidth / 2, y, { align: "center" });
-  doc.text(`${company.name} - NIT: ${company.nit}`, pageWidth / 2, y + 5, { align: "center" });
+  doc.text(`${companyData.name} - NIT: ${companyData.nit}`, pageWidth / 2, y + 5, { align: "center" });
   doc.text("Este documento es una representación gráfica de la factura electrónica.", pageWidth / 2, y + 10, { align: "center" });
 
   // Save the PDF
