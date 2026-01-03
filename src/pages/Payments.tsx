@@ -6,7 +6,8 @@ import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 import { PaymentPlatformsConfig } from "@/components/payments/PaymentPlatformsConfig";
 import { ClientBillingManager } from "@/components/payments/ClientBillingManager";
 import { PaymentReportsDashboard } from "@/components/payments/PaymentReportsDashboard";
-import { CreditCard, Receipt, BarChart3, ExternalLink } from "lucide-react";
+import { WhatsAppConfig } from "@/components/payments/WhatsAppConfig";
+import { CreditCard, Receipt, BarChart3, ExternalLink, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { saveSelectedDevice, MikroTikDeviceConfig } from "@/lib/mikrotik";
@@ -68,7 +69,7 @@ export default function Payments() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 md:w-[500px]">
+          <TabsList className="grid w-full grid-cols-4 md:w-[650px]">
             <TabsTrigger value="platforms" className="flex items-center gap-2">
               <CreditCard className="h-4 w-4" />
               Plataformas
@@ -76,6 +77,10 @@ export default function Payments() {
             <TabsTrigger value="billing" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Facturación
+            </TabsTrigger>
+            <TabsTrigger value="whatsapp" className="flex items-center gap-2">
+              <MessageCircle className="h-4 w-4" />
+              WhatsApp
             </TabsTrigger>
             <TabsTrigger value="reports" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
@@ -89,6 +94,10 @@ export default function Payments() {
 
           <TabsContent value="billing">
             <ClientBillingManager mikrotikId={device?.id || null} />
+          </TabsContent>
+
+          <TabsContent value="whatsapp">
+            <WhatsAppConfig mikrotikId={device?.id || null} />
           </TabsContent>
 
           <TabsContent value="reports">
