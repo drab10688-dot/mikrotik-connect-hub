@@ -1,4 +1,5 @@
-import { forwardRef } from "react";
+import { forwardRef, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import type { ContractTerms, CompanyInfo } from "./ContractTermsEditor";
 
 export interface ClientContractData {
@@ -26,6 +27,40 @@ interface ContractPreviewProps {
 
 export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
   ({ clientData, terms, companyInfo, clientSignature, managerSignature, managerName }, ref) => {
+    const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
+
+    // Generar QR con datos de verificación
+    useEffect(() => {
+      const generateQR = async () => {
+        const verificationData = JSON.stringify({
+          contract: clientData.contractNumber,
+          client: clientData.clientName,
+          id: clientData.identification,
+          date: clientData.date,
+          company: companyInfo.nit,
+        });
+        
+        // Crear URL de verificación (base64 encoded)
+        const verificationUrl = `${window.location.origin}/verify-contract?data=${btoa(verificationData)}`;
+        
+        try {
+          const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
+            width: 100,
+            margin: 1,
+            color: {
+              dark: "#1a365d",
+              light: "#ffffff",
+            },
+          });
+          setQrCodeUrl(qrDataUrl);
+        } catch (err) {
+          console.error("Error generating QR:", err);
+        }
+      };
+
+      generateQR();
+    }, [clientData.contractNumber, clientData.clientName, clientData.identification, clientData.date, companyInfo.nit]);
+
     const formatDate = (dateStr: string) => {
       const date = new Date(dateStr);
       return date.toLocaleDateString("es-CO", {
@@ -384,18 +419,50 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           </div>
         </div>
 
-        {/* Footer Elegante */}
+        {/* Footer con QR de Verificación */}
         <div 
-          className="mt-12 pt-6 text-center"
+          className="mt-12 pt-6"
           style={{ borderTop: "1px solid #e2e8f0" }}
         >
-          <div className="text-xs mb-3" style={{ color: "#718096" }}>
-            <p className="font-semibold">{companyInfo.name}</p>
-            <p>NIT: {companyInfo.nit} | {companyInfo.contact} | {companyInfo.email}</p>
+          <div className="flex items-center justify-between">
+            {/* QR Code */}
+            <div className="flex items-center gap-3">
+              {qrCodeUrl && (
+                <img
+                  src={qrCodeUrl}
+                  alt="QR de verificación"
+                  className="w-20 h-20"
+                />
+              )}
+              <div className="text-left">
+                <p className="text-xs font-semibold" style={{ color: "#1a365d" }}>
+                  Verificación Digital
+                </p>
+                <p className="text-xs" style={{ color: "#718096" }}>
+                  Escanee el código QR para
+                </p>
+                <p className="text-xs" style={{ color: "#718096" }}>
+                  verificar la autenticidad
+                </p>
+                <p className="text-xs font-mono mt-1" style={{ color: "#4a5568" }}>
+                  {clientData.contractNumber}
+                </p>
+              </div>
+            </div>
+
+            {/* Company Info */}
+            <div className="text-right">
+              <div className="text-xs" style={{ color: "#718096" }}>
+                <p className="font-semibold">{companyInfo.name}</p>
+                <p>NIT: {companyInfo.nit}</p>
+                <p>{companyInfo.contact}</p>
+                <p>{companyInfo.email}</p>
+              </div>
+              <p className="text-xs mt-2" style={{ color: "#a0aec0" }}>
+                Documento generado el {formatDate(new Date().toISOString())}
+              </p>
+            </div>
           </div>
-          <p className="text-xs" style={{ color: "#a0aec0" }}>
-            Documento generado electrónicamente el {formatDate(new Date().toISOString())}
-          </p>
         </div>
       </div>
     );
