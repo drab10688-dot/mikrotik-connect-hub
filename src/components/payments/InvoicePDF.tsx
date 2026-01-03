@@ -63,8 +63,8 @@ function getCompanyFromStorage(): CompanyData {
   return DEFAULT_COMPANY;
 }
 
-// Compress and resize image for smaller PDF
-async function loadAndCompressLogo(url: string, maxWidth: number = 150): Promise<string | null> {
+// Compress and resize image for smaller PDF - preserve transparency with PNG
+async function loadAndCompressLogo(url: string, maxWidth: number = 180): Promise<{ data: string; format: string } | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -75,9 +75,11 @@ async function loadAndCompressLogo(url: string, maxWidth: number = 150): Promise
       canvas.height = img.height * ratio;
       const ctx = canvas.getContext("2d");
       if (ctx) {
+        // Clear canvas for transparency support
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // Use JPEG with compression for smaller file size
-        resolve(canvas.toDataURL("image/jpeg", 0.6));
+        // Use PNG for transparency, better quality (0.85)
+        resolve({ data: canvas.toDataURL("image/png", 0.85), format: "PNG" });
       } else {
         resolve(null);
       }
@@ -108,27 +110,30 @@ async function buildInvoicePDF(
   const margin = 15;
   let y = 15;
 
-  // Professional color palette
-  const primaryColor: [number, number, number] = [15, 82, 186]; // Deep blue
-  const accentColor: [number, number, number] = [37, 99, 235]; // Bright blue
-  const darkColor: [number, number, number] = [17, 24, 39]; // Near black
-  const grayColor: [number, number, number] = [107, 114, 128];
-  const lightGray: [number, number, number] = [243, 244, 246];
+  // Futuristic color palette - Cyan/Teal gradient theme
+  const primaryColor: [number, number, number] = [6, 182, 212]; // Cyan
+  const primaryDark: [number, number, number] = [8, 145, 178]; // Dark cyan
+  const accentColor: [number, number, number] = [20, 184, 166]; // Teal
+  const darkColor: [number, number, number] = [15, 23, 42]; // Slate 900
+  const grayColor: [number, number, number] = [100, 116, 139]; // Slate 500
+  const lightGray: [number, number, number] = [241, 245, 249]; // Slate 100
 
-  // Top accent bar
+  // Futuristic gradient-like top bar with dual colors
+  doc.setFillColor(...primaryDark);
+  doc.rect(0, 0, pageWidth, 4, "F");
   doc.setFillColor(...primaryColor);
-  doc.rect(0, 0, pageWidth, 8, "F");
+  doc.rect(0, 4, pageWidth, 4, "F");
 
   y = 20;
 
-  // Logo (compressed)
+  // Logo (higher quality with transparency)
   let logoWidth = 0;
   if (companyData.logoUrl) {
     try {
-      const compressedLogo = await loadAndCompressLogo(companyData.logoUrl, 120);
-      if (compressedLogo) {
-        doc.addImage(compressedLogo, "JPEG", margin, y, 28, 28);
-        logoWidth = 35;
+      const logoResult = await loadAndCompressLogo(companyData.logoUrl, 200);
+      if (logoResult) {
+        doc.addImage(logoResult.data, logoResult.format, margin, y, 32, 32);
+        logoWidth = 40;
       }
     } catch (error) {
       console.error("Error loading logo:", error);
@@ -389,11 +394,13 @@ async function buildInvoicePDF(
   doc.text("El servicio puede ser suspendido si no se realiza el pago antes del vencimiento.", margin + 18, y + 6);
   doc.text(`Para consultas: ${companyData.phone} | ${companyData.email}`, margin + 4, y + 13);
 
-  // Footer
+  // Futuristic footer with gradient effect
   const footerY = pageHeight - 15;
   
   doc.setFillColor(...primaryColor);
-  doc.rect(0, footerY - 5, pageWidth, 20, "F");
+  doc.rect(0, footerY - 5, pageWidth, 10, "F");
+  doc.setFillColor(...primaryDark);
+  doc.rect(0, footerY + 5, pageWidth, 10, "F");
   
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(7);
