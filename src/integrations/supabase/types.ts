@@ -787,6 +787,130 @@ export type Database = {
           },
         ]
       }
+      whatsapp_config: {
+        Row: {
+          access_token: string
+          business_account_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          mikrotik_id: string
+          phone_number_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          business_account_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          mikrotik_id: string
+          phone_number_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          business_account_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          mikrotik_id?: string
+          phone_number_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_config_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: true
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          created_by: string
+          error_message: string | null
+          id: string
+          message_content: string
+          message_type: string
+          mikrotik_id: string
+          phone_number: string
+          related_contract_id: string | null
+          related_invoice_id: string | null
+          sent_at: string | null
+          status: string
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          created_by: string
+          error_message?: string | null
+          id?: string
+          message_content: string
+          message_type?: string
+          mikrotik_id: string
+          phone_number: string
+          related_contract_id?: string | null
+          related_invoice_id?: string | null
+          sent_at?: string | null
+          status?: string
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          created_by?: string
+          error_message?: string | null
+          id?: string
+          message_content?: string
+          message_type?: string
+          mikrotik_id?: string
+          phone_number?: string
+          related_contract_id?: string | null
+          related_invoice_id?: string | null
+          sent_at?: string | null
+          status?: string
+          whatsapp_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "isp_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_related_contract_id_fkey"
+            columns: ["related_contract_id"]
+            isOneToOne: false
+            referencedRelation: "isp_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_related_invoice_id_fkey"
+            columns: ["related_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "client_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
