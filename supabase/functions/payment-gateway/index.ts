@@ -417,6 +417,13 @@ serve(async (req) => {
 
         // If approved, update invoice and billing
         if (paymentStatus === 'approved' && transaction.invoice_id) {
+          // Get invoice details for notification
+          const { data: invoice } = await supabase
+            .from('client_invoices')
+            .select('*, isp_clients(*)')
+            .eq('id', transaction.invoice_id)
+            .single();
+
           await supabase
             .from('client_invoices')
             .update({ 
@@ -437,6 +444,68 @@ serve(async (req) => {
                 suspended_at: null
               })
               .eq('client_id', transaction.client_invoices.client_id);
+          }
+
+          // Send Telegram notification if configured and client has chat_id
+          if (invoice?.isp_clients?.telegram_chat_id) {
+            try {
+              // Get Telegram config
+              const { data: telegramConfig } = await supabase
+                .from('telegram_config')
+                .select('*')
+                .eq('mikrotik_id', transaction.mikrotik_id)
+                .eq('is_active', true)
+                .single();
+
+              if (telegramConfig) {
+                const platformName = platform === 'nequi' ? 'Nequi' : 
+                                    platform === 'wompi' ? 'Wompi' : 'Mercado Pago';
+                
+                const message = `✅ <b>¡Pago Confirmado!</b>\n\n` +
+                  `Hola ${invoice.isp_clients.client_name},\n\n` +
+                  `Tu pago ha sido procesado exitosamente:\n\n` +
+                  `📄 <b>Factura:</b> ${invoice.invoice_number}\n` +
+                  `💰 <b>Monto:</b> $${transaction.amount.toLocaleString()} COP\n` +
+                  `💳 <b>Método:</b> ${platformName}\n` +
+                  `📅 <b>Fecha:</b> ${new Date().toLocaleDateString('es-CO')}\n` +
+                  `🔖 <b>Referencia:</b> ${external_reference}\n\n` +
+                  `¡Gracias por tu pago! Tu servicio está activo. 🌐`;
+
+                // Send via Telegram API directly (no auth needed for internal call)
+                const telegramUrl = `https://api.telegram.org/bot${telegramConfig.bot_token}/sendMessage`;
+                
+                const telegramResponse = await fetch(telegramUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: invoice.isp_clients.telegram_chat_id,
+                    text: message,
+                    parse_mode: 'HTML'
+                  })
+                });
+
+                const telegramResult = await telegramResponse.json();
+                console.log('Telegram payment notification result:', telegramResult);
+
+                // Log the message
+                await supabase.from('telegram_messages').insert({
+                  mikrotik_id: transaction.mikrotik_id,
+                  client_id: invoice.isp_clients.id,
+                  chat_id: invoice.isp_clients.telegram_chat_id,
+                  message_type: 'payment_confirmation',
+                  message_content: message,
+                  related_invoice_id: transaction.invoice_id,
+                  status: telegramResult.ok ? 'sent' : 'failed',
+                  telegram_message_id: telegramResult.result?.message_id?.toString() || null,
+                  error_message: !telegramResult.ok ? telegramResult.description : null,
+                  sent_at: telegramResult.ok ? new Date().toISOString() : null,
+                  created_by: invoice.isp_clients.created_by
+                });
+              }
+            } catch (telegramError) {
+              console.error('Error sending Telegram notification:', telegramError);
+              // Don't fail the payment verification if Telegram fails
+            }
           }
         }
 
