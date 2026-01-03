@@ -1,0 +1,341 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
+import { 
+  Loader2, 
+  CheckCircle, 
+  AlertTriangle, 
+  Search,
+  ShieldCheck,
+  Ban
+} from "lucide-react";
+
+interface NequiPaymentVerificationProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  invoice: {
+    id: string;
+    invoice_number: string;
+    amount: number;
+    client_id: string | null;
+    mikrotik_id: string;
+  } | null;
+  onPaymentVerified?: () => void;
+}
+
+interface VerificationResult {
+  isValid: boolean;
+  isDuplicate: boolean;
+  existingInvoice?: string;
+  existingDate?: string;
+}
+
+export function NequiPaymentVerification({
+  open,
+  onOpenChange,
+  invoice,
+  onPaymentVerified
+}: NequiPaymentVerificationProps) {
+  const queryClient = useQueryClient();
+  const [nequiReference, setNequiReference] = useState("");
+  const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  // Check if reference already exists in database
+  const checkDuplicateReference = async (reference: string): Promise<VerificationResult> => {
+    // Check in client_invoices
+    const { data: existingInvoice, error: invoiceError } = await supabase
+      .from('client_invoices')
+      .select('id, invoice_number, paid_at')
+      .eq('payment_reference', reference)
+      .maybeSingle();
+
+    if (invoiceError) {
+      console.error('Error checking invoice reference:', invoiceError);
+    }
+
+    if (existingInvoice) {
+      return {
+        isValid: false,
+        isDuplicate: true,
+        existingInvoice: existingInvoice.invoice_number,
+        existingDate: existingInvoice.paid_at || undefined
+      };
+    }
+
+    // Check in payment_transactions
+    const { data: existingTransaction, error: txError } = await supabase
+      .from('payment_transactions')
+      .select('id, invoice_id, created_at, status')
+      .or(`transaction_id.eq.${reference},external_reference.eq.${reference}`)
+      .eq('status', 'approved')
+      .maybeSingle();
+
+    if (txError) {
+      console.error('Error checking transaction reference:', txError);
+    }
+
+    if (existingTransaction) {
+      // Get invoice number if exists
+      let invoiceNumber = 'Desconocida';
+      if (existingTransaction.invoice_id) {
+        const { data: inv } = await supabase
+          .from('client_invoices')
+          .select('invoice_number')
+          .eq('id', existingTransaction.invoice_id)
+          .single();
+        if (inv) invoiceNumber = inv.invoice_number;
+      }
+
+      return {
+        isValid: false,
+        isDuplicate: true,
+        existingInvoice: invoiceNumber,
+        existingDate: existingTransaction.created_at
+      };
+    }
+
+    return { isValid: true, isDuplicate: false };
+  };
+
+  // Verify reference mutation
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      if (!nequiReference.trim()) {
+        throw new Error('Ingresa la referencia de pago Nequi');
+      }
+
+      const cleanReference = nequiReference.trim().toUpperCase();
+      
+      // Validate reference format (Nequi references are typically alphanumeric, 10-20 chars)
+      if (cleanReference.length < 6) {
+        throw new Error('La referencia Nequi parece ser muy corta. Verifica el número.');
+      }
+
+      setIsVerifying(true);
+      const result = await checkDuplicateReference(cleanReference);
+      setVerificationResult(result);
+      setIsVerifying(false);
+
+      return result;
+    },
+    onError: (error: any) => {
+      setIsVerifying(false);
+      toast.error(error.message);
+    }
+  });
+
+  // Confirm payment mutation
+  const confirmPaymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!invoice || !nequiReference.trim()) {
+        throw new Error('Datos incompletos');
+      }
+
+      if (!verificationResult?.isValid) {
+        throw new Error('La referencia no ha sido verificada o ya está en uso');
+      }
+
+      const cleanReference = nequiReference.trim().toUpperCase();
+
+      // Update invoice as paid
+      const { error: invoiceError } = await supabase
+        .from('client_invoices')
+        .update({
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          paid_via: 'nequi_manual',
+          payment_reference: cleanReference
+        })
+        .eq('id', invoice.id);
+
+      if (invoiceError) throw invoiceError;
+
+      // Create transaction record
+      const { error: txError } = await supabase
+        .from('payment_transactions')
+        .insert({
+          invoice_id: invoice.id,
+          mikrotik_id: invoice.mikrotik_id,
+          amount: invoice.amount,
+          platform: 'nequi',
+          status: 'approved',
+          transaction_id: cleanReference,
+          external_reference: cleanReference,
+          currency: 'COP'
+        });
+
+      if (txError) {
+        console.warn('Error creating transaction record:', txError);
+        // Don't throw - invoice is already marked as paid
+      }
+
+      // Reactivate client if suspended
+      const { data: billingSetting } = await supabase
+        .from('client_billing_settings')
+        .select('id, is_suspended')
+        .eq('client_id', invoice.client_id)
+        .maybeSingle();
+
+      if (billingSetting?.is_suspended) {
+        await supabase
+          .from('client_billing_settings')
+          .update({
+            is_suspended: false,
+            suspended_at: null,
+            last_payment_date: new Date().toISOString().split('T')[0]
+          })
+          .eq('id', billingSetting.id);
+      }
+
+      return true;
+    },
+    onSuccess: () => {
+      toast.success('Pago Nequi verificado y registrado correctamente');
+      queryClient.invalidateQueries({ queryKey: ['client-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
+      handleClose();
+      onPaymentVerified?.();
+    },
+    onError: (error: any) => {
+      toast.error(`Error al registrar pago: ${error.message}`);
+    }
+  });
+
+  const handleClose = () => {
+    setNequiReference("");
+    setVerificationResult(null);
+    setIsVerifying(false);
+    onOpenChange(false);
+  };
+
+  const handleVerify = () => {
+    verifyMutation.mutate();
+  };
+
+  const handleConfirmPayment = () => {
+    confirmPaymentMutation.mutate();
+  };
+
+  if (!invoice) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-purple-600" />
+            Verificar Pago Nequi
+          </DialogTitle>
+          <DialogDescription>
+            Factura: {invoice.invoice_number} - ${invoice.amount.toLocaleString()} COP
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* Reference Input */}
+          <div className="space-y-2">
+            <Label htmlFor="nequi-ref">Referencia de Pago Nequi</Label>
+            <div className="flex gap-2">
+              <Input
+                id="nequi-ref"
+                value={nequiReference}
+                onChange={(e) => {
+                  setNequiReference(e.target.value);
+                  setVerificationResult(null); // Reset verification on change
+                }}
+                placeholder="Ej: NQ123456789"
+                className="flex-1"
+                disabled={confirmPaymentMutation.isPending}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleVerify}
+                disabled={!nequiReference.trim() || isVerifying || confirmPaymentMutation.isPending}
+              >
+                {isVerifying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ingresa el número de referencia que aparece en el comprobante de pago Nequi del cliente.
+            </p>
+          </div>
+
+          {/* Verification Result */}
+          {verificationResult && (
+            <div className="space-y-3">
+              {verificationResult.isValid ? (
+                <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-700 dark:text-green-300">
+                    <strong>Referencia válida.</strong> Esta referencia no ha sido utilizada anteriormente. 
+                    Puedes confirmar el pago.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert variant="destructive">
+                  <Ban className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>¡Referencia duplicada!</strong>
+                    <br />
+                    Esta referencia ya fue usada para la factura: <strong>{verificationResult.existingInvoice}</strong>
+                    {verificationResult.existingDate && (
+                      <> el {new Date(verificationResult.existingDate).toLocaleDateString('es-CO')}</>
+                    )}
+                    <br />
+                    <span className="text-sm mt-1 block">
+                      Solicita al cliente un comprobante diferente o verifica que no sea intento de fraude.
+                    </span>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+
+          {/* Warning for manual verification */}
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>Importante:</strong> Verifica que el monto del pago Nequi coincida con el valor de la factura 
+              (${invoice.amount.toLocaleString()} COP) antes de confirmar.
+            </AlertDescription>
+          </Alert>
+
+          {/* Confirm Button */}
+          <Button
+            className="w-full bg-purple-600 hover:bg-purple-700"
+            onClick={handleConfirmPayment}
+            disabled={
+              !verificationResult?.isValid || 
+              confirmPaymentMutation.isPending
+            }
+          >
+            {confirmPaymentMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Confirmar Pago Verificado
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
