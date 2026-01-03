@@ -328,7 +328,15 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
 
   const openTelegramDialog = (invoice: Invoice) => {
     const client = ispClients?.find(c => c.id === invoice.client_id);
-    const defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+    const { invoiceWithContract } = getInvoicePdfData(invoice);
+    const paymentLink = getPaymentLink(invoiceWithContract.contract_number);
+    
+    let defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+    
+    // Add payment link if contract exists and invoice is not paid
+    if (paymentLink && invoice.status !== 'paid') {
+      defaultMessage += `\n\n💳 *Pagar en línea:*\n${paymentLink}`;
+    }
     
     setSelectedInvoice(invoice);
     setTelegramMessage(defaultMessage);
