@@ -26,6 +26,7 @@ export type Database = {
           mikrotik_id: string
           monthly_amount: number
           next_billing_date: string | null
+          reminder_days_before: number
           suspended_at: string | null
           updated_at: string
         }
@@ -40,6 +41,7 @@ export type Database = {
           mikrotik_id: string
           monthly_amount: number
           next_billing_date?: string | null
+          reminder_days_before?: number
           suspended_at?: string | null
           updated_at?: string
         }
@@ -54,6 +56,7 @@ export type Database = {
           mikrotik_id?: string
           monthly_amount?: number
           next_billing_date?: string | null
+          reminder_days_before?: number
           suspended_at?: string | null
           updated_at?: string
         }
