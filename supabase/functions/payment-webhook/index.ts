@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyWompiSignature, verifyMercadoPagoSignature } from "../_shared/security.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,22 +22,34 @@ serve(async (req) => {
     
     console.log('Webhook received for platform:', platform);
 
+    // Clone the request to read body multiple times if needed
+    const rawBody = await req.text();
     let body: any = {};
+    
     const contentType = req.headers.get('content-type') || '';
     
     if (contentType.includes('application/json')) {
-      body = await req.json();
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        console.error('Failed to parse JSON body');
+        return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     } else if (contentType.includes('application/x-www-form-urlencoded')) {
-      const formData = await req.formData();
+      const formData = new URLSearchParams(rawBody);
       formData.forEach((value, key) => {
         body[key] = value;
       });
     }
 
-    console.log('Webhook body:', JSON.stringify(body, null, 2));
+    console.log('Webhook body received for platform:', platform);
 
     if (platform === 'wompi') {
-      // Wompi webhook handling
+      // Wompi webhook handling with signature verification
+      const signature = req.headers.get('x-event-checksum');
       const event = body.event;
       const data = body.data?.transaction;
 
@@ -52,7 +65,7 @@ serve(async (req) => {
 
       console.log(`Wompi transaction ${reference} status: ${status}`);
 
-      // Find transaction by reference
+      // Find transaction by reference to get the mikrotik_id for webhook secret lookup
       const { data: transaction, error: txError } = await supabase
         .from('payment_transactions')
         .select('*, client_invoices(client_id, mikrotik_id)')
@@ -65,6 +78,30 @@ serve(async (req) => {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
+      }
+
+      // Get webhook secret for signature verification
+      const { data: platformConfig } = await supabase
+        .from('payment_platforms')
+        .select('webhook_secret')
+        .eq('mikrotik_id', transaction.mikrotik_id)
+        .eq('platform', 'wompi')
+        .eq('is_active', true)
+        .single();
+
+      // Verify signature if webhook secret is configured
+      if (platformConfig?.webhook_secret) {
+        const isValidSignature = await verifyWompiSignature(body, signature, platformConfig.webhook_secret);
+        if (!isValidSignature) {
+          console.error('Invalid Wompi webhook signature');
+          return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        console.log('Wompi webhook signature verified successfully');
+      } else {
+        console.warn('No webhook secret configured for Wompi - signature verification skipped (NOT RECOMMENDED)');
       }
 
       const paymentStatus = status === 'APPROVED' ? 'approved' : 
@@ -87,14 +124,17 @@ serve(async (req) => {
       }
 
     } else if (platform === 'mercadopago') {
-      // Mercado Pago webhook handling
+      // Mercado Pago webhook handling with signature verification
+      const xSignature = req.headers.get('x-signature');
+      const xRequestId = req.headers.get('x-request-id');
+      
       const topic = body.topic || body.type;
       const paymentId = body.data?.id || body.id;
 
       console.log(`Mercado Pago webhook - topic: ${topic}, paymentId: ${paymentId}`);
 
       if (topic === 'payment' && paymentId) {
-        // Find transaction
+        // Find pending transactions to get mikrotik_id for verification
         const { data: transactions } = await supabase
           .from('payment_transactions')
           .select('*, client_invoices(client_id, mikrotik_id)')
@@ -107,13 +147,35 @@ serve(async (req) => {
           
           const { data: platformConfig } = await supabase
             .from('payment_platforms')
-            .select('private_key')
+            .select('private_key, webhook_secret')
             .eq('mikrotik_id', transaction.mikrotik_id)
             .eq('platform', 'mercadopago')
+            .eq('is_active', true)
             .single();
 
           if (platformConfig) {
-            // Verify payment with Mercado Pago
+            // Verify signature if webhook secret is configured
+            if (platformConfig.webhook_secret) {
+              const isValidSignature = await verifyMercadoPagoSignature(
+                paymentId.toString(),
+                xSignature,
+                xRequestId,
+                platformConfig.webhook_secret
+              );
+              
+              if (!isValidSignature) {
+                console.error('Invalid Mercado Pago webhook signature');
+                return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+                  status: 401,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+              }
+              console.log('Mercado Pago webhook signature verified successfully');
+            } else {
+              console.warn('No webhook secret configured for Mercado Pago - signature verification skipped (NOT RECOMMENDED)');
+            }
+
+            // Verify payment with Mercado Pago API
             const mpResponse = await fetch(
               `https://api.mercadopago.com/v1/payments/${paymentId}`,
               {
@@ -157,6 +219,12 @@ serve(async (req) => {
           }
         }
       }
+    } else {
+      console.warn('Unknown payment platform:', platform);
+      return new Response(JSON.stringify({ error: 'Unknown platform' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     return new Response(
