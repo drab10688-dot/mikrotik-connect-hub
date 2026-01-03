@@ -260,6 +260,20 @@ serve(async (req) => {
       // Calculate due date (billing day + grace period)
       const dueDate = new Date(currentYear, currentMonth, billing.billing_day + billing.grace_period_days);
 
+      // Link invoice to latest contract (needed for QR + payment link)
+      const { data: latestContract, error: contractError } = await supabase
+        .from('isp_contracts')
+        .select('id')
+        .eq('mikrotik_id', billing.mikrotik_id)
+        .eq('client_id', billing.client_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (contractError) {
+        console.warn(`Could not fetch latest contract for client ${billing.client_id}:`, contractError);
+      }
+
       try {
         // Create invoice
         const { data: invoice, error: invoiceError } = await supabase
@@ -267,6 +281,7 @@ serve(async (req) => {
           .insert({
             mikrotik_id: billing.mikrotik_id,
             client_id: billing.client_id,
+            contract_id: latestContract?.id ?? null,
             invoice_number: invoiceNumber,
             amount: billing.monthly_amount,
             billing_period_start: billingPeriodStart.toISOString().split('T')[0],
