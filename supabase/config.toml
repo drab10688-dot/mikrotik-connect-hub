@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.check-overdue-invoices]
 verify_jwt = false
+
+[functions.generate-invoices]
+verify_jwt = false
