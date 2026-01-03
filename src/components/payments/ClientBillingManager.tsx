@@ -8,12 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format, addMonths, setDate, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-
 interface ClientBillingManagerProps {
   mikrotikId: string | null;
 }
@@ -47,6 +47,13 @@ interface Invoice {
   paid_via: string | null;
   billing_period_start: string;
   billing_period_end: string;
+  client_id: string | null;
+}
+
+interface IspClient {
+  id: string;
+  client_name: string;
+  phone: string | null;
 }
 
 export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) {
@@ -58,7 +65,12 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     monthly_amount: 0
   });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
+  
+  // Telegram send state
+  const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [telegramChatId, setTelegramChatId] = useState("");
+  const [telegramMessage, setTelegramMessage] = useState("");
   const { data: clients, isLoading: loadingClients } = useQuery({
     queryKey: ['isp-clients-billing', mikrotikId],
     queryFn: async () => {
@@ -100,6 +112,53 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
         .limit(50);
       if (error) throw error;
       return data as Invoice[];
+    },
+    enabled: !!mikrotikId
+  });
+
+  // Fetch ISP clients with phone for Telegram
+  const { data: ispClients } = useQuery({
+    queryKey: ['isp-clients-phones', mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return [];
+      const { data, error } = await supabase
+        .from('isp_clients')
+        .select('id, client_name, phone')
+        .eq('mikrotik_id', mikrotikId);
+      if (error) throw error;
+      return data as IspClient[];
+    },
+    enabled: !!mikrotikId
+  });
+
+  // Fetch Telegram config
+  const { data: telegramConfig } = useQuery({
+    queryKey: ['telegram-config', mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return null;
+      const { data, error } = await supabase
+        .from('telegram_config')
+        .select('*')
+        .eq('mikrotik_id', mikrotikId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!mikrotikId
+  });
+
+  // Fetch WhatsApp config
+  const { data: whatsappConfig } = useQuery({
+    queryKey: ['whatsapp-config', mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return null;
+      const { data, error } = await supabase
+        .from('whatsapp_config')
+        .select('*')
+        .eq('mikrotik_id', mikrotikId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
     },
     enabled: !!mikrotikId
   });
@@ -178,6 +237,92 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       toast.error(`Error: ${error.message}`);
     }
   });
+
+  // Send Telegram message mutation
+  const sendTelegramMutation = useMutation({
+    mutationFn: async ({ chatId, message, invoiceId }: { chatId: string; message: string; invoiceId: string }) => {
+      const { data, error } = await supabase.functions.invoke("telegram-send", {
+        body: {
+          mikrotikId,
+          chatId,
+          message,
+          invoiceId,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Factura enviada por Telegram correctamente");
+      setTelegramDialogOpen(false);
+      setTelegramChatId("");
+      setTelegramMessage("");
+      setSelectedInvoice(null);
+    },
+    onError: (error: any) => {
+      toast.error(`Error al enviar: ${error.message}`);
+    },
+  });
+
+  // Send WhatsApp message mutation
+  const sendWhatsAppMutation = useMutation({
+    mutationFn: async ({ phone, message, invoiceId }: { phone: string; message: string; invoiceId: string }) => {
+      const { data, error } = await supabase.functions.invoke("whatsapp-send", {
+        body: {
+          mikrotikId,
+          phoneNumber: phone,
+          message,
+          invoiceId,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Factura enviada por WhatsApp correctamente");
+    },
+    onError: (error: any) => {
+      toast.error(`Error al enviar: ${error.message}`);
+    },
+  });
+
+  const openTelegramDialog = (invoice: Invoice) => {
+    const client = ispClients?.find(c => c.id === invoice.client_id);
+    const defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+    
+    setSelectedInvoice(invoice);
+    setTelegramMessage(defaultMessage);
+    setTelegramDialogOpen(true);
+  };
+
+  const handleSendTelegram = () => {
+    if (!telegramChatId || !selectedInvoice) {
+      toast.error("Ingresa el Chat ID de Telegram");
+      return;
+    }
+    sendTelegramMutation.mutate({
+      chatId: telegramChatId,
+      message: telegramMessage,
+      invoiceId: selectedInvoice.id,
+    });
+  };
+
+  const handleSendWhatsApp = (invoice: Invoice) => {
+    const client = ispClients?.find(c => c.id === invoice.client_id);
+    if (!client?.phone) {
+      toast.error("El cliente no tiene número de teléfono registrado");
+      return;
+    }
+    const message = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), 'dd/MM/yyyy')}\nPeriodo: ${format(parseISO(invoice.billing_period_start), 'dd MMM')} - ${format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
+    
+    sendWhatsAppMutation.mutate({
+      phone: client.phone,
+      message,
+      invoiceId: invoice.id,
+    });
+  };
 
   const openBillingDialog = (client: Client) => {
     setSelectedClient(client);
@@ -325,28 +470,54 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                 <TableHead>Monto</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Pagado el</TableHead>
+                <TableHead>Enviar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoices?.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell className="font-mono">{invoice.invoice_number}</TableCell>
-                  <TableCell>
-                    {format(parseISO(invoice.billing_period_start), 'dd MMM', { locale: es })} - {format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}
-                  </TableCell>
-                  <TableCell>{format(parseISO(invoice.due_date), 'dd/MM/yyyy')}</TableCell>
-                  <TableCell>${invoice.amount.toLocaleString()}</TableCell>
-                  <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                  <TableCell>
-                    {invoice.paid_at 
-                      ? `${format(parseISO(invoice.paid_at), 'dd/MM/yyyy')} via ${invoice.paid_via || 'N/A'}`
-                      : '-'}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {invoices?.map((invoice) => {
+                const client = ispClients?.find(c => c.id === invoice.client_id);
+                return (
+                  <TableRow key={invoice.id}>
+                    <TableCell className="font-mono">{invoice.invoice_number}</TableCell>
+                    <TableCell>
+                      {format(parseISO(invoice.billing_period_start), 'dd MMM', { locale: es })} - {format(parseISO(invoice.billing_period_end), 'dd MMM yyyy', { locale: es })}
+                    </TableCell>
+                    <TableCell>{format(parseISO(invoice.due_date), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>${invoice.amount.toLocaleString()}</TableCell>
+                    <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                    <TableCell>
+                      {invoice.paid_at 
+                        ? `${format(parseISO(invoice.paid_at), 'dd/MM/yyyy')} via ${invoice.paid_via || 'N/A'}`
+                        : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openTelegramDialog(invoice)}
+                          disabled={!telegramConfig?.is_active}
+                          title={telegramConfig?.is_active ? "Enviar por Telegram" : "Telegram no configurado"}
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSendWhatsApp(invoice)}
+                          disabled={!whatsappConfig?.is_active || !client?.phone || sendWhatsAppMutation.isPending}
+                          title={whatsappConfig?.is_active ? "Enviar por WhatsApp" : "WhatsApp no configurado"}
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {(!invoices || invoices.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     No hay facturas generadas
                   </TableCell>
                 </TableRow>
@@ -422,6 +593,56 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
               Guardar Configuración
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Telegram Send Dialog */}
+      <Dialog open={telegramDialogOpen} onOpenChange={setTelegramDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-blue-500" />
+              Enviar Factura por Telegram
+            </DialogTitle>
+            <DialogDescription>
+              Factura: {selectedInvoice?.invoice_number}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Chat ID de Telegram</Label>
+              <Input
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                placeholder="123456789"
+              />
+              <p className="text-xs text-muted-foreground">
+                El cliente debe iniciar chat con el bot primero. Usa @userinfobot para obtener el Chat ID.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mensaje</Label>
+              <Textarea
+                value={telegramMessage}
+                onChange={(e) => setTelegramMessage(e.target.value)}
+                rows={6}
+              />
+            </div>
+
+            <Button 
+              className="w-full bg-blue-600 hover:bg-blue-700" 
+              onClick={handleSendTelegram}
+              disabled={sendTelegramMutation.isPending}
+            >
+              {sendTelegramMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Enviar por Telegram
             </Button>
           </div>
         </DialogContent>
