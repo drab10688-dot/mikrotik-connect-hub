@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare } from "lucide-react";
+import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare, ExternalLink } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -353,14 +353,32 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                   </div>
                 </div>
 
-                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                <div className="bg-muted/50 p-4 rounded-lg space-y-3">
                   <p className="text-sm font-medium">Instrucciones para configurar el webhook:</p>
-                  <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
-                    <li>Abre Telegram y busca <strong>@BotFather</strong></li>
-                    <li>Envía el comando: <code className="bg-muted px-1 rounded">/setwebhook</code></li>
-                    <li>Selecciona tu bot</li>
-                    <li>Pega la URL del webhook que copiaste arriba</li>
+                  <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-2">
+                    <li>Primero guarda la configuración con tu Bot Token arriba</li>
+                    <li>Luego haz clic en el botón "Configurar Webhook Automáticamente"</li>
+                    <li>Si ves una respuesta con <code className="bg-muted px-1 rounded">"ok": true</code>, ¡está listo!</li>
                   </ol>
+                  
+                  {existingConfig?.bot_token ? (
+                    <Button
+                      variant="default"
+                      className="w-full"
+                      onClick={() => {
+                        const webhookUrl = `https://qybuufofocxsctwnpwon.supabase.co/functions/v1/telegram-webhook`;
+                        const fullUrl = `https://api.telegram.org/bot${existingConfig.bot_token}/setWebhook?url=${encodeURIComponent(webhookUrl)}`;
+                        window.open(fullUrl, '_blank');
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Configurar Webhook Automáticamente
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                      ⚠️ Guarda primero la configuración con el Bot Token para habilitar esta opción.
+                    </p>
+                  )}
                 </div>
               </div>
 
