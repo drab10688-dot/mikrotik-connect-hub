@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle } from "lucide-react";
+import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download } from "lucide-react";
+import { generateInvoicePDF } from "./InvoicePDF";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format, addMonths, setDate, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -55,6 +56,9 @@ interface IspClient {
   client_name: string;
   phone: string | null;
   telegram_chat_id: string | null;
+  email: string | null;
+  address: string | null;
+  identification_number: string | null;
 }
 
 export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) {
@@ -124,7 +128,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       if (!mikrotikId) return [];
       const { data, error } = await supabase
         .from('isp_clients')
-        .select('id, client_name, phone, telegram_chat_id')
+        .select('id, client_name, phone, telegram_chat_id, email, address, identification_number')
         .eq('mikrotik_id', mikrotikId);
       if (error) throw error;
       return data as IspClient[];
@@ -473,7 +477,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                 <TableHead>Monto</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Pagado el</TableHead>
-                <TableHead>Enviar</TableHead>
+                <TableHead>Enviar / Descargar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -512,6 +516,24 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                           title={whatsappConfig?.is_active ? "Enviar por WhatsApp" : "WhatsApp no configurado"}
                         >
                           <MessageCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-primary border-primary hover:bg-primary/10"
+                          onClick={async () => {
+                            const clientData = {
+                              client_name: client?.client_name || "Cliente",
+                              phone: client?.phone || null,
+                              identification_number: client?.identification_number || null,
+                              address: client?.address || null,
+                              email: client?.email || null
+                            };
+                            await generateInvoicePDF(invoice, clientData);
+                          }}
+                          title="Descargar PDF"
+                        >
+                          <Download className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
