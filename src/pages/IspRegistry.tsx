@@ -10,9 +10,10 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
-import { ClientRegistrationForm } from "@/components/isp/ClientRegistrationForm";
+import { ClientRegistrationForm, type RegisteredClientData } from "@/components/isp/ClientRegistrationForm";
 import { ClientHistoryTable } from "@/components/isp/ClientHistoryTable";
 import { ContractGenerator } from "@/components/isp/contracts";
+import type { ClientContractData } from "@/components/isp/contracts/ContractPreview";
 
 export default function IspRegistry() {
   const mikrotikId = getSelectedDeviceId();
@@ -21,6 +22,39 @@ export default function IspRegistry() {
     localStorage.getItem("isp_standard_password") || ""
   );
   const [activeTab, setActiveTab] = useState("register");
+  const [registeredClientData, setRegisteredClientData] = useState<Partial<ClientContractData> | undefined>();
+
+  // Handler para cuando se registra un cliente
+  const handleClientRegistered = (data: RegisteredClientData) => {
+    setRegisteredClientData({
+      clientName: data.clientName,
+      identification: data.identification,
+      address: data.address,
+      phone: data.phone,
+      email: data.email,
+      plan: data.plan,
+      speed: data.speed,
+      price: data.price,
+    });
+    
+    toast.success(
+      <div className="space-y-2">
+        <p className="font-semibold">¿Desea generar el contrato ahora?</p>
+        <Button 
+          size="sm" 
+          onClick={() => {
+            setActiveTab("contracts");
+            toast.dismiss();
+          }}
+          className="w-full"
+        >
+          <FileText className="w-4 h-4 mr-2" />
+          Ir a Contratos
+        </Button>
+      </div>,
+      { duration: 10000 }
+    );
+  };
 
   // Obtener usuarios PPPoE para el formulario
   const { refetch: refetchUsers } = useQuery({
@@ -136,12 +170,13 @@ export default function IspRegistry() {
               useStandardPassword={useStandardPassword}
               standardPassword={standardPassword}
               onSuccess={() => refetchUsers()}
+              onClientRegistered={handleClientRegistered}
             />
           </TabsContent>
 
           {/* Tab: Contratos */}
           <TabsContent value="contracts">
-            <ContractGenerator />
+            <ContractGenerator clientData={registeredClientData} />
           </TabsContent>
 
           {/* Tab: Historial */}

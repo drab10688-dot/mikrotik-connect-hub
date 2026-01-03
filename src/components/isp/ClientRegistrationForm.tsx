@@ -22,6 +22,7 @@ interface ClientFormData {
   numeroCajaNap: string;
   numeroPuertoCajaNap: string;
   plan: string;
+  precio: string;
   opcionTv: string;
   correoElectronico: string;
   telefono: string;
@@ -37,13 +38,25 @@ interface ClientFormData {
   downloadSpeed: string;
 }
 
+export interface RegisteredClientData {
+  clientName: string;
+  identification: string;
+  address: string;
+  phone: string;
+  email: string;
+  plan: string;
+  speed: string;
+  price: string;
+}
+
 interface ClientRegistrationFormProps {
   onSuccess?: () => void;
+  onClientRegistered?: (data: RegisteredClientData) => void;
   useStandardPassword: boolean;
   standardPassword: string;
 }
 
-export function ClientRegistrationForm({ onSuccess, useStandardPassword, standardPassword }: ClientRegistrationFormProps) {
+export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStandardPassword, standardPassword }: ClientRegistrationFormProps) {
   const queryClient = useQueryClient();
   const mikrotikId = getSelectedDeviceId();
   const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
@@ -60,6 +73,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
     numeroCajaNap: "",
     numeroPuertoCajaNap: "",
     plan: "",
+    precio: "",
     opcionTv: "solo-internet",
     correoElectronico: "",
     telefono: "",
@@ -256,6 +270,7 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
       numeroCajaNap: "",
       numeroPuertoCajaNap: "",
       plan: "",
+      precio: "",
       opcionTv: "solo-internet",
       correoElectronico: "",
       telefono: "",
@@ -429,6 +444,19 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
         queryClient.invalidateQueries({ queryKey: ["isp-pppoe-users"] });
       }
       queryClient.invalidateQueries({ queryKey: ["isp-clients"] });
+      
+      // Notificar datos del cliente registrado para el contrato
+      const registeredData: RegisteredClientData = {
+        clientName: result.clientName,
+        identification: formData.numeroIdentificacion,
+        address: `${formData.calle}${formData.calle2 ? ', ' + formData.calle2 : ''}, ${formData.ciudad}`,
+        phone: formData.telefono,
+        email: formData.correoElectronico,
+        plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
+        speed: result.type === 'pppoe' ? '' : result.speed || '',
+        price: formData.precio,
+      };
+      onClientRegistered?.(registeredData);
       
       resetFormData();
       onSuccess?.();
@@ -688,6 +716,20 @@ export function ClientRegistrationForm({ onSuccess, useStandardPassword, standar
                 </Select>
               </div>
             )}
+
+            {/* Campo de precio del plan */}
+            <div className="space-y-2">
+              <Label htmlFor="precio">Precio Mensual del Plan</Label>
+              <Input
+                id="precio"
+                placeholder="Ej: $50.000 COP/mes"
+                value={formData.precio}
+                onChange={(e) => updateField("precio", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Este precio se usará para generar el contrato del cliente
+              </p>
+            </div>
 
             <div className="space-y-3">
               <Label>Opciones de Televisión *</Label>
