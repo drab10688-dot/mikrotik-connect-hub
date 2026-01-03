@@ -12,6 +12,8 @@ interface RequestBody {
   clientId?: string;
   invoiceId?: string;
   contractId?: string;
+  documentUrl?: string;
+  documentName?: string;
 }
 
 Deno.serve(async (req) => {
@@ -44,9 +46,9 @@ Deno.serve(async (req) => {
     }
 
     const body: RequestBody = await req.json();
-    const { mikrotikId, phoneNumber, message, clientId, invoiceId, contractId } = body;
+    const { mikrotikId, phoneNumber, message, clientId, invoiceId, contractId, documentUrl, documentName } = body;
 
-    console.log(`WhatsApp send request for mikrotik: ${mikrotikId}, phone: ${phoneNumber}`);
+    console.log(`WhatsApp send request for mikrotik: ${mikrotikId}, phone: ${phoneNumber}, hasDocument: ${!!documentUrl}`);
 
     // Get WhatsApp config
     const { data: config, error: configError } = await supabase
@@ -78,13 +80,24 @@ Deno.serve(async (req) => {
     // Send message via WhatsApp Business API
     const whatsappUrl = `https://graph.facebook.com/v18.0/${config.phone_number_id}/messages`;
     
-    const whatsappResponse = await fetch(whatsappUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${config.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    let messagePayload: any;
+    
+    if (documentUrl) {
+      // Send document with caption
+      messagePayload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: formattedPhone,
+        type: "document",
+        document: {
+          link: documentUrl,
+          caption: message,
+          filename: documentName || "Factura.pdf"
+        },
+      };
+    } else {
+      // Send text message
+      messagePayload = {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to: formattedPhone,
@@ -93,7 +106,16 @@ Deno.serve(async (req) => {
           preview_url: true,
           body: message,
         },
-      }),
+      };
+    }
+    
+    const whatsappResponse = await fetch(whatsappUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(messagePayload),
     });
 
     const whatsappResult = await whatsappResponse.json();
@@ -109,7 +131,7 @@ Deno.serve(async (req) => {
       mikrotik_id: mikrotikId,
       client_id: clientId || null,
       phone_number: formattedPhone,
-      message_type: "text",
+      message_type: documentUrl ? "document" : "text",
       message_content: message,
       related_invoice_id: invoiceId || null,
       related_contract_id: contractId || null,
@@ -119,6 +141,10 @@ Deno.serve(async (req) => {
       sent_at: status === "sent" ? new Date().toISOString() : null,
       created_by: user.id,
     });
+
+    if (insertError) {
+      console.error("Error logging message:", insertError);
+    }
 
     if (insertError) {
       console.error("Error logging message:", insertError);

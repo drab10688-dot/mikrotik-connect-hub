@@ -63,12 +63,13 @@ function getCompanyFromStorage(): CompanyData {
   return DEFAULT_COMPANY;
 }
 
-export async function generateInvoicePDF(
+// Internal function to build the PDF document
+async function buildInvoicePDF(
   invoice: InvoiceData,
   client: ClientData,
   company?: CompanyData,
   serviceDescription: string = "Servicio de Internet - Plan Mensual"
-): Promise<void> {
+): Promise<jsPDF> {
   // Use provided company or load from storage
   const companyData = company || getCompanyFromStorage();
 
@@ -354,6 +355,27 @@ export async function generateInvoicePDF(
   doc.text(`${companyData.name} - NIT: ${companyData.nit}`, pageWidth / 2, y + 5, { align: "center" });
   doc.text("Este documento es una representación gráfica de la factura electrónica.", pageWidth / 2, y + 10, { align: "center" });
 
-  // Save the PDF
+  return doc;
+}
+
+// Generate and download PDF
+export async function generateInvoicePDF(
+  invoice: InvoiceData,
+  client: ClientData,
+  company?: CompanyData,
+  serviceDescription: string = "Servicio de Internet - Plan Mensual"
+): Promise<void> {
+  const doc = await buildInvoicePDF(invoice, client, company, serviceDescription);
   doc.save(`Factura_${invoice.invoice_number}.pdf`);
+}
+
+// Generate PDF as Blob for uploading/sending
+export async function generateInvoicePDFBlob(
+  invoice: InvoiceData,
+  client: ClientData,
+  company?: CompanyData,
+  serviceDescription: string = "Servicio de Internet - Plan Mensual"
+): Promise<Blob> {
+  const doc = await buildInvoicePDF(invoice, client, company, serviceDescription);
+  return doc.output('blob');
 }

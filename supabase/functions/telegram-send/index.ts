@@ -12,6 +12,8 @@ interface RequestBody {
   clientId?: string;
   invoiceId?: string;
   contractId?: string;
+  documentUrl?: string;
+  documentName?: string;
 }
 
 Deno.serve(async (req) => {
@@ -44,9 +46,9 @@ Deno.serve(async (req) => {
     }
 
     const body: RequestBody = await req.json();
-    const { mikrotikId, chatId, message, clientId, invoiceId, contractId } = body;
+    const { mikrotikId, chatId, message, clientId, invoiceId, contractId, documentUrl, documentName } = body;
 
-    console.log(`Telegram send request for mikrotik: ${mikrotikId}, chat: ${chatId}`);
+    console.log(`Telegram send request for mikrotik: ${mikrotikId}, chat: ${chatId}, hasDocument: ${!!documentUrl}`);
 
     // Get Telegram config
     const { data: config, error: configError } = await supabase
@@ -72,23 +74,47 @@ Deno.serve(async (req) => {
 
     console.log(`Sending Telegram message to chat: ${chatId}`);
 
-    // Send message via Telegram Bot API
-    const telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendMessage`;
-    
-    const telegramResponse = await fetch(telegramUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-        parse_mode: "HTML",
-      }),
-    });
+    let telegramResult: any;
+    let telegramResponse: Response;
 
-    const telegramResult = await telegramResponse.json();
-    console.log("Telegram API response:", JSON.stringify(telegramResult));
+    // If document URL is provided, send document first
+    if (documentUrl) {
+      const telegramDocUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`;
+      
+      telegramResponse = await fetch(telegramDocUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          document: documentUrl,
+          caption: message,
+          parse_mode: "HTML",
+        }),
+      });
+
+      telegramResult = await telegramResponse.json();
+      console.log("Telegram sendDocument response:", JSON.stringify(telegramResult));
+    } else {
+      // Send text message only
+      const telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendMessage`;
+      
+      telegramResponse = await fetch(telegramUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          parse_mode: "HTML",
+        }),
+      });
+
+      telegramResult = await telegramResponse.json();
+      console.log("Telegram API response:", JSON.stringify(telegramResult));
+    }
 
     // Determine status
     const status = telegramResult.ok ? "sent" : "failed";
@@ -100,7 +126,7 @@ Deno.serve(async (req) => {
       mikrotik_id: mikrotikId,
       client_id: clientId || null,
       chat_id: chatId,
-      message_type: "text",
+      message_type: documentUrl ? "document" : "text",
       message_content: message,
       related_invoice_id: invoiceId || null,
       related_contract_id: contractId || null,
