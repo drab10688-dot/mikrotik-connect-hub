@@ -32,7 +32,6 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
   ({ clientData, terms, companyInfo, clientSignature, managerSignature, managerName }, ref) => {
     const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
 
-    // Generar QR con datos de verificación - usando useLayoutEffect para asegurar que esté listo antes del render
     useLayoutEffect(() => {
       const generateQR = async () => {
         try {
@@ -44,7 +43,6 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
             company: companyInfo.nit,
           });
           
-          // Crear URL de verificación (base64 encoded)
           const verificationUrl = `${window.location.origin}/verify-contract?data=${btoa(encodeURIComponent(verificationData))}`;
           
           const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
@@ -58,7 +56,6 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           setQrCodeUrl(qrDataUrl);
         } catch (err) {
           console.error("Error generating QR:", err);
-          // Establecer un QR vacío en caso de error para no bloquear el PDF
           setQrCodeUrl("");
         }
       };
@@ -75,64 +72,82 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
       });
     };
 
+    const hasServiceOption = clientData.serviceOption && 
+      clientData.servicePrice && 
+      parseFloat(clientData.servicePrice.replace(/[^0-9.,]/g, "")) > 0;
+
     return (
       <div
         ref={ref}
-        className="bg-white text-black p-10 max-w-4xl mx-auto leading-relaxed"
         style={{ 
-          fontFamily: "'Georgia', 'Times New Roman', serif",
+          backgroundColor: "#ffffff",
+          color: "#000000",
+          padding: "40px",
+          maxWidth: "800px",
+          margin: "0 auto",
+          fontFamily: "Georgia, 'Times New Roman', serif",
           fontSize: "11pt",
           lineHeight: "1.6"
         }}
       >
-        {/* Header Elegante */}
-        <div className="mb-8 pb-6" style={{ borderBottom: "3px double #1a365d" }}>
-          <div className="flex items-center justify-between">
+        {/* Header */}
+        <div style={{ 
+          marginBottom: "32px", 
+          paddingBottom: "24px", 
+          borderBottom: "3px double #1a365d" 
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             {companyInfo.logoUrl ? (
-              <div className="flex-shrink-0">
+              <div>
                 <img
                   src={companyInfo.logoUrl}
-                  alt="Logo de la empresa"
-                  className="object-contain"
-                  style={{ maxHeight: "80px", maxWidth: "180px" }}
+                  alt="Logo"
+                  style={{ maxHeight: "80px", maxWidth: "180px", objectFit: "contain" }}
                   crossOrigin="anonymous"
                 />
               </div>
             ) : (
-              <div className="w-[180px]" />
+              <div style={{ width: "180px" }} />
             )}
-            <div className="text-right">
-              <h1 className="text-2xl font-bold" style={{ color: "#1a365d", letterSpacing: "0.05em" }}>
+            <div style={{ textAlign: "right" }}>
+              <h1 style={{ 
+                fontSize: "24px", 
+                fontWeight: "bold", 
+                color: "#1a365d", 
+                letterSpacing: "0.05em",
+                margin: 0 
+              }}>
                 {companyInfo.name}
               </h1>
-              <p className="text-sm" style={{ color: "#4a5568" }}>NIT: {companyInfo.nit}</p>
-              <p className="text-xs mt-1" style={{ color: "#718096" }}>{companyInfo.contact}</p>
+              <p style={{ fontSize: "14px", color: "#4a5568", margin: "4px 0 0 0" }}>NIT: {companyInfo.nit}</p>
+              <p style={{ fontSize: "12px", color: "#718096", margin: "4px 0 0 0" }}>{companyInfo.contact}</p>
             </div>
           </div>
         </div>
 
-        {/* Título del Contrato */}
-        <div className="text-center mb-8">
-          <h2 
-            className="text-xl font-bold tracking-wide uppercase"
-            style={{ 
-              color: "#1a365d",
-              letterSpacing: "0.15em",
-              borderBottom: "2px solid #e2e8f0",
-              paddingBottom: "12px",
-              display: "inline-block"
-            }}
-          >
+        {/* Título */}
+        <div style={{ textAlign: "center", marginBottom: "32px" }}>
+          <h2 style={{ 
+            fontSize: "18px", 
+            fontWeight: "bold", 
+            textTransform: "uppercase",
+            letterSpacing: "0.15em",
+            color: "#1a365d",
+            borderBottom: "2px solid #e2e8f0",
+            paddingBottom: "12px",
+            display: "inline-block",
+            margin: 0
+          }}>
             Contrato de Prestación de Servicios de Internet
           </h2>
-          <div className="mt-4 flex justify-center gap-8 text-sm" style={{ color: "#4a5568" }}>
-            <span><strong>Contrato N°:</strong> {clientData.contractNumber}</span>
+          <div style={{ marginTop: "16px", fontSize: "14px", color: "#4a5568" }}>
+            <span style={{ marginRight: "32px" }}><strong>Contrato N°:</strong> {clientData.contractNumber}</span>
             <span><strong>Fecha:</strong> {formatDate(clientData.date)}</span>
           </div>
         </div>
 
         {/* Introducción */}
-        <p className="text-justify mb-6" style={{ textIndent: "2em" }}>
+        <p style={{ textAlign: "justify", marginBottom: "24px", textIndent: "2em" }}>
           Entre <strong>{companyInfo.name}</strong>, identificada con NIT <strong>{companyInfo.nit}</strong>, 
           representada legalmente, quien en adelante se denominará <strong>EL PRESTADOR</strong>, y 
           <strong> {clientData.clientName}</strong>, identificado(a) con documento de identidad número 
@@ -141,244 +156,257 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           de prestación de servicios de internet, regido por las siguientes cláusulas:
         </p>
 
-        {/* Datos en Recuadros Elegantes */}
-        <div className="grid grid-cols-2 gap-6 mb-8">
-          {/* Datos del Prestador */}
-          <div 
-            className="p-4 rounded"
-            style={{ 
-              backgroundColor: "#f7fafc",
-              border: "1px solid #e2e8f0"
-            }}
-          >
-            <h3 
-              className="font-bold text-sm uppercase mb-3 pb-2"
-              style={{ 
-                color: "#1a365d",
-                borderBottom: "1px solid #cbd5e0",
-                letterSpacing: "0.1em"
-              }}
-            >
-              El Prestador
-            </h3>
-            <div className="space-y-1 text-sm">
-              <p><strong>Razón Social:</strong> {companyInfo.name}</p>
-              <p><strong>NIT:</strong> {companyInfo.nit}</p>
-              <p><strong>Contacto:</strong> {companyInfo.contact}</p>
-              <p><strong>Email:</strong> {companyInfo.email}</p>
-            </div>
-          </div>
-
-          {/* Datos del Suscriptor */}
-          <div 
-            className="p-4 rounded"
-            style={{ 
-              backgroundColor: "#f7fafc",
-              border: "1px solid #e2e8f0"
-            }}
-          >
-            <h3 
-              className="font-bold text-sm uppercase mb-3 pb-2"
-              style={{ 
-                color: "#1a365d",
-                borderBottom: "1px solid #cbd5e0",
-                letterSpacing: "0.1em"
-              }}
-            >
-              El Suscriptor
-            </h3>
-            <div className="space-y-1 text-sm">
-              <p><strong>Nombre:</strong> {clientData.clientName}</p>
-              <p><strong>Identificación:</strong> {clientData.identification}</p>
-              <p><strong>Dirección:</strong> {clientData.address}</p>
-              <p><strong>Teléfono:</strong> {clientData.phone}</p>
-              <p><strong>Email:</strong> {clientData.email || "No registrado"}</p>
-            </div>
-          </div>
-        </div>
+        {/* Datos en tabla */}
+        <table style={{ width: "100%", marginBottom: "32px", borderCollapse: "collapse" }}>
+          <tbody>
+            <tr>
+              <td style={{ width: "50%", padding: "16px", backgroundColor: "#f7fafc", border: "1px solid #e2e8f0", verticalAlign: "top" }}>
+                <h3 style={{ 
+                  fontWeight: "bold", 
+                  fontSize: "12px", 
+                  textTransform: "uppercase",
+                  color: "#1a365d",
+                  borderBottom: "1px solid #cbd5e0",
+                  paddingBottom: "8px",
+                  marginBottom: "12px",
+                  letterSpacing: "0.1em"
+                }}>
+                  El Prestador
+                </h3>
+                <div style={{ fontSize: "13px" }}>
+                  <p style={{ margin: "4px 0" }}><strong>Razón Social:</strong> {companyInfo.name}</p>
+                  <p style={{ margin: "4px 0" }}><strong>NIT:</strong> {companyInfo.nit}</p>
+                  <p style={{ margin: "4px 0" }}><strong>Contacto:</strong> {companyInfo.contact}</p>
+                  <p style={{ margin: "4px 0" }}><strong>Email:</strong> {companyInfo.email}</p>
+                </div>
+              </td>
+              <td style={{ width: "50%", padding: "16px", backgroundColor: "#f7fafc", border: "1px solid #e2e8f0", verticalAlign: "top" }}>
+                <h3 style={{ 
+                  fontWeight: "bold", 
+                  fontSize: "12px", 
+                  textTransform: "uppercase",
+                  color: "#1a365d",
+                  borderBottom: "1px solid #cbd5e0",
+                  paddingBottom: "8px",
+                  marginBottom: "12px",
+                  letterSpacing: "0.1em"
+                }}>
+                  El Suscriptor
+                </h3>
+                <div style={{ fontSize: "13px" }}>
+                  <p style={{ margin: "4px 0" }}><strong>Nombre:</strong> {clientData.clientName}</p>
+                  <p style={{ margin: "4px 0" }}><strong>Identificación:</strong> {clientData.identification}</p>
+                  <p style={{ margin: "4px 0" }}><strong>Dirección:</strong> {clientData.address}</p>
+                  <p style={{ margin: "4px 0" }}><strong>Teléfono:</strong> {clientData.phone}</p>
+                  <p style={{ margin: "4px 0" }}><strong>Email:</strong> {clientData.email || "No registrado"}</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
         {/* Plan Contratado */}
-        <div 
-          className="mb-8 p-5 rounded"
-          style={{ 
-            background: "linear-gradient(135deg, #1a365d 0%, #2d3748 100%)",
-            color: "white"
-          }}
-        >
-          <h3 className="font-bold text-sm uppercase mb-3" style={{ letterSpacing: "0.1em" }}>
+        <div style={{ 
+          marginBottom: "32px", 
+          padding: "20px", 
+          borderRadius: "8px",
+          background: "linear-gradient(135deg, #1a365d 0%, #2d3748 100%)",
+          color: "white"
+        }}>
+          <h3 style={{ 
+            fontWeight: "bold", 
+            fontSize: "12px", 
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
+            marginBottom: "16px"
+          }}>
             Servicio Contratado
           </h3>
           
-          {/* Fila principal: Plan y Velocidad */}
-          <div className="grid grid-cols-2 gap-4 text-center mb-4">
-            <div>
-              <p className="text-xs uppercase opacity-75">Plan</p>
-              <p className="text-lg font-bold">{clientData.plan}</p>
-            </div>
-            {clientData.speed && (
-              <div>
-                <p className="text-xs uppercase opacity-75">Velocidad</p>
-                <p className="text-lg font-bold">{clientData.speed}</p>
-              </div>
-            )}
-          </div>
+          {/* Plan y Velocidad */}
+          <table style={{ width: "100%", marginBottom: "16px" }}>
+            <tbody>
+              <tr>
+                <td style={{ width: clientData.speed ? "50%" : "100%", textAlign: "center", padding: "8px" }}>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Plan</p>
+                  <p style={{ fontSize: "18px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.plan}</p>
+                </td>
+                {clientData.speed && (
+                  <td style={{ width: "50%", textAlign: "center", padding: "8px" }}>
+                    <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Velocidad</p>
+                    <p style={{ fontSize: "18px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.speed}</p>
+                  </td>
+                )}
+              </tr>
+            </tbody>
+          </table>
 
           {/* Desglose de precios */}
-          <div 
-            className="mt-3 pt-3" 
-            style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}
-          >
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-xs uppercase opacity-75">Precio Plan</p>
-                <p className="text-base font-bold">{clientData.price || "$0"}</p>
-              </div>
-              {clientData.serviceOption && clientData.servicePrice && parseFloat(clientData.servicePrice.replace(/[^0-9.,]/g, "")) > 0 && (
-                <div>
-                  <p className="text-xs uppercase opacity-75">{clientData.serviceOption}</p>
-                  <p className="text-base font-bold">{clientData.servicePrice}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs uppercase opacity-75">Total Mensual</p>
-                <p className="text-lg font-bold" style={{ color: "#fbbf24" }}>
-                  {clientData.totalPrice || clientData.price || "$0"}
-                </p>
-              </div>
-            </div>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: "12px" }}>
+            <table style={{ width: "100%" }}>
+              <tbody>
+                <tr>
+                  <td style={{ width: hasServiceOption ? "33%" : "50%", textAlign: "center", padding: "8px" }}>
+                    <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Precio Plan</p>
+                    <p style={{ fontSize: "14px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.price || "$0"}</p>
+                  </td>
+                  {hasServiceOption && (
+                    <td style={{ width: "33%", textAlign: "center", padding: "8px" }}>
+                      <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>{clientData.serviceOption}</p>
+                      <p style={{ fontSize: "14px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.servicePrice}</p>
+                    </td>
+                  )}
+                  <td style={{ width: hasServiceOption ? "33%" : "50%", textAlign: "center", padding: "8px" }}>
+                    <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Total Mensual</p>
+                    <p style={{ fontSize: "18px", fontWeight: "bold", color: "#fbbf24", margin: "4px 0 0 0" }}>
+                      {clientData.totalPrice || clientData.price || "$0"}
+                    </p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Equipos en Comodato */}
+        {/* Equipos */}
         {clientData.equipment && clientData.equipment.length > 0 && (
-          <div className="mb-8">
-            <h3 
-              className="font-bold text-sm uppercase mb-3"
-              style={{ color: "#1a365d", letterSpacing: "0.1em" }}
-            >
+          <div style={{ marginBottom: "32px" }}>
+            <h3 style={{ 
+              fontWeight: "bold", 
+              fontSize: "12px", 
+              textTransform: "uppercase",
+              color: "#1a365d",
+              letterSpacing: "0.1em",
+              marginBottom: "12px"
+            }}>
               Equipos Entregados en Comodato
             </h3>
-            <div 
-              className="p-4 rounded"
-              style={{ backgroundColor: "#fffbeb", border: "1px solid #fbbf24" }}
-            >
-              <ul className="grid grid-cols-2 gap-2">
+            <div style={{ 
+              padding: "16px", 
+              borderRadius: "8px",
+              backgroundColor: "#fffbeb", 
+              border: "1px solid #fbbf24" 
+            }}>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
                 {clientData.equipment.map((item, index) => (
-                  <li key={index} className="flex items-center gap-2 text-sm">
-                    <span style={{ color: "#d97706" }}>●</span>
+                  <li key={index} style={{ fontSize: "13px", marginBottom: "4px" }}>
+                    <span style={{ color: "#d97706", marginRight: "8px" }}>●</span>
                     {item}
                   </li>
                 ))}
               </ul>
-              <p className="text-xs mt-3 italic" style={{ color: "#92400e" }}>
+              <p style={{ fontSize: "11px", marginTop: "12px", fontStyle: "italic", color: "#92400e" }}>
                 * Los equipos son propiedad de EL PRESTADOR y deben ser devueltos al finalizar el contrato.
               </p>
             </div>
           </div>
         )}
 
-        {/* Términos y Condiciones */}
-        <div className="mb-8">
-          <h3 
-            className="font-bold text-center text-lg uppercase mb-6 pb-3"
-            style={{ 
-              color: "#1a365d",
-              borderBottom: "2px solid #1a365d",
-              letterSpacing: "0.1em"
-            }}
-          >
+        {/* Cláusulas */}
+        <div style={{ marginBottom: "32px" }}>
+          <h3 style={{ 
+            fontWeight: "bold", 
+            textAlign: "center",
+            fontSize: "16px", 
+            textTransform: "uppercase",
+            color: "#1a365d",
+            borderBottom: "2px solid #1a365d",
+            paddingBottom: "12px",
+            marginBottom: "24px",
+            letterSpacing: "0.1em"
+          }}>
             Cláusulas del Contrato
           </h3>
 
-          <div className="space-y-5">
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+          <div>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA PRIMERA - OBJETO DEL CONTRATO
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.object}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.object}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA SEGUNDA - VIGENCIA Y RENOVACIÓN
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.validity}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.validity}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA TERCERA - VALOR Y FORMA DE PAGO
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.payment}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.payment}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA CUARTA - OBLIGACIONES DEL PRESTADOR
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.providerObligations}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.providerObligations}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA QUINTA - OBLIGACIONES DEL SUSCRIPTOR
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.clientObligations}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.clientObligations}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA SEXTA - EQUIPOS EN COMODATO
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.equipment}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.equipment}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA SÉPTIMA - SUSPENSIÓN DEL SERVICIO
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.suspension}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.suspension}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA OCTAVA - TERMINACIÓN DEL CONTRATO
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.termination}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.termination}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA NOVENA - LIBERTAD DE PERMANENCIA
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.freedom}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.freedom}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA DÉCIMA - PETICIONES, QUEJAS Y RECURSOS (PQR)
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.pqr}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.pqr}</p>
             </div>
 
-            <div>
-              <h4 className="font-bold mb-2" style={{ color: "#1a365d" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA UNDÉCIMA - PROTECCIÓN DE DATOS PERSONALES
               </h4>
-              <p className="text-justify whitespace-pre-line" style={{ textIndent: "2em" }}>{terms.dataProtection}</p>
+              <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.dataProtection}</p>
             </div>
           </div>
         </div>
 
-        {/* Declaración de Aceptación */}
-        <div 
-          className="mb-8 p-5 text-justify rounded"
-          style={{ 
-            backgroundColor: "#f0fdf4",
-            border: "1px solid #22c55e"
-          }}
-        >
-          <p className="text-sm">
+        {/* Declaración */}
+        <div style={{ 
+          marginBottom: "32px", 
+          padding: "20px", 
+          borderRadius: "8px",
+          backgroundColor: "#f0fdf4",
+          border: "1px solid #22c55e"
+        }}>
+          <p style={{ fontSize: "13px", textAlign: "justify", margin: 0 }}>
             Las partes declaran que han leído y comprendido cada una de las cláusulas de este contrato, 
             aceptando expresamente su contenido. EL SUSCRIPTOR declara que la información proporcionada 
             es veraz y autoriza el uso de sus datos personales para los fines del presente contrato, 
@@ -386,109 +414,119 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           </p>
         </div>
 
-        {/* Sección de Firmas */}
-        <div className="mt-10 pt-8" style={{ borderTop: "3px double #1a365d" }}>
-          <h3 
-            className="font-bold text-center text-lg uppercase mb-2"
-            style={{ color: "#1a365d", letterSpacing: "0.1em" }}
-          >
+        {/* Firmas */}
+        <div style={{ marginTop: "40px", paddingTop: "32px", borderTop: "3px double #1a365d" }}>
+          <h3 style={{ 
+            fontWeight: "bold", 
+            textAlign: "center",
+            fontSize: "16px", 
+            textTransform: "uppercase",
+            color: "#1a365d",
+            letterSpacing: "0.1em",
+            marginBottom: "8px"
+          }}>
             Firmas de Aceptación
           </h3>
-          <p className="text-center text-sm mb-8" style={{ color: "#4a5568" }}>
+          <p style={{ textAlign: "center", fontSize: "13px", color: "#4a5568", marginBottom: "32px" }}>
             En constancia de lo anterior, las partes firman el presente contrato en la fecha indicada.
           </p>
           
-          <div className="grid grid-cols-2 gap-12">
-            {/* Firma del Suscriptor */}
-            <div className="text-center">
-              <div 
-                className="h-28 mb-3 flex items-end justify-center mx-auto"
-                style={{ 
-                  borderBottom: "2px solid #1a365d",
-                  maxWidth: "250px"
-                }}
-              >
-                {clientSignature && (
-                  <img
-                    src={clientSignature}
-                    alt="Firma del suscriptor"
-                    className="max-h-24 max-w-full object-contain"
-                  />
-                )}
-              </div>
-              <p className="font-bold" style={{ color: "#1a365d" }}>EL SUSCRIPTOR</p>
-              <p className="text-sm mt-1">{clientData.clientName}</p>
-              <p className="text-sm" style={{ color: "#4a5568" }}>C.C. {clientData.identification}</p>
-            </div>
-
-            {/* Firma del Representante Legal */}
-            <div className="text-center">
-              <div 
-                className="h-28 mb-3 flex items-end justify-center mx-auto"
-                style={{ 
-                  borderBottom: "2px solid #1a365d",
-                  maxWidth: "250px"
-                }}
-              >
-                {managerSignature && (
-                  <img
-                    src={managerSignature}
-                    alt="Firma del gerente"
-                    className="max-h-24 max-w-full object-contain"
-                  />
-                )}
-              </div>
-              <p className="font-bold" style={{ color: "#1a365d" }}>EL PRESTADOR</p>
-              <p className="text-sm mt-1">{managerName || companyInfo.managerName || companyInfo.name}</p>
-              <p className="text-sm" style={{ color: "#4a5568" }}>Representante Legal</p>
-            </div>
-          </div>
+          <table style={{ width: "100%" }}>
+            <tbody>
+              <tr>
+                <td style={{ width: "50%", textAlign: "center", padding: "0 24px" }}>
+                  <div style={{ 
+                    height: "100px", 
+                    borderBottom: "2px solid #1a365d",
+                    maxWidth: "250px",
+                    margin: "0 auto",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center"
+                  }}>
+                    {clientSignature && (
+                      <img
+                        src={clientSignature}
+                        alt="Firma del suscriptor"
+                        style={{ maxHeight: "90px", maxWidth: "100%", objectFit: "contain" }}
+                      />
+                    )}
+                  </div>
+                  <p style={{ fontWeight: "bold", color: "#1a365d", marginTop: "12px", marginBottom: "4px" }}>EL SUSCRIPTOR</p>
+                  <p style={{ fontSize: "13px", margin: "4px 0" }}>{clientData.clientName}</p>
+                  <p style={{ fontSize: "13px", color: "#4a5568", margin: 0 }}>C.C. {clientData.identification}</p>
+                </td>
+                <td style={{ width: "50%", textAlign: "center", padding: "0 24px" }}>
+                  <div style={{ 
+                    height: "100px", 
+                    borderBottom: "2px solid #1a365d",
+                    maxWidth: "250px",
+                    margin: "0 auto",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center"
+                  }}>
+                    {managerSignature && (
+                      <img
+                        src={managerSignature}
+                        alt="Firma del gerente"
+                        style={{ maxHeight: "90px", maxWidth: "100%", objectFit: "contain" }}
+                      />
+                    )}
+                  </div>
+                  <p style={{ fontWeight: "bold", color: "#1a365d", marginTop: "12px", marginBottom: "4px" }}>EL PRESTADOR</p>
+                  <p style={{ fontSize: "13px", margin: "4px 0" }}>{managerName || companyInfo.managerName || companyInfo.name}</p>
+                  <p style={{ fontSize: "13px", color: "#4a5568", margin: 0 }}>Representante Legal</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        {/* Footer con QR de Verificación */}
-        <div 
-          className="mt-12 pt-6"
-          style={{ borderTop: "1px solid #e2e8f0" }}
-        >
-          <div className="flex items-center justify-between">
-            {/* QR Code */}
-            <div className="flex items-center gap-3">
-              {qrCodeUrl && (
-                <img
-                  src={qrCodeUrl}
-                  alt="QR de verificación"
-                  className="w-20 h-20"
-                />
-              )}
-              <div className="text-left">
-                <p className="text-xs font-semibold" style={{ color: "#1a365d" }}>
-                  Verificación Digital
-                </p>
-                <p className="text-xs" style={{ color: "#718096" }}>
-                  Escanee el código QR para
-                </p>
-                <p className="text-xs" style={{ color: "#718096" }}>
-                  verificar la autenticidad
-                </p>
-                <p className="text-xs font-mono mt-1" style={{ color: "#4a5568" }}>
-                  {clientData.contractNumber}
-                </p>
-              </div>
-            </div>
-
-            {/* Company Info */}
-            <div className="text-right">
-              <div className="text-xs" style={{ color: "#718096" }}>
-                <p className="font-semibold">{companyInfo.name}</p>
-                <p>NIT: {companyInfo.nit}</p>
-                <p>{companyInfo.contact}</p>
-                <p>{companyInfo.email}</p>
-              </div>
-              <p className="text-xs mt-2" style={{ color: "#a0aec0" }}>
-                Documento generado el {formatDate(new Date().toISOString())}
-              </p>
-            </div>
-          </div>
+        {/* Footer con QR */}
+        <div style={{ marginTop: "48px", paddingTop: "24px", borderTop: "1px solid #e2e8f0" }}>
+          <table style={{ width: "100%" }}>
+            <tbody>
+              <tr>
+                <td style={{ verticalAlign: "middle" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    {qrCodeUrl && (
+                      <img
+                        src={qrCodeUrl}
+                        alt="QR de verificación"
+                        style={{ width: "80px", height: "80px" }}
+                      />
+                    )}
+                    <div>
+                      <p style={{ fontSize: "11px", fontWeight: "bold", color: "#1a365d", margin: 0 }}>
+                        Verificación Digital
+                      </p>
+                      <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>
+                        Escanee el código QR para
+                      </p>
+                      <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>
+                        verificar la autenticidad
+                      </p>
+                      <p style={{ fontSize: "10px", fontFamily: "monospace", color: "#4a5568", marginTop: "4px" }}>
+                        {clientData.contractNumber}
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td style={{ textAlign: "right", verticalAlign: "middle" }}>
+                  <div style={{ fontSize: "11px", color: "#718096" }}>
+                    <p style={{ fontWeight: "bold", margin: "2px 0" }}>{companyInfo.name}</p>
+                    <p style={{ margin: "2px 0" }}>NIT: {companyInfo.nit}</p>
+                    <p style={{ margin: "2px 0" }}>{companyInfo.contact}</p>
+                    <p style={{ margin: "2px 0" }}>{companyInfo.email}</p>
+                  </div>
+                  <p style={{ fontSize: "10px", color: "#a0aec0", marginTop: "8px" }}>
+                    Documento generado el {formatDate(new Date().toISOString())}
+                  </p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     );
