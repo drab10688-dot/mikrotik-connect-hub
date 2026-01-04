@@ -54,7 +54,14 @@ export function ContractHistory() {
   // Sign contract state
   const [signingContract, setSigningContract] = useState<Contract | null>(null);
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
-  const [managerName, setManagerName] = useState(localStorage.getItem("isp_manager_name") || "");
+  const [managerName, setManagerName] = useState(() => {
+    const companyInfo = localStorage.getItem("isp_company_info");
+    if (companyInfo) {
+      const parsed = JSON.parse(companyInfo);
+      return parsed.managerName || "";
+    }
+    return "";
+  });
 
   const { data: contracts, isLoading } = useQuery({
     queryKey: ["isp-contracts", mikrotikId],
