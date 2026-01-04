@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,104 +17,109 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Settings2, Trash2, Plus, Tv } from "lucide-react";
+import { Settings2, Trash2, Plus, Tv, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-
-export interface ServiceOption {
-  id: string;
-  name: string;
-  description: string;
-  price: string;
-}
+import { useServiceOptions, ServiceOption } from "@/hooks/useServiceOptions";
 
 interface ServicePricesManagerProps {
+  mikrotikId: string | null;
   onPricesChange?: () => void;
 }
 
-const DEFAULT_SERVICES: ServiceOption[] = [
-  { id: "solo-internet", name: "Solo Internet", description: "", price: "0" },
-  { id: "tv-incluido", name: "TV Incluido en el Plan", description: "Sin costo adicional", price: "0" },
-  { id: "tv-adicional", name: "+TV Adicional", description: "Agregar servicio de TV con costo adicional", price: "" },
-  { id: "solo-tv", name: "Solo TV", description: "Solo servicio de televisión sin internet", price: "" },
-];
-
-export function ServicePricesManager({ onPricesChange }: ServicePricesManagerProps) {
+export function ServicePricesManager({ mikrotikId, onPricesChange }: ServicePricesManagerProps) {
   const [open, setOpen] = useState(false);
-  const [services, setServices] = useState<ServiceOption[]>([]);
+  const { services, loading, updateService, addService, deleteService } = useServiceOptions(
+    open ? mikrotikId : null
+  );
+  const [editingPrices, setEditingPrices] = useState<Record<string, string>>({});
+  const [editingDescriptions, setEditingDescriptions] = useState<Record<string, string>>({});
   const [newService, setNewService] = useState({ name: "", description: "", price: "" });
-
-  // Cargar servicios desde localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("isp_service_options");
-    if (saved) {
-      setServices(JSON.parse(saved));
-    } else {
-      setServices(DEFAULT_SERVICES);
-      localStorage.setItem("isp_service_options", JSON.stringify(DEFAULT_SERVICES));
-    }
-  }, [open]);
-
-  const saveServices = (updatedServices: ServiceOption[]) => {
-    localStorage.setItem("isp_service_options", JSON.stringify(updatedServices));
-    setServices(updatedServices);
-    onPricesChange?.();
-  };
+  const [saving, setSaving] = useState<string | null>(null);
 
   const handlePriceChange = (id: string, price: string) => {
-    const updated = services.map(s => 
-      s.id === id ? { ...s, price } : s
-    );
-    setServices(updated);
+    setEditingPrices(prev => ({ ...prev, [id]: price }));
   };
 
-  const handlePriceSave = (id: string) => {
-    localStorage.setItem("isp_service_options", JSON.stringify(services));
-    onPricesChange?.();
-    toast.success("Precio actualizado");
+  const handlePriceSave = async (service: ServiceOption) => {
+    const newPrice = editingPrices[service.id];
+    if (newPrice === undefined) return;
+    
+    const numericPrice = parseFloat(newPrice.replace(/[^0-9.,]/g, "").replace(",", ".")) || 0;
+    
+    setSaving(service.id);
+    const success = await updateService(service.id, { price: numericPrice });
+    setSaving(null);
+    
+    if (success) {
+      toast.success("Precio actualizado");
+      onPricesChange?.();
+      setEditingPrices(prev => {
+        const next = { ...prev };
+        delete next[service.id];
+        return next;
+      });
+    }
   };
 
-  const handleUpdateDescription = (id: string, description: string) => {
-    const updated = services.map(s => 
-      s.id === id ? { ...s, description } : s
-    );
-    saveServices(updated);
+  const handleDescriptionChange = (id: string, description: string) => {
+    setEditingDescriptions(prev => ({ ...prev, [id]: description }));
   };
 
-  const handleAddService = () => {
+  const handleDescriptionSave = async (service: ServiceOption) => {
+    const newDescription = editingDescriptions[service.id];
+    if (newDescription === undefined) return;
+    
+    await updateService(service.id, { description: newDescription });
+    setEditingDescriptions(prev => {
+      const next = { ...prev };
+      delete next[service.id];
+      return next;
+    });
+  };
+
+  const handleAddService = async () => {
     if (!newService.name.trim()) {
       toast.error("El nombre del servicio es requerido");
       return;
     }
 
-    const id = newService.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const price = parseFloat(newService.price.replace(/[^0-9.,]/g, "").replace(",", ".")) || 0;
     
-    if (services.some(s => s.id === id)) {
-      toast.error("Ya existe un servicio con ese nombre");
-      return;
-    }
+    const success = await addService(
+      newService.name.trim(),
+      newService.description.trim(),
+      price
+    );
 
-    const updated = [...services, { 
-      id, 
-      name: newService.name.trim(), 
-      description: newService.description.trim(),
-      price: newService.price.trim() || "0"
-    }];
-    saveServices(updated);
-    setNewService({ name: "", description: "", price: "" });
-    toast.success("Servicio agregado");
+    if (success) {
+      setNewService({ name: "", description: "", price: "" });
+      onPricesChange?.();
+    }
   };
 
-  const handleDeleteService = (id: string) => {
-    // No permitir eliminar los servicios por defecto
-    if (["solo-internet", "tv-incluido", "tv-adicional", "solo-tv"].includes(id)) {
-      toast.error("No se pueden eliminar los servicios predeterminados");
-      return;
+  const handleDeleteService = async (id: string) => {
+    const success = await deleteService(id);
+    if (success) {
+      onPricesChange?.();
     }
-
-    const updated = services.filter(s => s.id !== id);
-    saveServices(updated);
-    toast.success("Servicio eliminado");
   };
+
+  const getDisplayPrice = (service: ServiceOption) => {
+    return editingPrices[service.id] ?? service.price.toString();
+  };
+
+  const getDisplayDescription = (service: ServiceOption) => {
+    return editingDescriptions[service.id] ?? (service.description || "");
+  };
+
+  if (!mikrotikId) {
+    return (
+      <Button variant="outline" size="sm" className="gap-2" disabled>
+        <Tv className="h-4 w-4" />
+        Gestionar Servicios
+      </Button>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -137,52 +142,64 @@ export function ServicePricesManager({ onPricesChange }: ServicePricesManagerPro
             Configure los precios de los servicios adicionales. Estos precios se sumarán al costo del plan de internet.
           </p>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Servicio</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead className="w-[150px]">Precio</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {services.map((service) => (
-                <TableRow key={service.id}>
-                  <TableCell className="font-medium">{service.name}</TableCell>
-                  <TableCell>
-                    <Input
-                      value={service.description}
-                      onChange={(e) => handleUpdateDescription(service.id, e.target.value)}
-                      placeholder="Descripción"
-                      className="h-8 text-sm"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={service.price}
-                      onChange={(e) => handlePriceChange(service.id, e.target.value)}
-                      onBlur={() => handlePriceSave(service.id)}
-                      placeholder="$0"
-                      className="h-8 text-sm"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {!["solo-internet", "tv-incluido", "tv-adicional", "solo-tv"].includes(service.id) && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteService(service.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Servicio</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead className="w-[150px]">Precio</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {services.map((service) => (
+                  <TableRow key={service.id}>
+                    <TableCell className="font-medium">{service.name}</TableCell>
+                    <TableCell>
+                      <Input
+                        value={getDisplayDescription(service)}
+                        onChange={(e) => handleDescriptionChange(service.id, e.target.value)}
+                        onBlur={() => handleDescriptionSave(service)}
+                        placeholder="Descripción"
+                        className="h-8 text-sm"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="relative">
+                        <Input
+                          value={getDisplayPrice(service)}
+                          onChange={(e) => handlePriceChange(service.id, e.target.value)}
+                          onBlur={() => handlePriceSave(service)}
+                          placeholder="$0"
+                          className="h-8 text-sm pr-8"
+                        />
+                        {saving === service.id && (
+                          <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {!service.is_default && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteService(service.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
 
           {/* Agregar nuevo servicio */}
           <div className="border-t pt-4 space-y-3">
@@ -221,29 +238,5 @@ export function ServicePricesManager({ onPricesChange }: ServicePricesManagerPro
   );
 }
 
-// Función auxiliar para obtener los servicios guardados
-export function getServiceOptions(): ServiceOption[] {
-  const saved = localStorage.getItem("isp_service_options");
-  if (saved) {
-    return JSON.parse(saved);
-  }
-  return DEFAULT_SERVICES;
-}
-
-// Función para obtener el precio de un servicio por ID
-export function getServicePrice(serviceId: string): string {
-  const services = getServiceOptions();
-  const service = services.find(s => s.id === serviceId);
-  return service?.price || "0";
-}
-
-// Función para calcular el precio total (plan + servicio adicional)
-export function calculateTotalPrice(planPrice: string, serviceId: string): number {
-  const cleanPrice = (price: string): number => {
-    const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
-    return isNaN(num) ? 0 : num;
-  };
-
-  const servicePriceStr = getServicePrice(serviceId);
-  return cleanPrice(planPrice) + cleanPrice(servicePriceStr);
-}
+// Re-export hook types for convenience
+export type { ServiceOption } from "@/hooks/useServiceOptions";

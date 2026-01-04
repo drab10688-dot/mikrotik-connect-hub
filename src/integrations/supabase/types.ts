@@ -572,6 +572,50 @@ export type Database = {
           },
         ]
       }
+      service_options: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_default: boolean
+          mikrotik_id: string
+          name: string
+          price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          mikrotik_id: string
+          name: string
+          price?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          mikrotik_id?: string
+          name?: string
+          price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_options_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       telegram_config: {
         Row: {
           bot_token: string

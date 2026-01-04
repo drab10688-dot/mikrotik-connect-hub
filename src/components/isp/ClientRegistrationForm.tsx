@@ -9,7 +9,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import { MapPin, UserPlus, AlertCircle, Gauge, Cable } from "lucide-react";
 import { PlanPricesManager } from "./PlanPricesManager";
-import { ServicePricesManager, getServiceOptions, getServicePrice, calculateTotalPrice } from "./ServicePricesManager";
+import { ServicePricesManager } from "./ServicePricesManager";
+import { useServiceOptions, ServiceOption } from "@/hooks/useServiceOptions";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -69,6 +70,9 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
   const mikrotikId = getSelectedDeviceId();
   const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
   const pppoeProfiles = (pppoeProfilesData as any[]) || [];
+  
+  // Hook para servicios adicionales desde la base de datos
+  const { services: serviceOptions, loading: loadingServices } = useServiceOptions(mikrotikId);
 
   // Toggle para Simple Queues vs PPPoE
   const [useSimpleQueues, setUseSimpleQueues] = useState(false);
@@ -117,16 +121,21 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
 
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
+  // Función para obtener el precio de un servicio
+  const getServicePriceByName = (serviceName: string): number => {
+    const service = serviceOptions.find(s => s.name === serviceName);
+    return service?.price || 0;
+  };
+
   // Función para calcular el precio total
-  const calculateTotal = (precioBase: string, serviceId: string): string => {
-    const servicePriceStr = getServicePrice(serviceId);
+  const calculateTotal = (precioBase: string, serviceName: string): string => {
+    const servicePrice = getServicePriceByName(serviceName);
     const cleanPrice = (price: string): number => {
       const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
       return isNaN(num) ? 0 : num;
     };
     const baseNum = cleanPrice(precioBase);
-    const serviceNum = cleanPrice(servicePriceStr);
-    const total = baseNum + serviceNum;
+    const total = baseNum + servicePrice;
     return total > 0 ? `$${total.toLocaleString('es-CO')}` : "";
   };
 
@@ -154,8 +163,8 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
 
       // Cuando cambia la opción de TV, actualizar precio del servicio y total
       if (field === "opcionTv" && typeof value === "string") {
-        const servicePrice = getServicePrice(value);
-        updated.precioServicioAdicional = servicePrice;
+        const servicePrice = getServicePriceByName(value);
+        updated.precioServicioAdicional = servicePrice.toString();
         updated.precioTotal = calculateTotal(updated.precio, value);
       }
 
@@ -837,36 +846,40 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Servicios Adicionales *</Label>
-                <ServicePricesManager onPricesChange={() => setPricesVersion(v => v + 1)} />
+                <ServicePricesManager mikrotikId={mikrotikId} onPricesChange={() => setPricesVersion(v => v + 1)} />
               </div>
-              <RadioGroup
-                value={formData.opcionTv}
-                onValueChange={(value) => updateField("opcionTv", value)}
-                className="space-y-2"
-              >
-                {getServiceOptions().map((service) => (
-                  <div key={service.id} className="flex items-center space-x-2">
-                    <RadioGroupItem value={service.id} id={service.id} />
-                    <Label htmlFor={service.id} className="cursor-pointer font-normal flex-1">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className={`font-medium ${service.id === 'solo-internet' ? 'text-primary' : ''}`}>
-                            {service.name}
-                          </span>
-                          {service.description && (
-                            <span className="text-muted-foreground text-sm block">{service.description}</span>
+              {loadingServices ? (
+                <p className="text-sm text-muted-foreground">Cargando servicios...</p>
+              ) : (
+                <RadioGroup
+                  value={formData.opcionTv}
+                  onValueChange={(value) => updateField("opcionTv", value)}
+                  className="space-y-2"
+                >
+                  {serviceOptions.map((service) => (
+                    <div key={service.id} className="flex items-center space-x-2">
+                      <RadioGroupItem value={service.name} id={service.id} />
+                      <Label htmlFor={service.id} className="cursor-pointer font-normal flex-1">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className={`font-medium ${service.name === 'Solo Internet' ? 'text-primary' : ''}`}>
+                              {service.name}
+                            </span>
+                            {service.description && (
+                              <span className="text-muted-foreground text-sm block">{service.description}</span>
+                            )}
+                          </div>
+                          {service.price > 0 && (
+                            <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                              +${service.price.toLocaleString('es-CO')}
+                            </span>
                           )}
                         </div>
-                        {service.price && parseFloat(service.price.replace(/[^0-9.,]/g, "").replace(",", ".")) > 0 && (
-                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                            +${parseFloat(service.price.replace(/[^0-9.,]/g, "").replace(",", ".")).toLocaleString('es-CO')}
-                          </span>
-                        )}
-                      </div>
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              )}
             </div>
 
             {/* Precio Total */}
