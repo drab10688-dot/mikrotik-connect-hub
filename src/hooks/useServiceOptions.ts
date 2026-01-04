@@ -11,7 +11,6 @@ export interface ServiceOption {
 }
 
 const DEFAULT_SERVICES: Omit<ServiceOption, "id">[] = [
-  { name: "Solo Internet", description: "", price: 0, is_default: true },
   { name: "TV Incluido en el Plan", description: "Sin costo adicional", price: 0, is_default: true },
   { name: "+TV Adicional", description: "Agregar servicio de TV con costo adicional", price: 0, is_default: true },
   { name: "Solo TV", description: "Solo servicio de televisión sin internet", price: 0, is_default: true },
@@ -140,12 +139,6 @@ export function useServiceOptions(mikrotikId: string | null) {
   };
 
   const deleteService = async (id: string) => {
-    const service = services.find(s => s.id === id);
-    if (service?.is_default) {
-      toast.error("No se pueden eliminar los servicios predeterminados");
-      return false;
-    }
-
     try {
       const { error } = await supabase
         .from("service_options")
