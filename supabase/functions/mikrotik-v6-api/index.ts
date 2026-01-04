@@ -427,9 +427,17 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/ppp/secret/add', params);
         break;
 
-      case 'ppp-secret-remove':
-        result = await api.executeCommand('/ppp/secret/remove', params);
+      case 'ppp-secret-remove': {
+        // First find the secret by name to get the .id
+        const secrets = await api.executeCommand('/ppp/secret/print');
+        const secret = secrets.find((s: any) => s.name === params.name);
+        if (secret && secret['.id']) {
+          result = await api.executeCommand('/ppp/secret/remove', { '.id': secret['.id'] });
+        } else {
+          throw new Error(`PPPoE secret "${params.name}" not found`);
+        }
         break;
+      }
 
       case 'ppp-secret-disable':
         result = await api.executeCommand('/ppp/secret/disable', params);
@@ -475,9 +483,17 @@ Deno.serve(async (req) => {
         result = await api.executeCommand('/queue/simple/add', params);
         break;
 
-      case 'simple-queue-remove':
-        result = await api.executeCommand('/queue/simple/remove', params);
+      case 'simple-queue-remove': {
+        // First find the queue by name to get the .id
+        const queues = await api.executeCommand('/queue/simple/print');
+        const queue = queues.find((q: any) => q.name === params.name);
+        if (queue && queue['.id']) {
+          result = await api.executeCommand('/queue/simple/remove', { '.id': queue['.id'] });
+        } else {
+          throw new Error(`Simple queue "${params.name}" not found`);
+        }
         break;
+      }
 
       case 'simple-queue-disable':
         result = await api.executeCommand('/queue/simple/disable', params);

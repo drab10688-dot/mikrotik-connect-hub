@@ -99,43 +99,56 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
             // Delete PPPoE user from MikroTik
             const functionName = mikrotikVersion === 'v6' ? 'mikrotik-v6-api' : 'mikrotik-pppoe';
             
-            if (mikrotikVersion === 'v6') {
-              await supabase.functions.invoke(functionName, {
-                body: {
-                  mikrotikId,
-                  command: 'ppp-secret-remove',
-                  params: { name: client.username }
-                }
-              });
-            } else {
-              await supabase.functions.invoke(functionName, {
-                body: {
-                  mikrotikId,
-                  action: 'remove',
-                  name: client.username
-                }
-              });
+            const response = await supabase.functions.invoke(functionName, {
+              body: mikrotikVersion === 'v6' 
+                ? {
+                    mikrotikId,
+                    command: 'ppp-secret-remove',
+                    params: { name: client.username }
+                  }
+                : {
+                    mikrotikId,
+                    action: 'remove',
+                    name: client.username
+                  }
+            });
+
+            if (response.error) {
+              console.error('MikroTik PPPoE delete error:', response.error);
+              throw new Error(response.error.message || 'Error al eliminar PPPoE');
+            }
+            
+            if (response.data && !response.data.success) {
+              console.warn('MikroTik PPPoE delete warning:', response.data.error);
+              // Don't throw, just warn - the user might already be deleted from MikroTik
+              toast.warning(`Advertencia MikroTik: ${response.data.error}`);
             }
           } else if (client.connection_type === 'simple_queue') {
             // Delete Simple Queue from MikroTik
             const functionName = mikrotikVersion === 'v6' ? 'mikrotik-v6-api' : 'mikrotik-connect';
             
-            if (mikrotikVersion === 'v6') {
-              await supabase.functions.invoke(functionName, {
-                body: {
-                  mikrotikId,
-                  command: 'queue-simple-remove',
-                  params: { name: client.username }
-                }
-              });
-            } else {
-              await supabase.functions.invoke(functionName, {
-                body: {
-                  mikrotikId,
-                  action: 'queue-remove',
-                  name: client.username
-                }
-              });
+            const response = await supabase.functions.invoke(functionName, {
+              body: mikrotikVersion === 'v6'
+                ? {
+                    mikrotikId,
+                    command: 'simple-queue-remove',
+                    params: { name: client.username }
+                  }
+                : {
+                    mikrotikId,
+                    action: 'queue-remove',
+                    name: client.username
+                  }
+            });
+
+            if (response.error) {
+              console.error('MikroTik Queue delete error:', response.error);
+              throw new Error(response.error.message || 'Error al eliminar Queue');
+            }
+            
+            if (response.data && !response.data.success) {
+              console.warn('MikroTik Queue delete warning:', response.data.error);
+              toast.warning(`Advertencia MikroTik: ${response.data.error}`);
             }
           }
         } catch (error: any) {
