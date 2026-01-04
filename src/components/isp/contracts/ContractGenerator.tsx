@@ -38,7 +38,14 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
   const [showManagerSignature, setShowManagerSignature] = useState(false);
   const [clientSignature, setClientSignature] = useState<string | undefined>();
   const [managerSignature, setManagerSignature] = useState<string | undefined>();
-  const [managerName, setManagerName] = useState(localStorage.getItem("isp_manager_name") || "");
+  const [managerName, setManagerName] = useState(() => {
+    const companyInfo = localStorage.getItem("isp_company_info");
+    if (companyInfo) {
+      const parsed = JSON.parse(companyInfo);
+      return parsed.managerName || "";
+    }
+    return "";
+  });
   const [isClientSigned, setIsClientSigned] = useState(false);
   const [isManagerSigned, setIsManagerSigned] = useState(false);
 

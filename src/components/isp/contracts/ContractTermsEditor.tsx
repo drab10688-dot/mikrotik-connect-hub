@@ -17,6 +17,7 @@ export interface CompanyInfo {
   website: string;
   address: string;
   logoUrl?: string;
+  managerName?: string;
 }
 
 export interface ContractTerms {
@@ -41,6 +42,7 @@ const DEFAULT_COMPANY_INFO: CompanyInfo = {
   website: "https://suros-comunicaciones.com",
   address: "Dirección de la empresa",
   logoUrl: "",
+  managerName: "",
 };
 
 const DEFAULT_TERMS: ContractTerms = {
@@ -318,6 +320,17 @@ export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
                 onChange={(e) => updateCompanyInfo("address", e.target.value)}
                 placeholder="Dirección"
               />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Nombre del Representante Legal / Gerente</Label>
+              <Input
+                value={companyInfo.managerName || ""}
+                onChange={(e) => updateCompanyInfo("managerName", e.target.value)}
+                placeholder="Nombre completo del gerente que firmará contratos"
+              />
+              <p className="text-xs text-muted-foreground">
+                Este nombre se usará automáticamente al firmar contratos
+              </p>
             </div>
           </div>
         </div>
