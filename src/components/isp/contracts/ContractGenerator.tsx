@@ -459,17 +459,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
                   ))}
                 </div>
               </div>
-
-              {/* Nombre del Gerente */}
-              <div className="space-y-2">
-                <Label>Nombre del Representante Legal / Gerente</Label>
-                <Input
-                  value={managerName}
-                  onChange={(e) => setManagerName(e.target.value)}
-                  placeholder="Nombre del gerente que firmará el contrato"
-                />
-              </div>
-
               {/* Estado de las firmas */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {isClientSigned && (
