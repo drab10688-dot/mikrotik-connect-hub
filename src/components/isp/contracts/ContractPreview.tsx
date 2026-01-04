@@ -415,7 +415,7 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
                 )}
               </div>
               <p className="font-bold" style={{ color: "#1a365d" }}>EL PRESTADOR</p>
-              <p className="text-sm mt-1">{managerName || companyInfo.name}</p>
+              <p className="text-sm mt-1">{managerName || companyInfo.managerName || companyInfo.name}</p>
               <p className="text-sm" style={{ color: "#4a5568" }}>Representante Legal</p>
             </div>
           </div>
