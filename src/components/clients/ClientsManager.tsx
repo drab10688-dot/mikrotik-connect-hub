@@ -451,35 +451,37 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
               <AlertTriangle className="h-5 w-5 text-destructive" />
               ¿Eliminar cliente completamente?
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>
-                Esta acción eliminará a <strong>{deletingClient?.client_name}</strong> del sistema junto con:
-              </p>
-              <ul className="list-disc pl-5 space-y-1 text-sm">
-                <li>Configuración de facturación</li>
-                <li>Facturas generadas</li>
-                <li>Contratos asociados</li>
-                {deleteFromMikrotik && (
-                  <li className="font-medium text-destructive">
-                    Usuario {deletingClient?.connection_type === 'pppoe' ? 'PPPoE' : 'Simple Queue'} del MikroTik
-                  </li>
-                )}
-              </ul>
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="delete-mikrotik"
-                  checked={deleteFromMikrotik}
-                  onChange={(e) => setDeleteFromMikrotik(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <label htmlFor="delete-mikrotik" className="text-sm font-medium">
-                  También eliminar del MikroTik ({deletingClient?.connection_type === 'pppoe' ? 'PPPoE' : 'Queue'})
-                </label>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Esta acción eliminará a <strong>{deletingClient?.client_name}</strong> del sistema junto con:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-sm">
+                  <li>Configuración de facturación</li>
+                  <li>Facturas generadas</li>
+                  <li>Contratos asociados</li>
+                  {deleteFromMikrotik && (
+                    <li className="font-medium text-destructive">
+                      Usuario {deletingClient?.connection_type === 'pppoe' ? 'PPPoE' : 'Simple Queue'} del MikroTik
+                    </li>
+                  )}
+                </ul>
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="delete-mikrotik"
+                    checked={deleteFromMikrotik}
+                    onChange={(e) => setDeleteFromMikrotik(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="delete-mikrotik" className="text-sm font-medium">
+                    También eliminar del MikroTik ({deletingClient?.connection_type === 'pppoe' ? 'PPPoE' : 'Queue'})
+                  </label>
+                </div>
+                <p className="text-destructive font-medium pt-2">
+                  Esta acción no se puede deshacer.
+                </p>
               </div>
-              <p className="text-destructive font-medium pt-2">
-                Esta acción no se puede deshacer.
-              </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
