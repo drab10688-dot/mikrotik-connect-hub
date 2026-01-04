@@ -40,7 +40,7 @@ const menuItems = [
   { icon: ShieldCheck, label: "Perfiles PPPoE", path: "/profiles" },
   { icon: ListChecks, label: "Address List", path: "/address-list" },
   { icon: Gauge, label: "Simple Queues", path: "/simple-queues" },
-  { icon: CreditCard, label: "Pagos", path: "/payments" },
+  { icon: CreditCard, label: "Facturación", path: "/payments" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },
