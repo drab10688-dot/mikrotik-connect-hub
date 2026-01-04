@@ -359,6 +359,24 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     },
   });
 
+  // Delete billing setting mutation
+  const deleteBillingMutation = useMutation({
+    mutationFn: async (billingId: string) => {
+      const { error } = await supabase
+        .from('client_billing_settings')
+        .delete()
+        .eq('id', billingId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Configuración de facturación eliminada");
+      queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
+    },
+    onError: (error: any) => {
+      toast.error(`Error al eliminar: ${error.message}`);
+    },
+  });
+
   const fetchLatestContractForClient = async (clientId: string) => {
     if (!mikrotikId) return null;
 
@@ -648,15 +666,31 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                             Configurar
                           </Button>
                           {billing && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => generateInvoiceMutation.mutate(client.id)}
-                              disabled={generateInvoiceMutation.isPending}
-                            >
-                              <Receipt className="h-4 w-4 mr-1" />
-                              Generar Factura
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => generateInvoiceMutation.mutate(client.id)}
+                                disabled={generateInvoiceMutation.isPending}
+                              >
+                                <Receipt className="h-4 w-4 mr-1" />
+                                Generar Factura
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive border-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar configuración de facturación para ${client.client_name}?`)) {
+                                    deleteBillingMutation.mutate(billing.id);
+                                  }
+                                }}
+                                disabled={deleteBillingMutation.isPending}
+                                title="Eliminar configuración"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </TableCell>
