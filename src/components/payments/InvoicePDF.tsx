@@ -3,6 +3,13 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import QRCode from "qrcode";
 
+interface ServiceBreakdown {
+  plan_name?: string;
+  plan_price?: number;
+  service_option?: string;
+  service_price?: number;
+}
+
 interface InvoiceData {
   invoice_number: string;
   amount: number;
@@ -13,6 +20,7 @@ interface InvoiceData {
   paid_at: string | null;
   paid_via: string | null;
   contract_number?: string | null;
+  service_breakdown?: ServiceBreakdown | null;
 }
 
 interface ClientData {
@@ -346,21 +354,58 @@ async function buildInvoicePDF(
 
   y += 10;
 
-  // Table row
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(229, 231, 235);
-  doc.setLineWidth(0.3);
-  doc.rect(margin, y, tableWidth, 12, "S");
-  
-  doc.setTextColor(...darkColor);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(serviceDescription, margin + 4, y + 8);
-  doc.text("1", margin + col1Width + col2Width / 2, y + 8, { align: "center" });
-  doc.setFont("helvetica", "bold");
-  doc.text(`$${invoice.amount.toLocaleString("es-CO")}`, margin + tableWidth - 4, y + 8, { align: "right" });
+  // Check if we have service breakdown
+  const breakdown = invoice.service_breakdown;
+  const hasBreakdown = breakdown && (breakdown.plan_price || breakdown.service_price);
 
-  y += 12;
+  if (hasBreakdown && breakdown) {
+    // Row 1: Plan service
+    const planPrice = breakdown.plan_price || (invoice.amount - (breakdown.service_price || 0));
+    const planName = breakdown.plan_name || serviceDescription;
+    
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.3);
+    doc.rect(margin, y, tableWidth, 12, "S");
+    
+    doc.setTextColor(...darkColor);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(planName, margin + 4, y + 8);
+    doc.text("1", margin + col1Width + col2Width / 2, y + 8, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.text(`$${planPrice.toLocaleString("es-CO")}`, margin + tableWidth - 4, y + 8, { align: "right" });
+    y += 12;
+
+    // Row 2: Additional service (if exists)
+    if (breakdown.service_option && breakdown.service_price && breakdown.service_price > 0) {
+      doc.setFillColor(255, 255, 255);
+      doc.rect(margin, y, tableWidth, 12, "S");
+      
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...darkColor);
+      doc.text(breakdown.service_option, margin + 4, y + 8);
+      doc.text("1", margin + col1Width + col2Width / 2, y + 8, { align: "center" });
+      doc.setFont("helvetica", "bold");
+      doc.text(`$${breakdown.service_price.toLocaleString("es-CO")}`, margin + tableWidth - 4, y + 8, { align: "right" });
+      y += 12;
+    }
+  } else {
+    // Single row (original behavior)
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.3);
+    doc.rect(margin, y, tableWidth, 12, "S");
+    
+    doc.setTextColor(...darkColor);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(serviceDescription, margin + 4, y + 8);
+    doc.text("1", margin + col1Width + col2Width / 2, y + 8, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.text(`$${invoice.amount.toLocaleString("es-CO")}`, margin + tableWidth - 4, y + 8, { align: "right" });
+    y += 12;
+  }
 
   // Empty row for visual balance
   doc.rect(margin, y, tableWidth, 8, "S");

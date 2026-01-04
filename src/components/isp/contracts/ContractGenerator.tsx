@@ -85,6 +85,9 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
     equipment: ["Router WiFi"],
     contractNumber: generateContractNumber(),
     date: new Date().toISOString(),
+    serviceOption: clientData?.serviceOption || "",
+    servicePrice: clientData?.servicePrice || "",
+    totalPrice: clientData?.totalPrice || "",
   }));
 
   const updateFromClientData = () => {
@@ -99,6 +102,9 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
         plan: clientData.plan || prev.plan,
         speed: clientData.speed || prev.speed,
         price: clientData.price || prev.price,
+        serviceOption: clientData.serviceOption || prev.serviceOption,
+        servicePrice: clientData.servicePrice || prev.servicePrice,
+        totalPrice: clientData.totalPrice || prev.totalPrice,
       }));
     }
   };
@@ -145,6 +151,9 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
         manager_signature_url: data.managerSignature,
         signed_at: data.clientSignature && data.managerSignature ? new Date().toISOString() : null,
         status: data.status,
+        service_option: data.contractData.serviceOption || null,
+        service_price: data.contractData.servicePrice || null,
+        total_price: data.contractData.totalPrice || null,
       });
 
       if (error) throw error;
