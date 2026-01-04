@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { MessageCircle, Settings, History, Send, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { MessageCircle, Settings, History, Send, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -178,6 +178,26 @@ export function WhatsAppConfig({ mikrotikId }: WhatsAppConfigProps) {
     },
   });
 
+  // Delete config mutation
+  const deleteConfigMutation = useMutation({
+    mutationFn: async () => {
+      if (!existingConfig?.id) throw new Error("No hay configuración para eliminar");
+      const { error } = await supabase
+        .from('whatsapp_config')
+        .delete()
+        .eq('id', existingConfig.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Configuración de WhatsApp eliminada");
+      setConfig({ access_token: "", phone_number_id: "", business_account_id: "", is_active: true });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-config", mikrotikId] });
+    },
+    onError: (error: any) => {
+      toast.error(`Error al eliminar: ${error.message}`);
+    },
+  });
+
   const handleSaveConfig = () => {
     if (!config.access_token || !config.phone_number_id) {
       toast.error("El Access Token y Phone Number ID son requeridos");
@@ -320,10 +340,30 @@ export function WhatsAppConfig({ mikrotikId }: WhatsAppConfigProps) {
                 />
               </div>
 
-              <Button onClick={handleSaveConfig} disabled={saveConfigMutation.isPending}>
-                {saveConfigMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Guardar Configuración
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveConfig} disabled={saveConfigMutation.isPending} className="flex-1">
+                  {saveConfigMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Guardar Configuración
+                </Button>
+                {existingConfig?.id && (
+                  <Button
+                    variant="outline"
+                    className="text-destructive border-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      if (confirm("¿Eliminar configuración de WhatsApp?")) {
+                        deleteConfigMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteConfigMutation.isPending}
+                  >
+                    {deleteConfigMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           </TabsContent>
 

@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip } from "lucide-react";
+import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip, Trash2 } from "lucide-react";
 import { generateInvoicePDF, generateInvoicePDFBlob } from "./InvoicePDF";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -338,6 +338,24 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     },
     onError: (error: any) => {
       toast.error(`Error al enviar: ${error.message}`);
+    },
+  });
+
+  // Delete invoice mutation
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { error } = await supabase
+        .from('client_invoices')
+        .delete()
+        .eq('id', invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Factura eliminada correctamente");
+      queryClient.invalidateQueries({ queryKey: ['client-invoices'] });
+    },
+    onError: (error: any) => {
+      toast.error(`Error al eliminar: ${error.message}`);
     },
   });
 
@@ -730,6 +748,20 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                           title="Descargar PDF"
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive border-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            if (confirm(`¿Eliminar factura ${invoice.invoice_number}?`)) {
+                              deleteInvoiceMutation.mutate(invoice.id);
+                            }
+                          }}
+                          disabled={deleteInvoiceMutation.isPending}
+                          title="Eliminar factura"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { CreditCard, Settings, Eye, EyeOff, Loader2 } from "lucide-react";
+import { CreditCard, Settings, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 
@@ -155,8 +155,44 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
     }
   });
 
+  // Delete platform mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (platformId: string) => {
+      const { error } = await supabase
+        .from('payment_platforms')
+        .delete()
+        .eq('id', platformId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Configuración eliminada");
+      queryClient.invalidateQueries({ queryKey: ['payment-platforms'] });
+    },
+    onError: (error: any) => {
+      toast.error(`Error al eliminar: ${error.message}`);
+    }
+  });
+
   const toggleSecret = (key: string) => {
     setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleDelete = (config: PlatformConfig) => {
+    if (!config.id) {
+      toast.error("Esta plataforma no está guardada");
+      return;
+    }
+    if (confirm(`¿Eliminar configuración de ${config.platform}?`)) {
+      deleteMutation.mutate(config.id);
+      // Reset local state
+      if (config.platform === 'wompi') {
+        setWompiConfig({ platform: 'wompi', is_active: false, public_key: '', private_key: '', webhook_secret: '', environment: 'sandbox' });
+      } else if (config.platform === 'mercadopago') {
+        setMercadopagoConfig({ platform: 'mercadopago', is_active: false, public_key: '', private_key: '', webhook_secret: '', environment: 'sandbox' });
+      } else if (config.platform === 'nequi') {
+        setNequiConfig({ platform: 'nequi', is_active: false, public_key: '', private_key: '', webhook_secret: '', environment: 'sandbox' });
+      }
+    }
   };
 
   const renderPlatformForm = (
@@ -275,11 +311,11 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
           </div>
         </div>
 
-        <div className="pt-4 border-t">
+        <div className="pt-4 border-t flex gap-2">
           <Button 
             onClick={() => saveMutation.mutate(config)}
             disabled={saveMutation.isPending}
-            className="w-full"
+            className="flex-1"
           >
             {saveMutation.isPending ? (
               <>
@@ -293,6 +329,20 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
               </>
             )}
           </Button>
+          {config.id && (
+            <Button 
+              variant="outline"
+              className="text-destructive border-destructive hover:bg-destructive/10"
+              onClick={() => handleDelete(config)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
