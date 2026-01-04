@@ -1043,6 +1043,56 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_active_payment_platforms: {
+        Args: { _mikrotik_id: string }
+        Returns: {
+          environment: string
+          is_active: boolean
+          platform: string
+          public_key: string
+        }[]
+      }
+      get_client_by_contract: {
+        Args: { _contract_number: string }
+        Returns: {
+          billing_day: number
+          client_id: string
+          client_name: string
+          connection_type: string
+          is_suspended: boolean
+          mikrotik_id: string
+          monthly_amount: number
+          plan_or_speed: string
+          username: string
+        }[]
+      }
+      get_client_invoices: {
+        Args: { _client_id: string }
+        Returns: {
+          amount: number
+          billing_period_end: string
+          billing_period_start: string
+          due_date: string
+          id: string
+          invoice_number: string
+          paid_at: string
+          status: string
+        }[]
+      }
+      get_client_payment_info: {
+        Args: { _identification: string }
+        Returns: {
+          billing_day: number
+          client_id: string
+          client_name: string
+          connection_type: string
+          is_suspended: boolean
+          mikrotik_id: string
+          monthly_amount: number
+          plan_or_speed: string
+          username: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
