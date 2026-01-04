@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import { MapPin, UserPlus, AlertCircle, Gauge, Cable } from "lucide-react";
 import { PlanPricesManager } from "./PlanPricesManager";
+import { ServicePricesManager, getServiceOptions, getServicePrice, calculateTotalPrice } from "./ServicePricesManager";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +26,8 @@ interface ClientFormData {
   plan: string;
   precio: string;
   opcionTv: string;
+  precioServicioAdicional: string;
+  precioTotal: string;
   correoElectronico: string;
   telefono: string;
   telegramChatId: string;
@@ -49,6 +52,9 @@ export interface RegisteredClientData {
   plan: string;
   speed: string;
   price: string;
+  serviceOption: string;
+  servicePrice: string;
+  totalPrice: string;
 }
 
 interface ClientRegistrationFormProps {
@@ -93,6 +99,8 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
     plan: "",
     precio: "",
     opcionTv: "solo-internet",
+    precioServicioAdicional: "0",
+    precioTotal: "",
     correoElectronico: "",
     telefono: "",
     telegramChatId: "",
@@ -109,6 +117,19 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
 
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
+  // Función para calcular el precio total
+  const calculateTotal = (precioBase: string, serviceId: string): string => {
+    const servicePriceStr = getServicePrice(serviceId);
+    const cleanPrice = (price: string): number => {
+      const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
+      return isNaN(num) ? 0 : num;
+    };
+    const baseNum = cleanPrice(precioBase);
+    const serviceNum = cleanPrice(servicePriceStr);
+    const total = baseNum + serviceNum;
+    return total > 0 ? `$${total.toLocaleString('es-CO')}` : "";
+  };
+
   const updateField = (field: keyof ClientFormData, value: string | boolean) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
@@ -118,6 +139,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
         const savedPrice = getSpeedPrices()[value];
         if (savedPrice) {
           updated.precio = savedPrice;
+          updated.precioTotal = calculateTotal(savedPrice, updated.opcionTv);
         }
       }
       
@@ -126,7 +148,20 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
         const savedPrice = getPlanPrices()[value];
         if (savedPrice) {
           updated.precio = savedPrice;
+          updated.precioTotal = calculateTotal(savedPrice, updated.opcionTv);
         }
+      }
+
+      // Cuando cambia la opción de TV, actualizar precio del servicio y total
+      if (field === "opcionTv" && typeof value === "string") {
+        const servicePrice = getServicePrice(value);
+        updated.precioServicioAdicional = servicePrice;
+        updated.precioTotal = calculateTotal(updated.precio, value);
+      }
+
+      // Cuando cambia el precio base, recalcular total
+      if (field === "precio" && typeof value === "string") {
+        updated.precioTotal = calculateTotal(value, updated.opcionTv);
       }
       
       return updated;
@@ -311,6 +346,8 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       plan: "",
       precio: "",
       opcionTv: "solo-internet",
+      precioServicioAdicional: "0",
+      precioTotal: "",
       correoElectronico: "",
       telefono: "",
       telegramChatId: "",
@@ -496,6 +533,9 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
         plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
         speed: result.type === 'pppoe' ? '' : result.speed || '',
         price: formData.precio,
+        serviceOption: formData.opcionTv,
+        servicePrice: formData.precioServicioAdicional,
+        totalPrice: formData.precioTotal || formData.precio,
       };
       onClientRegistered?.(registeredData);
       
@@ -795,41 +835,57 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
             </div>
 
             <div className="space-y-3">
-              <Label>Opciones de Televisión *</Label>
+              <div className="flex items-center justify-between">
+                <Label>Servicios Adicionales *</Label>
+                <ServicePricesManager onPricesChange={() => setPricesVersion(v => v + 1)} />
+              </div>
               <RadioGroup
                 value={formData.opcionTv}
                 onValueChange={(value) => updateField("opcionTv", value)}
                 className="space-y-2"
               >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="solo-internet" id="solo-internet" />
-                  <Label htmlFor="solo-internet" className="cursor-pointer font-normal">
-                    <span className="font-medium text-primary">Solo Internet</span>
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="tv-incluido" id="tv-incluido" />
-                  <Label htmlFor="tv-incluido" className="cursor-pointer font-normal">
-                    <span className="font-medium">TV Incluido en el Plan</span>
-                    <span className="text-muted-foreground text-sm block">Sin costo adicional</span>
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="tv-adicional" id="tv-adicional" />
-                  <Label htmlFor="tv-adicional" className="cursor-pointer font-normal">
-                    <span className="font-medium">+TV Adicional</span>
-                    <span className="text-muted-foreground text-sm block">Agregar servicio de TV con costo adicional</span>
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="solo-tv" id="solo-tv" />
-                  <Label htmlFor="solo-tv" className="cursor-pointer font-normal">
-                    <span className="font-medium">Solo TV</span>
-                    <span className="text-muted-foreground text-sm block">Solo servicio de televisión sin internet</span>
-                  </Label>
-                </div>
+                {getServiceOptions().map((service) => (
+                  <div key={service.id} className="flex items-center space-x-2">
+                    <RadioGroupItem value={service.id} id={service.id} />
+                    <Label htmlFor={service.id} className="cursor-pointer font-normal flex-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className={`font-medium ${service.id === 'solo-internet' ? 'text-primary' : ''}`}>
+                            {service.name}
+                          </span>
+                          {service.description && (
+                            <span className="text-muted-foreground text-sm block">{service.description}</span>
+                          )}
+                        </div>
+                        {service.price && parseFloat(service.price.replace(/[^0-9.,]/g, "").replace(",", ".")) > 0 && (
+                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                            +${parseFloat(service.price.replace(/[^0-9.,]/g, "").replace(",", ".")).toLocaleString('es-CO')}
+                          </span>
+                        )}
+                      </div>
+                    </Label>
+                  </div>
+                ))}
               </RadioGroup>
             </div>
+
+            {/* Precio Total */}
+            {formData.precio && formData.precioServicioAdicional && parseFloat(formData.precioServicioAdicional.replace(/[^0-9.,]/g, "").replace(",", ".")) > 0 && (
+              <div className="bg-muted/50 border rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Precio del plan:</span>
+                  <span>{formData.precio}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Servicio adicional:</span>
+                  <span className="text-green-600 dark:text-green-400">+${parseFloat(formData.precioServicioAdicional.replace(/[^0-9.,]/g, "").replace(",", ".")).toLocaleString('es-CO')}</span>
+                </div>
+                <div className="flex justify-between font-semibold border-t pt-2">
+                  <span>Total mensual:</span>
+                  <span className="text-primary">{formData.precioTotal}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sección Información de Contacto */}
