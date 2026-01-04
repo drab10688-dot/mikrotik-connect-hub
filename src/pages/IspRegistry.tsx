@@ -35,6 +35,9 @@ export default function IspRegistry() {
       plan: data.plan,
       speed: data.speed,
       price: data.price,
+      serviceOption: data.serviceOption,
+      servicePrice: data.servicePrice,
+      totalPrice: data.totalPrice,
     });
     
     toast.success(
