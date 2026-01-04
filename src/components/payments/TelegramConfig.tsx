@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare, ExternalLink } from "lucide-react";
+import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare, ExternalLink, Trash2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -173,6 +173,26 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
     },
   });
 
+  // Delete config mutation
+  const deleteConfigMutation = useMutation({
+    mutationFn: async () => {
+      if (!existingConfig?.id) throw new Error("No hay configuración para eliminar");
+      const { error } = await supabase
+        .from('telegram_config')
+        .delete()
+        .eq('id', existingConfig.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Configuración de Telegram eliminada");
+      setConfig({ bot_token: "", bot_username: "", is_active: true });
+      queryClient.invalidateQueries({ queryKey: ["telegram-config", mikrotikId] });
+    },
+    onError: (error: any) => {
+      toast.error(`Error al eliminar: ${error.message}`);
+    },
+  });
+
   const handleSaveConfig = () => {
     if (!config.bot_token) {
       toast.error("El Bot Token es requerido");
@@ -313,10 +333,30 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                 />
               </div>
 
-              <Button onClick={handleSaveConfig} disabled={saveConfigMutation.isPending}>
-                {saveConfigMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Guardar Configuración
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveConfig} disabled={saveConfigMutation.isPending} className="flex-1">
+                  {saveConfigMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Guardar Configuración
+                </Button>
+                {existingConfig?.id && (
+                  <Button
+                    variant="outline"
+                    className="text-destructive border-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      if (confirm("¿Eliminar configuración de Telegram?")) {
+                        deleteConfigMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteConfigMutation.isPending}
+                  >
+                    {deleteConfigMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
 
               <Separator className="my-4" />
 
