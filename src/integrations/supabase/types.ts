@@ -85,6 +85,7 @@ export type Database = {
           paid_at: string | null
           paid_via: string | null
           payment_reference: string | null
+          service_breakdown: Json | null
           status: string
           updated_at: string
         }
@@ -102,6 +103,7 @@ export type Database = {
           paid_at?: string | null
           paid_via?: string | null
           payment_reference?: string | null
+          service_breakdown?: Json | null
           status?: string
           updated_at?: string
         }
@@ -119,6 +121,7 @@ export type Database = {
           paid_at?: string | null
           paid_via?: string | null
           payment_reference?: string | null
+          service_breakdown?: Json | null
           status?: string
           updated_at?: string
         }
@@ -158,7 +161,10 @@ export type Database = {
           mikrotik_id: string
           phone: string | null
           plan_or_speed: string | null
+          service_option: string | null
+          service_price: number | null
           telegram_chat_id: string | null
+          total_monthly_price: number | null
           username: string
         }
         Insert: {
@@ -179,7 +185,10 @@ export type Database = {
           mikrotik_id: string
           phone?: string | null
           plan_or_speed?: string | null
+          service_option?: string | null
+          service_price?: number | null
           telegram_chat_id?: string | null
+          total_monthly_price?: number | null
           username: string
         }
         Update: {
@@ -200,7 +209,10 @@ export type Database = {
           mikrotik_id?: string
           phone?: string | null
           plan_or_speed?: string | null
+          service_option?: string | null
+          service_price?: number | null
           telegram_chat_id?: string | null
+          total_monthly_price?: number | null
           username?: string
         }
         Relationships: [
@@ -232,9 +244,12 @@ export type Database = {
           phone: string | null
           plan: string
           price: string | null
+          service_option: string | null
+          service_price: string | null
           signed_at: string | null
           speed: string | null
           status: string
+          total_price: string | null
           updated_at: string
         }
         Insert: {
@@ -255,9 +270,12 @@ export type Database = {
           phone?: string | null
           plan: string
           price?: string | null
+          service_option?: string | null
+          service_price?: string | null
           signed_at?: string | null
           speed?: string | null
           status?: string
+          total_price?: string | null
           updated_at?: string
         }
         Update: {
@@ -278,9 +296,12 @@ export type Database = {
           phone?: string | null
           plan?: string
           price?: string | null
+          service_option?: string | null
+          service_price?: string | null
           signed_at?: string | null
           speed?: string | null
           status?: string
+          total_price?: string | null
           updated_at?: string
         }
         Relationships: [

@@ -458,6 +458,16 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       try {
         const { data: userData } = await supabase.auth.getUser();
         if (userData.user) {
+          // Parse service price
+          const parsePrice = (price: string): number => {
+            const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
+            return isNaN(num) ? 0 : num;
+          };
+          
+          const basePrice = parsePrice(formData.precio);
+          const servicePrice = parsePrice(formData.precioServicioAdicional);
+          const totalPrice = basePrice + servicePrice;
+
           await supabase.from('isp_clients').insert({
             mikrotik_id: mikrotikId,
             created_by: userData.user.id,
@@ -475,7 +485,10 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
             assigned_ip: result.remoteIP,
             plan_or_speed: result.type === 'pppoe' ? formData.plan : result.speed,
             is_potential_client: formData.clientePotencial,
-            comment: formData.numeroCajaNap ? `NAP: ${formData.numeroCajaNap}-${formData.numeroPuertoCajaNap}` : null
+            comment: formData.numeroCajaNap ? `NAP: ${formData.numeroCajaNap}-${formData.numeroPuertoCajaNap}` : null,
+            service_option: formData.opcionTv || null,
+            service_price: servicePrice,
+            total_monthly_price: totalPrice > 0 ? totalPrice : basePrice
           });
         }
       } catch (err) {

@@ -14,6 +14,9 @@ export interface ClientContractData {
   equipment?: string[];
   contractNumber: string;
   date: string;
+  serviceOption?: string;
+  servicePrice?: string;
+  totalPrice?: string;
 }
 
 interface ContractPreviewProps {
@@ -205,7 +208,9 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           <h3 className="font-bold text-sm uppercase mb-3" style={{ letterSpacing: "0.1em" }}>
             Servicio Contratado
           </h3>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          
+          {/* Fila principal: Plan y Velocidad */}
+          <div className="grid grid-cols-2 gap-4 text-center mb-4">
             <div>
               <p className="text-xs uppercase opacity-75">Plan</p>
               <p className="text-lg font-bold">{clientData.plan}</p>
@@ -216,12 +221,31 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
                 <p className="text-lg font-bold">{clientData.speed}</p>
               </div>
             )}
-            {clientData.price && (
+          </div>
+
+          {/* Desglose de precios */}
+          <div 
+            className="mt-3 pt-3" 
+            style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}
+          >
+            <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-xs uppercase opacity-75">Valor Mensual</p>
-                <p className="text-lg font-bold">{clientData.price}</p>
+                <p className="text-xs uppercase opacity-75">Precio Plan</p>
+                <p className="text-base font-bold">{clientData.price || "$0"}</p>
               </div>
-            )}
+              {clientData.serviceOption && clientData.servicePrice && parseFloat(clientData.servicePrice.replace(/[^0-9.,]/g, "")) > 0 && (
+                <div>
+                  <p className="text-xs uppercase opacity-75">{clientData.serviceOption}</p>
+                  <p className="text-base font-bold">{clientData.servicePrice}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs uppercase opacity-75">Total Mensual</p>
+                <p className="text-lg font-bold" style={{ color: "#fbbf24" }}>
+                  {clientData.totalPrice || clientData.price || "$0"}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 

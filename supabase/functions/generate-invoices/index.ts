@@ -243,7 +243,7 @@ serve(async (req) => {
       // Get client info including telegram_chat_id and phone
       const { data: client, error: clientError } = await supabase
         .from('isp_clients')
-        .select('id, client_name, username, email, telegram_chat_id, phone')
+        .select('id, client_name, username, email, telegram_chat_id, phone, plan_or_speed, service_option, service_price, total_monthly_price')
         .eq('id', billing.client_id)
         .single();
 
@@ -275,6 +275,14 @@ serve(async (req) => {
       }
 
       try {
+        // Build service breakdown for invoice
+        const serviceBreakdown = {
+          plan_name: `Servicio de Internet - ${client.plan_or_speed || 'Plan Mensual'}`,
+          plan_price: billing.monthly_amount - (client.service_price || 0),
+          service_option: client.service_option || null,
+          service_price: client.service_price || 0
+        };
+
         // Create invoice
         const { data: invoice, error: invoiceError } = await supabase
           .from('client_invoices')
@@ -287,7 +295,8 @@ serve(async (req) => {
             billing_period_start: billingPeriodStart.toISOString().split('T')[0],
             billing_period_end: billingPeriodEnd.toISOString().split('T')[0],
             due_date: dueDate.toISOString().split('T')[0],
-            status: 'pending'
+            status: 'pending',
+            service_breakdown: serviceBreakdown
           })
           .select()
           .single();
