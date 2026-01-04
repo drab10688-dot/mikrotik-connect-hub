@@ -5,16 +5,19 @@ import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, Download, Trash2, Search, Calendar, CheckCircle2, Clock, Loader2 } from "lucide-react";
+import { FileText, Download, Trash2, Search, Calendar, CheckCircle2, Clock, Loader2, PenTool } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { ContractPreview, type ClientContractData } from "./ContractPreview";
+import { SignaturePad } from "./SignaturePad";
 import { DEFAULT_TERMS, DEFAULT_COMPANY_INFO } from "./ContractTermsEditor";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -47,6 +50,11 @@ export function ContractHistory() {
   const [downloadingContract, setDownloadingContract] = useState<Contract | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
+  
+  // Sign contract state
+  const [signingContract, setSigningContract] = useState<Contract | null>(null);
+  const [showSignatureDialog, setShowSignatureDialog] = useState(false);
+  const [managerName, setManagerName] = useState(localStorage.getItem("isp_manager_name") || "");
 
   const { data: contracts, isLoading } = useQuery({
     queryKey: ["isp-contracts", mikrotikId],
@@ -83,6 +91,45 @@ export function ContractHistory() {
       toast.error("Error al eliminar: " + error.message);
     },
   });
+
+  // Sign contract mutation
+  const signContractMutation = useMutation({
+    mutationFn: async ({ contractId, managerSignature }: { contractId: string; managerSignature: string }) => {
+      const { error } = await supabase
+        .from("isp_contracts")
+        .update({
+          manager_signature_url: managerSignature,
+          signed_at: new Date().toISOString(),
+          status: "signed",
+        })
+        .eq("id", contractId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["isp-contracts"] });
+      toast.success("Contrato firmado correctamente");
+      setShowSignatureDialog(false);
+      setSigningContract(null);
+    },
+    onError: (error: Error) => {
+      toast.error("Error al firmar: " + error.message);
+    },
+  });
+
+  const handleOpenSignDialog = (contract: Contract) => {
+    setSigningContract(contract);
+    setShowSignatureDialog(true);
+  };
+
+  const handleManagerSignatureComplete = (signatureDataUrl: string) => {
+    if (!signingContract) return;
+    localStorage.setItem("isp_manager_name", managerName);
+    signContractMutation.mutate({
+      contractId: signingContract.id,
+      managerSignature: signatureDataUrl,
+    });
+  };
 
   const filteredContracts = contracts?.filter(contract => {
     const searchLower = search.toLowerCase();
@@ -324,6 +371,18 @@ export function ContractHistory() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {/* Sign button for draft contracts */}
+                        {contract.status === "draft" && !contract.signed_at && (isAdmin || isSuperAdmin) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-primary hover:text-primary"
+                            onClick={() => handleOpenSignDialog(contract)}
+                            title="Firmar contrato"
+                          >
+                            <PenTool className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -383,6 +442,45 @@ export function ContractHistory() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog for manager signature */}
+      <Dialog open={showSignatureDialog} onOpenChange={setShowSignatureDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PenTool className="w-5 h-5" />
+              Firmar Contrato
+            </DialogTitle>
+            <DialogDescription>
+              Firmar contrato <strong>{signingContract?.contract_number}</strong> de{" "}
+              <strong>{signingContract?.client_name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nombre del Representante Legal / Gerente</Label>
+              <Input
+                value={managerName}
+                onChange={(e) => setManagerName(e.target.value)}
+                placeholder="Ingrese el nombre del gerente"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Firma del Gerente</Label>
+              <SignaturePad
+                onSignatureComplete={handleManagerSignatureComplete}
+                title="Firma del Gerente"
+              />
+            </div>
+            {signContractMutation.isPending && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                <span>Guardando firma...</span>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Hidden container for PDF generation */}
       {downloadingContract && (
