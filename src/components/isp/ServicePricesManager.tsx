@@ -60,11 +60,16 @@ export function ServicePricesManager({ onPricesChange }: ServicePricesManagerPro
     onPricesChange?.();
   };
 
-  const handleUpdatePrice = (id: string, price: string) => {
+  const handlePriceChange = (id: string, price: string) => {
     const updated = services.map(s => 
       s.id === id ? { ...s, price } : s
     );
-    saveServices(updated);
+    setServices(updated);
+  };
+
+  const handlePriceSave = (id: string) => {
+    localStorage.setItem("isp_service_options", JSON.stringify(services));
+    onPricesChange?.();
     toast.success("Precio actualizado");
   };
 
@@ -156,7 +161,8 @@ export function ServicePricesManager({ onPricesChange }: ServicePricesManagerPro
                   <TableCell>
                     <Input
                       value={service.price}
-                      onChange={(e) => handleUpdatePrice(service.id, e.target.value)}
+                      onChange={(e) => handlePriceChange(service.id, e.target.value)}
+                      onBlur={() => handlePriceSave(service.id)}
                       placeholder="$0"
                       className="h-8 text-sm"
                     />
