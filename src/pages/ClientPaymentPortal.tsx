@@ -94,84 +94,75 @@ export default function ClientPaymentPortal() {
     setPlatforms([]);
 
     try {
-      // Search for client by identification number
-      const { data: clientData, error: clientError } = await supabase
-        .from('isp_clients')
-        .select('id, client_name, username, plan_or_speed, connection_type, mikrotik_id')
-        .eq('identification_number', query.trim())
-        .eq('is_potential_client', false)
-        .single();
+      // First try searching by identification number using secure function
+      const { data: clientByIdData, error: idError } = await supabase
+        .rpc('get_client_payment_info', { _identification: query.trim() });
 
-      let foundClient: ClientInfo | null = null;
+      let foundClientData: {
+        client_id: string;
+        client_name: string;
+        username: string;
+        plan_or_speed: string | null;
+        connection_type: string;
+        mikrotik_id: string;
+        monthly_amount: number | null;
+        billing_day: number | null;
+        is_suspended: boolean | null;
+      } | null = null;
 
-      if (clientError || !clientData) {
-        // Try searching by contract number
-        const { data: contractData, error: contractError } = await supabase
-          .from('isp_contracts')
-          .select('client_id, mikrotik_id')
-          .eq('contract_number', query.trim())
-          .single();
+      if (clientByIdData && clientByIdData.length > 0) {
+        foundClientData = clientByIdData[0];
+      } else {
+        // Try searching by contract number using secure function
+        const { data: clientByContractData, error: contractError } = await supabase
+          .rpc('get_client_by_contract', { _contract_number: query.trim() });
 
-        if (contractError || !contractData) {
+        if (!clientByContractData || clientByContractData.length === 0) {
           toast.error("No se encontró ningún cliente con esos datos");
           setIsSearching(false);
           return;
         }
 
-        // Get client info from contract
-        const { data: clientFromContract } = await supabase
-          .from('isp_clients')
-          .select('id, client_name, username, plan_or_speed, connection_type, mikrotik_id')
-          .eq('id', contractData.client_id)
-          .single();
-
-        if (!clientFromContract) {
-          toast.error("No se encontró información del cliente");
-          setIsSearching(false);
-          return;
-        }
-
-        foundClient = clientFromContract;
-        setClientInfo(clientFromContract);
-      } else {
-        foundClient = clientData;
-        setClientInfo(clientData);
+        foundClientData = clientByContractData[0];
       }
 
-      if (!foundClient) {
+      if (!foundClientData) {
+        toast.error("No se encontró información del cliente");
         setIsSearching(false);
         return;
       }
 
-      // Get billing settings
-      const { data: billing } = await supabase
-        .from('client_billing_settings')
-        .select('monthly_amount, billing_day, is_suspended')
-        .eq('client_id', foundClient.id)
-        .single();
+      // Set client info from secure function response
+      const clientInfo: ClientInfo = {
+        id: foundClientData.client_id,
+        client_name: foundClientData.client_name,
+        username: foundClientData.username,
+        plan_or_speed: foundClientData.plan_or_speed,
+        connection_type: foundClientData.connection_type,
+        mikrotik_id: foundClientData.mikrotik_id
+      };
+      setClientInfo(clientInfo);
 
-      if (billing) {
-        setBillingSetting(billing);
+      // Set billing settings from secure function response
+      if (foundClientData.monthly_amount !== null) {
+        setBillingSetting({
+          monthly_amount: foundClientData.monthly_amount,
+          billing_day: foundClientData.billing_day ?? 1,
+          is_suspended: foundClientData.is_suspended ?? false
+        });
       }
 
-      // Get pending invoices
+      // Get pending invoices using secure function
       const { data: invoiceData } = await supabase
-        .from('client_invoices')
-        .select('id, invoice_number, amount, due_date, status, billing_period_start, billing_period_end, paid_at')
-        .eq('client_id', foundClient.id)
-        .in('status', ['pending', 'overdue'])
-        .order('due_date', { ascending: true });
+        .rpc('get_client_invoices', { _client_id: foundClientData.client_id });
 
       if (invoiceData) {
         setInvoices(invoiceData);
       }
 
-      // Get payment platforms for this mikrotik
+      // Get payment platforms using secure function
       const { data: platformsData } = await supabase
-        .from('payment_platforms')
-        .select('platform, is_active, public_key, environment')
-        .eq('mikrotik_id', foundClient.mikrotik_id)
-        .eq('is_active', true);
+        .rpc('get_active_payment_platforms', { _mikrotik_id: foundClientData.mikrotik_id });
 
       if (platformsData) {
         setPlatforms(platformsData);
