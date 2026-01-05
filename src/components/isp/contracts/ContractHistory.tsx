@@ -18,7 +18,12 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { ContractPreview, type ClientContractData } from "./ContractPreview";
 import { SignaturePad } from "./SignaturePad";
-import { DEFAULT_TERMS, DEFAULT_COMPANY_INFO } from "./ContractTermsEditor";
+import {
+  DEFAULT_TERMS,
+  DEFAULT_COMPANY_INFO,
+  type CompanyInfo,
+  type ContractTerms,
+} from "./ContractTermsEditor";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -57,10 +62,24 @@ export function ContractHistory() {
   // Sign contract state
   const [signingContract, setSigningContract] = useState<Contract | null>(null);
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
+
+  const getTerms = (): ContractTerms => {
+    const saved = localStorage.getItem("isp_contract_terms");
+    return saved ? JSON.parse(saved) : DEFAULT_TERMS;
+  };
+
+  const getCompanyInfo = (): CompanyInfo => {
+    const saved = localStorage.getItem("isp_company_info");
+    return saved ? JSON.parse(saved) : DEFAULT_COMPANY_INFO;
+  };
+
+  const terms = getTerms();
+  const companyInfo = getCompanyInfo();
+
   const [managerName, setManagerName] = useState(() => {
-    const companyInfo = localStorage.getItem("isp_company_info");
-    if (companyInfo) {
-      const parsed = JSON.parse(companyInfo);
+    const savedCompany = localStorage.getItem("isp_company_info");
+    if (savedCompany) {
+      const parsed = JSON.parse(savedCompany);
       return parsed.managerName || "";
     }
     return "";
@@ -219,9 +238,11 @@ export function ContractHistory() {
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
 
-      // Paginate if needed
+      // IMPORTANT: Ajustar por ancho para evitar que el contenido se "encoga" intentando caber en 1 sola página
+      const ratio = pdfWidth / imgWidth;
+
+      // Paginar por altura
       const pageHeightInPixels = pdfHeight / ratio;
       const totalPages = Math.ceil(imgHeight / pageHeightInPixels);
 
@@ -501,8 +522,8 @@ export function ContractHistory() {
           <ContractPreview
             ref={pdfRef}
             clientData={contractToClientData(downloadingContract)}
-            terms={DEFAULT_TERMS}
-            companyInfo={DEFAULT_COMPANY_INFO}
+            terms={terms}
+            companyInfo={companyInfo}
             clientSignature={downloadingContract.client_signature_url || undefined}
             managerSignature={downloadingContract.manager_signature_url || undefined}
           />

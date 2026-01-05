@@ -91,38 +91,44 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         }}
       >
         {/* Header */}
-        <div style={{ 
-          marginBottom: "32px", 
-          paddingBottom: "24px", 
-          borderBottom: "3px double #1a365d" 
+        <div style={{
+          marginBottom: "32px",
+          paddingBottom: "24px",
+          borderBottom: "3px double #1a365d",
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            {companyInfo.logoUrl ? (
-              <div>
-                <img
-                  src={companyInfo.logoUrl}
-                  alt="Logo"
-                  style={{ maxHeight: "80px", maxWidth: "180px", objectFit: "contain" }}
-                  crossOrigin="anonymous"
-                />
-              </div>
-            ) : (
-              <div style={{ width: "180px" }} />
-            )}
-            <div style={{ textAlign: "right" }}>
-              <h1 style={{ 
-                fontSize: "24px", 
-                fontWeight: "bold", 
-                color: "#1a365d", 
-                letterSpacing: "0.05em",
-                margin: 0 
-              }}>
-                {companyInfo.name}
-              </h1>
-              <p style={{ fontSize: "14px", color: "#4a5568", margin: "4px 0 0 0" }}>NIT: {companyInfo.nit}</p>
-              <p style={{ fontSize: "12px", color: "#718096", margin: "4px 0 0 0" }}>{companyInfo.contact}</p>
-            </div>
-          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr>
+                <td style={{ width: "40%", verticalAlign: "middle" }}>
+                  {companyInfo.logoUrl ? (
+                    <img
+                      src={companyInfo.logoUrl}
+                      alt="Logo"
+                      style={{ maxHeight: "80px", maxWidth: "180px" }}
+                      crossOrigin="anonymous"
+                    />
+                  ) : (
+                    <div style={{ height: "80px" }} />
+                  )}
+                </td>
+                <td style={{ width: "60%", verticalAlign: "middle", textAlign: "right" }}>
+                  <h1
+                    style={{
+                      fontSize: "24px",
+                      fontWeight: "bold",
+                      color: "#1a365d",
+                      letterSpacing: "0.05em",
+                      margin: 0,
+                    }}
+                  >
+                    {companyInfo.name}
+                  </h1>
+                  <p style={{ fontSize: "14px", color: "#4a5568", margin: "4px 0 0 0" }}>NIT: {companyInfo.nit}</p>
+                  <p style={{ fontSize: "12px", color: "#718096", margin: "4px 0 0 0" }}>{companyInfo.contact}</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         {/* Título */}
