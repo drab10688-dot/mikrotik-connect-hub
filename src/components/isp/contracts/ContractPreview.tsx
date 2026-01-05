@@ -206,67 +206,91 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         </table>
 
         {/* Plan Contratado */}
-        <div style={{ 
+        <table style={{ 
+          width: "100%",
           marginBottom: "32px", 
-          padding: "20px", 
-          borderRadius: "8px",
-          background: "linear-gradient(135deg, #1a365d 0%, #2d3748 100%)",
-          color: "white"
+          borderCollapse: "collapse"
         }}>
-          <h3 style={{ 
-            fontWeight: "bold", 
-            fontSize: "12px", 
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            marginBottom: "16px"
-          }}>
-            Servicio Contratado
-          </h3>
-          
-          {/* Plan y Velocidad */}
-          <table style={{ width: "100%", marginBottom: "16px" }}>
-            <tbody>
-              <tr>
-                <td style={{ width: clientData.speed ? "50%" : "100%", textAlign: "center", padding: "8px" }}>
-                  <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Plan</p>
-                  <p style={{ fontSize: "18px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.plan}</p>
+          <tbody>
+            <tr>
+              <td style={{ 
+                backgroundColor: "#1a365d",
+                color: "white",
+                padding: "16px",
+                borderRadius: "8px 8px 0 0"
+              }} colSpan={3}>
+                <p style={{ 
+                  fontWeight: "bold", 
+                  fontSize: "12px", 
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  margin: 0
+                }}>
+                  Servicio Contratado
+                </p>
+              </td>
+            </tr>
+            <tr style={{ backgroundColor: "#2d3748" }}>
+              <td style={{ 
+                width: clientData.speed ? "50%" : "100%", 
+                textAlign: "center", 
+                padding: "16px",
+                color: "white"
+              }}>
+                <p style={{ fontSize: "10px", textTransform: "uppercase", color: "#a0aec0", margin: 0 }}>Plan</p>
+                <p style={{ fontSize: "18px", fontWeight: "bold", margin: "4px 0 0 0", color: "white" }}>{clientData.plan}</p>
+              </td>
+              {clientData.speed && (
+                <td style={{ 
+                  width: "50%", 
+                  textAlign: "center", 
+                  padding: "16px",
+                  color: "white"
+                }}>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", color: "#a0aec0", margin: 0 }}>Velocidad</p>
+                  <p style={{ fontSize: "18px", fontWeight: "bold", margin: "4px 0 0 0", color: "white" }}>{clientData.speed}</p>
                 </td>
-                {clientData.speed && (
-                  <td style={{ width: "50%", textAlign: "center", padding: "8px" }}>
-                    <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Velocidad</p>
-                    <p style={{ fontSize: "18px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.speed}</p>
-                  </td>
-                )}
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Desglose de precios */}
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.2)", paddingTop: "12px" }}>
-            <table style={{ width: "100%" }}>
-              <tbody>
-                <tr>
-                  <td style={{ width: hasServiceOption ? "33%" : "50%", textAlign: "center", padding: "8px" }}>
-                    <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Precio Plan</p>
-                    <p style={{ fontSize: "14px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.price || "$0"}</p>
-                  </td>
-                  {hasServiceOption && (
-                    <td style={{ width: "33%", textAlign: "center", padding: "8px" }}>
-                      <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>{clientData.serviceOption}</p>
-                      <p style={{ fontSize: "14px", fontWeight: "bold", margin: "4px 0 0 0" }}>{clientData.servicePrice}</p>
-                    </td>
-                  )}
-                  <td style={{ width: hasServiceOption ? "33%" : "50%", textAlign: "center", padding: "8px" }}>
-                    <p style={{ fontSize: "10px", textTransform: "uppercase", opacity: 0.75, margin: 0 }}>Total Mensual</p>
-                    <p style={{ fontSize: "18px", fontWeight: "bold", color: "#fbbf24", margin: "4px 0 0 0" }}>
-                      {clientData.totalPrice || clientData.price || "$0"}
-                    </p>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+              )}
+            </tr>
+            <tr style={{ backgroundColor: "#1a365d" }}>
+              <td style={{ 
+                width: hasServiceOption ? "33%" : "50%", 
+                textAlign: "center", 
+                padding: "12px",
+                borderTop: "1px solid #4a5568",
+                color: "white"
+              }}>
+                <p style={{ fontSize: "10px", textTransform: "uppercase", color: "#a0aec0", margin: 0 }}>Precio Plan</p>
+                <p style={{ fontSize: "14px", fontWeight: "bold", margin: "4px 0 0 0", color: "white" }}>{clientData.price || "$0"}</p>
+              </td>
+              {hasServiceOption && (
+                <td style={{ 
+                  width: "33%", 
+                  textAlign: "center", 
+                  padding: "12px",
+                  borderTop: "1px solid #4a5568",
+                  color: "white"
+                }}>
+                  <p style={{ fontSize: "10px", textTransform: "uppercase", color: "#a0aec0", margin: 0 }}>{clientData.serviceOption}</p>
+                  <p style={{ fontSize: "14px", fontWeight: "bold", margin: "4px 0 0 0", color: "white" }}>{clientData.servicePrice}</p>
+                </td>
+              )}
+              <td style={{ 
+                width: hasServiceOption ? "33%" : "50%", 
+                textAlign: "center", 
+                padding: "12px",
+                borderTop: "1px solid #4a5568",
+                color: "white",
+                borderRadius: "0 0 8px 8px"
+              }}>
+                <p style={{ fontSize: "10px", textTransform: "uppercase", color: "#a0aec0", margin: 0 }}>Total Mensual</p>
+                <p style={{ fontSize: "18px", fontWeight: "bold", color: "#fbbf24", margin: "4px 0 0 0" }}>
+                  {clientData.totalPrice || clientData.price || "$0"}
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
         {/* Equipos */}
         {clientData.equipment && clientData.equipment.length > 0 && (
@@ -281,24 +305,28 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
             }}>
               Equipos Entregados en Comodato
             </h3>
-            <div style={{ 
-              padding: "16px", 
-              borderRadius: "8px",
+            <table style={{ 
+              width: "100%",
               backgroundColor: "#fffbeb", 
-              border: "1px solid #fbbf24" 
+              border: "2px solid #fbbf24",
+              borderCollapse: "collapse"
             }}>
-              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                {clientData.equipment.map((item, index) => (
-                  <li key={index} style={{ fontSize: "13px", marginBottom: "4px" }}>
-                    <span style={{ color: "#d97706", marginRight: "8px" }}>●</span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <p style={{ fontSize: "11px", marginTop: "12px", fontStyle: "italic", color: "#92400e" }}>
-                * Los equipos son propiedad de EL PRESTADOR y deben ser devueltos al finalizar el contrato.
-              </p>
-            </div>
+              <tbody>
+                <tr>
+                  <td style={{ padding: "16px" }}>
+                    {clientData.equipment.map((item, index) => (
+                      <p key={index} style={{ fontSize: "13px", marginBottom: "4px", margin: index === 0 ? 0 : "4px 0 0 0" }}>
+                        <span style={{ color: "#d97706", marginRight: "8px" }}>●</span>
+                        {item}
+                      </p>
+                    ))}
+                    <p style={{ fontSize: "11px", marginTop: "12px", fontStyle: "italic", color: "#92400e", margin: "12px 0 0 0" }}>
+                      * Los equipos son propiedad de EL PRESTADOR y deben ser devueltos al finalizar el contrato.
+                    </p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -399,20 +427,26 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         </div>
 
         {/* Declaración */}
-        <div style={{ 
+        <table style={{ 
+          width: "100%",
           marginBottom: "32px", 
-          padding: "20px", 
-          borderRadius: "8px",
           backgroundColor: "#f0fdf4",
-          border: "1px solid #22c55e"
+          border: "2px solid #22c55e",
+          borderCollapse: "collapse"
         }}>
-          <p style={{ fontSize: "13px", textAlign: "justify", margin: 0 }}>
-            Las partes declaran que han leído y comprendido cada una de las cláusulas de este contrato, 
-            aceptando expresamente su contenido. EL SUSCRIPTOR declara que la información proporcionada 
-            es veraz y autoriza el uso de sus datos personales para los fines del presente contrato, 
-            conforme a la política de protección de datos de EL PRESTADOR.
-          </p>
-        </div>
+          <tbody>
+            <tr>
+              <td style={{ padding: "20px" }}>
+                <p style={{ fontSize: "13px", textAlign: "justify", margin: 0 }}>
+                  Las partes declaran que han leído y comprendido cada una de las cláusulas de este contrato, 
+                  aceptando expresamente su contenido. EL SUSCRIPTOR declara que la información proporcionada 
+                  es veraz y autoriza el uso de sus datos personales para los fines del presente contrato, 
+                  conforme a la política de protección de datos de EL PRESTADOR.
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
         {/* Firmas */}
         <div style={{ marginTop: "40px", paddingTop: "32px", borderTop: "3px double #1a365d" }}>
@@ -431,49 +465,45 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
             En constancia de lo anterior, las partes firman el presente contrato en la fecha indicada.
           </p>
           
-          <table style={{ width: "100%" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               <tr>
-                <td style={{ width: "50%", textAlign: "center", padding: "0 24px" }}>
-                  <div style={{ 
-                    height: "100px", 
-                    borderBottom: "2px solid #1a365d",
-                    maxWidth: "250px",
-                    margin: "0 auto",
-                    display: "flex",
-                    alignItems: "flex-end",
-                    justifyContent: "center"
-                  }}>
-                    {clientSignature && (
-                      <img
-                        src={clientSignature}
-                        alt="Firma del suscriptor"
-                        style={{ maxHeight: "90px", maxWidth: "100%", objectFit: "contain" }}
-                      />
-                    )}
-                  </div>
+                <td style={{ width: "50%", textAlign: "center", padding: "0 24px", verticalAlign: "bottom" }}>
+                  <table style={{ width: "100%", maxWidth: "250px", margin: "0 auto", borderCollapse: "collapse" }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ height: "100px", textAlign: "center", verticalAlign: "bottom", borderBottom: "2px solid #1a365d" }}>
+                          {clientSignature && (
+                            <img
+                              src={clientSignature}
+                              alt="Firma del suscriptor"
+                              style={{ maxHeight: "90px", maxWidth: "200px" }}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                   <p style={{ fontWeight: "bold", color: "#1a365d", marginTop: "12px", marginBottom: "4px" }}>EL SUSCRIPTOR</p>
                   <p style={{ fontSize: "13px", margin: "4px 0" }}>{clientData.clientName}</p>
                   <p style={{ fontSize: "13px", color: "#4a5568", margin: 0 }}>C.C. {clientData.identification}</p>
                 </td>
-                <td style={{ width: "50%", textAlign: "center", padding: "0 24px" }}>
-                  <div style={{ 
-                    height: "100px", 
-                    borderBottom: "2px solid #1a365d",
-                    maxWidth: "250px",
-                    margin: "0 auto",
-                    display: "flex",
-                    alignItems: "flex-end",
-                    justifyContent: "center"
-                  }}>
-                    {managerSignature && (
-                      <img
-                        src={managerSignature}
-                        alt="Firma del gerente"
-                        style={{ maxHeight: "90px", maxWidth: "100%", objectFit: "contain" }}
-                      />
-                    )}
-                  </div>
+                <td style={{ width: "50%", textAlign: "center", padding: "0 24px", verticalAlign: "bottom" }}>
+                  <table style={{ width: "100%", maxWidth: "250px", margin: "0 auto", borderCollapse: "collapse" }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ height: "100px", textAlign: "center", verticalAlign: "bottom", borderBottom: "2px solid #1a365d" }}>
+                          {managerSignature && (
+                            <img
+                              src={managerSignature}
+                              alt="Firma del gerente"
+                              style={{ maxHeight: "90px", maxWidth: "200px" }}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                   <p style={{ fontWeight: "bold", color: "#1a365d", marginTop: "12px", marginBottom: "4px" }}>EL PRESTADOR</p>
                   <p style={{ fontSize: "13px", margin: "4px 0" }}>{managerName || companyInfo.managerName || companyInfo.name}</p>
                   <p style={{ fontSize: "13px", color: "#4a5568", margin: 0 }}>Representante Legal</p>
@@ -485,42 +515,46 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
 
         {/* Footer con QR */}
         <div style={{ marginTop: "48px", paddingTop: "24px", borderTop: "1px solid #e2e8f0" }}>
-          <table style={{ width: "100%" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               <tr>
-                <td style={{ verticalAlign: "middle" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    {qrCodeUrl && (
-                      <img
-                        src={qrCodeUrl}
-                        alt="QR de verificación"
-                        style={{ width: "80px", height: "80px" }}
-                      />
-                    )}
-                    <div>
-                      <p style={{ fontSize: "11px", fontWeight: "bold", color: "#1a365d", margin: 0 }}>
-                        Verificación Digital
-                      </p>
-                      <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>
-                        Escanee el código QR para
-                      </p>
-                      <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>
-                        verificar la autenticidad
-                      </p>
-                      <p style={{ fontSize: "10px", fontFamily: "monospace", color: "#4a5568", marginTop: "4px" }}>
-                        {clientData.contractNumber}
-                      </p>
-                    </div>
-                  </div>
+                <td style={{ verticalAlign: "middle", width: "50%" }}>
+                  <table style={{ borderCollapse: "collapse" }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ verticalAlign: "middle", paddingRight: "12px" }}>
+                          {qrCodeUrl && (
+                            <img
+                              src={qrCodeUrl}
+                              alt="QR de verificación"
+                              style={{ width: "80px", height: "80px" }}
+                            />
+                          )}
+                        </td>
+                        <td style={{ verticalAlign: "middle" }}>
+                          <p style={{ fontSize: "11px", fontWeight: "bold", color: "#1a365d", margin: 0 }}>
+                            Verificación Digital
+                          </p>
+                          <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>
+                            Escanee el código QR para
+                          </p>
+                          <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>
+                            verificar la autenticidad
+                          </p>
+                          <p style={{ fontSize: "10px", fontFamily: "monospace", color: "#4a5568", marginTop: "4px", margin: "4px 0 0 0" }}>
+                            {clientData.contractNumber}
+                          </p>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </td>
-                <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                  <div style={{ fontSize: "11px", color: "#718096" }}>
-                    <p style={{ fontWeight: "bold", margin: "2px 0" }}>{companyInfo.name}</p>
-                    <p style={{ margin: "2px 0" }}>NIT: {companyInfo.nit}</p>
-                    <p style={{ margin: "2px 0" }}>{companyInfo.contact}</p>
-                    <p style={{ margin: "2px 0" }}>{companyInfo.email}</p>
-                  </div>
-                  <p style={{ fontSize: "10px", color: "#a0aec0", marginTop: "8px" }}>
+                <td style={{ textAlign: "right", verticalAlign: "middle", width: "50%" }}>
+                  <p style={{ fontSize: "11px", fontWeight: "bold", color: "#718096", margin: "2px 0" }}>{companyInfo.name}</p>
+                  <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>NIT: {companyInfo.nit}</p>
+                  <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>{companyInfo.contact}</p>
+                  <p style={{ fontSize: "11px", color: "#718096", margin: "2px 0" }}>{companyInfo.email}</p>
+                  <p style={{ fontSize: "10px", color: "#a0aec0", marginTop: "8px", margin: "8px 0 0 0" }}>
                     Documento generado el {formatDate(new Date().toISOString())}
                   </p>
                 </td>
