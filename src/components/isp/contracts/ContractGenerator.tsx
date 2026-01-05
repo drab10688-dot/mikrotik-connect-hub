@@ -245,23 +245,26 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
 
-      const totalPages = Math.ceil((imgHeight * ratio) / pdfHeight);
+      // IMPORTANT: Ajustar por ancho para evitar que el contrato se reduzca para "caber" en 1 página
+      const ratio = pdfWidth / imgWidth;
+
+      const pageHeightInPixels = pdfHeight / ratio;
+      const totalPages = Math.ceil(imgHeight / pageHeightInPixels);
 
       for (let page = 0; page < totalPages; page++) {
         if (page > 0) {
           pdf.addPage();
         }
 
-        const sourceY = page * (pdfHeight / ratio);
-        const sourceHeight = Math.min(pdfHeight / ratio, imgHeight - sourceY);
+        const sourceY = page * pageHeightInPixels;
+        const sourceHeight = Math.min(pageHeightInPixels, imgHeight - sourceY);
 
         const pageCanvas = document.createElement("canvas");
         pageCanvas.width = imgWidth;
         pageCanvas.height = sourceHeight;
         const pageCtx = pageCanvas.getContext("2d");
-        
+
         if (pageCtx) {
           pageCtx.drawImage(
             canvas,
@@ -279,9 +282,9 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
           pdf.addImage(
             pageImgData,
             "PNG",
-            (pdfWidth - imgWidth * ratio) / 2,
             0,
-            imgWidth * ratio,
+            0,
+            pdfWidth,
             sourceHeight * ratio
           );
         }
