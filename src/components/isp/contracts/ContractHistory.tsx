@@ -39,6 +39,9 @@ interface Contract {
   signed_at: string | null;
   status: string;
   created_at: string;
+  service_option: string | null;
+  service_price: string | null;
+  total_price: string | null;
 }
 
 export function ContractHistory() {
@@ -281,6 +284,9 @@ export function ContractHistory() {
     equipment: contract.equipment || undefined,
     contractNumber: contract.contract_number,
     date: contract.created_at,
+    serviceOption: contract.service_option || undefined,
+    servicePrice: contract.service_price || undefined,
+    totalPrice: contract.total_price || undefined,
   });
 
   if (isLoading) {
