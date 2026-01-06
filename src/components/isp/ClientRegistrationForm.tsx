@@ -468,7 +468,8 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
           const servicePrice = parsePrice(formData.precioServicioAdicional);
           const totalPrice = basePrice + servicePrice;
 
-          await supabase.from('isp_clients').insert({
+          // Insert client
+          const { data: clientData, error: clientError } = await supabase.from('isp_clients').insert({
             mikrotik_id: mikrotikId,
             created_by: userData.user.id,
             client_name: result.clientName,
@@ -489,7 +490,61 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
             service_option: formData.opcionTv || null,
             service_price: servicePrice,
             total_monthly_price: totalPrice > 0 ? totalPrice : basePrice
-          });
+          }).select('id').single();
+
+          if (!clientError && clientData && !formData.clientePotencial) {
+            // Get universal billing config for this mikrotik
+            const { data: billingConfig } = await supabase
+              .from('billing_config')
+              .select('*')
+              .eq('mikrotik_id', mikrotikId)
+              .maybeSingle();
+
+            const billingDay = billingConfig?.billing_day || 1;
+            const gracePeriodDays = billingConfig?.grace_period_days || 5;
+            const monthlyAmount = totalPrice > 0 ? totalPrice : basePrice;
+
+            // Calculate next billing date
+            const now = new Date();
+            let nextBillingDate = new Date(now.getFullYear(), now.getMonth(), billingDay);
+            if (nextBillingDate <= now) {
+              nextBillingDate = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
+            }
+
+            // Create billing settings for the client
+            await supabase.from('client_billing_settings').insert({
+              client_id: clientData.id,
+              mikrotik_id: mikrotikId,
+              billing_day: billingDay,
+              grace_period_days: gracePeriodDays,
+              monthly_amount: monthlyAmount,
+              next_billing_date: nextBillingDate.toISOString().split('T')[0]
+            });
+
+            // Create first invoice
+            const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
+            const billingStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            const billingEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            const dueDate = new Date(nextBillingDate);
+            dueDate.setDate(dueDate.getDate() + gracePeriodDays);
+
+            await supabase.from('client_invoices').insert({
+              client_id: clientData.id,
+              mikrotik_id: mikrotikId,
+              invoice_number: invoiceNumber,
+              amount: monthlyAmount,
+              billing_period_start: billingStart.toISOString().split('T')[0],
+              billing_period_end: billingEnd.toISOString().split('T')[0],
+              due_date: dueDate.toISOString().split('T')[0],
+              status: 'pending',
+              service_breakdown: {
+                plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
+                basePrice: basePrice,
+                serviceOption: formData.opcionTv,
+                servicePrice: servicePrice
+              }
+            });
+          }
         }
       } catch (err) {
         console.error('Error saving client to history:', err);

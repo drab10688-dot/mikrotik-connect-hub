@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_config: {
+        Row: {
+          billing_day: number
+          created_at: string
+          created_by: string
+          grace_period_days: number
+          id: string
+          mikrotik_id: string
+          reminder_days_before: number
+          updated_at: string
+        }
+        Insert: {
+          billing_day?: number
+          created_at?: string
+          created_by: string
+          grace_period_days?: number
+          id?: string
+          mikrotik_id: string
+          reminder_days_before?: number
+          updated_at?: string
+        }
+        Update: {
+          billing_day?: number
+          created_at?: string
+          created_by?: string
+          grace_period_days?: number
+          id?: string
+          mikrotik_id?: string
+          reminder_days_before?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_config_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: true
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_billing_settings: {
         Row: {
           billing_day: number

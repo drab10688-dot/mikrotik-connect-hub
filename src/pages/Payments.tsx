@@ -8,6 +8,7 @@ import { ClientBillingManager } from "@/components/payments/ClientBillingManager
 import { PaymentReportsDashboard } from "@/components/payments/PaymentReportsDashboard";
 import { WhatsAppConfig } from "@/components/payments/WhatsAppConfig";
 import { TelegramConfig } from "@/components/payments/TelegramConfig";
+import { BillingConfigManager } from "@/components/payments/BillingConfigManager";
 import { Receipt, BarChart3, ExternalLink, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -94,22 +95,26 @@ export default function Payments() {
           </TabsContent>
 
           <TabsContent value="config">
-            <Tabs defaultValue="platforms" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3 md:w-[450px]">
-                <TabsTrigger value="platforms">Plataformas de Pago</TabsTrigger>
-                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
-                <TabsTrigger value="telegram">Telegram</TabsTrigger>
-              </TabsList>
-              <TabsContent value="platforms">
-                <PaymentPlatformsConfig mikrotikId={device?.id || null} />
-              </TabsContent>
-              <TabsContent value="whatsapp">
-                <WhatsAppConfig mikrotikId={device?.id || null} />
-              </TabsContent>
-              <TabsContent value="telegram">
-                <TelegramConfig mikrotikId={device?.id || null} />
-              </TabsContent>
-            </Tabs>
+            <div className="space-y-6">
+              <BillingConfigManager mikrotikId={device?.id || null} />
+              
+              <Tabs defaultValue="platforms" className="space-y-4">
+                <TabsList className="grid w-full grid-cols-3 md:w-[450px]">
+                  <TabsTrigger value="platforms">Plataformas de Pago</TabsTrigger>
+                  <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+                  <TabsTrigger value="telegram">Telegram</TabsTrigger>
+                </TabsList>
+                <TabsContent value="platforms">
+                  <PaymentPlatformsConfig mikrotikId={device?.id || null} />
+                </TabsContent>
+                <TabsContent value="whatsapp">
+                  <WhatsAppConfig mikrotikId={device?.id || null} />
+                </TabsContent>
+                <TabsContent value="telegram">
+                  <TelegramConfig mikrotikId={device?.id || null} />
+                </TabsContent>
+              </Tabs>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
