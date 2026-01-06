@@ -33,7 +33,7 @@ import { useState, useEffect, useRef } from "react";
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: UserPlus, label: "Registrar Cliente", path: "/isp-registry" },
-  { icon: Users, label: "Usuarios Hotspot", path: "/users" },
+  { icon: Users, label: "Clientes", path: "/clients" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },
   { icon: Ticket, label: "Perfiles Hotspot", path: "/hotspot-profiles" },
