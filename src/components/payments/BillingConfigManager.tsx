@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { Settings2, Save, Loader2 } from "lucide-react";
+import { Settings2, Save, Loader2, CalendarDays, Clock, Send, MessageCircle } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 
 interface BillingConfigManagerProps {
   mikrotikId: string | null;
@@ -18,6 +21,10 @@ interface BillingConfig {
   billing_day: number;
   grace_period_days: number;
   reminder_days_before: number;
+  billing_type: 'advance' | 'due';
+  invoice_maturity_days: number;
+  auto_send_telegram: boolean;
+  auto_send_whatsapp: boolean;
 }
 
 export function BillingConfigManager({ mikrotikId }: BillingConfigManagerProps) {
@@ -25,7 +32,11 @@ export function BillingConfigManager({ mikrotikId }: BillingConfigManagerProps) 
   const [form, setForm] = useState({
     billing_day: 1,
     grace_period_days: 5,
-    reminder_days_before: 3
+    reminder_days_before: 3,
+    billing_type: 'advance' as 'advance' | 'due',
+    invoice_maturity_days: 15,
+    auto_send_telegram: false,
+    auto_send_whatsapp: false
   });
 
   const { data: config, isLoading } = useQuery({
@@ -38,17 +49,24 @@ export function BillingConfigManager({ mikrotikId }: BillingConfigManagerProps) 
         .eq('mikrotik_id', mikrotikId)
         .maybeSingle();
       if (error) throw error;
-      if (data) {
-        setForm({
-          billing_day: data.billing_day,
-          grace_period_days: data.grace_period_days,
-          reminder_days_before: data.reminder_days_before
-        });
-      }
       return data as BillingConfig | null;
     },
     enabled: !!mikrotikId
   });
+
+  useEffect(() => {
+    if (config) {
+      setForm({
+        billing_day: config.billing_day,
+        grace_period_days: config.grace_period_days,
+        reminder_days_before: config.reminder_days_before,
+        billing_type: config.billing_type || 'advance',
+        invoice_maturity_days: config.invoice_maturity_days || 15,
+        auto_send_telegram: config.auto_send_telegram || false,
+        auto_send_whatsapp: config.auto_send_whatsapp || false
+      });
+    }
+  }, [config]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -58,18 +76,20 @@ export function BillingConfigManager({ mikrotikId }: BillingConfigManagerProps) 
       if (!userData.user) throw new Error('No hay sesión activa');
 
       if (config) {
-        // Update existing
         const { error } = await supabase
           .from('billing_config')
           .update({
             billing_day: form.billing_day,
             grace_period_days: form.grace_period_days,
-            reminder_days_before: form.reminder_days_before
+            reminder_days_before: form.reminder_days_before,
+            billing_type: form.billing_type,
+            invoice_maturity_days: form.invoice_maturity_days,
+            auto_send_telegram: form.auto_send_telegram,
+            auto_send_whatsapp: form.auto_send_whatsapp
           })
           .eq('id', config.id);
         if (error) throw error;
       } else {
-        // Insert new
         const { error } = await supabase
           .from('billing_config')
           .insert({
@@ -77,6 +97,10 @@ export function BillingConfigManager({ mikrotikId }: BillingConfigManagerProps) 
             billing_day: form.billing_day,
             grace_period_days: form.grace_period_days,
             reminder_days_before: form.reminder_days_before,
+            billing_type: form.billing_type,
+            invoice_maturity_days: form.invoice_maturity_days,
+            auto_send_telegram: form.auto_send_telegram,
+            auto_send_whatsapp: form.auto_send_whatsapp,
             created_by: userData.user.id
           });
         if (error) throw error;
@@ -119,59 +143,178 @@ export function BillingConfigManager({ mikrotikId }: BillingConfigManagerProps) 
             <Settings2 className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle>Configuración Universal de Facturación</CardTitle>
+            <CardTitle>Configuración de Facturación</CardTitle>
             <CardDescription>
-              Estos valores se aplicarán a todos los nuevos clientes automáticamente
+              Configura cómo se generan y envían las facturas automáticamente
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="billing_day">Día de Facturación</Label>
-            <Input
-              id="billing_day"
-              type="number"
-              min={1}
-              max={28}
-              value={form.billing_day}
-              onChange={(e) => setForm(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 1 }))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Día del mes para generar facturas (1-28)
-            </p>
+        {/* Billing Type Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-base font-medium">Tipo de Facturación</Label>
           </div>
+          
+          <RadioGroup
+            value={form.billing_type}
+            onValueChange={(value: 'advance' | 'due') => setForm(prev => ({ ...prev, billing_type: value }))}
+            className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          >
+            <div className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${form.billing_type === 'advance' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+              <RadioGroupItem value="advance" id="advance" className="mt-1" />
+              <div className="space-y-1">
+                <Label htmlFor="advance" className="font-medium cursor-pointer">
+                  Factura Anticipada
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  La factura se genera automáticamente cuando se registra un nuevo cliente
+                </p>
+              </div>
+            </div>
+            
+            <div className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${form.billing_type === 'due' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+              <RadioGroupItem value="due" id="due" className="mt-1" />
+              <div className="space-y-1">
+                <Label htmlFor="due" className="font-medium cursor-pointer">
+                  Factura al Vencimiento
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  La factura se genera el día de facturación configurado cada mes
+                </p>
+              </div>
+            </div>
+          </RadioGroup>
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="grace_period">Días de Gracia</Label>
-            <Input
-              id="grace_period"
-              type="number"
-              min={0}
-              max={30}
-              value={form.grace_period_days}
-              onChange={(e) => setForm(prev => ({ ...prev, grace_period_days: parseInt(e.target.value) || 0 }))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Días adicionales después del vencimiento
-            </p>
-          </div>
+        <Separator />
 
-          <div className="space-y-2">
-            <Label htmlFor="reminder_days">Días de Recordatorio</Label>
-            <Input
-              id="reminder_days"
-              type="number"
-              min={0}
-              max={15}
-              value={form.reminder_days_before}
-              onChange={(e) => setForm(prev => ({ ...prev, reminder_days_before: parseInt(e.target.value) || 3 }))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Días antes del vencimiento para enviar recordatorio
-            </p>
+        {/* Billing Parameters */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-base font-medium">Parámetros de Facturación</Label>
           </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="billing_day">Día de Facturación</Label>
+              <Input
+                id="billing_day"
+                type="number"
+                min={1}
+                max={28}
+                value={form.billing_day}
+                onChange={(e) => setForm(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 1 }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Día del mes (1-28)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invoice_maturity">Madurez de Factura</Label>
+              <Input
+                id="invoice_maturity"
+                type="number"
+                min={1}
+                max={60}
+                value={form.invoice_maturity_days}
+                onChange={(e) => setForm(prev => ({ ...prev, invoice_maturity_days: parseInt(e.target.value) || 15 }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Días hasta vencimiento
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="grace_period">Días de Gracia</Label>
+              <Input
+                id="grace_period"
+                type="number"
+                min={0}
+                max={30}
+                value={form.grace_period_days}
+                onChange={(e) => setForm(prev => ({ ...prev, grace_period_days: parseInt(e.target.value) || 0 }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Después del vencimiento
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reminder_days">Días de Recordatorio</Label>
+              <Input
+                id="reminder_days"
+                type="number"
+                min={0}
+                max={15}
+                value={form.reminder_days_before}
+                onChange={(e) => setForm(prev => ({ ...prev, reminder_days_before: parseInt(e.target.value) || 3 }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Antes del vencimiento
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Auto-send Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Send className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-base font-medium">Envío Automático</Label>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between border rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-blue-500/10">
+                  <Send className="h-4 w-4 text-blue-500" />
+                </div>
+                <div>
+                  <Label htmlFor="auto_telegram" className="font-medium">Telegram</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enviar factura automáticamente por Telegram
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="auto_telegram"
+                checked={form.auto_send_telegram}
+                onCheckedChange={(checked) => setForm(prev => ({ ...prev, auto_send_telegram: checked }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-between border rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-green-500/10">
+                  <MessageCircle className="h-4 w-4 text-green-500" />
+                </div>
+                <div>
+                  <Label htmlFor="auto_whatsapp" className="font-medium">WhatsApp</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enviar factura automáticamente por WhatsApp
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="auto_whatsapp"
+                checked={form.auto_send_whatsapp}
+                onCheckedChange={(checked) => setForm(prev => ({ ...prev, auto_send_whatsapp: checked }))}
+              />
+            </div>
+          </div>
+          
+          {(form.auto_send_telegram || form.auto_send_whatsapp) && (
+            <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+              💡 Las facturas se enviarán automáticamente cuando se generen. Asegúrate de tener configurados los canales de mensajería correspondientes.
+            </p>
+          )}
         </div>
 
         <Button 
