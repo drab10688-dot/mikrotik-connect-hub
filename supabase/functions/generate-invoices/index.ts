@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -36,7 +35,7 @@ async function sendTelegramNotification(
 
 👤 Cliente: ${clientName}
 📋 Factura: ${invoiceNumber}
-💰 Monto: $${amount.toFixed(2)}
+💰 Monto: $${amount.toLocaleString()}
 📅 Vencimiento: ${dueDate}
 
 Por favor realice su pago antes de la fecha de vencimiento para evitar suspensión del servicio.
@@ -110,7 +109,7 @@ async function sendWhatsAppNotification(
 
 👤 Cliente: ${clientName}
 📋 Factura: ${invoiceNumber}
-💰 Monto: $${amount.toFixed(2)}
+💰 Monto: $${amount.toLocaleString()}
 📅 Vencimiento: ${dueDate}
 
 Por favor realice su pago antes de la fecha de vencimiento para evitar suspensión del servicio.
@@ -163,12 +162,12 @@ Por favor realice su pago antes de la fecha de vencimiento para evitar suspensi�
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('=== Starting daily invoice generation ===');
+  console.log('=== Starting scheduled invoice generation (billing_type: due) ===');
   const startTime = Date.now();
 
   try {
@@ -181,33 +180,25 @@ serve(async (req) => {
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
 
-    console.log(`Checking for clients with billing day: ${currentDay}`);
+    console.log(`Today is day ${currentDay} of the month`);
 
-    // Find all billing settings where today is the billing day
-    const { data: billingSettings, error: billingError } = await supabase
-      .from('client_billing_settings')
-      .select(`
-        id,
-        client_id,
-        mikrotik_id,
-        billing_day,
-        grace_period_days,
-        monthly_amount,
-        is_suspended,
-        next_billing_date
-      `)
-      .eq('billing_day', currentDay)
-      .eq('is_suspended', false);
+    // Get all billing configs with billing_type = 'due' (factura al vencimiento)
+    const { data: billingConfigs, error: configError } = await supabase
+      .from('billing_config')
+      .select('mikrotik_id, billing_day, grace_period_days, invoice_maturity_days, auto_send_telegram, auto_send_whatsapp')
+      .eq('billing_type', 'due')
+      .eq('billing_day', currentDay);
 
-    if (billingError) {
-      console.error('Error fetching billing settings:', billingError);
+    if (configError) {
+      console.error('Error fetching billing configs:', configError);
       throw new Error('Error al obtener configuraciones de facturación');
     }
 
-    console.log(`Found ${billingSettings?.length || 0} clients with billing day today`);
+    console.log(`Found ${billingConfigs?.length || 0} MikroTik devices with billing_type='due' and billing_day=${currentDay}`);
 
     const results = {
-      total_clients: billingSettings?.length || 0,
+      total_devices: billingConfigs?.length || 0,
+      total_clients_processed: 0,
       invoices_created: 0,
       already_billed: 0,
       telegram_sent: 0,
@@ -216,156 +207,183 @@ serve(async (req) => {
       created_invoices: [] as string[]
     };
 
-    for (const billing of billingSettings || []) {
-      if (!billing.client_id) {
-        console.log(`Billing setting ${billing.id} has no client_id, skipping`);
+    for (const config of billingConfigs || []) {
+      console.log(`Processing MikroTik ${config.mikrotik_id}...`);
+
+      // Find all clients with billing settings for this mikrotik that are not suspended
+      const { data: billingSettings, error: billingError } = await supabase
+        .from('client_billing_settings')
+        .select(`
+          id,
+          client_id,
+          mikrotik_id,
+          billing_day,
+          grace_period_days,
+          monthly_amount,
+          is_suspended,
+          next_billing_date
+        `)
+        .eq('mikrotik_id', config.mikrotik_id)
+        .eq('is_suspended', false);
+
+      if (billingError) {
+        console.error(`Error fetching billing settings for ${config.mikrotik_id}:`, billingError);
+        results.errors.push(`Error fetching settings for mikrotik ${config.mikrotik_id}`);
         continue;
       }
 
-      // Check if invoice already exists for this month
-      const billingPeriodStart = new Date(currentYear, currentMonth, 1);
-      const billingPeriodEnd = new Date(currentYear, currentMonth + 1, 0);
+      console.log(`Found ${billingSettings?.length || 0} active clients for this device`);
 
-      const { data: existingInvoice } = await supabase
-        .from('client_invoices')
-        .select('id')
-        .eq('client_id', billing.client_id)
-        .gte('billing_period_start', billingPeriodStart.toISOString().split('T')[0])
-        .lte('billing_period_end', billingPeriodEnd.toISOString().split('T')[0])
-        .single();
-
-      if (existingInvoice) {
-        console.log(`Invoice already exists for client ${billing.client_id} this month`);
-        results.already_billed++;
-        continue;
-      }
-
-      // Get client info including telegram_chat_id and phone
-      const { data: client, error: clientError } = await supabase
-        .from('isp_clients')
-        .select('id, client_name, username, email, telegram_chat_id, phone, plan_or_speed, service_option, service_price, total_monthly_price')
-        .eq('id', billing.client_id)
-        .single();
-
-      if (clientError || !client) {
-        const errorMsg = `Client not found for billing ${billing.id}`;
-        console.error(errorMsg);
-        results.errors.push(errorMsg);
-        continue;
-      }
-
-      // Generate invoice number
-      const invoiceNumber = `INV-${currentYear}${String(currentMonth + 1).padStart(2, '0')}-${billing.client_id.slice(0, 8).toUpperCase()}`;
-
-      // Calculate due date (billing day + grace period)
-      const dueDate = new Date(currentYear, currentMonth, billing.billing_day + billing.grace_period_days);
-
-      // Link invoice to latest contract (needed for QR + payment link)
-      const { data: latestContract, error: contractError } = await supabase
-        .from('isp_contracts')
-        .select('id')
-        .eq('mikrotik_id', billing.mikrotik_id)
-        .eq('client_id', billing.client_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (contractError) {
-        console.warn(`Could not fetch latest contract for client ${billing.client_id}:`, contractError);
-      }
-
-      try {
-        // Build service breakdown for invoice
-        const serviceBreakdown = {
-          plan_name: `Servicio de Internet - ${client.plan_or_speed || 'Plan Mensual'}`,
-          plan_price: billing.monthly_amount - (client.service_price || 0),
-          service_option: client.service_option || null,
-          service_price: client.service_price || 0
-        };
-
-        // Create invoice
-        const { data: invoice, error: invoiceError } = await supabase
-          .from('client_invoices')
-          .insert({
-            mikrotik_id: billing.mikrotik_id,
-            client_id: billing.client_id,
-            contract_id: latestContract?.id ?? null,
-            invoice_number: invoiceNumber,
-            amount: billing.monthly_amount,
-            billing_period_start: billingPeriodStart.toISOString().split('T')[0],
-            billing_period_end: billingPeriodEnd.toISOString().split('T')[0],
-            due_date: dueDate.toISOString().split('T')[0],
-            status: 'pending',
-            service_breakdown: serviceBreakdown
-          })
-          .select()
-          .single();
-
-        if (invoiceError) {
-          console.error(`Error creating invoice for client ${client.client_name}:`, invoiceError);
-          results.errors.push(`Error creating invoice for ${client.client_name}: ${invoiceError.message}`);
+      for (const billing of billingSettings || []) {
+        if (!billing.client_id) {
+          console.log(`Billing setting ${billing.id} has no client_id, skipping`);
           continue;
         }
 
-        // Update next billing date
-        const nextBillingDate = new Date(currentYear, currentMonth + 1, billing.billing_day);
-        await supabase
-          .from('client_billing_settings')
-          .update({ next_billing_date: nextBillingDate.toISOString().split('T')[0] })
-          .eq('id', billing.id);
+        results.total_clients_processed++;
 
-        results.invoices_created++;
-        results.created_invoices.push(`${invoiceNumber} - ${client.client_name}`);
-        console.log(`Created invoice ${invoiceNumber} for ${client.client_name}`);
+        // Check if invoice already exists for this month
+        const billingPeriodStart = new Date(currentYear, currentMonth, 1);
+        const billingPeriodEnd = new Date(currentYear, currentMonth + 1, 0);
 
-        // Send Telegram notification if client has chat_id
-        if (client.telegram_chat_id && invoice) {
-          const telegramResult = await sendTelegramNotification(
-            supabase,
-            billing.mikrotik_id,
-            client.telegram_chat_id,
-            client.client_name,
-            invoiceNumber,
-            billing.monthly_amount,
-            dueDate.toISOString().split('T')[0],
-            client.id,
-            invoice.id,
-            'system'
-          );
-          if (telegramResult.success) {
-            results.telegram_sent++;
-          }
+        const { data: existingInvoice } = await supabase
+          .from('client_invoices')
+          .select('id')
+          .eq('client_id', billing.client_id)
+          .gte('billing_period_start', billingPeriodStart.toISOString().split('T')[0])
+          .lte('billing_period_end', billingPeriodEnd.toISOString().split('T')[0])
+          .maybeSingle();
+
+        if (existingInvoice) {
+          console.log(`Invoice already exists for client ${billing.client_id} this month`);
+          results.already_billed++;
+          continue;
         }
 
-        // Send WhatsApp notification if client has phone number
-        if (client.phone && invoice) {
-          const whatsappResult = await sendWhatsAppNotification(
-            supabase,
-            billing.mikrotik_id,
-            client.phone,
-            client.client_name,
-            invoiceNumber,
-            billing.monthly_amount,
-            dueDate.toISOString().split('T')[0],
-            client.id,
-            invoice.id,
-            'system'
-          );
-          if (whatsappResult.success) {
-            results.whatsapp_sent++;
-          }
+        // Get client info
+        const { data: client, error: clientError } = await supabase
+          .from('isp_clients')
+          .select('id, client_name, username, email, telegram_chat_id, phone, plan_or_speed, service_option, service_price, total_monthly_price')
+          .eq('id', billing.client_id)
+          .single();
+
+        if (clientError || !client) {
+          const errorMsg = `Client not found for billing ${billing.id}`;
+          console.error(errorMsg);
+          results.errors.push(errorMsg);
+          continue;
         }
 
-      } catch (error: unknown) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Error processing client ${client.client_name}:`, errorMsg);
-        results.errors.push(`Error with ${client.client_name}: ${errorMsg}`);
+        // Generate invoice number
+        const invoiceNumber = `INV-${currentYear}${String(currentMonth + 1).padStart(2, '0')}-${billing.client_id.slice(0, 8).toUpperCase()}`;
+
+        // Calculate due date using invoice_maturity_days from config
+        const dueDate = new Date(today);
+        dueDate.setDate(dueDate.getDate() + (config.invoice_maturity_days || 15));
+
+        // Link invoice to latest contract
+        const { data: latestContract } = await supabase
+          .from('isp_contracts')
+          .select('id')
+          .eq('mikrotik_id', billing.mikrotik_id)
+          .eq('client_id', billing.client_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        try {
+          // Build service breakdown for invoice
+          const serviceBreakdown = {
+            plan_name: `Servicio de Internet - ${client.plan_or_speed || 'Plan Mensual'}`,
+            plan_price: billing.monthly_amount - (client.service_price || 0),
+            service_option: client.service_option || null,
+            service_price: client.service_price || 0
+          };
+
+          // Create invoice
+          const { data: invoice, error: invoiceError } = await supabase
+            .from('client_invoices')
+            .insert({
+              mikrotik_id: billing.mikrotik_id,
+              client_id: billing.client_id,
+              contract_id: latestContract?.id ?? null,
+              invoice_number: invoiceNumber,
+              amount: billing.monthly_amount,
+              billing_period_start: billingPeriodStart.toISOString().split('T')[0],
+              billing_period_end: billingPeriodEnd.toISOString().split('T')[0],
+              due_date: dueDate.toISOString().split('T')[0],
+              status: 'pending',
+              service_breakdown: serviceBreakdown
+            })
+            .select()
+            .single();
+
+          if (invoiceError) {
+            console.error(`Error creating invoice for client ${client.client_name}:`, invoiceError);
+            results.errors.push(`Error creating invoice for ${client.client_name}: ${invoiceError.message}`);
+            continue;
+          }
+
+          // Update next billing date
+          const nextBillingDate = new Date(currentYear, currentMonth + 1, config.billing_day);
+          await supabase
+            .from('client_billing_settings')
+            .update({ next_billing_date: nextBillingDate.toISOString().split('T')[0] })
+            .eq('id', billing.id);
+
+          results.invoices_created++;
+          results.created_invoices.push(`${invoiceNumber} - ${client.client_name}`);
+          console.log(`Created invoice ${invoiceNumber} for ${client.client_name}`);
+
+          // Send Telegram notification if auto_send_telegram is enabled AND client has chat_id
+          if (config.auto_send_telegram && client.telegram_chat_id && invoice) {
+            const telegramResult = await sendTelegramNotification(
+              supabase,
+              billing.mikrotik_id,
+              client.telegram_chat_id,
+              client.client_name,
+              invoiceNumber,
+              billing.monthly_amount,
+              dueDate.toISOString().split('T')[0],
+              client.id,
+              invoice.id,
+              'system-cron'
+            );
+            if (telegramResult.success) {
+              results.telegram_sent++;
+            }
+          }
+
+          // Send WhatsApp notification if auto_send_whatsapp is enabled AND client has phone
+          if (config.auto_send_whatsapp && client.phone && invoice) {
+            const whatsappResult = await sendWhatsAppNotification(
+              supabase,
+              billing.mikrotik_id,
+              client.phone,
+              client.client_name,
+              invoiceNumber,
+              billing.monthly_amount,
+              dueDate.toISOString().split('T')[0],
+              client.id,
+              invoice.id,
+              'system-cron'
+            );
+            if (whatsappResult.success) {
+              results.whatsapp_sent++;
+            }
+          }
+
+        } catch (error: unknown) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`Error processing client ${client.client_name}:`, errorMsg);
+          results.errors.push(`Error with ${client.client_name}: ${errorMsg}`);
+        }
       }
     }
 
     const duration = Date.now() - startTime;
     console.log(`=== Completed invoice generation in ${duration}ms ===`);
-    console.log(`Results: ${results.invoices_created} created, ${results.already_billed} already billed, ${results.errors.length} errors`);
+    console.log(`Results: ${results.invoices_created} created, ${results.already_billed} already billed, ${results.telegram_sent} Telegram, ${results.whatsapp_sent} WhatsApp, ${results.errors.length} errors`);
 
     return new Response(
       JSON.stringify({ 
