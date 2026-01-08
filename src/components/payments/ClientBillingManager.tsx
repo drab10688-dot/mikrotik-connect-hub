@@ -1,42 +1,23 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Calendar, DollarSign, Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip, Trash2 } from "lucide-react";
+import { Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip, Trash2 } from "lucide-react";
 import { generateInvoicePDF, generateInvoicePDFBlob } from "./InvoicePDF";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { format, addMonths, setDate, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+
 interface ClientBillingManagerProps {
   mikrotikId: string | null;
-}
-
-interface Client {
-  id: string;
-  client_name: string;
-  username: string;
-  connection_type: string;
-  plan_or_speed: string | null;
-}
-
-interface BillingSetting {
-  id: string;
-  client_id: string;
-  billing_day: number;
-  grace_period_days: number;
-  monthly_amount: number;
-  is_suspended: boolean;
-  next_billing_date: string | null;
-  last_payment_date: string | null;
 }
 
 interface Invoice {
@@ -53,18 +34,6 @@ interface Invoice {
   contract_id: string | null;
 }
 
-interface Contract {
-  id: string;
-  client_name: string;
-  identification: string;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-  plan: string;
-  speed: string | null;
-  price: string | null;
-}
-
 interface IspClient {
   id: string;
   client_name: string;
@@ -77,13 +46,6 @@ interface IspClient {
 
 export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) {
   const queryClient = useQueryClient();
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [billingForm, setBillingForm] = useState({
-    billing_day: 1,
-    grace_period_days: 5,
-    monthly_amount: 0
-  });
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
   
   // Telegram send state
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
@@ -92,34 +54,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   const [telegramMessage, setTelegramMessage] = useState("");
   const [attachPdfTelegram, setAttachPdfTelegram] = useState(true);
   const [isSendingWithPdf, setIsSendingWithPdf] = useState(false);
-  const { data: clients, isLoading: loadingClients } = useQuery({
-    queryKey: ['isp-clients-billing', mikrotikId],
-    queryFn: async () => {
-      if (!mikrotikId) return [];
-      const { data, error } = await supabase
-        .from('isp_clients')
-        .select('id, client_name, username, connection_type, plan_or_speed')
-        .eq('mikrotik_id', mikrotikId)
-        .eq('is_potential_client', false);
-      if (error) throw error;
-      return data as Client[];
-    },
-    enabled: !!mikrotikId
-  });
-
-  const { data: billingSettings } = useQuery({
-    queryKey: ['billing-settings', mikrotikId],
-    queryFn: async () => {
-      if (!mikrotikId) return [];
-      const { data, error } = await supabase
-        .from('client_billing_settings')
-        .select('*')
-        .eq('mikrotik_id', mikrotikId);
-      if (error) throw error;
-      return data as BillingSetting[];
-    },
-    enabled: !!mikrotikId
-  });
 
   const { data: invoices } = useQuery({
     queryKey: ['client-invoices', mikrotikId],
@@ -182,96 +116,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       return data;
     },
     enabled: !!mikrotikId
-  });
-
-  const saveBillingMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedClient || !mikrotikId) throw new Error('Datos incompletos');
-      
-      const existingSetting = billingSettings?.find(s => s.client_id === selectedClient.id);
-      const nextBillingDate = setDate(addMonths(new Date(), 1), billingForm.billing_day);
-
-      const payload = {
-        client_id: selectedClient.id,
-        mikrotik_id: mikrotikId,
-        billing_day: billingForm.billing_day,
-        grace_period_days: billingForm.grace_period_days,
-        monthly_amount: billingForm.monthly_amount,
-        next_billing_date: format(nextBillingDate, 'yyyy-MM-dd')
-      };
-
-      if (existingSetting) {
-        const { error } = await supabase
-          .from('client_billing_settings')
-          .update(payload)
-          .eq('id', existingSetting.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('client_billing_settings')
-          .insert(payload);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      toast.success('Configuración de facturación guardada');
-      queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
-      setIsDialogOpen(false);
-    },
-    onError: (error) => {
-      toast.error(`Error: ${error.message}`);
-    }
-  });
-
-  const generateInvoiceMutation = useMutation({
-    mutationFn: async (clientId: string) => {
-      const setting = billingSettings?.find(s => s.client_id === clientId);
-      if (!setting || !mikrotikId) throw new Error('Configuración no encontrada');
-
-      const now = new Date();
-      const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const dueDate = setDate(now, setting.billing_day + setting.grace_period_days);
-
-      const invoiceNumber = `FAC-${format(now, 'yyyyMM')}-${clientId.slice(0, 8).toUpperCase()}`;
-
-      // Link invoice to the latest contract (needed for QR + payment link)
-      const { data: latestContract, error: contractError } = await supabase
-        .from('isp_contracts')
-        .select('id')
-        .eq('mikrotik_id', mikrotikId)
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (contractError) {
-        console.warn('No se pudo obtener contrato para la factura:', contractError);
-      }
-
-      const { error } = await supabase
-        .from('client_invoices')
-        .insert({
-          mikrotik_id: mikrotikId,
-          client_id: clientId,
-          contract_id: latestContract?.id ?? null,
-          invoice_number: invoiceNumber,
-          amount: setting.monthly_amount,
-          due_date: format(dueDate, 'yyyy-MM-dd'),
-          billing_period_start: format(periodStart, 'yyyy-MM-dd'),
-          billing_period_end: format(periodEnd, 'yyyy-MM-dd'),
-          status: 'pending'
-        });
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Factura generada exitosamente');
-      queryClient.invalidateQueries({ queryKey: ['client-invoices'] });
-    },
-    onError: (error) => {
-      toast.error(`Error: ${error.message}`);
-    }
   });
 
   // Send Telegram message mutation
@@ -359,24 +203,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     },
   });
 
-  // Delete billing setting mutation
-  const deleteBillingMutation = useMutation({
-    mutationFn: async (billingId: string) => {
-      const { error } = await supabase
-        .from('client_billing_settings')
-        .delete()
-        .eq('id', billingId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Configuración de facturación eliminada");
-      queryClient.invalidateQueries({ queryKey: ['billing-settings'] });
-    },
-    onError: (error: any) => {
-      toast.error(`Error al eliminar: ${error.message}`);
-    },
-  });
-
   const fetchLatestContractForClient = async (clientId: string) => {
     if (!mikrotikId) return null;
 
@@ -400,7 +226,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   };
 
   // Resolve client + contract info for PDF + payment links.
-  // Falls back to fetching latest contract when invoice.contract_id is null (legacy invoices).
   const resolveInvoicePdfData = async (invoice: Invoice) => {
     const joinedContract = (invoice as any).isp_contracts ?? null;
     const contract =
@@ -434,8 +259,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     const client = ispClients?.find((c) => c.id === invoice.client_id);
     const { clientData, invoiceWithContract } = await resolveInvoicePdfData(invoice);
 
-    // Use contract number if available, otherwise fall back to identification number.
-    // The /pay portal accepts a single query param and searches by identification first.
     const paymentLink = getPaymentLink(invoiceWithContract.contract_number || clientData.identification_number);
 
     let defaultMessage = `📄 *Factura ${invoice.invoice_number}*\n\nMonto: $${invoice.amount.toLocaleString()}\nVencimiento: ${format(parseISO(invoice.due_date), "dd/MM/yyyy")}\nPeriodo: ${format(parseISO(invoice.billing_period_start), "dd MMM")} - ${format(parseISO(invoice.billing_period_end), "dd MMM yyyy", { locale: es })}\n\nPor favor realice su pago antes de la fecha de vencimiento.`;
@@ -496,7 +319,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
         documentName = `Factura_${selectedInvoice.invoice_number.replace(/\//g, '-')}.pdf`;
       }
       
-      // Add payment link to message if available (avoid duplicating)
       const { clientData, invoiceWithContract } = await resolveInvoicePdfData(selectedInvoice);
       const paymentLink = getPaymentLink(invoiceWithContract.contract_number || clientData.identification_number);
       let messageWithLink = telegramMessage;
@@ -558,21 +380,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     }
   };
 
-  const openBillingDialog = (client: Client) => {
-    setSelectedClient(client);
-    const existing = billingSettings?.find(s => s.client_id === client.id);
-    if (existing) {
-      setBillingForm({
-        billing_day: existing.billing_day,
-        grace_period_days: existing.grace_period_days,
-        monthly_amount: existing.monthly_amount
-      });
-    } else {
-      setBillingForm({ billing_day: 1, grace_period_days: 5, monthly_amount: 0 });
-    }
-    setIsDialogOpen(true);
-  };
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'paid':
@@ -586,10 +393,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
-  };
-
-  const getClientBilling = (clientId: string) => {
-    return billingSettings?.find(s => s.client_id === clientId);
   };
 
   if (!mikrotikId) {
@@ -607,107 +410,8 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Configuración de Facturación por Cliente
-          </CardTitle>
-          <CardDescription>
-            Define el día de corte, periodo de gracia y valor mensual para cada cliente
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loadingClients ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Usuario</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Día Corte</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clients?.map((client) => {
-                  const billing = getClientBilling(client.id);
-                  return (
-                    <TableRow key={client.id}>
-                      <TableCell className="font-medium">{client.client_name}</TableCell>
-                      <TableCell>{client.username}</TableCell>
-                      <TableCell>{client.plan_or_speed || '-'}</TableCell>
-                      <TableCell>
-                        {billing ? `Día ${billing.billing_day}` : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {billing ? `$${billing.monthly_amount.toLocaleString()}` : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {billing?.is_suspended ? (
-                          <Badge variant="destructive">Suspendido</Badge>
-                        ) : billing ? (
-                          <Badge className="bg-green-500">Activo</Badge>
-                        ) : (
-                          <Badge variant="secondary">Sin config.</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => openBillingDialog(client)}
-                          >
-                            <Calendar className="h-4 w-4 mr-1" />
-                            Configurar
-                          </Button>
-                          {billing && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => generateInvoiceMutation.mutate(client.id)}
-                                disabled={generateInvoiceMutation.isPending}
-                              >
-                                <Receipt className="h-4 w-4 mr-1" />
-                                Generar Factura
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-destructive border-destructive hover:bg-destructive/10"
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar configuración de facturación para ${client.client_name}?`)) {
-                                    deleteBillingMutation.mutate(billing.id);
-                                  }
-                                }}
-                                disabled={deleteBillingMutation.isPending}
-                                title="Eliminar configuración"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
-            Últimas Facturas
+            Facturas
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -720,7 +424,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                 <TableHead>Monto</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Pagado el</TableHead>
-                <TableHead>Enviar / Descargar</TableHead>
+                <TableHead>Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -747,7 +451,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
                           variant="outline"
                           onClick={() => openTelegramDialog(invoice)}
                           disabled={!telegramConfig?.is_active}
-                          title={telegramConfig?.is_active ? "Enviar por Telegram (con opción de PDF)" : "Telegram no configurado"}
+                          title={telegramConfig?.is_active ? "Enviar por Telegram" : "Telegram no configurado"}
                         >
                           <Send className="h-4 w-4" />
                         </Button>
@@ -813,77 +517,6 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
           </Table>
         </CardContent>
       </Card>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Configurar Facturación</DialogTitle>
-            <DialogDescription>
-              {selectedClient?.client_name} - {selectedClient?.username}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Día de Corte (1-28)</Label>
-              <Select
-                value={billingForm.billing_day.toString()}
-                onValueChange={(v) => setBillingForm(prev => ({ ...prev, billing_day: parseInt(v) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
-                    <SelectItem key={day} value={day.toString()}>
-                      Día {day}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Días de Gracia</Label>
-              <Select
-                value={billingForm.grace_period_days.toString()}
-                onValueChange={(v) => setBillingForm(prev => ({ ...prev, grace_period_days: parseInt(v) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 3, 5, 7, 10, 15].map(days => (
-                    <SelectItem key={days} value={days.toString()}>
-                      {days} días
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Valor Mensual (COP)</Label>
-              <Input
-                type="number"
-                value={billingForm.monthly_amount}
-                onChange={(e) => setBillingForm(prev => ({ ...prev, monthly_amount: parseFloat(e.target.value) || 0 }))}
-                placeholder="50000"
-              />
-            </div>
-
-            <Button 
-              className="w-full" 
-              onClick={() => saveBillingMutation.mutate()}
-              disabled={saveBillingMutation.isPending}
-            >
-              {saveBillingMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Guardar Configuración
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Telegram Send Dialog */}
       <Dialog open={telegramDialogOpen} onOpenChange={setTelegramDialogOpen}>

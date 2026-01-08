@@ -16,31 +16,43 @@ export type Database = {
     Tables: {
       billing_config: {
         Row: {
+          auto_send_telegram: boolean
+          auto_send_whatsapp: boolean
           billing_day: number
+          billing_type: string
           created_at: string
           created_by: string
           grace_period_days: number
           id: string
+          invoice_maturity_days: number
           mikrotik_id: string
           reminder_days_before: number
           updated_at: string
         }
         Insert: {
+          auto_send_telegram?: boolean
+          auto_send_whatsapp?: boolean
           billing_day?: number
+          billing_type?: string
           created_at?: string
           created_by: string
           grace_period_days?: number
           id?: string
+          invoice_maturity_days?: number
           mikrotik_id: string
           reminder_days_before?: number
           updated_at?: string
         }
         Update: {
+          auto_send_telegram?: boolean
+          auto_send_whatsapp?: boolean
           billing_day?: number
+          billing_type?: string
           created_at?: string
           created_by?: string
           grace_period_days?: number
           id?: string
+          invoice_maturity_days?: number
           mikrotik_id?: string
           reminder_days_before?: number
           updated_at?: string

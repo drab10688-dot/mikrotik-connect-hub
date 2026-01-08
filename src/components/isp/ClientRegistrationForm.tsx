@@ -502,6 +502,8 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
 
             const billingDay = billingConfig?.billing_day || 1;
             const gracePeriodDays = billingConfig?.grace_period_days || 5;
+            const invoiceMaturityDays = (billingConfig as any)?.invoice_maturity_days || 15;
+            const billingType = (billingConfig as any)?.billing_type || 'advance';
             const monthlyAmount = totalPrice > 0 ? totalPrice : basePrice;
 
             // Calculate next billing date
@@ -521,29 +523,34 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
               next_billing_date: nextBillingDate.toISOString().split('T')[0]
             });
 
-            // Create first invoice
-            const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
-            const billingStart = new Date(now.getFullYear(), now.getMonth(), 1);
-            const billingEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            const dueDate = new Date(nextBillingDate);
-            dueDate.setDate(dueDate.getDate() + gracePeriodDays);
+            // Only create invoice immediately if billing type is 'advance' (factura anticipada)
+            if (billingType === 'advance') {
+              const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
+              const billingStart = new Date(now.getFullYear(), now.getMonth(), 1);
+              const billingEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              
+              // Due date = creation date + invoice maturity days
+              const dueDate = new Date(now);
+              dueDate.setDate(dueDate.getDate() + invoiceMaturityDays);
 
-            await supabase.from('client_invoices').insert({
-              client_id: clientData.id,
-              mikrotik_id: mikrotikId,
-              invoice_number: invoiceNumber,
-              amount: monthlyAmount,
-              billing_period_start: billingStart.toISOString().split('T')[0],
-              billing_period_end: billingEnd.toISOString().split('T')[0],
-              due_date: dueDate.toISOString().split('T')[0],
-              status: 'pending',
-              service_breakdown: {
-                plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
-                basePrice: basePrice,
-                serviceOption: formData.opcionTv,
-                servicePrice: servicePrice
-              }
-            });
+              await supabase.from('client_invoices').insert({
+                client_id: clientData.id,
+                mikrotik_id: mikrotikId,
+                invoice_number: invoiceNumber,
+                amount: monthlyAmount,
+                billing_period_start: billingStart.toISOString().split('T')[0],
+                billing_period_end: billingEnd.toISOString().split('T')[0],
+                due_date: dueDate.toISOString().split('T')[0],
+                status: 'pending',
+                service_breakdown: {
+                  plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
+                  basePrice: basePrice,
+                  serviceOption: formData.opcionTv,
+                  servicePrice: servicePrice
+                }
+              });
+            }
+            // If billing type is 'due', invoice will be generated on the billing day by a scheduled job
           }
         }
       } catch (err) {
