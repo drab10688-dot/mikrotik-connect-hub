@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Key, Save, UserPlus, History, FileText } from "lucide-react";
+import { AlertCircle, Key, Save, UserPlus, History, FileText, Scan } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { ClientRegistrationForm, type RegisteredClientData } from "@/components/isp/ClientRegistrationForm";
 import { ClientHistoryTable } from "@/components/isp/ClientHistoryTable";
 import { ContractGenerator } from "@/components/isp/contracts";
+import { MikrotikClientScanner } from "@/components/isp/MikrotikClientScanner";
 import type { ClientContractData } from "@/components/isp/contracts/ContractPreview";
 
 export default function IspRegistry() {
@@ -116,21 +117,22 @@ export default function IspRegistry() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="register" className="flex items-center gap-2">
               <UserPlus className="w-4 h-4" />
-              <span className="hidden sm:inline">Registrar Cliente</span>
-              <span className="sm:hidden">Registrar</span>
+              <span className="hidden sm:inline">Registrar</span>
+            </TabsTrigger>
+            <TabsTrigger value="scan" className="flex items-center gap-2">
+              <Scan className="w-4 h-4" />
+              <span className="hidden sm:inline">Escanear</span>
             </TabsTrigger>
             <TabsTrigger value="contracts" className="flex items-center gap-2">
               <FileText className="w-4 h-4" />
               <span className="hidden sm:inline">Contratos</span>
-              <span className="sm:hidden">Contratos</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2">
               <History className="w-4 h-4" />
               <span className="hidden sm:inline">Historial</span>
-              <span className="sm:hidden">Historial</span>
             </TabsTrigger>
           </TabsList>
 
@@ -175,6 +177,11 @@ export default function IspRegistry() {
               onSuccess={() => refetchUsers()}
               onClientRegistered={handleClientRegistered}
             />
+          </TabsContent>
+
+          {/* Tab: Escanear MikroTik */}
+          <TabsContent value="scan">
+            <MikrotikClientScanner />
           </TabsContent>
 
           {/* Tab: Contratos */}

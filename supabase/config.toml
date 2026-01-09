@@ -53,3 +53,9 @@ verify_jwt = false
 
 [functions.payment-reminders]
 verify_jwt = false
+
+[functions.mikrotik-scan-clients]
+verify_jwt = true
+
+[functions.mikrotik-address-list]
+verify_jwt = true
