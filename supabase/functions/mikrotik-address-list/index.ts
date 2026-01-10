@@ -229,6 +229,149 @@ async function removeFromAddressListV6(device: MikroTikDevice, listName: string,
   }
 }
 
+// Check if firewall rules exist for blocking morosos v6
+async function checkFirewallRulesV6(device: MikroTikDevice, listName: string): Promise<{ exists: boolean; rules: any[] }> {
+  const api = new MikroTikAPI();
+  try {
+    await api.connect(device.host, device.port, device.username, device.password);
+    
+    const rules = await api.executeCommand('/ip/firewall/filter/print');
+    const morososRules = rules.filter((r: any) => 
+      r['src-address-list'] === listName || r['dst-address-list'] === listName
+    );
+    
+    return { exists: morososRules.length >= 2, rules: morososRules };
+  } finally {
+    api.close();
+  }
+}
+
+// Create firewall rules for blocking morosos v6
+async function createFirewallRulesV6(device: MikroTikDevice, listName: string): Promise<{ created: string[] }> {
+  const api = new MikroTikAPI();
+  const createdRules: string[] = [];
+  
+  try {
+    await api.connect(device.host, device.port, device.username, device.password);
+    
+    // First, check existing rules
+    const existingRules = await api.executeCommand('/ip/firewall/filter/print');
+    const hasSrcRule = existingRules.some((r: any) => r['src-address-list'] === listName && r.action === 'drop' && r.chain === 'forward');
+    const hasDstRule = existingRules.some((r: any) => r['dst-address-list'] === listName && r.action === 'drop' && r.chain === 'forward');
+    
+    // Create rule to drop outgoing traffic from morosos
+    if (!hasSrcRule) {
+      await api.executeCommand('/ip/firewall/filter/add', {
+        chain: 'forward',
+        'src-address-list': listName,
+        action: 'drop',
+        comment: `Bloquear trafico saliente - ${listName} (Auto-generado)`,
+      });
+      createdRules.push(`DROP forward src-address-list=${listName}`);
+    }
+    
+    // Create rule to drop incoming traffic to morosos
+    if (!hasDstRule) {
+      await api.executeCommand('/ip/firewall/filter/add', {
+        chain: 'forward',
+        'dst-address-list': listName,
+        action: 'drop',
+        comment: `Bloquear trafico entrante - ${listName} (Auto-generado)`,
+      });
+      createdRules.push(`DROP forward dst-address-list=${listName}`);
+    }
+    
+    return { created: createdRules };
+  } finally {
+    api.close();
+  }
+}
+
+// Check if firewall rules exist for blocking morosos v7
+async function checkFirewallRulesV7(device: MikroTikDevice, listName: string): Promise<{ exists: boolean; rules: any[] }> {
+  const baseUrl = `https://${device.host}:${device.port || 443}`;
+  const auth = btoa(`${device.username}:${device.password}`);
+  
+  const response = await fetch(`${baseUrl}/rest/ip/firewall/filter`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to get firewall rules');
+  }
+  
+  const rules = await response.json();
+  const morososRules = rules.filter((r: any) => 
+    r['src-address-list'] === listName || r['dst-address-list'] === listName
+  );
+  
+  return { exists: morososRules.length >= 2, rules: morososRules };
+}
+
+// Create firewall rules for blocking morosos v7
+async function createFirewallRulesV7(device: MikroTikDevice, listName: string): Promise<{ created: string[] }> {
+  const baseUrl = `https://${device.host}:${device.port || 443}`;
+  const auth = btoa(`${device.username}:${device.password}`);
+  const createdRules: string[] = [];
+  
+  // First, check existing rules
+  const checkResponse = await fetch(`${baseUrl}/rest/ip/firewall/filter`, {
+    method: 'GET',
+    headers: { 'Authorization': `Basic ${auth}` },
+  });
+  
+  const existingRules = await checkResponse.json();
+  const hasSrcRule = existingRules.some((r: any) => r['src-address-list'] === listName && r.action === 'drop' && r.chain === 'forward');
+  const hasDstRule = existingRules.some((r: any) => r['dst-address-list'] === listName && r.action === 'drop' && r.chain === 'forward');
+  
+  // Create rule to drop outgoing traffic from morosos
+  if (!hasSrcRule) {
+    const srcResponse = await fetch(`${baseUrl}/rest/ip/firewall/filter`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chain: 'forward',
+        'src-address-list': listName,
+        action: 'drop',
+        comment: `Bloquear trafico saliente - ${listName} (Auto-generado)`,
+      }),
+    });
+    
+    if (srcResponse.ok) {
+      createdRules.push(`DROP forward src-address-list=${listName}`);
+    }
+  }
+  
+  // Create rule to drop incoming traffic to morosos
+  if (!hasDstRule) {
+    const dstResponse = await fetch(`${baseUrl}/rest/ip/firewall/filter`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chain: 'forward',
+        'dst-address-list': listName,
+        action: 'drop',
+        comment: `Bloquear trafico entrante - ${listName} (Auto-generado)`,
+      }),
+    });
+    
+    if (dstResponse.ok) {
+      createdRules.push(`DROP forward dst-address-list=${listName}`);
+    }
+  }
+  
+  return { created: createdRules };
+}
+
 // REST API functions for v7
 async function addToAddressListV7(device: MikroTikDevice, listName: string, address: string, comment: string): Promise<void> {
   const baseUrl = `https://${device.host}:${device.port || 443}`;
@@ -404,6 +547,49 @@ serve(async (req) => {
 
         console.log(`Successfully removed ${address} from ${targetList}`);
         return new Response(JSON.stringify({ success: true, message: 'IP eliminada de la lista' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'check-firewall': {
+        // Check if firewall rules exist for the address list
+        let result;
+        if (isV7) {
+          result = await checkFirewallRulesV7(device, targetList);
+        } else {
+          result = await checkFirewallRulesV6(device, targetList);
+        }
+        
+        console.log(`Firewall rules check for ${targetList}: exists=${result.exists}`);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          exists: result.exists, 
+          rules: result.rules,
+          message: result.exists 
+            ? `Las reglas de firewall para "${targetList}" ya existen` 
+            : `No se encontraron reglas de firewall para "${targetList}"`
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'create-firewall': {
+        // Create firewall rules to block the address list
+        let result;
+        if (isV7) {
+          result = await createFirewallRulesV7(device, targetList);
+        } else {
+          result = await createFirewallRulesV6(device, targetList);
+        }
+        
+        console.log(`Created firewall rules for ${targetList}:`, result.created);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          created: result.created,
+          message: result.created.length > 0 
+            ? `Se crearon ${result.created.length} regla(s) de firewall` 
+            : 'Las reglas ya existían, no se crearon nuevas'
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
