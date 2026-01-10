@@ -10,10 +10,11 @@ import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 import { ClientsManager } from "@/components/clients/ClientsManager";
 import { ClientRegistrationForm, type RegisteredClientData } from "@/components/isp/ClientRegistrationForm";
 import { ClientHistoryTable } from "@/components/isp/ClientHistoryTable";
+import { MikrotikClientScanner } from "@/components/isp/MikrotikClientScanner";
 import { ContractGenerator } from "@/components/isp/contracts";
 import type { ClientContractData } from "@/components/isp/contracts/ContractPreview";
 import { saveSelectedDevice, MikroTikDeviceConfig, getSelectedDeviceId } from "@/lib/mikrotik";
-import { Users, UserPlus, FileText, History, Key, Save, AlertCircle } from "lucide-react";
+import { Users, UserPlus, FileText, History, Key, Save, AlertCircle, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Clients() {
@@ -137,10 +138,14 @@ export default function Clients() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="clients" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Clientes</span>
+            </TabsTrigger>
+            <TabsTrigger value="import" className="flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Importar</span>
             </TabsTrigger>
             <TabsTrigger value="register" className="flex items-center gap-2">
               <UserPlus className="w-4 h-4" />
@@ -159,6 +164,11 @@ export default function Clients() {
           {/* Tab: Clientes */}
           <TabsContent value="clients">
             <ClientsManager mikrotikId={device?.id || null} mikrotikVersion={device?.version} />
+          </TabsContent>
+
+          {/* Tab: Importar desde MikroTik */}
+          <TabsContent value="import">
+            <MikrotikClientScanner />
           </TabsContent>
 
           {/* Tab: Registrar Cliente */}
