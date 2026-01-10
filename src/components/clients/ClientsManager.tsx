@@ -7,12 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Users, Wifi, Gauge, MapPin, Phone, Mail, Pencil, Trash2, Search, Loader2, AlertTriangle } from "lucide-react";
-import { format } from "date-fns";
+import { Users, Wifi, Gauge, MapPin, Phone, Mail, Pencil, Trash2, Search, Loader2, AlertTriangle, FileText, DollarSign } from "lucide-react";
+import { format, addMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
+import { useServiceOptions } from "@/hooks/useServiceOptions";
+import { generateInvoicePDF } from "@/components/payments/InvoicePDF";
 
 interface ClientsManagerProps {
   mikrotikId: string | null;
@@ -34,6 +37,9 @@ interface IspClient {
   is_potential_client: boolean | null;
   comment: string | null;
   created_at: string;
+  service_option: string | null;
+  service_price: number | null;
+  total_monthly_price: number | null;
 }
 
 export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerProps) {
@@ -43,6 +49,10 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   const [editForm, setEditForm] = useState<Partial<IspClient>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteFromMikrotik, setDeleteFromMikrotik] = useState(true);
+  const [generatingInvoice, setGeneratingInvoice] = useState<string | null>(null);
+  const [invoiceClient, setInvoiceClient] = useState<IspClient | null>(null);
+  
+  const { services: serviceOptions } = useServiceOptions(mikrotikId || undefined);
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["isp-clients-manager", mikrotikId],
@@ -75,13 +85,25 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
           city: client.city,
           plan_or_speed: client.plan_or_speed,
           comment: client.comment,
+          service_option: client.service_option,
+          service_price: client.service_price,
+          total_monthly_price: client.total_monthly_price,
         })
         .eq("id", client.id);
       
       if (error) throw error;
+
+      // Also update billing settings if they exist
+      if (client.total_monthly_price) {
+        await supabase
+          .from("client_billing_settings")
+          .update({ monthly_amount: client.total_monthly_price })
+          .eq("client_id", client.id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["isp-clients-manager"] });
+      queryClient.invalidateQueries({ queryKey: ["billing-settings"] });
       toast.success("Cliente actualizado correctamente");
       setEditingClient(null);
     },
@@ -211,6 +233,94 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     deleteMutation.mutate({ client: deletingClient, deleteFromMikrotik });
   };
 
+  const handleServiceOptionChange = (value: string) => {
+    if (value === "none") {
+      const planPrice = parseFloat(editForm.plan_or_speed?.split(' ')[0] || "0") || 0;
+      setEditForm({
+        ...editForm,
+        service_option: null,
+        service_price: null,
+        total_monthly_price: planPrice > 0 ? planPrice : editForm.total_monthly_price,
+      });
+    } else {
+      const selectedOption = serviceOptions?.find((opt) => opt.name === value);
+      if (selectedOption) {
+        const currentTotal = editForm.total_monthly_price || 0;
+        const currentServicePrice = editForm.service_price || 0;
+        const basePrice = currentTotal - currentServicePrice;
+        setEditForm({
+          ...editForm,
+          service_option: selectedOption.name,
+          service_price: selectedOption.price,
+          total_monthly_price: basePrice + selectedOption.price,
+        });
+      }
+    }
+  };
+
+  const handleGenerateInvoice = async (client: IspClient) => {
+    setGeneratingInvoice(client.id);
+    try {
+      // Get client contract for contract number
+      const { data: contract } = await supabase
+        .from("isp_contracts")
+        .select("contract_number")
+        .eq("client_id", client.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      // Get billing settings for the amount
+      const { data: billing } = await supabase
+        .from("client_billing_settings")
+        .select("*")
+        .eq("client_id", client.id)
+        .single();
+
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const dueDate = addMonths(monthStart, 1);
+      
+      const invoiceNumber = `FAC-${format(now, "yyyyMMdd")}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+      const amount = billing?.monthly_amount || client.total_monthly_price || 0;
+
+      const invoiceData = {
+        invoice_number: invoiceNumber,
+        amount: amount,
+        due_date: format(dueDate, "yyyy-MM-dd"),
+        billing_period_start: format(monthStart, "yyyy-MM-dd"),
+        billing_period_end: format(monthEnd, "yyyy-MM-dd"),
+        status: "pending",
+        paid_at: null,
+        paid_via: null,
+        contract_number: contract?.contract_number || null,
+        service_breakdown: {
+          plan_name: `Plan ${client.plan_or_speed || "Internet"}`,
+          plan_price: (client.total_monthly_price || 0) - (client.service_price || 0),
+          service_option: client.service_option,
+          service_price: client.service_price,
+        },
+      };
+
+      const clientData = {
+        client_name: client.client_name,
+        phone: client.phone,
+        address: client.address,
+        email: client.email,
+        identification_number: client.identification_number,
+      };
+
+      await generateInvoicePDF(invoiceData, clientData);
+      toast.success("Factura generada correctamente");
+    } catch (error: any) {
+      console.error("Error generating invoice:", error);
+      toast.error("Error al generar la factura");
+    } finally {
+      setGeneratingInvoice(null);
+    }
+  };
+
   const filteredClients = clients?.filter(client => 
     client.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -276,6 +386,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                     <TableHead>Usuario</TableHead>
                     <TableHead>IP</TableHead>
                     <TableHead>Plan</TableHead>
+                    <TableHead>Precio</TableHead>
                     <TableHead>Contacto</TableHead>
                     <TableHead>Registro</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
@@ -306,7 +417,18 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                       <TableCell className="font-mono text-sm">{client.username}</TableCell>
                       <TableCell className="font-mono text-sm">{client.assigned_ip || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{client.plan_or_speed || "-"}</Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant="outline">{client.plan_or_speed || "-"}</Badge>
+                          {client.service_option && (
+                            <span className="text-xs text-muted-foreground">+ {client.service_option}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm font-medium text-green-600">
+                          <DollarSign className="h-3 w-3" />
+                          {client.total_monthly_price?.toLocaleString("es-CO") || "0"}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1 text-xs">
@@ -335,6 +457,19 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleGenerateInvoice(client)}
+                            title="Generar factura"
+                            disabled={generatingInvoice === client.id}
+                          >
+                            {generatingInvoice === client.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FileText className="h-4 w-4 text-blue-600" />
+                            )}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -436,6 +571,48 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                 />
               </div>
             </div>
+            
+            {/* Servicio Adicional */}
+            <div className="grid gap-2">
+              <Label>Servicio Adicional</Label>
+              <Select
+                value={editForm.service_option || "none"}
+                onValueChange={handleServiceOptionChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar servicio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin servicio adicional</SelectItem>
+                  {serviceOptions?.map((option) => (
+                    <SelectItem key={option.id} value={option.name}>
+                      {option.name} - ${option.price.toLocaleString("es-CO")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editForm.service_option && (
+                <div className="text-xs text-muted-foreground">
+                  Precio del servicio: ${editForm.service_price?.toLocaleString("es-CO") || 0}
+                </div>
+              )}
+            </div>
+
+            {/* Precio Total */}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-total">Precio Mensual Total</Label>
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="edit-total"
+                  type="number"
+                  value={editForm.total_monthly_price || 0}
+                  onChange={(e) => setEditForm({ ...editForm, total_monthly_price: parseFloat(e.target.value) || 0 })}
+                  className="font-medium"
+                />
+              </div>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="edit-comment">Comentario</Label>
               <Input
