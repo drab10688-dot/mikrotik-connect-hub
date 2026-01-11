@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Users, Wifi, Gauge, MapPin, Phone, Mail, Pencil, Trash2, Search, Loader2, AlertTriangle, FileText, DollarSign } from "lucide-react";
+import { Users, Wifi, Gauge, MapPin, Phone, Mail, Pencil, Trash2, Search, Loader2, AlertTriangle, FileText, DollarSign, Ban, CheckCircle } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -42,6 +42,11 @@ interface IspClient {
   total_monthly_price: number | null;
 }
 
+interface BillingSetting {
+  client_id: string;
+  is_suspended: boolean;
+}
+
 export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerProps) {
   const queryClient = useQueryClient();
   const [editingClient, setEditingClient] = useState<IspClient | null>(null);
@@ -51,6 +56,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   const [deleteFromMikrotik, setDeleteFromMikrotik] = useState(true);
   const [generatingInvoice, setGeneratingInvoice] = useState<string | null>(null);
   const [invoiceClient, setInvoiceClient] = useState<IspClient | null>(null);
+  const [suspendingClient, setSuspendingClient] = useState<string | null>(null);
   
   const { services: serviceOptions } = useServiceOptions(mikrotikId || undefined);
 
@@ -71,6 +77,28 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     },
     enabled: !!mikrotikId,
   });
+
+  // Fetch billing settings to know suspension status
+  const { data: billingSettings } = useQuery({
+    queryKey: ["billing-settings-suspension", mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return [];
+      
+      const { data, error } = await supabase
+        .from("client_billing_settings")
+        .select("client_id, is_suspended")
+        .eq("mikrotik_id", mikrotikId);
+
+      if (error) throw error;
+      return (data || []) as BillingSetting[];
+    },
+    enabled: !!mikrotikId,
+  });
+
+  const getClientSuspensionStatus = (clientId: string): boolean => {
+    const setting = billingSettings?.find(s => s.client_id === clientId);
+    return setting?.is_suspended || false;
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (client: Partial<IspClient> & { id: string }) => {
@@ -321,6 +349,55 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     }
   };
 
+  const handleToggleSuspension = async (client: IspClient) => {
+    if (!mikrotikId || !client.assigned_ip) {
+      toast.error("El cliente necesita tener una IP asignada para suspender/reactivar");
+      return;
+    }
+
+    const isSuspended = getClientSuspensionStatus(client.id);
+    const action = isSuspended ? "remove" : "add";
+    
+    setSuspendingClient(client.id);
+    
+    try {
+      // Call edge function to add/remove from address-list
+      const response = await supabase.functions.invoke("mikrotik-address-list", {
+        body: {
+          mikrotikId,
+          action,
+          ipAddress: client.assigned_ip,
+          clientId: client.id,
+          listName: "morosos",
+          comment: `${client.client_name} - ${isSuspended ? "Reactivado" : "Suspendido"} manualmente`,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || "Error en la operación");
+      }
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["billing-settings-suspension"] });
+      queryClient.invalidateQueries({ queryKey: ["billing-settings"] });
+
+      toast.success(
+        isSuspended 
+          ? `Cliente ${client.client_name} reactivado correctamente` 
+          : `Cliente ${client.client_name} suspendido correctamente`
+      );
+    } catch (error: any) {
+      console.error("Error toggling suspension:", error);
+      toast.error(`Error al ${isSuspended ? "reactivar" : "suspender"} cliente: ${error.message}`);
+    } finally {
+      setSuspendingClient(null);
+    }
+  };
+
   const filteredClients = clients?.filter(client => 
     client.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -394,9 +471,16 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                 </TableHeader>
                 <TableBody>
                   {filteredClients.map((client: IspClient) => (
-                    <TableRow key={client.id}>
+                    <TableRow key={client.id} className={getClientSuspensionStatus(client.id) ? "bg-red-50/50" : ""}>
                       <TableCell>
-                        <div className="font-medium">{client.client_name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium">{client.client_name}</div>
+                          {getClientSuspensionStatus(client.id) && (
+                            <Badge variant="destructive" className="text-xs">
+                              Suspendido
+                            </Badge>
+                          )}
+                        </div>
                         {client.identification_number && (
                           <div className="text-xs text-muted-foreground">ID: {client.identification_number}</div>
                         )}
@@ -457,6 +541,24 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-center gap-1">
+                          {/* Suspend/Reactivate button */}
+                          {client.assigned_ip && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleToggleSuspension(client)}
+                              title={getClientSuspensionStatus(client.id) ? "Reactivar cliente" : "Suspender cliente"}
+                              disabled={suspendingClient === client.id}
+                            >
+                              {suspendingClient === client.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : getClientSuspensionStatus(client.id) ? (
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                              ) : (
+                                <Ban className="h-4 w-4 text-orange-600" />
+                              )}
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
