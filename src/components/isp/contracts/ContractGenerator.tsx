@@ -215,57 +215,83 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
 
     try {
       // Esperar un momento para asegurar que el QR esté renderizado
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      const canvas = await html2canvas(el, {
+      // Crear una copia del elemento para modificar estilos sin afectar el original
+      const cloneContainer = document.createElement("div");
+      cloneContainer.style.position = "absolute";
+      cloneContainer.style.left = "-9999px";
+      cloneContainer.style.top = "0";
+      cloneContainer.style.width = "794px"; // A4 width at 96 DPI
+      document.body.appendChild(cloneContainer);
+
+      const clone = el.cloneNode(true) as HTMLDivElement;
+      clone.style.width = "794px";
+      clone.style.padding = "40px";
+      clone.style.backgroundColor = "#ffffff";
+      cloneContainer.appendChild(clone);
+
+      // Esperar a que se renderice el clon
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         logging: false,
         backgroundColor: "#ffffff",
-        onclone: (clonedDoc) => {
-          // Asegurar que las imágenes estén listas en el clon
-          const images = clonedDoc.querySelectorAll('img');
-          images.forEach(img => {
-            if (!img.complete) {
-              img.style.display = 'none';
-            }
-          });
-        }
+        width: 794,
+        windowWidth: 794,
       });
 
-      const imgData = canvas.toDataURL("image/png");
+      // Limpiar el clon
+      document.body.removeChild(cloneContainer);
+
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
         format: "a4",
       });
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+      const margin = 10; // 10mm margin
+      const usableWidth = pdfWidth - (margin * 2);
+      const usableHeight = pdfHeight - (margin * 2);
+
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
 
-      // IMPORTANT: Ajustar por ancho para evitar que el contrato se reduzca para "caber" en 1 página
-      const ratio = pdfWidth / imgWidth;
+      // Calcular la escala basada en el ancho usable
+      const scale = usableWidth / (imgWidth / 2); // Dividir por 2 porque el canvas está a escala 2
+      const scaledHeight = (imgHeight / 2) * scale;
 
-      const pageHeightInPixels = pdfHeight / ratio;
-      const totalPages = Math.ceil(imgHeight / pageHeightInPixels);
+      // Calcular altura de página en píxeles del canvas
+      const pageHeightInCanvasPixels = (usableHeight / scale) * 2;
+
+      // Calcular número total de páginas
+      const totalPages = Math.ceil(imgHeight / pageHeightInCanvasPixels);
 
       for (let page = 0; page < totalPages; page++) {
         if (page > 0) {
           pdf.addPage();
         }
 
-        const sourceY = page * pageHeightInPixels;
-        const sourceHeight = Math.min(pageHeightInPixels, imgHeight - sourceY);
+        const sourceY = page * pageHeightInCanvasPixels;
+        const sourceHeight = Math.min(pageHeightInCanvasPixels, imgHeight - sourceY);
 
+        // Crear canvas para esta página
         const pageCanvas = document.createElement("canvas");
         pageCanvas.width = imgWidth;
         pageCanvas.height = sourceHeight;
         const pageCtx = pageCanvas.getContext("2d");
 
         if (pageCtx) {
+          // Fondo blanco
+          pageCtx.fillStyle = "#ffffff";
+          pageCtx.fillRect(0, 0, imgWidth, sourceHeight);
+
+          // Dibujar la porción correspondiente
           pageCtx.drawImage(
             canvas,
             0,
@@ -278,14 +304,16 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
             sourceHeight
           );
 
-          const pageImgData = pageCanvas.toDataURL("image/png");
+          const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+          const destHeight = (sourceHeight / 2) * scale;
+
           pdf.addImage(
             pageImgData,
             "PNG",
-            0,
-            0,
-            pdfWidth,
-            sourceHeight * ratio
+            margin,
+            margin,
+            usableWidth,
+            Math.min(destHeight, usableHeight)
           );
         }
       }

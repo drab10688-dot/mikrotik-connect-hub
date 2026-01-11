@@ -87,7 +87,8 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           margin: "0 auto",
           fontFamily: "Georgia, 'Times New Roman', serif",
           fontSize: "11pt",
-          lineHeight: "1.6"
+          lineHeight: "1.6",
+          boxSizing: "border-box",
         }}
       >
         {/* Header */}
@@ -163,7 +164,7 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         </p>
 
         {/* Datos en tabla */}
-        <table style={{ width: "100%", marginBottom: "32px", borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", marginBottom: "32px", borderCollapse: "collapse", pageBreakInside: "avoid" }}>
           <tbody>
             <tr>
               <td style={{ width: "50%", padding: "16px", backgroundColor: "#f7fafc", border: "1px solid #e2e8f0", verticalAlign: "top" }}>
@@ -215,7 +216,8 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         <table style={{ 
           width: "100%",
           marginBottom: "32px", 
-          borderCollapse: "collapse"
+          borderCollapse: "collapse",
+          pageBreakInside: "avoid"
         }}>
           <tbody>
             <tr>
@@ -353,77 +355,77 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           </h3>
 
           <div>
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA PRIMERA - OBJETO DEL CONTRATO
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.object}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA SEGUNDA - VIGENCIA Y RENOVACIÓN
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.validity}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA TERCERA - VALOR Y FORMA DE PAGO
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.payment}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA CUARTA - OBLIGACIONES DEL PRESTADOR
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.providerObligations}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA QUINTA - OBLIGACIONES DEL SUSCRIPTOR
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.clientObligations}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA SEXTA - EQUIPOS EN COMODATO
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.equipment}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA SÉPTIMA - SUSPENSIÓN DEL SERVICIO
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.suspension}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA OCTAVA - TERMINACIÓN DEL CONTRATO
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.termination}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA NOVENA - LIBERTAD DE PERMANENCIA
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.freedom}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA DÉCIMA - PETICIONES, QUEJAS Y RECURSOS (PQR)
               </h4>
               <p style={{ textAlign: "justify", whiteSpace: "pre-line", textIndent: "2em", margin: 0 }}>{terms.pqr}</p>
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
               <h4 style={{ fontWeight: "bold", color: "#1a365d", marginBottom: "8px", fontSize: "12px" }}>
                 CLÁUSULA UNDÉCIMA - PROTECCIÓN DE DATOS PERSONALES
               </h4>
@@ -455,7 +457,7 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         </table>
 
         {/* Firmas */}
-        <div style={{ marginTop: "40px", paddingTop: "32px", borderTop: "3px double #1a365d" }}>
+        <div style={{ marginTop: "40px", paddingTop: "32px", borderTop: "3px double #1a365d", pageBreakInside: "avoid" }}>
           <h3 style={{ 
             fontWeight: "bold", 
             textAlign: "center",
