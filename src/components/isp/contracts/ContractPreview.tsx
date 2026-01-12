@@ -338,8 +338,19 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
           </div>
         )}
 
+        {/* Page break marker - forces clauses to start on new page */}
+        <div 
+          data-page-break="true"
+          style={{ 
+            height: "60px",
+            width: "100%",
+            backgroundColor: "transparent",
+            marginBottom: "0",
+          }} 
+        />
+
         {/* Cláusulas */}
-        <div style={{ marginBottom: "32px", pageBreakBefore: "always" }}>
+        <div style={{ marginBottom: "32px" }}>
           <h3 style={{ 
             fontWeight: "bold", 
             textAlign: "center",
