@@ -207,67 +207,97 @@ export function ContractHistory() {
     if (!downloadingContract || !pdfRef.current) return;
 
     setIsGeneratingPdf(true);
-    
+
+    let cloneContainer: HTMLDivElement | null = null;
+
     try {
       // Wait for QR code and content to render
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
-      const canvas = await html2canvas(pdfRef.current, {
+      const el = pdfRef.current;
+
+      // Clone to enforce a stable canvas width (avoid random reflows / scaling)
+      cloneContainer = document.createElement("div");
+      cloneContainer.style.position = "absolute";
+      cloneContainer.style.left = "-9999px";
+      cloneContainer.style.top = "0";
+      cloneContainer.style.width = "794px"; // A4 width at 96 DPI
+      cloneContainer.style.backgroundColor = "#ffffff";
+      document.body.appendChild(cloneContainer);
+
+      const clone = el.cloneNode(true) as HTMLDivElement;
+      clone.style.width = "794px";
+      clone.style.maxWidth = "794px";
+      clone.style.padding = "40px";
+      clone.style.boxSizing = "border-box";
+      clone.style.backgroundColor = "#ffffff";
+      cloneContainer.appendChild(clone);
+
+      // Wait for clone to layout
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
-        onclone: (clonedDoc) => {
-          const imgs = clonedDoc.querySelectorAll("img");
-          imgs.forEach((img) => {
-            if (!img.complete) {
-              img.style.display = "none";
-            }
-          });
-        },
+        width: 794,
+        windowWidth: 794,
       });
 
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
-        format: "letter",
+        format: "a4",
       });
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+      const margin = 10; // mm
+      const usableWidth = pdfWidth - margin * 2;
+      const usableHeight = pdfHeight - margin * 2;
+
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
 
-      // IMPORTANT: Ajustar por ancho para evitar que el contenido se "encoga" intentando caber en 1 sola página
-      const ratio = pdfWidth / imgWidth;
+      // Scale to fit usable width (canvas is 2x)
+      const scale = usableWidth / (imgWidth / 2);
 
-      // Paginar por altura
-      const pageHeightInPixels = pdfHeight / ratio;
-      const totalPages = Math.ceil(imgHeight / pageHeightInPixels);
+      // How many canvas pixels fit in one PDF page height
+      const pageHeightInCanvasPixels = (usableHeight / scale) * 2;
+      const totalPages = Math.ceil(imgHeight / pageHeightInCanvasPixels);
 
       for (let page = 0; page < totalPages; page++) {
         if (page > 0) pdf.addPage();
 
-        const sourceY = page * pageHeightInPixels;
-        const sourceHeight = Math.min(pageHeightInPixels, imgHeight - sourceY);
-        const destHeight = sourceHeight * ratio;
+        const sourceY = page * pageHeightInCanvasPixels;
+        const sourceHeight = Math.min(pageHeightInCanvasPixels, imgHeight - sourceY);
 
         const pageCanvas = document.createElement("canvas");
         pageCanvas.width = imgWidth;
         pageCanvas.height = sourceHeight;
-        const ctx = pageCanvas.getContext("2d");
-        
-        if (ctx) {
-          ctx.drawImage(
-            canvas,
-            0, sourceY, imgWidth, sourceHeight,
-            0, 0, imgWidth, sourceHeight
-          );
-          
-          const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.95);
-          pdf.addImage(pageImgData, "JPEG", 0, 0, pdfWidth, destHeight);
-        }
+        const pageCtx = pageCanvas.getContext("2d");
+
+        if (!pageCtx) continue;
+
+        // White background to avoid transparency artifacts
+        pageCtx.fillStyle = "#ffffff";
+        pageCtx.fillRect(0, 0, imgWidth, sourceHeight);
+
+        pageCtx.drawImage(canvas, 0, sourceY, imgWidth, sourceHeight, 0, 0, imgWidth, sourceHeight);
+
+        const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+        const destHeight = (sourceHeight / 2) * scale;
+
+        pdf.addImage(
+          pageImgData,
+          "PNG",
+          margin,
+          margin,
+          usableWidth,
+          Math.min(destHeight, usableHeight)
+        );
       }
 
       pdf.save(`contrato_${downloadingContract.contract_number}.pdf`);
@@ -276,6 +306,9 @@ export function ContractHistory() {
       console.error("Error generating PDF:", error);
       toast.error("Error al generar el PDF");
     } finally {
+      if (cloneContainer?.parentNode) {
+        document.body.removeChild(cloneContainer);
+      }
       setIsGeneratingPdf(false);
       setDownloadingContract(null);
     }
@@ -518,7 +551,7 @@ export function ContractHistory() {
 
       {/* Hidden container for PDF generation */}
       {downloadingContract && (
-        <div className="fixed -left-[10000px] top-0 w-[896px]">
+        <div className="fixed -left-[10000px] top-0 w-[794px]">
           <ContractPreview
             ref={pdfRef}
             clientData={contractToClientData(downloadingContract)}
