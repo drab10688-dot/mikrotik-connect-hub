@@ -213,26 +213,38 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
 
     setIsGenerating(true);
 
+    let cloneContainer: HTMLDivElement | null = null;
+
     try {
       // Esperar un momento para asegurar que el QR esté renderizado
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Crear una copia del elemento para modificar estilos sin afectar el original
-      const cloneContainer = document.createElement("div");
+      cloneContainer = document.createElement("div");
       cloneContainer.style.position = "absolute";
       cloneContainer.style.left = "-9999px";
       cloneContainer.style.top = "0";
       cloneContainer.style.width = "794px"; // A4 width at 96 DPI
+      cloneContainer.style.backgroundColor = "#ffffff";
       document.body.appendChild(cloneContainer);
 
       const clone = el.cloneNode(true) as HTMLDivElement;
       clone.style.width = "794px";
+      clone.style.maxWidth = "794px";
       clone.style.padding = "40px";
+      clone.style.boxSizing = "border-box";
       clone.style.backgroundColor = "#ffffff";
       cloneContainer.appendChild(clone);
 
       // Esperar a que se renderice el clon
       await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Find page break marker position
+      const pageBreakMarker = clone.querySelector('[data-page-break="true"]') as HTMLElement | null;
+      let pageBreakY = -1;
+      if (pageBreakMarker) {
+        pageBreakY = pageBreakMarker.offsetTop * 2; // multiply by scale (2)
+      }
 
       const canvas = await html2canvas(clone, {
         scale: 2,
@@ -243,9 +255,6 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
         width: 794,
         windowWidth: 794,
       });
-
-      // Limpiar el clon
-      document.body.removeChild(cloneContainer);
 
       const pdf = new jsPDF({
         orientation: "portrait",
@@ -264,21 +273,33 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
 
       // Calcular la escala basada en el ancho usable
       const scale = usableWidth / (imgWidth / 2); // Dividir por 2 porque el canvas está a escala 2
-      const scaledHeight = (imgHeight / 2) * scale;
 
       // Calcular altura de página en píxeles del canvas
       const pageHeightInCanvasPixels = (usableHeight / scale) * 2;
 
-      // Calcular número total de páginas
-      const totalPages = Math.ceil(imgHeight / pageHeightInCanvasPixels);
+      // Build page breaks array
+      const pageBreaks: number[] = [];
+      if (pageBreakY > 0 && pageBreakY < imgHeight) {
+        pageBreaks.push(pageBreakY);
+      }
 
-      for (let page = 0; page < totalPages; page++) {
-        if (page > 0) {
-          pdf.addPage();
+      // Generate pages with explicit page breaks
+      let currentY = 0;
+      let pageIndex = 0;
+
+      while (currentY < imgHeight) {
+        if (pageIndex > 0) pdf.addPage();
+
+        // Check if there's a forced page break within this page range
+        let nextBreak = currentY + pageHeightInCanvasPixels;
+        for (const breakPoint of pageBreaks) {
+          if (breakPoint > currentY && breakPoint < nextBreak) {
+            nextBreak = breakPoint;
+            break;
+          }
         }
 
-        const sourceY = page * pageHeightInCanvasPixels;
-        const sourceHeight = Math.min(pageHeightInCanvasPixels, imgHeight - sourceY);
+        const sourceHeight = Math.min(nextBreak - currentY, imgHeight - currentY);
 
         // Crear canvas para esta página
         const pageCanvas = document.createElement("canvas");
@@ -295,7 +316,7 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
           pageCtx.drawImage(
             canvas,
             0,
-            sourceY,
+            currentY,
             imgWidth,
             sourceHeight,
             0,
@@ -316,6 +337,9 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
             Math.min(destHeight, usableHeight)
           );
         }
+
+        currentY = nextBreak;
+        pageIndex++;
       }
 
       const isSigned = isClientSigned && isManagerSigned;
@@ -337,6 +361,9 @@ export function ContractGenerator({ clientData, onContractSigned }: ContractGene
       console.error("Error generating PDF:", error);
       toast.error("Error al generar el PDF: " + (error instanceof Error ? error.message : "Error desconocido"));
     } finally {
+      if (cloneContainer?.parentNode) {
+        document.body.removeChild(cloneContainer);
+      }
       setIsGenerating(false);
     }
   };

@@ -236,6 +236,13 @@ export function ContractHistory() {
       // Wait for clone to layout
       await new Promise((resolve) => setTimeout(resolve, 200));
 
+      // Find page break marker position
+      const pageBreakMarker = clone.querySelector('[data-page-break="true"]') as HTMLElement | null;
+      let pageBreakY = -1;
+      if (pageBreakMarker) {
+        pageBreakY = pageBreakMarker.offsetTop * 2; // multiply by scale (2)
+      }
+
       const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
@@ -266,38 +273,58 @@ export function ContractHistory() {
 
       // How many canvas pixels fit in one PDF page height
       const pageHeightInCanvasPixels = (usableHeight / scale) * 2;
-      const totalPages = Math.ceil(imgHeight / pageHeightInCanvasPixels);
 
-      for (let page = 0; page < totalPages; page++) {
-        if (page > 0) pdf.addPage();
+      // Build page breaks array
+      const pageBreaks: number[] = [];
+      if (pageBreakY > 0 && pageBreakY < imgHeight) {
+        pageBreaks.push(pageBreakY);
+      }
 
-        const sourceY = page * pageHeightInCanvasPixels;
-        const sourceHeight = Math.min(pageHeightInCanvasPixels, imgHeight - sourceY);
+      // Generate pages with explicit page breaks
+      let currentY = 0;
+      let pageIndex = 0;
+
+      while (currentY < imgHeight) {
+        if (pageIndex > 0) pdf.addPage();
+
+        // Check if there's a forced page break within this page range
+        let nextBreak = currentY + pageHeightInCanvasPixels;
+        for (const breakPoint of pageBreaks) {
+          if (breakPoint > currentY && breakPoint < nextBreak) {
+            nextBreak = breakPoint;
+            break;
+          }
+        }
+
+        const sourceHeight = Math.min(nextBreak - currentY, imgHeight - currentY);
 
         const pageCanvas = document.createElement("canvas");
         pageCanvas.width = imgWidth;
         pageCanvas.height = sourceHeight;
         const pageCtx = pageCanvas.getContext("2d");
 
-        if (!pageCtx) continue;
+        if (pageCtx) {
+          // White background to avoid transparency artifacts
+          pageCtx.fillStyle = "#ffffff";
+          pageCtx.fillRect(0, 0, imgWidth, sourceHeight);
 
-        // White background to avoid transparency artifacts
-        pageCtx.fillStyle = "#ffffff";
-        pageCtx.fillRect(0, 0, imgWidth, sourceHeight);
+          pageCtx.drawImage(canvas, 0, currentY, imgWidth, sourceHeight, 0, 0, imgWidth, sourceHeight);
 
-        pageCtx.drawImage(canvas, 0, sourceY, imgWidth, sourceHeight, 0, 0, imgWidth, sourceHeight);
+          const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+          const destHeight = (sourceHeight / 2) * scale;
 
-        const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
-        const destHeight = (sourceHeight / 2) * scale;
+          pdf.addImage(
+            pageImgData,
+            "PNG",
+            margin,
+            margin,
+            usableWidth,
+            Math.min(destHeight, usableHeight)
+          );
+        }
 
-        pdf.addImage(
-          pageImgData,
-          "PNG",
-          margin,
-          margin,
-          usableWidth,
-          Math.min(destHeight, usableHeight)
-        );
+        currentY = nextBreak;
+        pageIndex++;
       }
 
       pdf.save(`contrato_${downloadingContract.contract_number}.pdf`);
