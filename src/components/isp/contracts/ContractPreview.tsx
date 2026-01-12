@@ -339,7 +339,7 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
         )}
 
         {/* Cláusulas */}
-        <div style={{ marginBottom: "32px" }}>
+        <div style={{ marginBottom: "32px", pageBreakBefore: "always" }}>
           <h3 style={{ 
             fontWeight: "bold", 
             textAlign: "center",
