@@ -16,6 +16,7 @@ import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { useServiceOptions } from "@/hooks/useServiceOptions";
 import { generateInvoicePDF } from "@/components/payments/InvoicePDF";
+import { usePPPoEProfiles } from "@/hooks/useMikrotikData";
 
 interface ClientsManagerProps {
   mikrotikId: string | null;
@@ -59,6 +60,14 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   const [suspendingClient, setSuspendingClient] = useState<string | null>(null);
   
   const { services: serviceOptions, loading: loadingServices } = useServiceOptions(mikrotikId);
+  const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
+  const pppoeProfiles = (pppoeProfilesData as any[]) || [];
+
+  // Sistema de precios guardados desde localStorage
+  const getPlanPrices = (): Record<string, string> => {
+    const saved = localStorage.getItem("isp_plan_prices");
+    return saved ? JSON.parse(saved) : {};
+  };
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["isp-clients-manager", mikrotikId],
@@ -261,21 +270,51 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     deleteMutation.mutate({ client: deletingClient, deleteFromMikrotik });
   };
 
+  // Función para parsear precio de string a número
+  const parsePrice = (price: string): number => {
+    const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const handlePlanChange = (value: string) => {
+    const planPrices = getPlanPrices();
+    const savedPrice = planPrices[value];
+    
+    if (savedPrice) {
+      const basePrice = parsePrice(savedPrice);
+      const servicePrice = editForm.service_price || 0;
+      const total = basePrice + servicePrice;
+      
+      setEditForm({
+        ...editForm,
+        plan_or_speed: value,
+        total_monthly_price: total,
+      });
+    } else {
+      setEditForm({
+        ...editForm,
+        plan_or_speed: value,
+      });
+    }
+  };
+
   const handleServiceOptionChange = (value: string) => {
+    // Calcular precio base del plan
+    const planPrices = getPlanPrices();
+    const savedPlanPrice = planPrices[editForm.plan_or_speed || ""];
+    const basePrice = savedPlanPrice ? parsePrice(savedPlanPrice) : 
+      (editForm.total_monthly_price || 0) - (editForm.service_price || 0);
+
     if (value === "none") {
-      const planPrice = parseFloat(editForm.plan_or_speed?.split(' ')[0] || "0") || 0;
       setEditForm({
         ...editForm,
         service_option: null,
         service_price: null,
-        total_monthly_price: planPrice > 0 ? planPrice : editForm.total_monthly_price,
+        total_monthly_price: basePrice > 0 ? basePrice : editForm.total_monthly_price,
       });
     } else {
       const selectedOption = serviceOptions?.find((opt) => opt.name === value);
       if (selectedOption) {
-        const currentTotal = editForm.total_monthly_price || 0;
-        const currentServicePrice = editForm.service_price || 0;
-        const basePrice = currentTotal - currentServicePrice;
         setEditForm({
           ...editForm,
           service_option: selectedOption.name,
@@ -666,11 +705,32 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit-plan">Plan/Velocidad</Label>
-                <Input
-                  id="edit-plan"
-                  value={editForm.plan_or_speed || ""}
-                  onChange={(e) => setEditForm({ ...editForm, plan_or_speed: e.target.value })}
-                />
+                {loadingProfiles ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Cargando planes...
+                  </div>
+                ) : (
+                  <Select
+                    value={editForm.plan_or_speed || ""}
+                    onValueChange={handlePlanChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar plan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pppoeProfiles.map((profile: any) => {
+                        const planPrices = getPlanPrices();
+                        const price = planPrices[profile.name];
+                        return (
+                          <SelectItem key={profile['.id'] || profile.name} value={profile.name}>
+                            {profile.name} {price ? `- $${parsePrice(price).toLocaleString("es-CO")}` : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
             
