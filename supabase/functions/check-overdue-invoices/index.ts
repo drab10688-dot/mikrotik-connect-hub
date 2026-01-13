@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Default suspension list name
+const DEFAULT_SUSPENSION_LIST = 'morosos';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -18,6 +21,19 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get suspension list name from request body or use default
+    let suspensionListName = DEFAULT_SUSPENSION_LIST;
+    try {
+      const body = await req.json();
+      if (body?.suspensionListName) {
+        suspensionListName = body.suspensionListName;
+      }
+    } catch {
+      // No body or invalid JSON, use default
+    }
+
+    console.log(`Using suspension address-list: ${suspensionListName}`);
 
     const today = new Date().toISOString().split('T')[0];
     console.log(`Checking for overdue invoices as of: ${today}`);
@@ -49,7 +65,8 @@ serve(async (req) => {
       suspended: 0,
       already_suspended: 0,
       errors: [] as string[],
-      processed_clients: [] as string[]
+      processed_clients: [] as string[],
+      suspension_list: suspensionListName
     };
 
     // Process each overdue invoice
@@ -100,7 +117,7 @@ serve(async (req) => {
         continue;
       }
 
-      // Add to morosos address list in MikroTik
+      // Add to suspension address list in MikroTik
       const ipAddress = client.assigned_ip;
       
       if (!ipAddress) {
@@ -111,12 +128,12 @@ serve(async (req) => {
       }
 
       try {
-        console.log(`Adding ${ipAddress} to morosos list on ${device.name}`);
+        console.log(`Adding ${ipAddress} to ${suspensionListName} list on ${device.name}`);
         
-        const mikrotikResult = await addToAddressList(device, ipAddress, client.client_name);
+        const mikrotikResult = await addToAddressList(device, ipAddress, client.client_name, suspensionListName);
         
         if (!mikrotikResult.success) {
-          results.errors.push(`Failed to add ${client.client_name} to morosos: ${mikrotikResult.error}`);
+          results.errors.push(`Failed to add ${client.client_name} to ${suspensionListName}: ${mikrotikResult.error}`);
           continue;
         }
 
@@ -189,7 +206,7 @@ serve(async (req) => {
 });
 
 // Helper function to add IP to MikroTik address list
-async function addToAddressList(device: any, ipAddress: string, clientName: string) {
+async function addToAddressList(device: any, ipAddress: string, clientName: string, listName: string) {
   try {
     const baseUrl = `https://${device.host}:${device.port || 8729}`;
     
@@ -201,9 +218,9 @@ async function addToAddressList(device: any, ipAddress: string, clientName: stri
         'Authorization': 'Basic ' + btoa(`${device.username}:${device.password}`)
       },
       body: JSON.stringify({
-        list: 'morosos',
+        list: listName,
         address: ipAddress,
-        comment: `Moroso: ${clientName} - Suspendido: ${new Date().toISOString()}`
+        comment: `Suspendido: ${clientName} - ${new Date().toISOString()}`
       })
     });
 

@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   XCircle
 } from "lucide-react";
+import { getSuspensionAddressList } from "@/components/isp/contracts/ContractTermsEditor";
 
 interface ScannedClient {
   name: string;
@@ -397,7 +398,7 @@ export function MikrotikClientScanner() {
               <p className="text-muted-foreground">
                 Los clientes importados quedarán vinculados a su IP asignada. Cuando una factura venza 
                 y el cliente no pague, el sistema agregará automáticamente su IP al address-list 
-                <code className="mx-1 px-1 py-0.5 bg-muted rounded">morosos</code>.
+                <code className="mx-1 px-1 py-0.5 bg-muted rounded">{getSuspensionAddressList()}</code>.
               </p>
               <p className="text-muted-foreground">
                 Cuando el cliente pague, se eliminará automáticamente del address-list, 
