@@ -16,7 +16,7 @@ const DEFAULT_SERVICES: Omit<ServiceOption, "id">[] = [
   { name: "Solo TV", description: "Solo servicio de televisión sin internet", price: 0, is_default: true },
 ];
 
-export function useServiceOptions(mikrotikId: string | null) {
+export function useServiceOptions(mikrotikId: string | null | undefined) {
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [loading, setLoading] = useState(true);
 
