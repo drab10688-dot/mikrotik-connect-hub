@@ -405,7 +405,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
         body: {
           mikrotikId,
           action,
-          ipAddress: client.assigned_ip,
+          address: client.assigned_ip,
           clientId: client.id,
           listName: "morosos",
           comment: `${client.client_name} - ${isSuspended ? "Reactivado" : "Suspendido"} manualmente`,
