@@ -1,13 +1,16 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Save, RotateCcw, FileText, Building2, Upload, X, Loader2, ImageIcon } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Save, RotateCcw, FileText, Building2, Upload, X, Loader2, ImageIcon, Ban, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { getSelectedDeviceId } from "@/lib/mikrotik";
 
 export interface CompanyInfo {
   name: string;
@@ -18,6 +21,7 @@ export interface CompanyInfo {
   address: string;
   logoUrl?: string;
   managerName?: string;
+  suspensionAddressList?: string;
 }
 
 export interface ContractTerms {
@@ -43,6 +47,7 @@ const DEFAULT_COMPANY_INFO: CompanyInfo = {
   address: "Dirección de la empresa",
   logoUrl: "",
   managerName: "",
+  suspensionAddressList: "morosos",
 };
 
 const DEFAULT_TERMS: ContractTerms = {
@@ -59,6 +64,20 @@ const DEFAULT_TERMS: ContractTerms = {
   dataProtection: "La empresa se compromete a proteger los datos personales del cliente de acuerdo con la Ley 1581 de 2012 y demás normas aplicables. El cliente autoriza el tratamiento de sus datos para fines contractuales.",
 };
 
+// Helper function to get suspension address list globally
+export function getSuspensionAddressList(): string {
+  const saved = localStorage.getItem("isp_company_info");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      return parsed.suspensionAddressList || "morosos";
+    } catch {
+      return "morosos";
+    }
+  }
+  return "morosos";
+}
+
 interface ContractTermsEditorProps {
   onSave?: (terms: ContractTerms, companyInfo: CompanyInfo) => void;
 }
@@ -66,6 +85,9 @@ interface ContractTermsEditorProps {
 export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [newListName, setNewListName] = useState("");
+
+  const mikrotikId = getSelectedDeviceId();
 
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(() => {
     const saved = localStorage.getItem("isp_company_info");
@@ -75,6 +97,31 @@ export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
   const [terms, setTerms] = useState<ContractTerms>(() => {
     const saved = localStorage.getItem("isp_contract_terms");
     return saved ? JSON.parse(saved) : DEFAULT_TERMS;
+  });
+
+  // Query para obtener las listas de direcciones disponibles del MikroTik
+  const { data: addressLists, isLoading: loadingLists, refetch: refetchLists } = useQuery({
+    queryKey: ["address-lists-names", mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return [];
+      
+      const { data, error } = await supabase.functions.invoke("mikrotik-v6-api", {
+        body: {
+          mikrotikId,
+          command: "address-list-print",
+        },
+      });
+
+      if (error) throw error;
+      if (!data.success) return [];
+      
+      // Extraer nombres únicos de listas
+      const entries = data.data || [];
+      const uniqueLists = [...new Set(entries.map((e: any) => e.list).filter(Boolean))];
+      return uniqueLists.sort() as string[];
+    },
+    enabled: !!mikrotikId,
+    staleTime: 30000,
   });
 
   const handleSave = () => {
@@ -332,6 +379,102 @@ export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
                 Este nombre se usará automáticamente al firmar contratos
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Configuración de Suspensión */}
+        <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Ban className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Configuración de Suspensión</h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Selecciona el address-list que se usará para suspender clientes (tanto manual como automáticamente por mora).
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Address-List para Suspensión</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={companyInfo.suspensionAddressList || "morosos"}
+                  onValueChange={(value) => {
+                    if (value === "__nuevo__") {
+                      // No hacer nada, el usuario debe escribir en el input
+                    } else {
+                      updateCompanyInfo("suspensionAddressList", value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Seleccionar lista" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingLists ? (
+                      <SelectItem value="loading" disabled>Cargando listas...</SelectItem>
+                    ) : (
+                      <>
+                        {addressLists?.map((list) => (
+                          <SelectItem key={list} value={list}>
+                            {list}
+                          </SelectItem>
+                        ))}
+                        {!addressLists?.includes(companyInfo.suspensionAddressList || "morosos") && (
+                          <SelectItem value={companyInfo.suspensionAddressList || "morosos"}>
+                            {companyInfo.suspensionAddressList || "morosos"} (personalizado)
+                          </SelectItem>
+                        )}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => refetchLists()}
+                  title="Actualizar listas"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>O escribir nombre personalizado</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  placeholder="ej: suspendidos, bloqueados"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (newListName.trim()) {
+                      updateCompanyInfo("suspensionAddressList", newListName.trim());
+                      setNewListName("");
+                      toast.success(`Lista "${newListName.trim()}" configurada`);
+                    }
+                  }}
+                  disabled={!newListName.trim()}
+                >
+                  Usar
+                </Button>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+            <p className="text-sm">
+              <strong>Lista actual:</strong>{" "}
+              <code className="px-2 py-0.5 bg-background rounded border">
+                {companyInfo.suspensionAddressList || "morosos"}
+              </code>
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Esta lista se usará para agregar las IPs de clientes suspendidos en el firewall del MikroTik.
+            </p>
           </div>
         </div>
 

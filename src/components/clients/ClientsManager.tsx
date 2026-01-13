@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useServiceOptions } from "@/hooks/useServiceOptions";
 import { generateInvoicePDF } from "@/components/payments/InvoicePDF";
 import { usePPPoEProfiles } from "@/hooks/useMikrotikData";
+import { getSuspensionAddressList } from "@/components/isp/contracts/ContractTermsEditor";
 
 interface ClientsManagerProps {
   mikrotikId: string | null;
@@ -400,6 +401,9 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     setSuspendingClient(client.id);
     
     try {
+      // Get configured suspension address list
+      const suspensionList = getSuspensionAddressList();
+      
       // Call edge function to add/remove from address-list
       const response = await supabase.functions.invoke("mikrotik-address-list", {
         body: {
@@ -407,7 +411,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
           action,
           address: client.assigned_ip,
           clientId: client.id,
-          listName: "morosos",
+          listName: suspensionList,
           comment: `${client.client_name} - ${isSuspended ? "Reactivado" : "Suspendido"} manualmente`,
         },
       });
