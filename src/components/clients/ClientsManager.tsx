@@ -643,14 +643,14 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
 
       {/* Dialog para editar cliente */}
       <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Editar Cliente</DialogTitle>
             <DialogDescription>
               Modifica los datos del cliente. Los campos de conexión no se pueden editar.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-2">
             <div className="grid gap-2">
               <Label htmlFor="edit-name">Nombre del Cliente</Label>
               <Input
