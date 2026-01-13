@@ -58,7 +58,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   const [invoiceClient, setInvoiceClient] = useState<IspClient | null>(null);
   const [suspendingClient, setSuspendingClient] = useState<string | null>(null);
   
-  const { services: serviceOptions } = useServiceOptions(mikrotikId || undefined);
+  const { services: serviceOptions, loading: loadingServices } = useServiceOptions(mikrotikId);
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["isp-clients-manager", mikrotikId],
@@ -677,22 +677,29 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
             {/* Servicio Adicional */}
             <div className="grid gap-2">
               <Label>Servicio Adicional</Label>
-              <Select
-                value={editForm.service_option || "none"}
-                onValueChange={handleServiceOptionChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar servicio" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin servicio adicional</SelectItem>
-                  {serviceOptions?.map((option) => (
-                    <SelectItem key={option.id} value={option.name}>
-                      {option.name} - ${option.price.toLocaleString("es-CO")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingServices ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando servicios...
+                </div>
+              ) : (
+                <Select
+                  value={editForm.service_option || "none"}
+                  onValueChange={handleServiceOptionChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar servicio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin servicio adicional</SelectItem>
+                    {serviceOptions?.map((option) => (
+                      <SelectItem key={option.id} value={option.name}>
+                        {option.name} - ${option.price.toLocaleString("es-CO")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {editForm.service_option && (
                 <div className="text-xs text-muted-foreground">
                   Precio del servicio: ${editForm.service_price?.toLocaleString("es-CO") || 0}
