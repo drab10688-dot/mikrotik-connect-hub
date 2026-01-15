@@ -27,6 +27,7 @@ export type Database = {
           invoice_maturity_days: number
           mikrotik_id: string
           reminder_days_before: number
+          suspension_address_list: string | null
           updated_at: string
         }
         Insert: {
@@ -41,6 +42,7 @@ export type Database = {
           invoice_maturity_days?: number
           mikrotik_id: string
           reminder_days_before?: number
+          suspension_address_list?: string | null
           updated_at?: string
         }
         Update: {
@@ -55,6 +57,7 @@ export type Database = {
           invoice_maturity_days?: number
           mikrotik_id?: string
           reminder_days_before?: number
+          suspension_address_list?: string | null
           updated_at?: string
         }
         Relationships: [

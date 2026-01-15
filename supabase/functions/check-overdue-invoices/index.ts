@@ -22,18 +22,15 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get suspension list name from request body or use default
-    let suspensionListName = DEFAULT_SUSPENSION_LIST;
+    // Get suspension list name - will be fetched per mikrotik device from billing_config
+    let requestBody: any = {};
     try {
-      const body = await req.json();
-      if (body?.suspensionListName) {
-        suspensionListName = body.suspensionListName;
-      }
+      requestBody = await req.json();
     } catch {
-      // No body or invalid JSON, use default
+      // No body or invalid JSON
     }
 
-    console.log(`Using suspension address-list: ${suspensionListName}`);
+    console.log(`Starting overdue invoices check...`);
 
     const today = new Date().toISOString().split('T')[0];
     console.log(`Checking for overdue invoices as of: ${today}`);
@@ -66,8 +63,11 @@ serve(async (req) => {
       already_suspended: 0,
       errors: [] as string[],
       processed_clients: [] as string[],
-      suspension_list: suspensionListName
+      suspension_lists_used: [] as string[]
     };
+
+    // Cache for billing configs per mikrotik to avoid repeated queries
+    const billingConfigCache: Record<string, string> = {};
 
     // Process each overdue invoice
     for (const invoice of overdueInvoices || []) {
@@ -127,6 +127,23 @@ serve(async (req) => {
         continue;
       }
 
+      // Get suspension address list for this mikrotik device
+      let suspensionListName = DEFAULT_SUSPENSION_LIST;
+      if (billingConfigCache[client.mikrotik_id]) {
+        suspensionListName = billingConfigCache[client.mikrotik_id];
+      } else {
+        const { data: billingConfig } = await supabase
+          .from('billing_config')
+          .select('suspension_address_list')
+          .eq('mikrotik_id', client.mikrotik_id)
+          .single();
+        
+        if (billingConfig?.suspension_address_list) {
+          suspensionListName = billingConfig.suspension_address_list;
+        }
+        billingConfigCache[client.mikrotik_id] = suspensionListName;
+      }
+
       try {
         console.log(`Adding ${ipAddress} to ${suspensionListName} list on ${device.name}`);
         
@@ -135,6 +152,11 @@ serve(async (req) => {
         if (!mikrotikResult.success) {
           results.errors.push(`Failed to add ${client.client_name} to ${suspensionListName}: ${mikrotikResult.error}`);
           continue;
+        }
+        
+        // Track which lists were used
+        if (!results.suspension_lists_used.includes(suspensionListName)) {
+          results.suspension_lists_used.push(suspensionListName);
         }
 
         // Update or create billing settings

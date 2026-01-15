@@ -64,7 +64,7 @@ const DEFAULT_TERMS: ContractTerms = {
   dataProtection: "La empresa se compromete a proteger los datos personales del cliente de acuerdo con la Ley 1581 de 2012 y demás normas aplicables. El cliente autoriza el tratamiento de sus datos para fines contractuales.",
 };
 
-// Helper function to get suspension address list globally
+// Helper function to get suspension address list globally (from localStorage for immediate use)
 export function getSuspensionAddressList(): string {
   const saved = localStorage.getItem("isp_company_info");
   if (saved) {
@@ -76,6 +76,39 @@ export function getSuspensionAddressList(): string {
     }
   }
   return "morosos";
+}
+
+// Helper function to save suspension address list to database
+export async function saveSuspensionAddressListToDb(mikrotikId: string, listName: string): Promise<boolean> {
+  try {
+    const { data: existing } = await supabase
+      .from('billing_config')
+      .select('id')
+      .eq('mikrotik_id', mikrotikId)
+      .single();
+
+    if (existing) {
+      const { error } = await supabase
+        .from('billing_config')
+        .update({ suspension_address_list: listName })
+        .eq('mikrotik_id', mikrotikId);
+      return !error;
+    } else {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return false;
+      
+      const { error } = await supabase
+        .from('billing_config')
+        .insert({
+          mikrotik_id: mikrotikId,
+          created_by: user.user.id,
+          suspension_address_list: listName,
+        });
+      return !error;
+    }
+  } catch {
+    return false;
+  }
 }
 
 interface ContractTermsEditorProps {
@@ -124,9 +157,18 @@ export function ContractTermsEditor({ onSave }: ContractTermsEditorProps) {
     staleTime: 30000,
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     localStorage.setItem("isp_contract_terms", JSON.stringify(terms));
     localStorage.setItem("isp_company_info", JSON.stringify(companyInfo));
+    
+    // Also save suspension address list to database for cron job access
+    if (mikrotikId && companyInfo.suspensionAddressList) {
+      const saved = await saveSuspensionAddressListToDb(mikrotikId, companyInfo.suspensionAddressList);
+      if (saved) {
+        console.log("Suspension address list saved to database:", companyInfo.suspensionAddressList);
+      }
+    }
+    
     toast.success("Términos y condiciones guardados correctamente");
     onSave?.(terms, companyInfo);
   };
