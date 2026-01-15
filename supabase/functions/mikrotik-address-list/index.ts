@@ -210,14 +210,16 @@ async function removeFromAddressListV6(device: MikroTikDevice, listName: string,
   try {
     await api.connect(device.host, device.port, device.username, device.password);
     
-    // Find the entry
-    const entries = await api.executeCommand('/ip/firewall/address-list/print', {
-      '?list': listName,
-      '?address': address,
-    });
+    // Get all entries from the address list
+    const allEntries = await api.executeCommand('/ip/firewall/address-list/print');
+    
+    // Filter entries that match our list and address
+    const matchingEntries = allEntries.filter((entry: any) => 
+      entry.list === listName && entry.address === address
+    );
     
     // Remove each matching entry
-    for (const entry of entries) {
+    for (const entry of matchingEntries) {
       if (entry['.id']) {
         await api.executeCommand('/ip/firewall/address-list/remove', {
           '.id': entry['.id'],
