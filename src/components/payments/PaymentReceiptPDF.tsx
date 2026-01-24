@@ -20,6 +20,17 @@ interface ReceiptData {
   planOrSpeed: string | null;
 }
 
+interface CompanyInfo {
+  name: string;
+  nit: string;
+  contact: string;
+  email: string;
+  website: string;
+  address: string;
+  logoUrl?: string;
+  managerName?: string;
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia Bancaria",
@@ -30,17 +41,39 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   otro: "Otro",
 };
 
+function getCompanyInfo(): CompanyInfo {
+  const saved = localStorage.getItem("isp_company_info");
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+  }
+  return {
+    name: "WISP Manager",
+    nit: "",
+    contact: "",
+    email: "",
+    website: "",
+    address: "",
+  };
+}
+
 export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
-    format: [80, 150], // Formato tipo ticket
+    format: [80, 170], // Formato tipo ticket, un poco más alto para incluir más info
   });
 
   const pageWidth = 80;
   const margin = 5;
   const contentWidth = pageWidth - margin * 2;
-  let y = 10;
+  let y = 8;
+
+  // Get company info from contract terms
+  const companyInfo = getCompanyInfo();
 
   // Helper function for centered text
   const centerText = (text: string, yPos: number, fontSize: number = 10) => {
@@ -57,17 +90,38 @@ export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
     doc.text(right, pageWidth - margin - rightWidth, yPos);
   };
 
-  // Get business name from localStorage or use default
-  const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
-
-  // Header
+  // Header - Company Name
   doc.setFont("helvetica", "bold");
-  centerText(businessName.toUpperCase(), y, 12);
-  y += 5;
+  centerText(companyInfo.name.toUpperCase(), y, 11);
+  y += 4;
 
-  doc.setFont("helvetica", "normal");
+  // Company NIT
+  if (companyInfo.nit) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    centerText(`NIT: ${companyInfo.nit}`, y, 8);
+    y += 3;
+  }
+
+  // Company Contact
+  if (companyInfo.contact) {
+    doc.setFontSize(7);
+    centerText(`Tel: ${companyInfo.contact}`, y, 7);
+    y += 3;
+  }
+
+  // Company Address
+  if (companyInfo.address && companyInfo.address !== "Dirección de la empresa") {
+    doc.setFontSize(7);
+    centerText(companyInfo.address, y, 7);
+    y += 3;
+  }
+
+  y += 2;
+
+  doc.setFont("helvetica", "bold");
   centerText("RECIBO DE PAGO", y, 10);
-  y += 6;
+  y += 5;
 
   // Divider
   doc.setDrawColor(0);
@@ -83,7 +137,7 @@ export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
 
   doc.setFont("helvetica", "normal");
   doc.text(`Fecha: ${format(data.paymentDate, "dd/MM/yyyy HH:mm", { locale: es })}`, margin, y);
-  y += 6;
+  y += 5;
 
   // Divider
   doc.line(margin, y, pageWidth - margin, y);
@@ -173,7 +227,7 @@ export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
 
   // Divider
   doc.line(margin, y, pageWidth - margin, y);
-  y += 5;
+  y += 4;
 
   // Footer
   doc.setFont("helvetica", "normal");
@@ -182,6 +236,17 @@ export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
   y += 3;
   centerText("Este documento es un comprobante válido", y, 7);
   y += 3;
+
+  // Company email/website in footer
+  if (companyInfo.email) {
+    centerText(companyInfo.email, y, 6);
+    y += 2.5;
+  }
+  if (companyInfo.website) {
+    centerText(companyInfo.website, y, 6);
+    y += 2.5;
+  }
+
   centerText(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, y, 6);
 
   return doc;

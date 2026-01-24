@@ -252,10 +252,24 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     // Download receipt
     downloadPaymentReceipt(receiptData);
     
+    // Get company info for messages
+    const getCompanyName = () => {
+      const saved = localStorage.getItem("isp_company_info");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.name || "WISP Manager";
+        } catch {
+          return "WISP Manager";
+        }
+      }
+      return "WISP Manager";
+    };
+    const companyName = getCompanyName();
+
     // Send via WhatsApp if configured and client has phone
     if (whatsappConfig && client.phone) {
       try {
-        const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
         const message = `✅ *RECIBO DE PAGO*\n\n` +
           `📋 Recibo: ${receiptNumber}\n` +
           `👤 Cliente: ${client.client_name}\n` +
@@ -263,7 +277,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
           `💰 Monto pagado: $${paidAmount.toLocaleString()}\n` +
           `💳 Método: ${paymentMethod}\n` +
           `📅 Fecha: ${format(paymentDate, "dd/MM/yyyy HH:mm")}\n\n` +
-          `Gracias por su pago.\n${businessName}`;
+          `Gracias por su pago.\n${companyName}`;
 
         await supabase.functions.invoke("whatsapp-send", {
           body: {
@@ -289,7 +303,6 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
 
     if (telegramConfig && clientData?.telegram_chat_id) {
       try {
-        const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
         const message = `✅ *RECIBO DE PAGO*\n\n` +
           `📋 Recibo: ${receiptNumber}\n` +
           `👤 Cliente: ${client.client_name}\n` +
@@ -297,7 +310,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
           `💰 Monto pagado: $${paidAmount.toLocaleString()}\n` +
           `💳 Método: ${paymentMethod}\n` +
           `📅 Fecha: ${format(paymentDate, "dd/MM/yyyy HH:mm")}\n\n` +
-          `Gracias por su pago.\n${businessName}`;
+          `Gracias por su pago.\n${companyName}`;
 
         await supabase.functions.invoke("telegram-send", {
           body: {
@@ -522,7 +535,8 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     }
 
     try {
-      const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
+      const companyInfo = JSON.parse(localStorage.getItem("isp_company_info") || "{}");
+      const companyName = companyInfo.name || "WISP Manager";
       const receiptNumber = `REC-${format(parseISO(payment.paid_at), "yyyyMMdd")}-${payment.id.substring(0, 4).toUpperCase()}`;
       
       const message = `✅ *RECIBO DE PAGO*\n\n` +
@@ -532,7 +546,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
         `💰 Monto pagado: $${Number(payment.amount).toLocaleString()}\n` +
         `💳 Método: ${getPaymentMethodLabel(payment.paid_via)}\n` +
         `📅 Fecha: ${format(parseISO(payment.paid_at), "dd/MM/yyyy HH:mm")}\n\n` +
-        `Gracias por su pago.\n${businessName}`;
+        `Gracias por su pago.\n${companyName}`;
 
       await supabase.functions.invoke("whatsapp-send", {
         body: {
@@ -570,7 +584,8 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     }
 
     try {
-      const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
+      const companyInfo = JSON.parse(localStorage.getItem("isp_company_info") || "{}");
+      const companyName = companyInfo.name || "WISP Manager";
       const receiptNumber = `REC-${format(parseISO(payment.paid_at), "yyyyMMdd")}-${payment.id.substring(0, 4).toUpperCase()}`;
       
       const message = `✅ *RECIBO DE PAGO*\n\n` +
@@ -580,7 +595,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
         `💰 Monto pagado: $${Number(payment.amount).toLocaleString()}\n` +
         `💳 Método: ${getPaymentMethodLabel(payment.paid_via)}\n` +
         `📅 Fecha: ${format(parseISO(payment.paid_at), "dd/MM/yyyy HH:mm")}\n\n` +
-        `Gracias por su pago.\n${businessName}`;
+        `Gracias por su pago.\n${companyName}`;
 
       await supabase.functions.invoke("telegram-send", {
         body: {
