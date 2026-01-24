@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Send,
   Printer,
+  MessageCircle,
 } from "lucide-react";
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
@@ -501,6 +502,102 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     toast.success("Recibo descargado");
   };
 
+  // Resend receipt via WhatsApp
+  const handleResendWhatsApp = async (payment: any) => {
+    if (!whatsappConfig) {
+      toast.error("WhatsApp no está configurado");
+      return;
+    }
+
+    // Fetch client phone
+    const { data: client } = await supabase
+      .from("isp_clients")
+      .select("phone, client_name")
+      .eq("id", payment.client_id)
+      .single();
+
+    if (!client?.phone) {
+      toast.error("El cliente no tiene número de teléfono registrado");
+      return;
+    }
+
+    try {
+      const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
+      const receiptNumber = `REC-${format(parseISO(payment.paid_at), "yyyyMMdd")}-${payment.id.substring(0, 4).toUpperCase()}`;
+      
+      const message = `✅ *RECIBO DE PAGO*\n\n` +
+        `📋 Recibo: ${receiptNumber}\n` +
+        `👤 Cliente: ${client.client_name}\n` +
+        `📄 Factura: ${payment.invoice_number}\n` +
+        `💰 Monto pagado: $${Number(payment.amount).toLocaleString()}\n` +
+        `💳 Método: ${getPaymentMethodLabel(payment.paid_via)}\n` +
+        `📅 Fecha: ${format(parseISO(payment.paid_at), "dd/MM/yyyy HH:mm")}\n\n` +
+        `Gracias por su pago.\n${businessName}`;
+
+      await supabase.functions.invoke("whatsapp-send", {
+        body: {
+          mikrotikId,
+          phoneNumber: client.phone.replace(/\D/g, ""),
+          message,
+          messageType: "payment_receipt",
+          clientId: payment.client_id,
+        },
+      });
+      toast.success("Recibo enviado por WhatsApp");
+    } catch (error) {
+      console.error("Error sending WhatsApp receipt:", error);
+      toast.error("Error al enviar recibo por WhatsApp");
+    }
+  };
+
+  // Resend receipt via Telegram
+  const handleResendTelegram = async (payment: any) => {
+    if (!telegramConfig) {
+      toast.error("Telegram no está configurado");
+      return;
+    }
+
+    // Fetch client telegram chat_id
+    const { data: client } = await supabase
+      .from("isp_clients")
+      .select("telegram_chat_id, client_name")
+      .eq("id", payment.client_id)
+      .single();
+
+    if (!client?.telegram_chat_id) {
+      toast.error("El cliente no tiene Chat ID de Telegram registrado");
+      return;
+    }
+
+    try {
+      const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
+      const receiptNumber = `REC-${format(parseISO(payment.paid_at), "yyyyMMdd")}-${payment.id.substring(0, 4).toUpperCase()}`;
+      
+      const message = `✅ *RECIBO DE PAGO*\n\n` +
+        `📋 Recibo: ${receiptNumber}\n` +
+        `👤 Cliente: ${client.client_name}\n` +
+        `📄 Factura: ${payment.invoice_number}\n` +
+        `💰 Monto pagado: $${Number(payment.amount).toLocaleString()}\n` +
+        `💳 Método: ${getPaymentMethodLabel(payment.paid_via)}\n` +
+        `📅 Fecha: ${format(parseISO(payment.paid_at), "dd/MM/yyyy HH:mm")}\n\n` +
+        `Gracias por su pago.\n${businessName}`;
+
+      await supabase.functions.invoke("telegram-send", {
+        body: {
+          mikrotikId,
+          chatId: client.telegram_chat_id,
+          message,
+          messageType: "payment_receipt",
+          clientId: payment.client_id,
+        },
+      });
+      toast.success("Recibo enviado por Telegram");
+    } catch (error) {
+      console.error("Error sending Telegram receipt:", error);
+      toast.error("Error al enviar recibo por Telegram");
+    }
+  };
+
   const handleRegisterPayment = () => {
     if (!selectedInvoice || !selectedClient) return;
     
@@ -958,14 +1055,38 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
                           <TableCell>{getPaymentMethodLabel(payment.paid_via)}</TableCell>
                           <TableCell className="text-muted-foreground">{payment.payment_reference || "-"}</TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleReprintReceipt(payment)}
-                              title="Reimprimir recibo"
-                            >
-                              <Printer className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleReprintReceipt(payment)}
+                                title="Reimprimir recibo"
+                              >
+                                <Printer className="h-4 w-4" />
+                              </Button>
+                              {whatsappConfig && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleResendWhatsApp(payment)}
+                                  title="Enviar por WhatsApp"
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {telegramConfig && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleResendTelegram(payment)}
+                                  title="Enviar por Telegram"
+                                  className="text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                                >
+                                  <Send className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
