@@ -578,16 +578,47 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis className="text-xs" tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                  <defs>
+                    <linearGradient id="gradientFacturado" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={1}/>
+                      <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0.7}/>
+                    </linearGradient>
+                    <linearGradient id="gradientCobrado" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={1}/>
+                      <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.7}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                  <XAxis 
+                    dataKey="month" 
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
+                  <YAxis 
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                    tickFormatter={(value) => `$${value.toLocaleString()}`} 
+                  />
                   <Tooltip 
                     formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
                     labelFormatter={(label) => `Mes: ${label}`}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
+                    itemStyle={{ color: 'hsl(var(--muted-foreground))' }}
                   />
-                  <Legend />
-                  <Bar dataKey="facturado" name="Facturado" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="cobrado" name="Cobrado" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                  <Legend 
+                    wrapperStyle={{ paddingTop: '20px' }}
+                    formatter={(value) => <span style={{ color: 'hsl(var(--foreground))' }}>{value}</span>}
+                  />
+                  <Bar dataKey="facturado" name="Facturado" fill="url(#gradientFacturado)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="cobrado" name="Cobrado" fill="url(#gradientCobrado)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -606,21 +637,36 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
             ) : statusDistribution.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
+                  <defs>
+                    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.2"/>
+                    </filter>
+                  </defs>
                   <Pie
                     data={statusDistribution}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={4}
                     dataKey="value"
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
+                    style={{ filter: 'url(#shadow)' }}
                   >
                     {statusDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={`cell-${index}`} fill={entry.color} stroke="hsl(var(--card))" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    formatter={(value: number) => [value, 'Facturas']}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -647,17 +693,26 @@ export function PaymentReportsDashboard({ mikrotikId }: PaymentReportsDashboardP
                     data={paymentMethodData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={4}
                     dataKey="value"
                     label={({ name, value }) => `${name}: $${value.toLocaleString()}`}
+                    labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
                   >
                     {paymentMethodData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={`cell-${index}`} fill={entry.color} stroke="hsl(var(--card))" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                  <Tooltip 
+                    formatter={(value: number) => `$${value.toLocaleString()}`}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
