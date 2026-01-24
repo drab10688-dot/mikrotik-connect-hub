@@ -53,6 +53,14 @@ All colors MUST be HSL.
     --sidebar-border: 220 15% 20%;
     --sidebar-ring: 217 91% 60%;
 
+    /* Chart colors - vibrant and professional palette */
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 76% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 190 85% 45%;
+    --chart-6: 350 80% 60%;
+
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 50%));
     --gradient-success: linear-gradient(135deg, hsl(142 76% 45%), hsl(142 76% 35%));
@@ -103,6 +111,14 @@ All colors MUST be HSL.
     --border: 220 15% 18%;
     --input: 220 15% 18%;
     --ring: 217 91% 60%;
+
+    /* Chart colors - vibrant for dark mode */
+    --chart-1: 217 91% 65%;
+    --chart-2: 142 76% 50%;
+    --chart-3: 38 92% 55%;
+    --chart-4: 280 65% 65%;
+    --chart-5: 190 85% 50%;
+    --chart-6: 350 80% 65%;
 
     --sidebar-background: 220 20% 10%;
     --sidebar-foreground: 220 10% 85%;
