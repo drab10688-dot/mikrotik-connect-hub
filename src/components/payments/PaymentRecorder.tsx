@@ -250,7 +250,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     };
 
     // Download receipt
-    downloadPaymentReceipt(receiptData);
+    await downloadPaymentReceipt(receiptData);
     
     // Get company info for messages
     const getCompanyName = () => {
@@ -490,7 +490,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
   };
 
   // Reprint receipt from history
-  const handleReprintReceipt = (payment: any) => {
+  const handleReprintReceipt = async (payment: any) => {
     const receiptNumber = `REC-${format(parseISO(payment.paid_at), "yyyyMMdd")}-${payment.id.substring(0, 4).toUpperCase()}`;
     
     const receiptData = {
@@ -511,7 +511,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
       planOrSpeed: null,
     };
 
-    downloadPaymentReceipt(receiptData);
+    await downloadPaymentReceipt(receiptData);
     toast.success("Recibo descargado");
   };
 
