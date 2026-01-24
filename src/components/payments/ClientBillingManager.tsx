@@ -9,12 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip, Trash2 } from "lucide-react";
+import { Loader2, Receipt, AlertTriangle, CheckCircle, Clock, XCircle, Send, MessageCircle, Download, Paperclip, Trash2, FilePlus } from "lucide-react";
 import { generateInvoicePDF, generateInvoicePDFBlob } from "./InvoicePDF";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { CreateInvoiceDialog } from "./CreateInvoiceDialog";
 
 interface ClientBillingManagerProps {
   mikrotikId: string | null;
@@ -54,6 +55,7 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   const [telegramMessage, setTelegramMessage] = useState("");
   const [attachPdfTelegram, setAttachPdfTelegram] = useState(true);
   const [isSendingWithPdf, setIsSendingWithPdf] = useState(false);
+  const [createInvoiceDialogOpen, setCreateInvoiceDialogOpen] = useState(false);
 
   const { data: invoices } = useQuery({
     queryKey: ['client-invoices', mikrotikId],
@@ -72,16 +74,17 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
   });
 
   // Fetch ISP clients with phone for Telegram
-  const { data: ispClients } = useQuery({
+  const { data: ispClients, isLoading: loadingClients } = useQuery({
     queryKey: ['isp-clients-phones', mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) return [];
       const { data, error } = await supabase
         .from('isp_clients')
-        .select('id, client_name, phone, telegram_chat_id, email, address, identification_number')
-        .eq('mikrotik_id', mikrotikId);
+        .select('id, client_name, username, phone, telegram_chat_id, email, address, identification_number, total_monthly_price, plan_or_speed')
+        .eq('mikrotik_id', mikrotikId)
+        .order('client_name');
       if (error) throw error;
-      return data as IspClient[];
+      return data;
     },
     enabled: !!mikrotikId
   });
@@ -409,10 +412,16 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Receipt className="h-5 w-5" />
-            Facturas
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Facturas
+            </CardTitle>
+            <Button onClick={() => setCreateInvoiceDialogOpen(true)}>
+              <FilePlus className="h-4 w-4 mr-2" />
+              Crear Factura
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -582,6 +591,24 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Create Invoice Dialog */}
+      <CreateInvoiceDialog
+        open={createInvoiceDialogOpen}
+        onOpenChange={setCreateInvoiceDialogOpen}
+        mikrotikId={mikrotikId || ""}
+        clients={ispClients?.map(c => ({
+          id: c.id,
+          client_name: c.client_name,
+          username: (c as any).username || c.client_name,
+          phone: c.phone,
+          email: c.email,
+          identification_number: c.identification_number,
+          total_monthly_price: (c as any).total_monthly_price || null,
+          plan_or_speed: (c as any).plan_or_speed || null,
+        })) || []}
+        loadingClients={loadingClients}
+      />
     </div>
   );
 }
