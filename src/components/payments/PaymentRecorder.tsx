@@ -39,10 +39,12 @@ import {
   ArrowUpDown,
   Eye,
   RefreshCw,
+  Send,
 } from "lucide-react";
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import { getSuspensionAddressList } from "@/components/isp/contracts/ContractTermsEditor";
+import { downloadPaymentReceipt, getReceiptBlob } from "./PaymentReceiptPDF";
 
 interface PaymentRecorderProps {
   mikrotikId: string | null;
@@ -182,6 +184,135 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     enabled: !!mikrotikId,
   });
 
+  // Fetch WhatsApp config
+  const { data: whatsappConfig } = useQuery({
+    queryKey: ["whatsapp-config", mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return null;
+      const { data, error } = await supabase
+        .from("whatsapp_config")
+        .select("*")
+        .eq("mikrotik_id", mikrotikId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!mikrotikId,
+  });
+
+  // Fetch Telegram config
+  const { data: telegramConfig } = useQuery({
+    queryKey: ["telegram-config", mikrotikId],
+    queryFn: async () => {
+      if (!mikrotikId) return null;
+      const { data, error } = await supabase
+        .from("telegram_config")
+        .select("*")
+        .eq("mikrotik_id", mikrotikId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!mikrotikId,
+  });
+
+  // Generate and send receipt
+  const generateAndSendReceipt = async (
+    client: Client,
+    invoice: Invoice,
+    paymentMethod: string,
+    paymentReference: string,
+    paymentDate: Date,
+    paidAmount: number
+  ) => {
+    const receiptNumber = `REC-${format(new Date(), "yyyyMMdd")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    
+    const receiptData = {
+      receiptNumber,
+      clientName: client.client_name,
+      clientId: client.identification_number || "",
+      username: client.username,
+      phone: client.phone,
+      email: client.email,
+      invoiceNumber: invoice.invoice_number,
+      invoiceAmount: invoice.amount,
+      paidAmount,
+      paymentMethod,
+      paymentReference: paymentReference || null,
+      paymentDate,
+      billingPeriodStart: invoice.billing_period_start,
+      billingPeriodEnd: invoice.billing_period_end,
+      planOrSpeed: client.plan_or_speed,
+    };
+
+    // Download receipt
+    downloadPaymentReceipt(receiptData);
+    
+    // Send via WhatsApp if configured and client has phone
+    if (whatsappConfig && client.phone) {
+      try {
+        const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
+        const message = `✅ *RECIBO DE PAGO*\n\n` +
+          `📋 Recibo: ${receiptNumber}\n` +
+          `👤 Cliente: ${client.client_name}\n` +
+          `📄 Factura: ${invoice.invoice_number}\n` +
+          `💰 Monto pagado: $${paidAmount.toLocaleString()}\n` +
+          `💳 Método: ${paymentMethod}\n` +
+          `📅 Fecha: ${format(paymentDate, "dd/MM/yyyy HH:mm")}\n\n` +
+          `Gracias por su pago.\n${businessName}`;
+
+        await supabase.functions.invoke("whatsapp-send", {
+          body: {
+            mikrotikId,
+            phoneNumber: client.phone.replace(/\D/g, ""),
+            message,
+            messageType: "payment_receipt",
+            clientId: client.id,
+          },
+        });
+        toast.success("Recibo enviado por WhatsApp");
+      } catch (error) {
+        console.error("Error sending WhatsApp receipt:", error);
+      }
+    }
+
+    // Send via Telegram if configured and client has telegram_chat_id
+    const { data: clientData } = await supabase
+      .from("isp_clients")
+      .select("telegram_chat_id")
+      .eq("id", client.id)
+      .single();
+
+    if (telegramConfig && clientData?.telegram_chat_id) {
+      try {
+        const businessName = localStorage.getItem("sidebar_business_name") || "WISP Manager";
+        const message = `✅ *RECIBO DE PAGO*\n\n` +
+          `📋 Recibo: ${receiptNumber}\n` +
+          `👤 Cliente: ${client.client_name}\n` +
+          `📄 Factura: ${invoice.invoice_number}\n` +
+          `💰 Monto pagado: $${paidAmount.toLocaleString()}\n` +
+          `💳 Método: ${paymentMethod}\n` +
+          `📅 Fecha: ${format(paymentDate, "dd/MM/yyyy HH:mm")}\n\n` +
+          `Gracias por su pago.\n${businessName}`;
+
+        await supabase.functions.invoke("telegram-send", {
+          body: {
+            mikrotikId,
+            chatId: clientData.telegram_chat_id,
+            message,
+            messageType: "payment_receipt",
+            clientId: client.id,
+          },
+        });
+        toast.success("Recibo enviado por Telegram");
+      } catch (error) {
+        console.error("Error sending Telegram receipt:", error);
+      }
+    }
+  };
+
   // Register payment mutation
   const registerPaymentMutation = useMutation({
     mutationFn: async ({
@@ -223,10 +354,22 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
       // Don't throw if billing update fails (settings might not exist)
       if (billingError) console.warn("No billing settings to update:", billingError);
 
-      return { invoiceId, clientId };
+      return { invoiceId, clientId, amount, method, reference, paidAt };
     },
     onSuccess: async (data) => {
       toast.success("Pago registrado correctamente");
+      
+      // Generate and send receipt
+      if (selectedClient && selectedInvoice) {
+        await generateAndSendReceipt(
+          selectedClient,
+          selectedInvoice,
+          data.method,
+          data.reference,
+          data.paidAt,
+          data.amount
+        );
+      }
       
       // Check if client was suspended and should be reactivated
       const clientBilling = billingSettings?.find((b) => b.client_id === data.clientId);

@@ -30,6 +30,8 @@ import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
+import { Receipt } from "lucide-react";
+
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Users, label: "Clientes", path: "/clients" },
@@ -39,7 +41,8 @@ const menuItems = [
   { icon: ShieldCheck, label: "Perfiles PPPoE", path: "/profiles" },
   { icon: ListChecks, label: "Address List", path: "/address-list" },
   { icon: Gauge, label: "Simple Queues", path: "/simple-queues" },
-  { icon: CreditCard, label: "Facturación", path: "/payments" },
+  { icon: CreditCard, label: "Pagos", path: "/payment-manager" },
+  { icon: Receipt, label: "Facturación", path: "/payments" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },
