@@ -40,6 +40,7 @@ import {
   Eye,
   RefreshCw,
   Send,
+  Printer,
 } from "lucide-react";
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
@@ -472,6 +473,32 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
     setSelectedInvoice(invoice);
     setPaymentAmount(String(invoice.amount));
     setPaymentDialogOpen(true);
+  };
+
+  // Reprint receipt from history
+  const handleReprintReceipt = (payment: any) => {
+    const receiptNumber = `REC-${format(parseISO(payment.paid_at), "yyyyMMdd")}-${payment.id.substring(0, 4).toUpperCase()}`;
+    
+    const receiptData = {
+      receiptNumber,
+      clientName: payment.isp_clients?.client_name || "N/A",
+      clientId: "",
+      username: payment.isp_clients?.username || "N/A",
+      phone: null,
+      email: null,
+      invoiceNumber: payment.invoice_number,
+      invoiceAmount: Number(payment.amount),
+      paidAmount: Number(payment.amount),
+      paymentMethod: payment.paid_via || "otro",
+      paymentReference: payment.payment_reference || null,
+      paymentDate: parseISO(payment.paid_at),
+      billingPeriodStart: payment.billing_period_start,
+      billingPeriodEnd: payment.billing_period_end,
+      planOrSpeed: null,
+    };
+
+    downloadPaymentReceipt(receiptData);
+    toast.success("Recibo descargado");
   };
 
   const handleRegisterPayment = () => {
@@ -911,6 +938,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
                         <TableHead>Monto</TableHead>
                         <TableHead>Método</TableHead>
                         <TableHead>Referencia</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -929,6 +957,16 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
                           <TableCell className="font-semibold">${Number(payment.amount).toLocaleString()}</TableCell>
                           <TableCell>{getPaymentMethodLabel(payment.paid_via)}</TableCell>
                           <TableCell className="text-muted-foreground">{payment.payment_reference || "-"}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleReprintReceipt(payment)}
+                              title="Reimprimir recibo"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
