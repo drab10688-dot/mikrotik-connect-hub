@@ -22,6 +22,7 @@ import Backup from "./pages/Backup";
 import IspRegistry from "./pages/IspRegistry";
 import VerifyContract from "./pages/VerifyContract";
 import Payments from "./pages/Payments";
+import PaymentManager from "./pages/PaymentManager";
 import Clients from "./pages/Clients";
 import ClientPaymentPortal from "./pages/ClientPaymentPortal";
 import UsersAdmin from "./pages/Admin/Users";
@@ -59,6 +60,7 @@ const App = () => (
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/backup" element={<ProtectedRoute><Backup /></ProtectedRoute>} />
         <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+        <Route path="/payment-manager" element={<ProtectedRoute><PaymentManager /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
         <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
