@@ -39,10 +39,12 @@ import {
   ArrowUpDown,
   Eye,
   RefreshCw,
+  FilePlus,
 } from "lucide-react";
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import { getSuspensionAddressList } from "@/components/isp/contracts/ContractTermsEditor";
+import { CreateInvoiceDialog } from "./CreateInvoiceDialog";
 
 interface PaymentRecorderProps {
   mikrotikId: string | null;
@@ -106,6 +108,7 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
   const [paymentNotes, setPaymentNotes] = useState("");
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [reactivatingSuspended, setReactivatingSuspended] = useState(false);
+  const [createInvoiceDialogOpen, setCreateInvoiceDialogOpen] = useState(false);
   
   // Date filters for history
   const [historyStartDate, setHistoryStartDate] = useState<Date>(startOfMonth(subMonths(new Date(), 2)));
@@ -418,6 +421,20 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
 
   return (
     <div className="space-y-6">
+      {/* Header with Create Invoice Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Gestión de Pagos</h2>
+          <p className="text-muted-foreground">
+            Registra pagos y crea facturas para tus clientes
+          </p>
+        </div>
+        <Button onClick={() => setCreateInvoiceDialogOpen(true)}>
+          <FilePlus className="h-4 w-4 mr-2" />
+          Crear Factura
+        </Button>
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
           <TabsTrigger value="register" className="flex items-center gap-2">
@@ -904,6 +921,15 @@ export function PaymentRecorder({ mikrotikId }: PaymentRecorderProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create Invoice Dialog */}
+      <CreateInvoiceDialog
+        open={createInvoiceDialogOpen}
+        onOpenChange={setCreateInvoiceDialogOpen}
+        mikrotikId={mikrotikId || ""}
+        clients={clients || []}
+        loadingClients={loadingClients}
+      />
     </div>
   );
 }
