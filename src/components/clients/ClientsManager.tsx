@@ -332,7 +332,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
       // Get client contract for contract number
       const { data: contract } = await supabase
         .from("isp_contracts")
-        .select("contract_number")
+        .select("id, contract_number")
         .eq("client_id", client.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -379,8 +379,31 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
         identification_number: client.identification_number,
       };
 
+      // Save invoice to database first
+      const { error: insertError } = await supabase
+        .from("client_invoices")
+        .insert({
+          mikrotik_id: mikrotikId,
+          client_id: client.id,
+          contract_id: contract?.id || null,
+          invoice_number: invoiceNumber,
+          amount: amount,
+          due_date: format(dueDate, "yyyy-MM-dd"),
+          billing_period_start: format(monthStart, "yyyy-MM-dd"),
+          billing_period_end: format(monthEnd, "yyyy-MM-dd"),
+          status: "pending",
+          service_breakdown: invoiceData.service_breakdown,
+        });
+
+      if (insertError) {
+        console.error("Error saving invoice:", insertError);
+        toast.error("Error al guardar la factura en la base de datos");
+        return;
+      }
+
+      // Generate and download PDF
       await generateInvoicePDF(invoiceData, clientData);
-      toast.success("Factura generada correctamente");
+      toast.success("Factura creada y descargada correctamente");
     } catch (error: any) {
       console.error("Error generating invoice:", error);
       toast.error("Error al generar la factura");
