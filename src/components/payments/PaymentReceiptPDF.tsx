@@ -60,11 +60,11 @@ function getCompanyInfo(): CompanyInfo {
   };
 }
 
-export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
+export async function generatePaymentReceiptPDF(data: ReceiptData): Promise<jsPDF> {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
-    format: [80, 170], // Formato tipo ticket, un poco más alto para incluir más info
+    format: [80, 185], // Formato tipo ticket, más alto para incluir logo
   });
 
   const pageWidth = 80;
@@ -89,6 +89,55 @@ export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
     const rightWidth = doc.getTextWidth(right);
     doc.text(right, pageWidth - margin - rightWidth, yPos);
   };
+
+  // Add logo if available
+  if (companyInfo.logoUrl) {
+    try {
+      // Load image and add to PDF
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          try {
+            // Calculate dimensions to fit width while maintaining aspect ratio
+            const maxWidth = 35;
+            const maxHeight = 20;
+            let imgWidth = img.width;
+            let imgHeight = img.height;
+            
+            // Scale down if necessary
+            if (imgWidth > maxWidth) {
+              const ratio = maxWidth / imgWidth;
+              imgWidth = maxWidth;
+              imgHeight = imgHeight * ratio;
+            }
+            if (imgHeight > maxHeight) {
+              const ratio = maxHeight / imgHeight;
+              imgHeight = maxHeight;
+              imgWidth = imgWidth * ratio;
+            }
+            
+            // Center the logo
+            const logoX = (pageWidth - imgWidth) / 2;
+            doc.addImage(img, "PNG", logoX, y, imgWidth, imgHeight);
+            y += imgHeight + 3;
+            resolve();
+          } catch (e) {
+            console.error("Error adding logo to PDF:", e);
+            resolve(); // Continue without logo
+          }
+        };
+        img.onerror = () => {
+          console.error("Error loading logo image");
+          resolve(); // Continue without logo
+        };
+        img.src = companyInfo.logoUrl!;
+      });
+    } catch (e) {
+      console.error("Error processing logo:", e);
+    }
+  }
 
   // Header - Company Name
   doc.setFont("helvetica", "bold");
@@ -252,12 +301,12 @@ export function generatePaymentReceiptPDF(data: ReceiptData): jsPDF {
   return doc;
 }
 
-export function downloadPaymentReceipt(data: ReceiptData) {
-  const doc = generatePaymentReceiptPDF(data);
+export async function downloadPaymentReceipt(data: ReceiptData) {
+  const doc = await generatePaymentReceiptPDF(data);
   doc.save(`recibo_${data.receiptNumber}.pdf`);
 }
 
-export function getReceiptBlob(data: ReceiptData): Blob {
-  const doc = generatePaymentReceiptPDF(data);
+export async function getReceiptBlob(data: ReceiptData): Promise<Blob> {
+  const doc = await generatePaymentReceiptPDF(data);
   return doc.output("blob");
 }
