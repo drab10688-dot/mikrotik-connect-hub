@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import omnilinkLogo from '@/assets/omnilink-logo.jpeg';
+import omnisyncLogo from '@/assets/omnisync-logo.png';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -75,11 +75,11 @@ export default function Login() {
           {/* Logo circular grande */}
           <div className="mb-8 animate-fade-in">
             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-3 hover:scale-105 transition-transform duration-500">
-              <img 
-                src={omnilinkLogo} 
-                alt="OmniLink - Conexión Total, Mundo Digital" 
-                className="w-full h-full object-cover rounded-full"
-              />
+               <img 
+                 src={omnisyncLogo} 
+                 alt="Omnisync" 
+                 className="w-full h-full object-cover rounded-full"
+               />
             </div>
           </div>
           
@@ -152,11 +152,11 @@ export default function Login() {
         {/* Logo */}
         <div className="mb-6 animate-fade-in">
           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
-            <img 
-              src={omnilinkLogo} 
-              alt="OmniLink" 
-              className="w-full h-full object-cover rounded-full"
-            />
+             <img 
+               src={omnisyncLogo} 
+               alt="Omnisync" 
+               className="w-full h-full object-cover rounded-full"
+             />
           </div>
         </div>
 
