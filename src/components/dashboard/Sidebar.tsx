@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import omnisyncLogo from "@/assets/omnisync-logo.png";
 import {
   LayoutDashboard,
   Users,
@@ -57,7 +58,7 @@ export const Sidebar = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [customLogo, setCustomLogo] = useState<string | null>(null);
-  const [businessName, setBusinessName] = useState<string>("MikroTik");
+  const [businessName, setBusinessName] = useState<string>("Omnisync");
   
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
@@ -128,9 +129,8 @@ export const Sidebar = () => {
                 </button>
               </div>
             ) : (
-              <div className="w-28 h-28 rounded-full bg-gradient-primary flex flex-col items-center justify-center">
-                <Router className="w-12 h-12 text-primary-foreground" />
-                <span className="text-primary-foreground font-bold text-xs mt-1">Tu Logo</span>
+              <div className="w-28 h-28 rounded-full overflow-hidden bg-sidebar-accent/30 border-2 border-sidebar-border flex items-center justify-center">
+                <img src={omnisyncLogo} alt="Omnisync" className="w-full h-full object-cover" />
               </div>
             )}
             <button
