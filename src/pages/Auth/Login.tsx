@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import omnisyncLogo from '@/assets/omnisync-logo.png';
+import omnisyncSphere from '@/assets/omnisync-sphere.png';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -73,17 +74,14 @@ export default function Login() {
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           {/* Logo circular grande */}
-          <div className="mb-4 animate-fade-in flex flex-col items-center">
-             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 hover:scale-105 transition-transform duration-500">
+          <div className="mb-8 animate-fade-in">
+             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-1 hover:scale-105 transition-transform duration-500">
                <img 
-                 src={omnisyncLogo} 
+                 src={omnisyncSphere} 
                  alt="Omnisync" 
-                 className="w-full h-full object-cover rounded-full scale-[1.4] -translate-y-[15%]"
+                 className="w-full h-full object-cover rounded-full"
                />
              </div>
-             <h1 className="mt-4 text-4xl md:text-5xl font-bold bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent tracking-wide">
-               Omnisync
-             </h1>
           </div>
           
           {/* Promotional message */}
