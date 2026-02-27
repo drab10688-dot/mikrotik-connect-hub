@@ -74,11 +74,11 @@ export default function Login() {
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           {/* Logo circular grande */}
           <div className="mb-8 animate-fade-in">
-             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-3 hover:scale-105 transition-transform duration-500">
+             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-900 hover:scale-105 transition-transform duration-500 flex items-center justify-center p-6">
                <img 
                  src={omnisyncLogo} 
                  alt="Omnisync" 
-                 className="w-full h-full object-cover rounded-full"
+                 className="w-full h-full object-contain"
                />
              </div>
           </div>
@@ -150,11 +150,11 @@ export default function Login() {
         </Button>
 
          <div className="mb-6 animate-fade-in">
-           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
+           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-900 p-4 flex items-center justify-center">
              <img 
                src={omnisyncLogo} 
                alt="Omnisync" 
-               className="w-full h-full object-cover rounded-full"
+               className="w-full h-full object-contain"
              />
            </div>
          </div>
