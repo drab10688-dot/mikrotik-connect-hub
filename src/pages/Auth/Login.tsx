@@ -73,18 +73,15 @@ export default function Login() {
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           {/* Logo circular grande */}
-           <div className="mb-6 animate-fade-in flex flex-col items-center">
-             <div className="w-56 h-56 md:w-64 md:h-64 lg:w-72 lg:h-72 rounded-full overflow-hidden border-4 border-cyan-400/30 shadow-2xl shadow-cyan-500/40 hover:scale-105 transition-transform duration-500">
+          <div className="mb-8 animate-fade-in">
+             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-3 hover:scale-105 transition-transform duration-500">
                <img 
                  src={omnisyncLogo} 
                  alt="Omnisync" 
-                 className="w-full h-[130%] object-cover object-top"
+                 className="w-full h-full object-cover rounded-full"
                />
              </div>
-             <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-200 bg-clip-text text-transparent tracking-wide">
-               Omnisync
-             </h1>
-           </div>
+          </div>
           
           {/* Promotional message */}
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
@@ -152,17 +149,14 @@ export default function Login() {
           Volver
         </Button>
 
-         <div className="mb-6 animate-fade-in flex flex-col items-center">
-           <div className="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-3 border-cyan-400/30 shadow-xl shadow-cyan-500/30">
+         <div className="mb-6 animate-fade-in">
+           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
              <img 
                src={omnisyncLogo} 
                alt="Omnisync" 
-               className="w-full h-[130%] object-cover object-top"
+               className="w-full h-full object-cover rounded-full"
              />
            </div>
-           <h2 className="mt-2 text-xl md:text-2xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-200 bg-clip-text text-transparent tracking-wide">
-             Omnisync
-           </h2>
          </div>
 
         <Card className="w-full max-w-md shadow-2xl border-slate-700/50 bg-slate-800/80 backdrop-blur-xl animate-fade-in">
