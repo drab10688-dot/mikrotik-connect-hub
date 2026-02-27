@@ -74,13 +74,13 @@ export default function Login() {
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           {/* Logo circular grande */}
           <div className="mb-8 animate-fade-in">
-            <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-3 hover:scale-105 transition-transform duration-500">
+             <div className="w-64 h-40 md:w-80 md:h-48 lg:w-96 lg:h-56 overflow-hidden hover:scale-105 transition-transform duration-500">
                <img 
                  src={omnisyncLogo} 
                  alt="Omnisync" 
-                 className="w-full h-full object-cover rounded-full"
+                 className="w-full h-full object-contain drop-shadow-2xl"
                />
-            </div>
+             </div>
           </div>
           
           {/* Promotional message */}
@@ -149,16 +149,15 @@ export default function Login() {
           Volver
         </Button>
 
-        {/* Logo */}
-        <div className="mb-6 animate-fade-in">
-          <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
+         <div className="mb-6 animate-fade-in">
+           <div className="w-48 h-28 md:w-56 md:h-32 overflow-hidden">
              <img 
                src={omnisyncLogo} 
                alt="Omnisync" 
-               className="w-full h-full object-cover rounded-full"
+               className="w-full h-full object-contain drop-shadow-xl"
              />
-          </div>
-        </div>
+           </div>
+         </div>
 
         <Card className="w-full max-w-md shadow-2xl border-slate-700/50 bg-slate-800/80 backdrop-blur-xl animate-fade-in">
           <CardHeader className="space-y-1 text-center">
