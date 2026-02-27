@@ -73,15 +73,15 @@ export default function Login() {
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           {/* Logo circular grande */}
-          <div className="mb-8 animate-fade-in">
-             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-900 hover:scale-105 transition-transform duration-500 flex items-center justify-center p-6">
+           <div className="mb-8 animate-fade-in">
+             <div className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-full border-4 border-cyan-400/30 shadow-2xl shadow-cyan-500/40 bg-[radial-gradient(circle,_rgba(15,23,42,0.95)_60%,_rgba(6,182,212,0.15)_100%)] hover:scale-105 transition-transform duration-500 flex items-center justify-center p-4">
                <img 
                  src={omnisyncLogo} 
                  alt="Omnisync" 
-                 className="w-full h-full object-contain"
+                 className="w-full h-full object-contain drop-shadow-lg"
                />
              </div>
-          </div>
+           </div>
           
           {/* Promotional message */}
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
@@ -150,11 +150,11 @@ export default function Login() {
         </Button>
 
          <div className="mb-6 animate-fade-in">
-           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-900 p-4 flex items-center justify-center">
+           <div className="w-36 h-36 md:w-44 md:h-44 rounded-full border-3 border-cyan-400/30 shadow-xl shadow-cyan-500/30 bg-[radial-gradient(circle,_rgba(15,23,42,0.95)_60%,_rgba(6,182,212,0.15)_100%)] flex items-center justify-center p-3">
              <img 
                src={omnisyncLogo} 
                alt="Omnisync" 
-               className="w-full h-full object-contain"
+               className="w-full h-full object-contain drop-shadow-lg"
              />
            </div>
          </div>
