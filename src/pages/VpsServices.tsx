@@ -1,10 +1,8 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
-import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 
 export default function VpsServices() {
-  const { device } = useValidatedDevice(true);
-  const mikrotikId = device?.id || localStorage.getItem("mikrotik_device_id");
+  const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
 
   return (
     <div className="min-h-screen bg-background">
