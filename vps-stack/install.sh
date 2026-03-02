@@ -161,6 +161,7 @@ JWT_SECRET=$(openssl rand -hex 32)
 DB_PASSWORD=$(openssl rand -hex 16)
 RADIUS_DB_PASSWORD=$(openssl rand -hex 16)
 MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
+NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
 
 # MikroTik config (optional - can be configured from the web panel)
 echo ""
@@ -196,6 +197,8 @@ MIKROTIK_PASS=${MIKROTIK_PASS}
 RADIUS_SECRET=testing123
 RADIUS_DB_PASSWORD=${RADIUS_DB_PASSWORD}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
+NUXBILL_APP_URL=http://$(hostname -I | awk '{print $1}'):8080
 TZ=America/Bogota
 EOF
 
@@ -212,6 +215,7 @@ if command -v ufw &> /dev/null; then
   ufw allow 443/tcp >/dev/null 2>&1
   ufw allow 3000/tcp >/dev/null 2>&1
   ufw allow 8000/tcp >/dev/null 2>&1
+  ufw allow 8080/tcp >/dev/null 2>&1
   ufw allow 19999/tcp >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
@@ -231,6 +235,7 @@ echo "║                                              ║"
 echo "║  Panel Web:    http://$VPS_IP                 ║"
 echo "║  API:          http://$VPS_IP:3000            ║"
 echo "║  daloRADIUS:   http://$VPS_IP:8000            ║"
+echo "║  PHPNuxBill:   http://$VPS_IP:8080            ║"
 echo "║  Netdata:      http://$VPS_IP:19999           ║"
 echo "║                                              ║"
 echo "║  Login: admin@omnisync.local / admin123       ║"

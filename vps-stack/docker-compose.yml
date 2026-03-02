@@ -89,6 +89,7 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./phpnuxbill/sql/init.sql:/docker-entrypoint-initdb.d/02-nuxbill.sql
     ports:
       - "3306:3306"
     networks:
@@ -142,6 +143,31 @@ services:
       MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
       DEFAULT_CLIENT_SECRET: ${RADIUS_SECRET:-testing123}
       DEFAULT_FREERADIUS_SERVER: freeradius
+    networks:
+      - omnisync-net
+
+  # ============================================
+  # PHPNuxBill - Billing Hotspot MikroTik
+  # Build desde repo oficial open-source
+  # ============================================
+  phpnuxbill:
+    build:
+      context: ./phpnuxbill
+      dockerfile: Dockerfile
+    container_name: omnisync-phpnuxbill
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      NUXBILL_DB_HOST: mariadb
+      NUXBILL_DB_USER: nuxbill
+      NUXBILL_DB_PASS: ${NUXBILL_DB_PASSWORD:-changeme_nuxbill}
+      NUXBILL_DB_NAME: phpnuxbill
+      NUXBILL_APP_URL: ${NUXBILL_APP_URL:-http://localhost:8080}
+      TZ: ${TZ:-America/Bogota}
     networks:
       - omnisync-net
 
