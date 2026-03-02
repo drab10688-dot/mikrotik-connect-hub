@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown } from "lucide-react";
+import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -278,6 +279,13 @@ const Dashboard = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* VPS Services */}
+        {(isSuperAdmin || isAdmin) && (
+          <div className="mb-8">
+            <VpsServicesCard />
+          </div>
+        )}
 
         {/* System Info */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
