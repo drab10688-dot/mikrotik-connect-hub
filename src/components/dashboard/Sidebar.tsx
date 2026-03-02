@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
   ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
   UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
-  ChevronDown
+  ChevronDown, Server
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -30,6 +30,7 @@ const hotspotSubItems = [
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Server, label: "Servicios VPS", path: "/vps-services" },
   { icon: Users, label: "Clientes", path: "/clients" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: ListChecks, label: "Address List", path: "/address-list" },
@@ -93,7 +94,7 @@ export const Sidebar = () => {
   };
 
   const filteredMenuItems = isSecretary
-    ? menuItems.filter(item => item.path === '/dashboard' || item.path === '/ppp' || item.path === '/simple-queues')
+    ? menuItems.filter(item => item.path === '/dashboard' || item.path === '/vps-services' || item.path === '/ppp' || item.path === '/simple-queues')
     : menuItems;
 
   const handleLogout = async () => {
