@@ -226,6 +226,47 @@ fi
 echo -e "${YELLOW}Iniciando servicios (esto puede tardar unos minutos)...${NC}"
 docker compose up -d --build
 
+# ─── Deploy Frontend ───────────────────────────────────────
+echo ""
+echo -e "${YELLOW}Compilando e instalando el panel web...${NC}"
+
+# Install Node.js if not present
+if ! command -v node &> /dev/null; then
+  echo -e "${YELLOW}Instalando Node.js 20...${NC}"
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y -qq nodejs
+  echo -e "${GREEN}Node.js instalado ✓${NC}"
+fi
+
+# Clone fresh copy for frontend build
+FRONTEND_TEMP=$(mktemp -d)
+git clone --depth 1 "$REPO_URL" "$FRONTEND_TEMP"
+cd "$FRONTEND_TEMP"
+
+# Set API URL for production
+VPS_IP=$(hostname -I | awk '{print $1}')
+echo "VITE_API_BASE_URL=/api" > .env.production
+
+echo -e "${YELLOW}Instalando dependencias del frontend...${NC}"
+npm install --legacy-peer-deps 2>/dev/null || npm install
+
+echo -e "${YELLOW}Compilando frontend...${NC}"
+npm run build
+
+# Deploy built files
+FRONTEND_DIR="$INSTALL_DIR/frontend/dist"
+mkdir -p "$FRONTEND_DIR"
+rm -rf "$FRONTEND_DIR"/*
+cp -r dist/* "$FRONTEND_DIR"/
+
+# Cleanup
+cd /root
+rm -rf "$FRONTEND_TEMP"
+
+# Restart nginx to serve new frontend
+docker compose -f "$INSTALL_DIR/docker-compose.yml" restart nginx
+echo -e "${GREEN}Panel web desplegado ✓${NC}"
+
 VPS_IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗"
