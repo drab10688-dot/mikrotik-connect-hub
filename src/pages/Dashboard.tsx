@@ -280,12 +280,10 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* VPS Services */}
-        {(isSuperAdmin || isAdmin) && (
-          <div className="mb-8">
-            <VpsServicesCard mikrotikId={device?.id || localStorage.getItem("mikrotik_device_id")} />
-          </div>
-        )}
+        {/* VPS Services - always visible for self-hosted deployments */}
+        <div className="mb-8">
+          <VpsServicesCard mikrotikId={device?.id || localStorage.getItem("mikrotik_device_id")} />
+        </div>
 
         {/* System Info */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
