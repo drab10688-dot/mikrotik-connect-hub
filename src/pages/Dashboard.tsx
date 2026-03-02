@@ -283,7 +283,7 @@ const Dashboard = () => {
         {/* VPS Services */}
         {(isSuperAdmin || isAdmin) && (
           <div className="mb-8">
-            <VpsServicesCard />
+            <VpsServicesCard mikrotikId={device?.id || localStorage.getItem("mikrotik_device_id")} />
           </div>
         )}
 
