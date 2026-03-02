@@ -350,7 +350,13 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
-          <CloudflareConfig mikrotikId={selectedDevice || null} />
+          <CloudflareConfig 
+            mikrotikId={selectedDevice || null} 
+            mikrotikDevice={selectedDevice && devices ? (() => {
+              const d = devices.find((dev: any) => dev.id === selectedDevice);
+              return d ? { host: d.host, port: d.port, username: d.username, password: d.password } : null;
+            })() : null}
+          />
           <VpsDockerManager mikrotikId={selectedDevice || null} />
         </div>
       </div>

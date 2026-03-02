@@ -17,13 +17,19 @@ import { generateVpsInstallScript } from "@/lib/vps-install-script";
 
 interface CloudflareConfigProps {
   mikrotikId: string | null;
+  mikrotikDevice?: {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+  } | null;
 }
 
 function generateSecret() {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
-export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
+export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfigProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [vpsIp, setVpsIp] = useState("");
@@ -124,8 +130,12 @@ export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
       secret,
       port,
       portalUrl,
+      mikrotikHost: mikrotikDevice?.host,
+      mikrotikPort: mikrotikDevice?.port,
+      mikrotikUser: mikrotikDevice?.username,
+      mikrotikPass: mikrotikDevice?.password,
     });
-  }, [portalUrl]);
+  }, [portalUrl, mikrotikDevice]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
