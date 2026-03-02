@@ -328,6 +328,19 @@ export const backupApi = {
   restore: (filename: string) => apiPost('/backups/restore', { filename }),
   delete: (filename: string) => apiDelete(`/backups/${encodeURIComponent(filename)}`),
   downloadUrl: (filename: string) => `${getBaseUrl()}/backups/download/${encodeURIComponent(filename)}`,
+  upload: async (file: File): Promise<any> => {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('backup', file);
+    const res = await fetch(`${getBaseUrl()}/backups/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al subir backup');
+    return data;
+  },
 };
 
 // ─── Payment Platforms API ────────────────────────────────

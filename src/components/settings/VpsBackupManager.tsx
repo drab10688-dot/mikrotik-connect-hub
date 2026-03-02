@@ -46,6 +46,7 @@ export function VpsBackupManager() {
   const [isCreating, setIsCreating] = useState(false);
   const [isRestoring, setIsRestoring] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
 
   const loadBackups = async () => {
     setIsLoading(true);
@@ -124,6 +125,22 @@ export function VpsBackupManager() {
         URL.revokeObjectURL(a.href);
       })
       .catch(() => toast.error("Error al descargar"));
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const result = await backupApi.upload(file);
+      toast.success(`Backup subido: ${result.data?.name || file.name}`);
+      loadBackups();
+    } catch (error: any) {
+      toast.error(error.message || "Error al subir backup");
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
   };
 
   const diskPercent = disk ? parseInt(disk.percent.replace('%', '')) : 0;
@@ -279,6 +296,47 @@ export function VpsBackupManager() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Upload Backup */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Subir Backup
+          </CardTitle>
+          <CardDescription>
+            Sube un archivo de backup desde tu computadora al servidor VPS
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <label className="flex-1 w-full">
+              <input
+                type="file"
+                accept=".sql,.gz,.tar,.tar.gz,.tgz,.zip,.bak"
+                onChange={handleUpload}
+                disabled={isUploading}
+                className="hidden"
+                id="backup-upload-input"
+              />
+              <div className="flex items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer hover:bg-accent/50 transition-colors border-muted-foreground/25">
+                {isUploading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Subiendo backup...</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <Upload className="h-6 w-6" />
+                    <span className="text-sm font-medium">Clic para seleccionar archivo</span>
+                    <span className="text-xs">.sql, .gz, .tar, .zip, .bak</span>
+                  </div>
+                )}
+              </div>
+            </label>
+          </div>
         </CardContent>
       </Card>
 

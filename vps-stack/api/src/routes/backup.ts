@@ -5,9 +5,23 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
 
 const execAsync = promisify(exec);
 const BACKUP_DIR = process.env.BACKUP_DIR || '/opt/omnisync/backups';
+
+// Multer config for upload
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    cb(null, BACKUP_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    cb(null, safeName);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB max
 
 export const backupRouter = Router();
 
@@ -218,6 +232,32 @@ backupRouter.get('/download/:filename', async (req: AuthRequest, res: Response) 
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
 
     res.download(filePath, filename as string);
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Upload backup
+backupRouter.post('/upload', upload.single('backup'), async (req: AuthRequest, res: Response) => {
+  if (!requireSuperAdmin(req, res)) return;
+
+  try {
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
+    const stats = fs.statSync(file.path);
+    res.json({
+      success: true,
+      data: {
+        name: file.filename,
+        size: stats.size,
+        sizeFormatted: formatSize(stats.size),
+        type: file.filename.includes('docker') ? 'docker' :
+              file.filename.includes('db') ? 'database' :
+              file.filename.includes('full') ? 'full' : 'config',
+        created: new Date().toISOString(),
+      }
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
