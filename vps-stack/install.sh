@@ -439,8 +439,8 @@ test_endpoint() {
 
 test_endpoint "Panel Web"    "http://localhost"
 test_endpoint "API Health"   "http://localhost/api/health"
-test_endpoint "daloRADIUS"   "http://localhost:8000"
-test_endpoint "PHPNuxBill"   "http://localhost:8080"
+test_endpoint "daloRADIUS"   "http://localhost/daloradius/"
+test_endpoint "PHPNuxBill"   "http://localhost/nuxbill/"
 
 if [ "$TOTAL_FAIL" -gt 0 ]; then
   echo ""
@@ -482,7 +482,8 @@ echo "║    Usuario:  administrator                               ║"
 echo "║    Pass:     radius                                      ║"
 echo "║                                                          ║"
 echo "║  PHPNuxBill:                                             ║"
-echo "║    Acceder al instalador web la primera vez              ║"
+echo "║    Usuario:  admin                                       ║"
+echo "║    Pass:     admin                                       ║"
 echo "║    DB Host: mariadb | DB: phpnuxbill                     ║"
 echo "║    DB User: nuxbill | DB Pass: ${NUXBILL_DB_PASSWORD}    "
 echo "║                                                          ║"
