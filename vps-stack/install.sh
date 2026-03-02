@@ -161,15 +161,24 @@ DB_PASSWORD=$(openssl rand -hex 16)
 RADIUS_DB_PASSWORD=$(openssl rand -hex 16)
 MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 
-# Ask for MikroTik config
+# MikroTik config (optional - can be configured from the web panel)
 echo ""
-echo -e "${YELLOW}Configuración MikroTik:${NC}"
-read -p "Host/IP del MikroTik: " MIKROTIK_HOST < /dev/tty
-read -p "Puerto API REST (443): " MIKROTIK_PORT < /dev/tty
-MIKROTIK_PORT=${MIKROTIK_PORT:-443}
-read -p "Usuario MikroTik: " MIKROTIK_USER < /dev/tty
-read -sp "Contraseña MikroTik: " MIKROTIK_PASS < /dev/tty
-echo ""
+echo -e "${YELLOW}Configuración MikroTik (opcional, puedes configurar después desde el panel):${NC}"
+read -p "Host/IP del MikroTik (Enter para omitir): " MIKROTIK_HOST < /dev/tty
+MIKROTIK_HOST=${MIKROTIK_HOST:-}
+if [ -n "$MIKROTIK_HOST" ]; then
+  read -p "Puerto API REST (443): " MIKROTIK_PORT < /dev/tty
+  MIKROTIK_PORT=${MIKROTIK_PORT:-443}
+  read -p "Usuario MikroTik (admin): " MIKROTIK_USER < /dev/tty
+  MIKROTIK_USER=${MIKROTIK_USER:-admin}
+  read -sp "Contraseña MikroTik: " MIKROTIK_PASS < /dev/tty
+  echo ""
+else
+  MIKROTIK_PORT=443
+  MIKROTIK_USER=""
+  MIKROTIK_PASS=""
+  echo -e "${CYAN}→ Podrás agregar dispositivos MikroTik desde el panel web${NC}"
+fi
 
 # Create .env
 cat > .env << EOF

@@ -119,26 +119,7 @@ services:
     networks:
       - omnisync-net
 
-  # ============================================
-  # daloRADIUS - Panel web para RADIUS (opcional)
-  # ============================================
-  daloradius:
-    image: ghcr.io/lirantal/daloradius:latest
-    container_name: omnisync-daloradius
-    restart: unless-stopped
-    environment:
-      MYSQL_HOST: mariadb
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: radius
-      MYSQL_USER: radius
-      MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
-    ports:
-      - "8000:8000"
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
+  # daloRADIUS removido - gestión RADIUS integrada en OmniSync
 
   # ============================================
   # Netdata - Monitoreo del sistema
