@@ -13,7 +13,6 @@ import { vouchersRouter } from './routes/vouchers';
 import { billingRouter } from './routes/billing';
 import { invoicesRouter } from './routes/invoices';
 import { addressListRouter } from './routes/address-list';
-import { addressListRouter } from './routes/address-list';
 import { systemRouter } from './routes/system';
 import { backupRouter } from './routes/backup';
 import { authMiddleware } from './middleware/auth';
