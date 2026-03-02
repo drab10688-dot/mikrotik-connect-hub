@@ -27,13 +27,13 @@ echo "║    • Debian 11 / 12                           ║"
 echo "╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Check root
+# ─── Check root ───────────────────────────────────
 if [ "$EUID" -ne 0 ]; then
   echo -e "${RED}Error: Ejecuta este script como root (sudo)${NC}"
   exit 1
 fi
 
-# Check OS compatibility
+# ─── Check OS ─────────────────────────────────────
 if [ -f /etc/os-release ]; then
   . /etc/os-release
   OS_NAME=$ID
@@ -64,7 +64,7 @@ else
   echo -e "${YELLOW}⚠ No se pudo detectar el sistema operativo${NC}"
 fi
 
-# Check if already installed
+# ─── Check existing installation ──────────────────
 if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
   echo ""
   echo -e "${YELLOW}╔══════════════════════════════════════════════╗"
@@ -90,7 +90,6 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
       echo -e "${YELLOW}Actualizando archivos...${NC}"
       TEMP_DIR=$(mktemp -d)
       git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
-      # Preserve .env and data
       cp "$INSTALL_DIR/.env" /tmp/omnisync-env-backup 2>/dev/null || true
       cp -r "$TEMP_DIR"/vps-stack/* "$INSTALL_DIR"/
       cp /tmp/omnisync-env-backup "$INSTALL_DIR/.env" 2>/dev/null || true
@@ -98,7 +97,7 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
       cd "$INSTALL_DIR"
       docker compose up -d --build
       echo -e "${GREEN}✓ Actualización completada${NC}"
-      echo -e "${YELLOW}API: http://$(hostname -I | awk '{print $1}'):3000${NC}"
+      echo -e "${YELLOW}Panel: http://$(hostname -I | awk '{print $1}')${NC}"
       exit 0
       ;;
     3)
@@ -120,13 +119,19 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
   esac
 fi
 
-# Install git if not present
+# ═══════════════════════════════════════════════════
+# FASE 1: Dependencias del sistema
+# ═══════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}═══ FASE 1/5: Instalando dependencias del sistema ═══${NC}"
+
+# Git
 if ! command -v git &> /dev/null; then
   echo -e "${YELLOW}Instalando git...${NC}"
   apt-get update -qq && apt-get install -y -qq git
 fi
 
-# Install Docker if not present
+# Docker
 if ! command -v docker &> /dev/null; then
   echo -e "${YELLOW}Instalando Docker...${NC}"
   curl -fsSL https://get.docker.com | sh
@@ -137,7 +142,7 @@ else
   echo -e "${GREEN}Docker ya instalado ✓${NC}"
 fi
 
-# Install Docker Compose plugin
+# Docker Compose
 if ! docker compose version &> /dev/null; then
   echo -e "${YELLOW}Instalando Docker Compose...${NC}"
   apt-get update -qq
@@ -145,25 +150,69 @@ if ! docker compose version &> /dev/null; then
   echo -e "${GREEN}Docker Compose instalado ✓${NC}"
 fi
 
-# Clone repo
-echo -e "${YELLOW}Descargando archivos del proyecto...${NC}"
+# Node.js
+if ! command -v node &> /dev/null; then
+  echo -e "${YELLOW}Instalando Node.js 20...${NC}"
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y -qq nodejs
+  echo -e "${GREEN}Node.js instalado ✓${NC}"
+else
+  echo -e "${GREEN}Node.js ya instalado ✓${NC}"
+fi
+
+echo -e "${GREEN}✓ Dependencias listas${NC}"
+
+# ═══════════════════════════════════════════════════
+# FASE 2: Descargar proyecto y compilar frontend
+# (El panel queda funcional PRIMERO para poder
+#  hacer backups si un contenedor falla después)
+# ═══════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}═══ FASE 2/5: Descargando proyecto y compilando panel web ═══${NC}"
+
 TEMP_DIR=$(mktemp -d)
 git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
+echo -e "${GREEN}Código descargado ✓${NC}"
+
+# Copiar archivos del stack VPS
 mkdir -p "$INSTALL_DIR"
 cp -r "$TEMP_DIR"/vps-stack/* "$INSTALL_DIR"/
+echo -e "${GREEN}Archivos del stack copiados ✓${NC}"
+
+# Compilar frontend
+echo -e "${YELLOW}Compilando panel web (esto puede tardar unos minutos)...${NC}"
+cd "$TEMP_DIR"
+echo "VITE_API_BASE_URL=/api" > .env.production
+npm install --legacy-peer-deps 2>/dev/null || npm install
+npm run build
+
+# Desplegar frontend compilado
+FRONTEND_DIR="$INSTALL_DIR/frontend/dist"
+mkdir -p "$FRONTEND_DIR"
+rm -rf "$FRONTEND_DIR"/*
+cp -r dist/* "$FRONTEND_DIR"/
+echo -e "${GREEN}✓ Panel web compilado y desplegado${NC}"
+
+# Limpiar temp
+cd /root
 rm -rf "$TEMP_DIR"
-echo -e "${GREEN}Archivos descargados ✓${NC}"
+
+# ═══════════════════════════════════════════════════
+# FASE 3: Configuración
+# ═══════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}═══ FASE 3/5: Configuración ═══${NC}"
 
 cd "$INSTALL_DIR"
 
-# Generate secrets
+# Generar secretos
 JWT_SECRET=$(openssl rand -hex 32)
 DB_PASSWORD=$(openssl rand -hex 16)
 RADIUS_DB_PASSWORD=$(openssl rand -hex 16)
 MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
 
-# MikroTik config (optional - can be configured from the web panel)
+# MikroTik (opcional)
 echo ""
 echo -e "${YELLOW}Configuración MikroTik (opcional, puedes configurar después desde el panel):${NC}"
 read -p "Host/IP del MikroTik (Enter para omitir): " MIKROTIK_HOST < /dev/tty
@@ -182,7 +231,9 @@ else
   echo -e "${CYAN}→ Podrás agregar dispositivos MikroTik desde el panel web${NC}"
 fi
 
-# Create .env
+VPS_IP=$(hostname -I | awk '{print $1}')
+
+# Crear .env
 cat > .env << EOF
 # Auto-generated - $(date)
 DB_NAME=omnisync
@@ -198,17 +249,16 @@ RADIUS_SECRET=testing123
 RADIUS_DB_PASSWORD=${RADIUS_DB_PASSWORD}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
-NUXBILL_APP_URL=http://$(hostname -I | awk '{print $1}'):8080
+NUXBILL_APP_URL=http://${VPS_IP}:8080
 TZ=America/Bogota
 EOF
 
 echo -e "${GREEN}.env generado ✓${NC}"
 
-# Create required directories
-mkdir -p nginx/certs frontend/dist
-echo "<html><body><h1>OmniSync - Desplegando frontend...</h1></body></html>" > frontend/dist/index.html
+# Crear directorios necesarios
+mkdir -p nginx/certs
 
-# Open firewall ports
+# Firewall
 if command -v ufw &> /dev/null; then
   echo -e "${YELLOW}Abriendo puertos en firewall...${NC}"
   ufw allow 80/tcp >/dev/null 2>&1
@@ -221,52 +271,74 @@ if command -v ufw &> /dev/null; then
   echo -e "${GREEN}Puertos abiertos ✓${NC}"
 fi
 
-# Start services
-echo -e "${YELLOW}Iniciando servicios (esto puede tardar unos minutos)...${NC}"
+# ═══════════════════════════════════════════════════
+# FASE 4: Levantar servicios Docker
+# (Frontend ya está desplegado, si algo falla
+#  el usuario puede acceder al panel y hacer backup)
+# ═══════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
+echo -e "${YELLOW}Construyendo e iniciando contenedores (esto puede tardar)...${NC}"
+
 docker compose up -d --build
 
-# ─── Deploy Frontend ───────────────────────────────────────
-echo ""
-echo -e "${YELLOW}Compilando e instalando el panel web...${NC}"
+# Esperar a que los servicios se estabilicen
+echo -e "${YELLOW}Esperando 15 segundos para estabilización...${NC}"
+sleep 15
 
-# Install Node.js if not present
-if ! command -v node &> /dev/null; then
-  echo -e "${YELLOW}Instalando Node.js 20...${NC}"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y -qq nodejs
-  echo -e "${GREEN}Node.js instalado ✓${NC}"
+# ═══════════════════════════════════════════════════
+# FASE 5: Verificación de servicios
+# ═══════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}═══ FASE 5/5: Verificando servicios ═══${NC}"
+
+TOTAL_OK=0
+TOTAL_FAIL=0
+
+check_service() {
+  local name=$1
+  local container=$2
+  
+  if docker ps --format '{{.Names}}' | grep -q "$container"; then
+    local status=$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null)
+    if [ "$status" = "running" ]; then
+      echo -e "  ${GREEN}✓ $name ($container) — running${NC}"
+      TOTAL_OK=$((TOTAL_OK + 1))
+      return 0
+    fi
+  fi
+  
+  echo -e "  ${RED}✗ $name ($container) — FALLO${NC}"
+  echo -e "    ${YELLOW}→ Logs: docker compose logs $container --tail 30${NC}"
+  TOTAL_FAIL=$((TOTAL_FAIL + 1))
+  return 1
+}
+
+check_service "PostgreSQL"  "omnisync-postgres"
+check_service "API Backend" "omnisync-api"
+check_service "Nginx"       "omnisync-nginx"
+check_service "MariaDB"     "omnisync-mariadb"
+check_service "FreeRADIUS"  "omnisync-freeradius"
+check_service "daloRADIUS"  "omnisync-daloradius"
+check_service "PHPNuxBill"  "omnisync-phpnuxbill"
+
+echo ""
+echo -e "${GREEN}Servicios OK: $TOTAL_OK${NC}  ${RED}Fallidos: $TOTAL_FAIL${NC}"
+
+if [ "$TOTAL_FAIL" -gt 0 ]; then
+  echo ""
+  echo -e "${YELLOW}╔══════════════════════════════════════════════════════════╗"
+  echo "║  ⚠ Algunos servicios fallaron. El PANEL WEB ya está    ║"
+  echo "║  disponible para que puedas gestionar y hacer backups.  ║"
+  echo "║                                                          ║"
+  echo "║  Puedes reintentar con:                                  ║"
+  echo "║    cd $INSTALL_DIR && docker compose up -d --build       ║"
+  echo "╚══════════════════════════════════════════════════════════╝${NC}"
 fi
 
-# Clone fresh copy for frontend build
-FRONTEND_TEMP=$(mktemp -d)
-git clone --depth 1 "$REPO_URL" "$FRONTEND_TEMP"
-cd "$FRONTEND_TEMP"
-
-# Set API URL for production
-VPS_IP=$(hostname -I | awk '{print $1}')
-echo "VITE_API_BASE_URL=/api" > .env.production
-
-echo -e "${YELLOW}Instalando dependencias del frontend...${NC}"
-npm install --legacy-peer-deps 2>/dev/null || npm install
-
-echo -e "${YELLOW}Compilando frontend...${NC}"
-npm run build
-
-# Deploy built files
-FRONTEND_DIR="$INSTALL_DIR/frontend/dist"
-mkdir -p "$FRONTEND_DIR"
-rm -rf "$FRONTEND_DIR"/*
-cp -r dist/* "$FRONTEND_DIR"/
-
-# Cleanup
-cd /root
-rm -rf "$FRONTEND_TEMP"
-
-# Restart nginx to serve new frontend
-docker compose -f "$INSTALL_DIR/docker-compose.yml" restart nginx
-echo -e "${GREEN}Panel web desplegado ✓${NC}"
-
-VPS_IP=$(hostname -I | awk '{print $1}')
+# ═══════════════════════════════════════════════════
+# Resumen final
+# ═══════════════════════════════════════════════════
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗"
 echo "║           ¡Instalación completada! ✓                    ║"
@@ -281,6 +353,7 @@ echo "║  PHPNuxBill:    http://$VPS_IP/nuxbill/                   ║"
 echo "║                                                          ║"
 echo "║  (Directo por puertos, opcional):                        ║"
 echo "║  API :3000 | daloRADIUS :8000 | NuxBill :8080            ║"
+echo "║                                                          ║"
 echo "║  🔑 CREDENCIALES                                          ║"
 echo "║  ─────────────────────────────────────────────           ║"
 echo "║  OmniSync Panel:                                         ║"
