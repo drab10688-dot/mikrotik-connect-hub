@@ -8,7 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Cloud, Key, ExternalLink, Copy, CheckCircle2, AlertCircle, Shield, Loader2, Terminal, Globe, Play, Square, RefreshCw } from "lucide-react";
+import {
+  Cloud, Key, ExternalLink, Copy, CheckCircle2, AlertCircle,
+  Loader2, Terminal, Globe, Play, Square, RefreshCw, Server, Download
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 interface CloudflareConfigProps {
@@ -22,13 +25,13 @@ function generateSecret() {
 export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [vpsIp, setVpsIp] = useState("");
+  const [vpsPort, setVpsPort] = useState("3847");
   const [apiToken, setApiToken] = useState("");
   const [domain, setDomain] = useState("");
   const [tunnelName, setTunnelName] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const portalUrl = `${window.location.origin}/portal${mikrotikId ? `?id=${mikrotikId}` : ""}`;
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
   const { data: config, isLoading } = useQuery({
     queryKey: ["cloudflare-config", mikrotikId],
@@ -43,165 +46,287 @@ export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
       return data;
     },
     enabled: !!mikrotikId,
-    refetchInterval: 5000, // Poll every 5s to get tunnel URL updates from VPS
+    refetchInterval: 5000,
   });
 
   useEffect(() => {
     if (config) {
+      setVpsIp(config.agent_host || "");
+      setVpsPort(String(config.agent_port || 3847));
       setApiToken(config.api_token || "");
       setDomain(config.domain || "");
       setTunnelName(config.tunnel_name || "");
     }
   }, [config]);
 
-  // Generate the script and save config with a callback secret
-  const generateScriptMutation = useMutation({
+  // Save VPS config & generate install command
+  const saveAgentConfigMutation = useMutation({
     mutationFn: async () => {
       if (!mikrotikId || !user) throw new Error("Missing data");
-      const secret = generateSecret();
+      if (!vpsIp.trim()) throw new Error("Ingresa la IP de tu VPS");
 
+      const secret = config?.agent_secret || generateSecret();
       const payload = {
         mikrotik_id: mikrotikId,
         mode: "free",
-        tunnel_id: secret, // Using tunnel_id to store the callback secret
-        is_active: false,
+        agent_host: vpsIp.trim(),
+        agent_port: parseInt(vpsPort) || 3847,
+        agent_secret: secret,
         created_by: user.id,
         updated_at: new Date().toISOString(),
       };
 
       if (config?.id) {
-        const { error } = await supabase
-          .from("cloudflare_config")
-          .update(payload)
-          .eq("id", config.id);
+        const { error } = await supabase.from("cloudflare_config").update(payload).eq("id", config.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from("cloudflare_config")
-          .insert(payload);
+        const { error } = await supabase.from("cloudflare_config").insert(payload);
         if (error) throw error;
       }
 
-      return { secret };
+      return { secret, port: parseInt(vpsPort) || 3847 };
     },
-    onSuccess: ({ secret }) => {
+    onSuccess: ({ secret, port }) => {
       queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
-      const script = buildScript(secret);
+      const script = buildAgentScript(secret, port);
       navigator.clipboard.writeText(script);
-      toast.success("Script copiado al portapapeles. Pégalo y ejecútalo en tu VPS.");
+      toast.success("Script de instalación copiado. Pégalo en tu VPS una sola vez.");
     },
-    onError: (err: any) => {
-      toast.error("Error: " + err.message);
-    },
+    onError: (err: any) => toast.error(err.message),
   });
 
-  const buildScript = useCallback((secret: string) => {
-    const callbackUrl = `${supabaseUrl}/functions/v1/cloudflare-tunnel-callback`;
-    const targetUrl = portalUrl;
+  // Call the agent via our edge function
+  const agentActionMutation = useMutation({
+    mutationFn: async (action: string) => {
+      const { data, error } = await supabase.functions.invoke("cloudflare-tunnel-agent", {
+        body: { mikrotik_id: mikrotikId, action },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data, action) => {
+      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
+      if (action === "start" && data?.url) {
+        toast.success(`Tunnel activo: ${data.url}`);
+      } else if (action === "stop") {
+        toast.success("Tunnel detenido");
+      } else if (action === "status") {
+        toast.info(`Estado: ${data?.status || "desconocido"}`);
+      }
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
 
+  const buildAgentScript = useCallback((secret: string, port: number) => {
     return `#!/bin/bash
-# OmniSync - Cloudflare Tunnel Installer
-# Ejecuta este script en tu VPS con Ubuntu
-
+# ============================================
+# OmniSync Agent - Instalador (una sola vez)
+# ============================================
 set -e
 
-echo "🚀 OmniSync - Instalando Cloudflare Tunnel..."
+AGENT_PORT=${port}
+AGENT_SECRET="${secret}"
+PORTAL_URL="${portalUrl}"
+INSTALL_DIR="/opt/omnisync-agent"
 
-# 1. Instalar cloudflared si no existe
+echo "🚀 Instalando OmniSync Agent..."
+
+# 1. Instalar cloudflared
 if ! command -v cloudflared &> /dev/null; then
   echo "📦 Instalando cloudflared..."
   curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
   chmod +x /usr/local/bin/cloudflared
   echo "✅ cloudflared instalado"
 else
-  echo "✅ cloudflared ya está instalado"
+  echo "✅ cloudflared ya instalado"
 fi
 
-# 2. Matar tunnels anteriores
-pkill cloudflared 2>/dev/null || true
-sleep 1
+# 2. Crear directorio del agente
+mkdir -p $INSTALL_DIR
 
-# 3. Iniciar Quick Tunnel en background
-echo "🌐 Iniciando tunnel..."
-cloudflared tunnel --url ${targetUrl} --no-autoupdate 2>&1 &
-TUNNEL_PID=$!
+# 3. Crear el agente Python
+cat > $INSTALL_DIR/agent.py << 'PYEOF'
+#!/usr/bin/env python3
+import http.server, json, subprocess, threading, os, signal, sys, re, time
 
-# 4. Esperar y capturar la URL
-TUNNEL_URL=""
-for i in $(seq 1 30); do
-  sleep 2
-  TUNNEL_URL=$(cloudflared tunnel --url ${targetUrl} --no-autoupdate 2>&1 & sleep 5 && kill $! 2>/dev/null; wait $! 2>/dev/null || true)
-  break
-done
+PORT = int(os.environ.get("AGENT_PORT", "3847"))
+SECRET = os.environ.get("AGENT_SECRET", "")
+PORTAL_URL = os.environ.get("PORTAL_URL", "")
 
-# Método alternativo: leer del proceso
-sleep 8
-TUNNEL_URL=$(curl -s http://localhost:45555/metrics 2>/dev/null | grep -oP 'https://[a-zA-Z0-9-]+\\.trycloudflare\\.com' | head -1 || true)
+tunnel_process = None
+tunnel_url = None
+tunnel_status = "stopped"
 
-if [ -z "$TUNNEL_URL" ]; then
-  # Buscar en los logs del proceso
-  TUNNEL_URL=$(journalctl -u cloudflared --no-pager -n 20 2>/dev/null | grep -oP 'https://[a-zA-Z0-9-]+\\.trycloudflare\\.com' | head -1 || true)
-fi
+def start_tunnel():
+    global tunnel_process, tunnel_url, tunnel_status
+    if tunnel_process and tunnel_process.poll() is None:
+        return {"status": "running", "url": tunnel_url}
 
-if [ -z "$TUNNEL_URL" ]; then
-  # Último intento: leer de /tmp
-  timeout 15 bash -c 'cloudflared tunnel --url ${targetUrl} --no-autoupdate 2>/tmp/cf_output &
-  CF_PID=$!
-  for i in $(seq 1 10); do
-    sleep 2
-    URL=$(grep -oP "https://[a-zA-Z0-9-]+\\.trycloudflare\\.com" /tmp/cf_output 2>/dev/null | head -1)
-    if [ -n "$URL" ]; then
-      echo "$URL" > /tmp/cf_url
-      break
-    fi
-  done'
-  TUNNEL_URL=$(cat /tmp/cf_url 2>/dev/null || true)
-fi
+    tunnel_status = "starting"
+    tunnel_url = None
 
-# Reintentar con método limpio
-pkill cloudflared 2>/dev/null || true
-sleep 2
+    tunnel_process = subprocess.Popen(
+        ["cloudflared", "tunnel", "--url", PORTAL_URL, "--no-autoupdate"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
 
-cloudflared tunnel --url ${targetUrl} --no-autoupdate 2>/tmp/cf_output &
-CF_PID=$!
+    # Read stderr in thread to capture URL
+    def read_output():
+        global tunnel_url, tunnel_status
+        for line in tunnel_process.stderr:
+            text = line.decode("utf-8", errors="ignore")
+            match = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", text)
+            if match and not tunnel_url:
+                tunnel_url = match.group(0)
+                tunnel_status = "running"
+                print(f"🌐 Tunnel: {tunnel_url}")
 
-echo "⏳ Esperando URL del tunnel..."
-for i in $(seq 1 15); do
-  sleep 2
-  TUNNEL_URL=$(grep -oP 'https://[a-zA-Z0-9-]+\\.trycloudflare\\.com' /tmp/cf_output 2>/dev/null | head -1)
-  if [ -n "$TUNNEL_URL" ]; then
-    break
-  fi
-done
+    t = threading.Thread(target=read_output, daemon=True)
+    t.start()
 
-if [ -z "$TUNNEL_URL" ]; then
-  echo "❌ No se pudo obtener la URL del tunnel. Revisa manualmente."
-  echo "   Ejecuta: cloudflared tunnel --url ${targetUrl}"
-  exit 1
-fi
+    # Wait up to 20s for URL
+    for _ in range(20):
+        time.sleep(1)
+        if tunnel_url:
+            return {"status": "running", "url": tunnel_url}
 
-echo "✅ Tunnel activo: $TUNNEL_URL"
+    return {"status": tunnel_status, "url": tunnel_url, "message": "Starting..."}
 
-# 5. Reportar URL al sistema
-curl -s -X POST "${callbackUrl}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"mikrotik_id":"${mikrotikId}","tunnel_url":"'$TUNNEL_URL'","action":"report_url","secret":"${secret}"}'
+def stop_tunnel():
+    global tunnel_process, tunnel_url, tunnel_status
+    if tunnel_process:
+        tunnel_process.terminate()
+        try:
+            tunnel_process.wait(timeout=5)
+        except:
+            tunnel_process.kill()
+        tunnel_process = None
+    tunnel_url = None
+    tunnel_status = "stopped"
+    # Also kill any leftover
+    os.system("pkill -f 'cloudflared tunnel' 2>/dev/null || true")
+    return {"status": "stopped"}
+
+def get_status():
+    global tunnel_process, tunnel_status, tunnel_url
+    if tunnel_process and tunnel_process.poll() is not None:
+        tunnel_status = "stopped"
+        tunnel_url = None
+        tunnel_process = None
+    return {
+        "status": tunnel_status,
+        "url": tunnel_url,
+        "cloudflared_installed": os.system("which cloudflared > /dev/null 2>&1") == 0
+    }
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # Silenciar logs
+
+    def _check_auth(self):
+        if self.headers.get("X-Agent-Secret") != SECRET:
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Forbidden"}).encode())
+            return False
+        return True
+
+    def _respond(self, data, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def do_GET(self):
+        if not self._check_auth(): return
+        if self.path == "/status":
+            self._respond(get_status())
+        elif self.path == "/health":
+            self._respond({"ok": True})
+        else:
+            self._respond({"error": "Not found"}, 404)
+
+    def do_POST(self):
+        if not self._check_auth(): return
+        if self.path == "/start":
+            self._respond(start_tunnel())
+        elif self.path == "/stop":
+            self._respond(stop_tunnel())
+        elif self.path == "/install":
+            installed = os.system("which cloudflared > /dev/null 2>&1") == 0
+            if installed:
+                self._respond({"success": True, "message": "Ya instalado"})
+            else:
+                os.system("curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x /usr/local/bin/cloudflared")
+                self._respond({"success": True, "message": "Instalado"})
+        else:
+            self._respond({"error": "Not found"}, 404)
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+
+print(f"🟢 OmniSync Agent escuchando en puerto {PORT}")
+http.server.HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+PYEOF
+
+# 4. Crear archivo de entorno
+cat > $INSTALL_DIR/.env << EOF
+AGENT_PORT=$AGENT_PORT
+AGENT_SECRET=$AGENT_SECRET
+PORTAL_URL=$PORTAL_URL
+EOF
+
+# 5. Crear servicio systemd
+cat > /etc/systemd/system/omnisync-agent.service << EOF
+[Unit]
+Description=OmniSync Cloudflare Tunnel Agent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$INSTALL_DIR
+EnvironmentFile=$INSTALL_DIR/.env
+ExecStart=/usr/bin/python3 $INSTALL_DIR/agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 6. Activar e iniciar servicio
+systemctl daemon-reload
+systemctl enable omnisync-agent
+systemctl restart omnisync-agent
 
 echo ""
-echo "🎉 ¡Listo! Tu portal cautivo está disponible en:"
-echo "   $TUNNEL_URL"
+echo "✅ OmniSync Agent instalado y corriendo"
+echo "   Puerto: $AGENT_PORT"
+echo "   Estado: systemctl status omnisync-agent"
+echo "   Logs:   journalctl -u omnisync-agent -f"
 echo ""
-echo "📋 Configura tu MikroTik Walled Garden con esta URL"
-echo "   El proceso está corriendo en background (PID: $CF_PID)"
-echo "   Para detenerlo: kill $CF_PID"
+echo "⚠️  Asegúrate de abrir el puerto $AGENT_PORT en tu firewall:"
+echo "   sudo ufw allow $AGENT_PORT/tcp"
+echo ""
+echo "🎉 ¡Listo! Ahora puedes controlar el tunnel desde el panel de OmniSync"
 `;
-  }, [supabaseUrl, portalUrl, mikrotikId]);
+  }, [portalUrl]);
 
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Copiado al portapapeles");
+  };
+
+  // Save paid config
   const savePaidMutation = useMutation({
     mutationFn: async () => {
-      if (!mikrotikId || !user) throw new Error("Missing data");
-      if (!apiToken.trim()) throw new Error("Ingresa el API Token");
-
+      if (!mikrotikId || !user || !apiToken.trim()) throw new Error("Datos incompletos");
       const payload = {
         mikrotik_id: mikrotikId,
         mode: "paid",
@@ -212,7 +337,6 @@ echo "   Para detenerlo: kill $CF_PID"
         created_by: user.id,
         updated_at: new Date().toISOString(),
       };
-
       if (config?.id) {
         const { error } = await supabase.from("cloudflare_config").update(payload).eq("id", config.id);
         if (error) throw error;
@@ -228,13 +352,6 @@ echo "   Para detenerlo: kill $CF_PID"
     onError: (err: any) => toast.error(err.message),
   });
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    toast.success("Copiado");
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   if (!mikrotikId) {
     return (
       <Card>
@@ -247,6 +364,7 @@ echo "   Para detenerlo: kill $CF_PID"
   }
 
   const isRunning = config?.is_active && config?.tunnel_url;
+  const agentConfigured = config?.agent_host && config?.agent_secret;
 
   return (
     <Card>
@@ -272,7 +390,7 @@ echo "   Para detenerlo: kill $CF_PID"
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Active Tunnel Info */}
+        {/* Active Tunnel Banner */}
         {isRunning && (
           <div className="p-4 rounded-lg border border-green-500/20 bg-green-500/5 space-y-3">
             <div className="flex items-center gap-2">
@@ -281,13 +399,13 @@ echo "   Para detenerlo: kill $CF_PID"
             </div>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-sm bg-background px-3 py-2 rounded border truncate">
-                {config.tunnel_url}
+                {config?.tunnel_url}
               </code>
-              <Button variant="outline" size="icon" onClick={() => handleCopy(config.tunnel_url!)}>
+              <Button variant="outline" size="icon" onClick={() => handleCopy(config?.tunnel_url || "")}>
                 <Copy className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="icon" asChild>
-                <a href={config.tunnel_url!} target="_blank" rel="noopener noreferrer">
+                <a href={config?.tunnel_url || ""} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </Button>
@@ -325,55 +443,117 @@ echo "   Para detenerlo: kill $CF_PID"
             </TabsTrigger>
           </TabsList>
 
-          {/* Free Tunnel - One Button */}
+          {/* Free Tunnel with Agent */}
           <TabsContent value="free" className="space-y-4">
-            <div className="p-4 rounded-lg border border-green-500/20 bg-green-500/5 space-y-3">
+            {/* Step 1: VPS IP */}
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-700 dark:text-green-400">
-                  Quick Tunnel - Un solo comando
-                </span>
+                <Server className="h-4 w-4 text-muted-foreground" />
+                <Label className="font-medium">Paso 1: Configura tu VPS</Label>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Genera un script que instala cloudflared en tu VPS/Ubuntu, inicia el tunnel
-                y reporta la URL automáticamente al sistema.
+              <div className="grid grid-cols-[1fr,100px] gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">IP del VPS</Label>
+                  <Input
+                    value={vpsIp}
+                    onChange={(e) => setVpsIp(e.target.value)}
+                    placeholder="123.456.789.0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Puerto</Label>
+                  <Input
+                    value={vpsPort}
+                    onChange={(e) => setVpsPort(e.target.value)}
+                    placeholder="3847"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Step 2: Install Agent (one time) */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Download className="h-4 w-4 text-muted-foreground" />
+                <Label className="font-medium">Paso 2: Instala el agente (una sola vez)</Label>
+              </div>
+              <Button
+                onClick={() => saveAgentConfigMutation.mutate()}
+                disabled={saveAgentConfigMutation.isPending || !vpsIp.trim()}
+                variant="outline"
+                className="w-full"
+              >
+                {saveAgentConfigMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Copy className="h-4 w-4 mr-2" />
+                )}
+                Copiar script de instalación
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Pega el script en tu VPS y ejecútalo con <code className="bg-muted px-1 rounded">sudo bash</code>. Solo necesitas hacerlo <strong>una vez</strong>.
               </p>
             </div>
 
-            <Button
-              onClick={() => generateScriptMutation.mutate()}
-              disabled={generateScriptMutation.isPending}
-              className="w-full h-12 text-base"
-              size="lg"
-            >
-              {generateScriptMutation.isPending ? (
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-5 w-5 mr-2" />
-              )}
-              Generar Script de Instalación
-            </Button>
+            {/* Step 3: Control Panel */}
+            {agentConfigured && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Cloud className="h-4 w-4 text-muted-foreground" />
+                  <Label className="font-medium">Paso 3: Controla el tunnel</Label>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    onClick={() => agentActionMutation.mutate("start")}
+                    disabled={agentActionMutation.isPending || !!isRunning}
+                    className="w-full"
+                  >
+                    {agentActionMutation.isPending && agentActionMutation.variables === "start" ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4 mr-1" />
+                    )}
+                    Iniciar
+                  </Button>
+                  <Button
+                    onClick={() => agentActionMutation.mutate("stop")}
+                    disabled={agentActionMutation.isPending || !isRunning}
+                    variant="destructive"
+                    className="w-full"
+                  >
+                    {agentActionMutation.isPending && agentActionMutation.variables === "stop" ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Square className="h-4 w-4 mr-1" />
+                    )}
+                    Detener
+                  </Button>
+                  <Button
+                    onClick={() => agentActionMutation.mutate("status")}
+                    disabled={agentActionMutation.isPending}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {agentActionMutation.isPending && agentActionMutation.variables === "status" ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    Estado
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="p-3 rounded-lg bg-muted/50 border">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="text-xs text-muted-foreground space-y-1">
-                  <p><strong>1.</strong> Haz clic en el botón → se copia el script</p>
-                  <p><strong>2.</strong> Pégalo en tu VPS: <code className="bg-background px-1 rounded">bash -c "$(xclip -o)"</code> o crea un archivo .sh</p>
-                  <p><strong>3.</strong> La URL aparecerá aquí automáticamente ✨</p>
-                  <p className="text-yellow-600 dark:text-yellow-400">⚠️ La URL cambia si reinicias el tunnel (modo gratis)</p>
+                  <p>⚠️ Asegúrate de abrir el puerto <strong>{vpsPort || "3847"}</strong> en el firewall del VPS</p>
+                  <p>La URL del Quick Tunnel cambia si reinicias el proceso</p>
                 </div>
               </div>
             </div>
-
-            {config?.tunnel_id && !isRunning && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5">
-                <RefreshCw className="h-4 w-4 animate-spin text-yellow-600" />
-                <span className="text-sm text-yellow-700 dark:text-yellow-400">
-                  Esperando que el script reporte la URL del tunnel...
-                </span>
-              </div>
-            )}
           </TabsContent>
 
           {/* Paid Token Tab */}
@@ -381,25 +561,16 @@ echo "   Para detenerlo: kill $CF_PID"
             <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-3">
               <div className="flex items-center gap-2">
                 <Globe className="h-5 w-5 text-primary" />
-                <span className="font-medium text-primary">
-                  Named Tunnel - Dominio Personalizado
-                </span>
+                <span className="font-medium text-primary">Named Tunnel - Dominio Personalizado</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Usa tu propio dominio con HTTPS permanente.
-                Requiere cuenta de Cloudflare y API Token.
+                Usa tu propio dominio con HTTPS permanente. Requiere cuenta de Cloudflare y API Token.
               </p>
             </div>
-
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>API Token de Cloudflare</Label>
-                <Input
-                  type="password"
-                  value={apiToken}
-                  onChange={(e) => setApiToken(e.target.value)}
-                  placeholder="Tu API token de Cloudflare"
-                />
+                <Input type="password" value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder="Tu API token" />
                 <p className="text-xs text-muted-foreground">
                   Obtenlo en{" "}
                   <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
@@ -416,17 +587,8 @@ echo "   Para detenerlo: kill $CF_PID"
                 <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="portal.tudominio.com" />
               </div>
             </div>
-
-            <Button
-              onClick={() => savePaidMutation.mutate()}
-              disabled={savePaidMutation.isPending || !apiToken.trim()}
-              className="w-full"
-            >
-              {savePaidMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Key className="h-4 w-4 mr-2" />
-              )}
+            <Button onClick={() => savePaidMutation.mutate()} disabled={savePaidMutation.isPending || !apiToken.trim()} className="w-full">
+              {savePaidMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Key className="h-4 w-4 mr-2" />}
               Guardar configuración Pro
             </Button>
           </TabsContent>
