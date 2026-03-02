@@ -3,7 +3,18 @@ set -e
 
 echo "=== Configurando PHPNuxBill ==="
 
-CONFIG_FILE="/var/www/html/config.php"
+# ── 1. Detect the actual PHPNuxBill root ──
+NUXROOT="/var/www/html"
+
+# Some git clones put everything under a subdirectory
+if [ ! -f "$NUXROOT/index.php" ] && [ -f "$NUXROOT/phpnuxbill/index.php" ]; then
+  cp -r "$NUXROOT/phpnuxbill/"* "$NUXROOT/" 2>/dev/null || true
+  cp -r "$NUXROOT/phpnuxbill/."* "$NUXROOT/" 2>/dev/null || true
+  rm -rf "$NUXROOT/phpnuxbill"
+  echo "Archivos movidos al webroot ✓"
+fi
+
+CONFIG_FILE="$NUXROOT/config.php"
 
 # Generate APP_KEY deterministically from env
 APP_KEY=$(echo -n "${NUXBILL_DB_PASS}${NUXBILL_DB_HOST}" | md5sum | cut -d' ' -f1)
@@ -32,7 +43,7 @@ PHPEOF
   echo "PHPNuxBill config.php creado ✓"
 fi
 
-# Wait for MariaDB
+# ── 2. Wait for MariaDB ──
 echo "Esperando MariaDB..."
 CONNECTED=false
 for i in $(seq 1 30); do
@@ -45,7 +56,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-# Auto-install PHPNuxBill schema if tbl_appconfig doesn't exist
+# ── 3. Auto-install PHPNuxBill schema ──
 if [ "$CONNECTED" = true ]; then
   TABLE_CHECK=$(php -r "
     \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
@@ -57,51 +68,81 @@ if [ "$CONNECTED" = true ]; then
   if [ "$TABLE_CHECK" = "0" ]; then
     echo "Tablas de PHPNuxBill no encontradas, buscando schema..."
 
-    # Look for install SQL in common locations
     SCHEMA_FOUND=false
+
+    # Search all possible SQL files
+    INSTALL_SQL=$(find "$NUXROOT" -name "*.sql" -path "*/install/*" 2>/dev/null | head -1)
+    SYSTEM_SQL=$(find "$NUXROOT" -name "phpnuxbill.sql" 2>/dev/null | head -1)
+
     for sql_file in \
-      /var/www/html/install/phpnuxbill.sql \
-      /var/www/html/install/sql/phpnuxbill.sql \
-      /var/www/html/system/uploads/phpnuxbill.sql \
-      /var/www/html/install/database.sql \
-      /var/www/html/install/install.sql \
-      /var/www/html/sql/install.sql; do
+      "$INSTALL_SQL" \
+      "$SYSTEM_SQL" \
+      "$NUXROOT/install/phpnuxbill.sql" \
+      "$NUXROOT/install/sql/phpnuxbill.sql" \
+      "$NUXROOT/system/uploads/phpnuxbill.sql" \
+      "$NUXROOT/install/database.sql" \
+      "$NUXROOT/install/install.sql" \
+      "$NUXROOT/sql/install.sql"; do
+      [ -z "$sql_file" ] && continue
       if [ -f "$sql_file" ]; then
         echo "Importando schema: $sql_file"
-
-        if command -v mysql >/dev/null 2>&1; then
-          mysql -h "${NUXBILL_DB_HOST:-mariadb}" \
-            -u "${NUXBILL_DB_USER:-nuxbill}" \
-            -p"${NUXBILL_DB_PASS:-changeme}" \
-            "${NUXBILL_DB_NAME:-phpnuxbill}" < "$sql_file" 2>/dev/null && SCHEMA_FOUND=true
-        else
-          php -r "
-            \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
-            \$sql = file_get_contents('$sql_file');
-            \$c->multi_query(\$sql);
-            while (\$c->next_result()) {;}
-            \$c->close();
-            echo 'OK';
-          " 2>/dev/null && SCHEMA_FOUND=true
-        fi
-
+        php -r "
+          \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+          \$sql = file_get_contents('$sql_file');
+          \$c->multi_query(\$sql);
+          while (\$c->next_result()) {;}
+          \$c->close();
+          echo 'OK';
+        " 2>/dev/null && SCHEMA_FOUND=true
         if [ "$SCHEMA_FOUND" = true ]; then
           break
         fi
       fi
     done
 
-    if [ "$SCHEMA_FOUND" = false ]; then
-      echo "⚠ No se encontró schema SQL automático."
-      echo "PHPNuxBill requerirá instalación manual vía /nuxbill/install"
-      echo "Archivos de instalación disponibles:"
-      find /var/www/html/install -name "*.sql" -o -name "*.php" 2>/dev/null | head -10
-    else
+    if [ "$SCHEMA_FOUND" = true ]; then
       echo "Schema PHPNuxBill importado ✓"
+
+      # Create default admin user (admin / admin)
+      php -r "
+        \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+        \$r = \$c->query(\"SELECT id FROM tbl_users WHERE username='admin'\");
+        if (\$r && \$r->num_rows == 0) {
+          \$hash = md5('admin');
+          \$c->query(\"INSERT INTO tbl_users (username, password, fullname, user_type) VALUES ('admin', '\$hash', 'Administrator', 'Admin')\");
+          echo 'Admin user created';
+        }
+        \$c->close();
+      " 2>/dev/null || true
+    else
+      echo "⚠ No se encontró schema SQL automático."
+      echo "PHPNuxBill requerirá instalación manual."
+      echo "Buscando archivos SQL disponibles:"
+      find "$NUXROOT" -name "*.sql" 2>/dev/null | head -10
+
+      # If install/ directory exists, set it up for web-based install
+      if [ -d "$NUXROOT/install" ]; then
+        echo "Directorio install/ disponible — acceda vía navegador para instalar"
+        chown -R www-data:www-data "$NUXROOT/install"
+      fi
     fi
   else
     echo "PHPNuxBill schema ya existe ✓"
   fi
 fi
+
+# ── 4. Set stage to Live to skip installer redirect ──
+if [ "$CONNECTED" = true ] && [ "$TABLE_CHECK" = "1" ] || [ "${SCHEMA_FOUND:-false}" = true ]; then
+  # Update app stage in DB to skip install wizard
+  php -r "
+    \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+    \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('app_stage', 'Live') ON DUPLICATE KEY UPDATE value='Live'\");
+    \$c->close();
+  " 2>/dev/null || true
+fi
+
+# ── 5. Ensure correct permissions ──
+chown -R www-data:www-data "$NUXROOT"
+chmod -R 755 "$NUXROOT"
 
 exec "$@"
