@@ -2,7 +2,7 @@ FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y \
     git unzip libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
-    libmariadb-dev libgd-dev default-mysql-client \
+    libmariadb-dev libgd-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) gd mysqli pdo pdo_mysql \
     && a2enmod rewrite \
@@ -14,7 +14,7 @@ RUN git clone --depth 1 https://github.com/lirantal/daloradius.git /tmp/daloradi
     && rm -rf /tmp/daloradius \
     && rm -f /var/www/html/index.html
 
-# Fallback entrypoint for newer daloRADIUS layouts that don't ship /index.php at web root
+# Fallback entrypoint for newer daloRADIUS layouts
 RUN if [ ! -f /var/www/html/index.php ]; then \
       printf '%s\n' \
         "<?php" \
@@ -43,6 +43,13 @@ RUN sed -i 's/80/8000/g' /etc/apache2/sites-available/000-default.conf \
 
 # Enable .htaccess
 RUN sed -i '/<Directory \/var\/www/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+
+# Suppress PHP warnings in production
+RUN { \
+      echo 'display_errors=Off'; \
+      echo 'log_errors=On'; \
+      echo 'error_reporting=E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_WARNING'; \
+    } > /usr/local/etc/php/conf.d/zz-production.ini
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
