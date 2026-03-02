@@ -82,6 +82,7 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
     1)
       echo -e "${YELLOW}Deteniendo servicios...${NC}"
       cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
+      cd /root
       rm -rf "$INSTALL_DIR"
       echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
       ;;
