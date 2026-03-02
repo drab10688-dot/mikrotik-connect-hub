@@ -27,8 +27,20 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
   }
 }
 
-export async function verifyDeviceAccess(userId: string, role: string, mikrotikId: string): Promise<boolean> {
+function normalizeStringParam(value: string | string[] | undefined, paramName: string): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0];
+  throw new Error(`Parámetro inválido: ${paramName}`);
+}
+
+export async function verifyDeviceAccess(
+  userId: string,
+  role: string,
+  mikrotikIdParam: string | string[]
+): Promise<boolean> {
   if (role === 'super_admin') return true;
+
+  const mikrotikId = normalizeStringParam(mikrotikIdParam, 'mikrotikId');
 
   const { rows } = await pool.query(
     `SELECT id FROM user_mikrotik_access WHERE user_id = $1 AND mikrotik_id = $2

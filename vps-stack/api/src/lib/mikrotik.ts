@@ -57,7 +57,15 @@ export async function mikrotikRequest(
   }
 }
 
-export async function getDeviceConfig(pool: any, mikrotikId: string): Promise<MikroTikConfig> {
+function normalizeStringParam(value: string | string[] | undefined, paramName: string): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0];
+  throw new Error(`Parámetro inválido: ${paramName}`);
+}
+
+export async function getDeviceConfig(pool: any, mikrotikIdParam: string | string[]): Promise<MikroTikConfig> {
+  const mikrotikId = normalizeStringParam(mikrotikIdParam, 'mikrotikId');
+
   const { rows } = await pool.query(
     'SELECT host, port, username, password FROM mikrotik_devices WHERE id = $1',
     [mikrotikId]

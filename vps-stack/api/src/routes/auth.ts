@@ -36,10 +36,13 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
+    const jwtSecret = process.env.JWT_SECRET || 'changeme';
+    const jwtExpiresIn = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
+
     const token = jwt.sign(
       { userId: rows[0].id, role: rows[0].role || 'user' },
-      process.env.JWT_SECRET || 'changeme',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      jwtSecret,
+      { expiresIn: jwtExpiresIn }
     );
 
     res.json({
