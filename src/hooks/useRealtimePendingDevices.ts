@@ -1,9 +1,13 @@
 import { useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from './useAuth';
+import { devicesApi } from '@/lib/api-client';
 
+/**
+ * Polls for pending devices instead of using Supabase Realtime.
+ * Checks every 30 seconds for new pending devices.
+ */
 export const useRealtimePendingDevices = () => {
   const queryClient = useQueryClient();
   const { isSuperAdmin } = useAuth();
@@ -11,34 +15,18 @@ export const useRealtimePendingDevices = () => {
   useEffect(() => {
     if (!isSuperAdmin) return;
 
-    console.log('Setting up realtime subscription for pending devices...');
+    let previousPendingCount = -1;
 
-    const channel = supabase
-      .channel('mikrotik-devices-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'mikrotik_devices',
-          filter: 'status=eq.pending'
-        },
-        async (payload) => {
-          console.log('New pending device detected:', payload);
+    const checkPendingDevices = async () => {
+      try {
+        const devices = await devicesApi.list();
+        const pendingDevices = devices?.filter((d: any) => d.status === 'pending') || [];
+        const currentCount = pendingDevices.length;
 
-          // Fetch the user profile for the device creator
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name, email')
-            .eq('user_id', payload.new.created_by)
-            .single();
-
-          const deviceName = payload.new.name;
-          const userName = profile?.full_name || profile?.email || 'Usuario desconocido';
-
-          // Show toast notification
+        if (previousPendingCount >= 0 && currentCount > previousPendingCount) {
+          const newDevice = pendingDevices[0];
           toast.info('Nuevo dispositivo pendiente', {
-            description: `${userName} ha agregado "${deviceName}"`,
+            description: `Se ha agregado "${newDevice?.name || 'dispositivo'}"`,
             duration: 10000,
             action: {
               label: 'Ver',
@@ -48,36 +36,23 @@ export const useRealtimePendingDevices = () => {
             }
           });
 
-          // Invalidate queries to refresh the data
           queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
           queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending'] });
           queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending-count'] });
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'mikrotik_devices'
-        },
-        (payload) => {
-          console.log('Device status updated:', payload);
 
-          // Invalidate queries to refresh the data
-          queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
-          queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending'] });
-          queryClient.invalidateQueries({ queryKey: ['mikrotik-devices-pending-count'] });
-          queryClient.invalidateQueries({ queryKey: ['user-device-access'] });
-        }
-      )
-      .subscribe((status) => {
-        console.log('Realtime subscription status:', status);
-      });
-
-    return () => {
-      console.log('Cleaning up realtime subscription...');
-      supabase.removeChannel(channel);
+        previousPendingCount = currentCount;
+      } catch (error) {
+        console.error('Error checking pending devices:', error);
+      }
     };
+
+    // Initial check
+    checkPendingDevices();
+
+    // Poll every 30 seconds
+    const interval = setInterval(checkPendingDevices, 30000);
+
+    return () => clearInterval(interval);
   }, [isSuperAdmin, queryClient]);
 };

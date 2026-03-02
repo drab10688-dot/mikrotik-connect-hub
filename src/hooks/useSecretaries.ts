@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { secretariesApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { useAuth } from './useAuth';
 
@@ -25,68 +25,33 @@ export const useSecretaries = (mikrotikId?: string) => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  // Fetch secretary assignments with profile info
   const { data: assignments, isLoading } = useQuery({
     queryKey: ['secretary-assignments', mikrotikId],
     queryFn: async () => {
-      let query = supabase
-        .from('secretary_assignments')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (mikrotikId) {
-        query = query.eq('mikrotik_id', mikrotikId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Fetch profiles for each secretary
-      if (data && data.length > 0) {
-        const secretaryIds = data.map(a => a.secretary_id);
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, email, full_name')
-          .in('user_id', secretaryIds);
-
-        // Merge profile data with assignments
-        return data.map(assignment => ({
-          ...assignment,
-          secretary_email: profiles?.find(p => p.user_id === assignment.secretary_id)?.email || null,
-          secretary_name: profiles?.find(p => p.user_id === assignment.secretary_id)?.full_name || null,
-        }));
-      }
-
-      return data;
+      if (!mikrotikId) return [];
+      return await secretariesApi.assignments(mikrotikId);
     },
     enabled: !!mikrotikId,
   });
 
-  // Assign secretary mutation
   const assignSecretaryMutation = useMutation({
     mutationFn: async (params: AssignSecretaryParams) => {
-      const { error } = await supabase
-        .from('secretary_assignments')
-        .insert({
-          secretary_id: params.secretaryId,
-          mikrotik_id: params.mikrotikId,
-          assigned_by: user?.id,
-          can_manage_pppoe: params.canManagePppoe,
-          can_manage_queues: params.canManageQueues,
-          can_create_pppoe: params.canCreatePppoe ?? true,
-          can_edit_pppoe: params.canEditPppoe ?? true,
-          can_delete_pppoe: params.canDeletePppoe ?? true,
-          can_disconnect_pppoe: params.canDisconnectPppoe ?? true,
-          can_toggle_pppoe: params.canTogglePppoe ?? true,
-          can_create_queues: params.canCreateQueues ?? true,
-          can_edit_queues: params.canEditQueues ?? true,
-          can_delete_queues: params.canDeleteQueues ?? true,
-          can_toggle_queues: params.canToggleQueues ?? true,
-          can_suspend_queues: params.canSuspendQueues ?? true,
-          can_reactivate_queues: params.canReactivateQueues ?? true,
-        });
-
-      if (error) throw error;
+      return await secretariesApi.assign(params.mikrotikId, {
+        secretary_id: params.secretaryId,
+        can_manage_pppoe: params.canManagePppoe,
+        can_manage_queues: params.canManageQueues,
+        can_create_pppoe: params.canCreatePppoe ?? true,
+        can_edit_pppoe: params.canEditPppoe ?? true,
+        can_delete_pppoe: params.canDeletePppoe ?? true,
+        can_disconnect_pppoe: params.canDisconnectPppoe ?? true,
+        can_toggle_pppoe: params.canTogglePppoe ?? true,
+        can_create_queues: params.canCreateQueues ?? true,
+        can_edit_queues: params.canEditQueues ?? true,
+        can_delete_queues: params.canDeleteQueues ?? true,
+        can_toggle_queues: params.canToggleQueues ?? true,
+        can_suspend_queues: params.canSuspendQueues ?? true,
+        can_reactivate_queues: params.canReactivateQueues ?? true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });
@@ -97,15 +62,9 @@ export const useSecretaries = (mikrotikId?: string) => {
     },
   });
 
-  // Remove secretary mutation
   const removeSecretaryMutation = useMutation({
     mutationFn: async (assignmentId: string) => {
-      const { error } = await supabase
-        .from('secretary_assignments')
-        .delete()
-        .eq('id', assignmentId);
-
-      if (error) throw error;
+      return await secretariesApi.remove(assignmentId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });
@@ -116,19 +75,10 @@ export const useSecretaries = (mikrotikId?: string) => {
     },
   });
 
-  // Update secretary permissions mutation
   const updateSecretaryMutation = useMutation({
-    mutationFn: async (params: { 
-      assignmentId: string;
-      [key: string]: any;
-    }) => {
+    mutationFn: async (params: { assignmentId: string; [key: string]: any }) => {
       const { assignmentId, ...updateData } = params;
-      const { error } = await supabase
-        .from('secretary_assignments')
-        .update(updateData)
-        .eq('id', assignmentId);
-
-      if (error) throw error;
+      return await secretariesApi.update(assignmentId, updateData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });

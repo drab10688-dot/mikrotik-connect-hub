@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, Info, CheckCircle2 } from "lucide-react";
 import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
@@ -14,9 +13,12 @@ export const SystemAlerts = () => {
     description: string;
   }[] = [];
 
+  // systemResources is already an array (from getSystemInfo)
+  const sysData = Array.isArray(systemResources) ? systemResources[0] : systemResources;
+
   // Check CPU usage
-  if (systemResources?.data?.[0]?.["cpu-load"]) {
-    const cpuLoad = parseInt(systemResources.data[0]["cpu-load"]);
+  if (sysData?.["cpu-load"]) {
+    const cpuLoad = parseInt(sysData["cpu-load"]);
     if (cpuLoad > 80) {
       alerts.push({
         type: "error",
@@ -33,9 +35,9 @@ export const SystemAlerts = () => {
   }
 
   // Check memory usage
-  if (systemResources?.data?.[0]?.["free-memory"] && systemResources?.data?.[0]?.["total-memory"]) {
-    const freeMemory = parseInt(systemResources.data[0]["free-memory"]);
-    const totalMemory = parseInt(systemResources.data[0]["total-memory"]);
+  if (sysData?.["free-memory"] && sysData?.["total-memory"]) {
+    const freeMemory = parseInt(sysData["free-memory"]);
+    const totalMemory = parseInt(sysData["total-memory"]);
     const usedPercentage = ((totalMemory - freeMemory) / totalMemory) * 100;
 
     if (usedPercentage > 90) {
@@ -54,7 +56,10 @@ export const SystemAlerts = () => {
   }
 
   // Check connection load
-  const totalConnections = (hotspotActive?.data?.length || 0) + (pppoeActive?.data?.length || 0);
+  const hotspotCount = Array.isArray(hotspotActive) ? hotspotActive.length : 0;
+  const pppoeCount = Array.isArray(pppoeActive) ? pppoeActive.length : 0;
+  const totalConnections = hotspotCount + pppoeCount;
+  
   if (totalConnections > 100) {
     alerts.push({
       type: "warning",

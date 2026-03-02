@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { serviceOptionsApi } from "@/lib/api-client";
 import { toast } from "sonner";
 
 export interface ServiceOption {
@@ -28,19 +28,11 @@ export function useServiceOptions(mikrotikId: string | null | undefined) {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("service_options")
-        .select("id, name, description, price, is_default")
-        .eq("mikrotik_id", mikrotikId)
-        .order("is_default", { ascending: false })
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
+      const data = await serviceOptionsApi.list(mikrotikId);
 
       if (data && data.length > 0) {
         setServices(data);
       } else {
-        // Initialize with default services
         await initializeDefaultServices(mikrotikId);
       }
     } catch (error) {
@@ -53,24 +45,17 @@ export function useServiceOptions(mikrotikId: string | null | undefined) {
 
   const initializeDefaultServices = async (deviceId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const servicesToInsert = DEFAULT_SERVICES.map(s => ({
-        mikrotik_id: deviceId,
-        created_by: user.id,
-        name: s.name,
-        description: s.description,
-        price: s.price,
-        is_default: s.is_default,
-      }));
-
-      const { data, error } = await supabase
-        .from("service_options")
-        .insert(servicesToInsert)
-        .select("id, name, description, price, is_default");
-
-      if (error) throw error;
+      for (const s of DEFAULT_SERVICES) {
+        await serviceOptionsApi.create({
+          mikrotik_id: deviceId,
+          name: s.name,
+          description: s.description,
+          price: s.price,
+          is_default: s.is_default,
+        });
+      }
+      // Refetch after creation
+      const data = await serviceOptionsApi.list(deviceId);
       if (data) setServices(data);
     } catch (error) {
       console.error("Error initializing services:", error);
@@ -79,17 +64,8 @@ export function useServiceOptions(mikrotikId: string | null | undefined) {
 
   const updateService = async (id: string, updates: Partial<Pick<ServiceOption, "price" | "description">>) => {
     try {
-      const { error } = await supabase
-        .from("service_options")
-        .update(updates)
-        .eq("id", id);
-
-      if (error) throw error;
-
-      setServices(prev => prev.map(s => 
-        s.id === id ? { ...s, ...updates } : s
-      ));
-      
+      await serviceOptionsApi.update(id, updates);
+      setServices(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
       return true;
     } catch (error) {
       console.error("Error updating service:", error);
@@ -102,51 +78,32 @@ export function useServiceOptions(mikrotikId: string | null | undefined) {
     if (!mikrotikId) return false;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user");
-
-      const { data, error } = await supabase
-        .from("service_options")
-        .insert({
-          mikrotik_id: mikrotikId,
-          created_by: user.id,
-          name,
-          description,
-          price,
-          is_default: false,
-        })
-        .select("id, name, description, price, is_default")
-        .single();
-
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Ya existe un servicio con ese nombre");
-          return false;
-        }
-        throw error;
-      }
+      const data = await serviceOptionsApi.create({
+        mikrotik_id: mikrotikId,
+        name,
+        description,
+        price,
+        is_default: false,
+      });
 
       if (data) {
         setServices(prev => [...prev, data]);
         toast.success("Servicio agregado");
       }
       return true;
-    } catch (error) {
-      console.error("Error adding service:", error);
-      toast.error("Error al agregar servicio");
+    } catch (error: any) {
+      if (error.message?.includes('duplicate') || error.status === 409) {
+        toast.error("Ya existe un servicio con ese nombre");
+      } else {
+        toast.error("Error al agregar servicio");
+      }
       return false;
     }
   };
 
   const deleteService = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("service_options")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-
+      await serviceOptionsApi.delete(id);
       setServices(prev => prev.filter(s => s.id !== id));
       toast.success("Servicio eliminado");
       return true;
@@ -171,18 +128,11 @@ export function useServiceOptions(mikrotikId: string | null | undefined) {
   };
 }
 
-// Helper function to get service price by name (for use in forms)
 export async function getServicePriceFromDB(mikrotikId: string, serviceName: string): Promise<number> {
   try {
-    const { data, error } = await supabase
-      .from("service_options")
-      .select("price")
-      .eq("mikrotik_id", mikrotikId)
-      .eq("name", serviceName)
-      .single();
-
-    if (error) return 0;
-    return data?.price || 0;
+    const services = await serviceOptionsApi.list(mikrotikId);
+    const service = services?.find((s: any) => s.name === serviceName);
+    return service?.price || 0;
   } catch {
     return 0;
   }
