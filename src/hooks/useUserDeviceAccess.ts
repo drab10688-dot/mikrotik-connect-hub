@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { devicesApi, secretariesApi } from "@/lib/api-client";
 import { useAuth } from "./useAuth";
 
 export const useUserDeviceAccess = () => {
@@ -10,56 +10,23 @@ export const useUserDeviceAccess = () => {
     queryFn: async () => {
       if (!user) return [];
 
-      if (isSuperAdmin) {
-        // Super admins see all devices
-        const { data, error } = await supabase
-          .from('mikrotik_devices')
-          .select('*')
-          .order('name');
-
-        if (error) throw error;
-        return data;
+      if (isSuperAdmin || isAdmin) {
+        // Admins and super admins see their devices from the API
+        return await devicesApi.list();
       } else if (isSecretary) {
-        // Secretaries see their assigned devices - fetch and filter client-side
-        const { data, error } = await supabase
-          .from('secretary_assignments')
-          .select(`
-            mikrotik_devices (*)
-          `)
-          .eq('secretary_id', user.id);
-
-        if (error) throw error;
-        // Filter to only active devices client-side
-        return data
-          .map((assignment: any) => assignment.mikrotik_devices)
-          .filter((device: any) => device && device.status === 'active');
-      } else if (isAdmin) {
-        // Regular admins only see assigned active devices
-        const { data, error } = await supabase
-          .from('user_mikrotik_access')
-          .select('mikrotik_devices(*)')
-          .eq('user_id', user.id);
-
-        if (error) throw error;
-        return data
-          .map((access: any) => access.mikrotik_devices)
-          .filter((device: any) => device && device.status === 'active');
+        // Secretaries see assigned devices
+        const assignments = await secretariesApi.myAssignments();
+        return assignments
+          .map((a: any) => a.mikrotik_devices || a.device)
+          .filter((d: any) => d && d.status === 'active');
       } else {
-        // Regular users see their own devices (both active and pending)
-        const { data, error } = await supabase
-          .from('mikrotik_devices')
-          .select('*')
-          .eq('created_by', user.id)
-          .order('name');
-
-        if (error) throw error;
-        return data;
+        // Regular users see their own devices
+        return await devicesApi.list();
       }
     },
     enabled: !!user && !authLoading,
   });
 
-  // Check if user has device access - secretaries need at least one assigned device
   const hasDeviceAccess = (devices && devices.length > 0) || isSuperAdmin;
 
   return {

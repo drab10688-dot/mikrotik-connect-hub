@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { authApi, setToken, setStoredUser } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,37 +34,9 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      // Sign up the user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-      });
-
-      if (authError) throw authError;
-
-      if (authData.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: authData.user.id,
-            email: formData.email,
-            full_name: formData.fullName,
-          });
-
-        if (profileError) throw profileError;
-
-        // Assign default 'user' role
-        const { error: roleError } = await supabase
-          .from('user_roles')
-          .insert({
-            user_id: authData.user.id,
-            role: 'user',
-          });
-
-        if (roleError) throw roleError;
-      }
-
+      const { token, user } = await authApi.signup(formData.email, formData.password, formData.fullName);
+      setToken(token);
+      setStoredUser(user);
       toast.success('Cuenta creada exitosamente');
       navigate('/dashboard');
     } catch (error: any) {

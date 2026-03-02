@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { vouchersApi } from '@/lib/api-client';
 
 export interface VoucherSaleRecord {
   id: string;
@@ -22,23 +22,12 @@ export const useVoucherSalesHistory = (mikrotikId?: string) => {
   const { data: salesHistory, isLoading } = useQuery({
     queryKey: ['voucher-sales-history', mikrotikId],
     queryFn: async () => {
-      let query = supabase
-        .from('voucher_sales_history')
-        .select('*')
-        .order('expired_at', { ascending: false });
-
-      if (mikrotikId) {
-        query = query.eq('mikrotik_id', mikrotikId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as VoucherSaleRecord[];
+      if (!mikrotikId) return [];
+      return await vouchersApi.salesHistory(mikrotikId) as VoucherSaleRecord[];
     },
     enabled: !!mikrotikId,
   });
 
-  // Calculate stats for different periods
   const calculateStats = (records: VoucherSaleRecord[] | undefined) => {
     if (!records) return { today: 0, week: 0, month: 0, total: 0, revenue: 0 };
     

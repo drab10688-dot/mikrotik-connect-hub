@@ -33,10 +33,9 @@ export const useRealtimeNotifications = () => {
       read: false,
     };
 
-    setNotifications(prev => [newNotification, ...prev].slice(0, 50)); // Keep last 50
+    setNotifications(prev => [newNotification, ...prev].slice(0, 50));
     setUnreadCount(prev => prev + 1);
 
-    // Show toast notification
     toast({
       title: notification.title,
       description: notification.description,
@@ -46,16 +45,15 @@ export const useRealtimeNotifications = () => {
 
   // Monitor Hotspot connections
   useEffect(() => {
-    if (!hotspotActive?.data || !prevHotspotActive.current) {
-      prevHotspotActive.current = hotspotActive?.data || [];
+    const currentData = Array.isArray(hotspotActive) ? hotspotActive : [];
+    if (!currentData.length || !prevHotspotActive.current) {
+      prevHotspotActive.current = currentData;
       return;
     }
 
-    const current = hotspotActive.data;
     const previous = prevHotspotActive.current;
 
-    // Check for new connections
-    const newConnections = current.filter(
+    const newConnections = currentData.filter(
       (user: any) => !previous.find((p: any) => p[".id"] === user[".id"])
     );
 
@@ -68,9 +66,8 @@ export const useRealtimeNotifications = () => {
       });
     });
 
-    // Check for disconnections
     const disconnections = previous.filter(
-      (user: any) => !current.find((c: any) => c[".id"] === user[".id"])
+      (user: any) => !currentData.find((c: any) => c[".id"] === user[".id"])
     );
 
     disconnections.forEach((user: any) => {
@@ -82,21 +79,20 @@ export const useRealtimeNotifications = () => {
       });
     });
 
-    prevHotspotActive.current = current;
+    prevHotspotActive.current = currentData;
   }, [hotspotActive]);
 
   // Monitor PPPoE connections
   useEffect(() => {
-    if (!pppoeActive?.data || !prevPPPoEActive.current) {
-      prevPPPoEActive.current = pppoeActive?.data || [];
+    const currentData = Array.isArray(pppoeActive) ? pppoeActive : [];
+    if (!currentData.length || !prevPPPoEActive.current) {
+      prevPPPoEActive.current = currentData;
       return;
     }
 
-    const current = pppoeActive.data;
     const previous = prevPPPoEActive.current;
 
-    // Check for new connections
-    const newConnections = current.filter(
+    const newConnections = currentData.filter(
       (user: any) => !previous.find((p: any) => p[".id"] === user[".id"])
     );
 
@@ -109,9 +105,8 @@ export const useRealtimeNotifications = () => {
       });
     });
 
-    // Check for disconnections
     const disconnections = previous.filter(
-      (user: any) => !current.find((c: any) => c[".id"] === user[".id"])
+      (user: any) => !currentData.find((c: any) => c[".id"] === user[".id"])
     );
 
     disconnections.forEach((user: any) => {
@@ -123,20 +118,17 @@ export const useRealtimeNotifications = () => {
       });
     });
 
-    prevPPPoEActive.current = current;
+    prevPPPoEActive.current = currentData;
   }, [pppoeActive]);
 
   // Monitor voucher expiry
   useEffect(() => {
-    if (!vouchers?.data) return;
+    const voucherData = Array.isArray(vouchers) ? vouchers : [];
+    if (!voucherData.length) return;
 
-    const now = new Date();
-    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
-
-    vouchers.data.forEach((voucher: any) => {
+    voucherData.forEach((voucher: any) => {
       if (!voucher.uptime || notifiedVouchers.current.has(voucher.name)) return;
 
-      // Parse uptime (format: "1h" or "2d" or "30m")
       const uptimeMatch = voucher.uptime.match(/(\d+)([mhd])/);
       if (!uptimeMatch) return;
 
@@ -145,18 +137,11 @@ export const useRealtimeNotifications = () => {
 
       let expiryMs = 0;
       switch (unit) {
-        case 'm':
-          expiryMs = value * 60 * 1000;
-          break;
-        case 'h':
-          expiryMs = value * 60 * 60 * 1000;
-          break;
-        case 'd':
-          expiryMs = value * 24 * 60 * 60 * 1000;
-          break;
+        case 'm': expiryMs = value * 60 * 1000; break;
+        case 'h': expiryMs = value * 60 * 60 * 1000; break;
+        case 'd': expiryMs = value * 24 * 60 * 60 * 1000; break;
       }
 
-      // Check if voucher expires within 1 hour
       if (expiryMs > 0 && expiryMs <= 60 * 60 * 1000) {
         addNotification({
           type: "voucher_expiry",
@@ -172,11 +157,10 @@ export const useRealtimeNotifications = () => {
   // System alerts based on resource usage
   useEffect(() => {
     const checkInterval = setInterval(() => {
-      const hotspotCount = hotspotActive?.data?.length || 0;
-      const pppoeCount = pppoeActive?.data?.length || 0;
+      const hotspotCount = Array.isArray(hotspotActive) ? hotspotActive.length : 0;
+      const pppoeCount = Array.isArray(pppoeActive) ? pppoeActive.length : 0;
       const totalConnections = hotspotCount + pppoeCount;
 
-      // Alert if too many connections (threshold: 100)
       if (totalConnections > 100) {
         addNotification({
           type: "system_alert",
@@ -185,7 +169,7 @@ export const useRealtimeNotifications = () => {
           severity: "warning",
         });
       }
-    }, 60000); // Check every minute
+    }, 60000);
 
     return () => clearInterval(checkInterval);
   }, [hotspotActive, pppoeActive]);

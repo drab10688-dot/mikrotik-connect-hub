@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { devicesApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 
 export const useUserMikrotikAccess = () => {
@@ -8,53 +8,28 @@ export const useUserMikrotikAccess = () => {
   const { data: adminUsers, isLoading: loadingUsers } = useQuery({
     queryKey: ['admin-users-list'],
     queryFn: async () => {
-      const { data: profiles, error } = await supabase
-        .from('profiles')
-        .select('*, user_roles!inner(role)')
-        .eq('user_roles.role', 'admin')
-        .order('full_name');
-
-      if (error) throw error;
-      return profiles;
+      const users = await import('@/lib/api-client').then(m => m.usersApi.list());
+      return users.filter((u: any) => u.role === 'admin');
     },
   });
 
   const { data: devices, isLoading: loadingDevices } = useQuery({
     queryKey: ['mikrotik-devices-all'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('mikrotik_devices')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => devicesApi.list(),
   });
 
   const { data: accesses, isLoading: loadingAccesses } = useQuery({
     queryKey: ['user-mikrotik-accesses'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('user_mikrotik_access')
-        .select('*, profiles(full_name, email), mikrotik_devices(name)');
-
-      if (error) throw error;
-      return data;
+      const { apiGet } = await import('@/lib/api-client');
+      return await apiGet('/devices/accesses');
     },
   });
 
   const grantAccessMutation = useMutation({
     mutationFn: async ({ userId, deviceId, grantedBy }: { userId: string; deviceId: string; grantedBy: string }) => {
-      const { error } = await supabase
-        .from('user_mikrotik_access')
-        .insert({
-          user_id: userId,
-          mikrotik_id: deviceId,
-          granted_by: grantedBy,
-        });
-
-      if (error) throw error;
+      const { apiPost } = await import('@/lib/api-client');
+      return await apiPost('/devices/accesses', { user_id: userId, mikrotik_id: deviceId, granted_by: grantedBy });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-mikrotik-accesses'] });
@@ -71,12 +46,8 @@ export const useUserMikrotikAccess = () => {
 
   const revokeAccessMutation = useMutation({
     mutationFn: async (accessId: string) => {
-      const { error } = await supabase
-        .from('user_mikrotik_access')
-        .delete()
-        .eq('id', accessId);
-
-      if (error) throw error;
+      const { apiDelete } = await import('@/lib/api-client');
+      return await apiDelete(`/devices/accesses/${accessId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-mikrotik-accesses'] });
@@ -88,11 +59,11 @@ export const useUserMikrotikAccess = () => {
   });
 
   const getDevicesByUser = (userId: string) => {
-    return accesses?.filter(access => access.user_id === userId) || [];
+    return accesses?.filter((access: any) => access.user_id === userId) || [];
   };
 
   const getUsersByDevice = (deviceId: string) => {
-    return accesses?.filter(access => access.mikrotik_id === deviceId) || [];
+    return accesses?.filter((access: any) => access.mikrotik_id === deviceId) || [];
   };
 
   return {

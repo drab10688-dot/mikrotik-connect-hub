@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { authApi, setToken, setStoredUser } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,21 +36,9 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password,
-      });
-
-      if (error) throw error;
-
-      // Obtener rol del usuario
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', data.user.id)
-        .single();
-
-      // Redirect to dashboard for all users
+      const { token, user } = await authApi.login(formData.email, formData.password);
+      setToken(token);
+      setStoredUser(user);
       navigate('/dashboard');
     } catch (error: any) {
       toast.error(error.message || 'Error al iniciar sesión');
@@ -71,9 +59,7 @@ export default function Login() {
           <div className="absolute bottom-1/3 left-1/3 w-72 h-72 bg-yellow-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }} />
         </div>
         
-        {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
-          {/* Logo circular grande */}
           <div className="mb-8 animate-fade-in">
              <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-1 hover:scale-105 transition-transform duration-500">
                <img 
@@ -84,13 +70,11 @@ export default function Login() {
              </div>
           </div>
           
-          {/* Promotional message */}
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
             <p className="text-base md:text-lg text-slate-400 max-w-md">
               Tu plataforma integral de gestión de redes MikroTik
             </p>
             
-            {/* Features */}
             <div className="flex flex-wrap justify-center gap-6 mt-8">
               <div className="flex items-center gap-2 text-cyan-400">
                 <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -106,7 +90,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Login button */}
             <div className="mt-10 animate-fade-in" style={{ animationDelay: '0.6s' }}>
               <Button 
                 onClick={() => setShowForm(true)}
@@ -130,17 +113,14 @@ export default function Login() {
     );
   }
 
-  // Formulario de login
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
       
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
-        {/* Back button */}
         <Button
           variant="ghost"
           onClick={() => setShowForm(false)}
