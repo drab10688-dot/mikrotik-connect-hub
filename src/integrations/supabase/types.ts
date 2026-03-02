@@ -200,6 +200,9 @@ export type Database = {
       }
       cloudflare_config: {
         Row: {
+          agent_host: string | null
+          agent_port: number | null
+          agent_secret: string | null
           api_token: string | null
           created_at: string
           created_by: string
@@ -214,6 +217,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          agent_host?: string | null
+          agent_port?: number | null
+          agent_secret?: string | null
           api_token?: string | null
           created_at?: string
           created_by: string
@@ -228,6 +234,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          agent_host?: string | null
+          agent_port?: number | null
+          agent_secret?: string | null
           api_token?: string | null
           created_at?: string
           created_by?: string
