@@ -397,13 +397,13 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                 <span className="font-medium">Portal de Acceso WiFi</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Este es el portal cautivo donde los clientes inician sesión para acceder a Internet.
-                El MikroTik redirige a esta URL y la autenticación se realiza vía API contra el router.
+                Portal cautivo HTTPS donde los clientes inician sesión para acceder a Internet.
+                Al activar el tunnel de Cloudflare se genera una URL HTTPS segura automáticamente.
               </p>
 
               {/* Portal URL */}
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">URL del Portal</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">URL Local del Portal</Label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-background px-3 py-2 rounded border truncate">{portalUrl}</code>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { navigator.clipboard.writeText(portalUrl); toast.success("URL copiada"); }}>
@@ -415,28 +415,117 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
               {/* Tunnel URL if active */}
               {isRunning && config?.tunnel_url && (
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">URL HTTPS (Cloudflare)</Label>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    🔒 URL HTTPS (Cloudflare Tunnel)
+                  </Label>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-background px-3 py-2 rounded border truncate text-green-600">{config.tunnel_url}</code>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { navigator.clipboard.writeText(config.tunnel_url); toast.success("URL copiada"); }}>
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    ✅ Usa esta URL en el <strong>Walled Garden</strong> del MikroTik para redirigir a los clientes
+                  <p className="text-[10px] text-green-600 font-medium">
+                    ✅ HTTPS activo — Usa esta URL en el MikroTik
                   </p>
                 </div>
               )}
 
-              {/* Quick instructions */}
-              <div className="p-3 rounded-lg bg-background border space-y-2">
-                <p className="text-xs font-medium">Configuración en MikroTik:</p>
-                <ol className="text-[11px] text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>Ir a <code className="bg-muted px-1 rounded">IP → Hotspot → Server Profiles</code></li>
-                  <li>En <strong>Login</strong> → <strong>Login Page</strong>: pegar la URL del portal</li>
-                  <li>En <strong>Walled Garden</strong>: agregar la URL del tunnel como permitido</li>
-                  <li>En <strong>Walled Garden IP</strong>: agregar la IP del VPS</li>
-                </ol>
+              {/* MikroTik Configuration Guide */}
+              <div className="p-3 rounded-lg bg-background border space-y-3">
+                <p className="text-xs font-medium flex items-center gap-1.5">
+                  <Terminal className="h-3.5 w-3.5" />
+                  Configuración en MikroTik (Terminal)
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Copia y pega estos comandos en la terminal de tu MikroTik para redirigir a los clientes al portal:
+                </p>
+                
+                {/* Script 1: Walled Garden */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] font-medium text-muted-foreground">1. Walled Garden (permitir acceso al portal)</Label>
+                    <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
+                      const vpsIpLocal = vpsHost || "TU_IP_VPS";
+                      const script = `/ip hotspot walled-garden\nadd dst-host=${vpsIpLocal} action=allow comment="OmniSync Portal"\nadd dst-host=*.trycloudflare.com action=allow comment="Cloudflare Tunnel HTTPS"`;
+                      navigator.clipboard.writeText(script);
+                      toast.success("Script Walled Garden copiado");
+                    }}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <pre className="text-[10px] bg-muted p-2 rounded border overflow-x-auto whitespace-pre font-mono">
+{`/ip hotspot walled-garden
+add dst-host=${vpsHost || "TU_IP_VPS"} action=allow comment="OmniSync Portal"
+add dst-host=*.trycloudflare.com action=allow comment="Cloudflare Tunnel HTTPS"`}
+                  </pre>
+                </div>
+
+                {/* Script 2: Walled Garden IP List */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] font-medium text-muted-foreground">2. Walled Garden IP List (permitir IP del VPS)</Label>
+                    <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
+                      const vpsIpLocal = vpsHost || "TU_IP_VPS";
+                      const script = `/ip hotspot walled-garden ip\nadd dst-address=${vpsIpLocal} action=accept comment="OmniSync VPS"`;
+                      navigator.clipboard.writeText(script);
+                      toast.success("Script IP List copiado");
+                    }}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <pre className="text-[10px] bg-muted p-2 rounded border overflow-x-auto whitespace-pre font-mono">
+{`/ip hotspot walled-garden ip
+add dst-address=${vpsHost || "TU_IP_VPS"} action=accept comment="OmniSync VPS"`}
+                  </pre>
+                </div>
+
+                {/* Script 3: Login Page */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] font-medium text-muted-foreground">3. Login Page (redirigir al portal)</Label>
+                    <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
+                      const loginUrl = isRunning && config?.tunnel_url ? config.tunnel_url + "/portal" : `http://${vpsHost || "TU_IP_VPS"}/portal`;
+                      const script = `/ip hotspot profile set [find default=yes] login-by=http-chap,http-pap html-directory=hotspot login-page="${loginUrl}"`;
+                      navigator.clipboard.writeText(script);
+                      toast.success("Script Login Page copiado");
+                    }}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <pre className="text-[10px] bg-muted p-2 rounded border overflow-x-auto whitespace-pre font-mono">
+{`/ip hotspot profile set [find default=yes] \\
+  login-by=http-chap,http-pap \\
+  html-directory=hotspot \\
+  login-page="${isRunning && config?.tunnel_url ? config.tunnel_url + "/portal" : `http://${vpsHost || "TU_IP_VPS"}/portal`}"`}
+                  </pre>
+                </div>
+
+                {/* Script 4: DNS */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] font-medium text-muted-foreground">4. DNS estático (opcional, mejor rendimiento)</Label>
+                    <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
+                      const vpsIpLocal = vpsHost || "TU_IP_VPS";
+                      const script = `/ip dns static\nadd name=portal.omnisync.local address=${vpsIpLocal} comment="OmniSync Portal"`;
+                      navigator.clipboard.writeText(script);
+                      toast.success("Script DNS copiado");
+                    }}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <pre className="text-[10px] bg-muted p-2 rounded border overflow-x-auto whitespace-pre font-mono">
+{`/ip dns static
+add name=portal.omnisync.local address=${vpsHost || "TU_IP_VPS"} comment="OmniSync Portal"`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Quick note */}
+              <div className="p-2 rounded-lg border border-primary/20 bg-primary/5">
+                <p className="text-[10px] text-muted-foreground">
+                  <strong>💡 Tip:</strong> Activa el Cloudflare Tunnel en la pestaña "Cloudflare" para obtener una URL HTTPS 
+                  automática. Luego los scripts de arriba se actualizarán con la URL segura.
+                </p>
               </div>
 
               {/* Open portal preview */}

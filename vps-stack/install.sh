@@ -356,15 +356,223 @@ echo -e "${GREEN}NuxBill init SQL generado ✓${NC}"
 # Create required directories
 mkdir -p nginx/certs
 mkdir -p frontend/dist
+mkdir -p agent
+
+# ── Instalar cloudflared ──────────────────────────
+echo -e "${YELLOW}Instalando cloudflared para HTTPS del portal cautivo...${NC}"
+if ! command -v cloudflared &> /dev/null; then
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+  chmod +x /usr/local/bin/cloudflared
+  echo -e "${GREEN}cloudflared instalado ✓${NC}"
+else
+  echo -e "${GREEN}cloudflared ya instalado ✓${NC}"
+fi
+
+# ── Crear agente OmniSync (orquestador de tunnel) ──
+AGENT_PORT=3847
+AGENT_SECRET=$(openssl rand -hex 16)
+
+cat > agent/agent.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+OmniSync VPS Agent v2 - Docker Orchestrator + Cloudflare Tunnel
+Controla contenedores Docker + Quick Tunnel desde el panel
+"""
+import http.server, json, subprocess, threading, os, signal, sys, re, time
+
+PORT = int(os.environ.get("AGENT_PORT", "3847"))
+SECRET = os.environ.get("AGENT_SECRET", "")
+INSTALL_DIR = os.environ.get("INSTALL_DIR", "/opt/omnisync")
+
+tunnel_process = None
+tunnel_url = None
+tunnel_status = "stopped"
+
+def run_cmd(cmd, timeout=30):
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
+    except subprocess.TimeoutExpired:
+        return "", "timeout", 1
+
+def start_tunnel():
+    global tunnel_process, tunnel_url, tunnel_status
+    if tunnel_process and tunnel_process.poll() is None:
+        return {"status": "running", "url": tunnel_url}
+    tunnel_status = "starting"
+    tunnel_url = None
+    # Tunnel apunta al portal cautivo del VPS (Nginx puerto 80)
+    tunnel_process = subprocess.Popen(
+        ["cloudflared", "tunnel", "--url", "http://localhost:80", "--no-autoupdate"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    def read_output():
+        global tunnel_url, tunnel_status
+        for line in tunnel_process.stderr:
+            text = line.decode("utf-8", errors="ignore")
+            match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", text)
+            if match and not tunnel_url:
+                tunnel_url = match.group(0)
+                tunnel_status = "running"
+                print(f"🌐 Tunnel HTTPS: {tunnel_url}")
+    t = threading.Thread(target=read_output, daemon=True)
+    t.start()
+    for _ in range(25):
+        time.sleep(1)
+        if tunnel_url:
+            return {"status": "running", "url": tunnel_url}
+    return {"status": tunnel_status, "url": tunnel_url, "message": "Starting..."}
+
+def stop_tunnel():
+    global tunnel_process, tunnel_url, tunnel_status
+    if tunnel_process:
+        tunnel_process.terminate()
+        try: tunnel_process.wait(timeout=5)
+        except: tunnel_process.kill()
+        tunnel_process = None
+    tunnel_url = None
+    tunnel_status = "stopped"
+    os.system("pkill -f 'cloudflared tunnel' 2>/dev/null || true")
+    return {"status": "stopped"}
+
+def get_status():
+    global tunnel_process, tunnel_status, tunnel_url
+    if tunnel_process and tunnel_process.poll() is not None:
+        tunnel_status = "stopped"
+        tunnel_url = None
+        tunnel_process = None
+    containers = {}
+    stdout, _, _ = run_cmd("docker ps --format '{{.Names}}|{{.Status}}|{{.Ports}}' --filter name=omnisync")
+    if stdout:
+        for line in stdout.split('\n'):
+            parts = line.split('|')
+            if len(parts) >= 2:
+                name = parts[0].replace('omnisync-', '')
+                containers[name] = {"status": parts[1], "ports": parts[2] if len(parts) > 2 else ""}
+    disk_stdout, _, _ = run_cmd("df -h / | tail -1 | awk '{print $2,$3,$4,$5}'")
+    disk = disk_stdout.split() if disk_stdout else []
+    mem_stdout, _, _ = run_cmd("free -m | grep Mem | awk '{print $2,$3,$4}'")
+    mem = mem_stdout.split() if mem_stdout else []
+    return {
+        "tunnel": {"status": tunnel_status, "url": tunnel_url},
+        "containers": containers,
+        "cloudflared_installed": os.system("which cloudflared > /dev/null 2>&1") == 0,
+        "docker_installed": os.system("which docker > /dev/null 2>&1") == 0,
+        "system": {
+            "disk": {"total": disk[0] if disk else "?", "used": disk[1] if len(disk)>1 else "?", "free": disk[2] if len(disk)>2 else "?", "percent": disk[3] if len(disk)>3 else "?"},
+            "memory": {"total": mem[0]+"M" if mem else "?", "used": mem[1]+"M" if len(mem)>1 else "?", "free": mem[2]+"M" if len(mem)>2 else "?"}
+        }
+    }
+
+def docker_action(action, service=None):
+    compose_file = f"{INSTALL_DIR}/docker-compose.yml"
+    if action == "up":
+        svc = f" {service}" if service else ""
+        stdout, stderr, code = run_cmd(f"docker compose -f {compose_file} up -d{svc}", timeout=120)
+        return {"success": code == 0, "message": stdout or stderr}
+    elif action == "down":
+        svc = f" {service}" if service else ""
+        stdout, stderr, code = run_cmd(f"docker compose -f {compose_file} stop{svc}", timeout=60)
+        return {"success": code == 0, "message": stdout or stderr}
+    elif action == "restart":
+        svc = f" {service}" if service else ""
+        stdout, stderr, code = run_cmd(f"docker compose -f {compose_file} restart{svc}", timeout=120)
+        return {"success": code == 0, "message": stdout or stderr}
+    elif action == "logs":
+        svc = f" {service}" if service else ""
+        stdout, stderr, code = run_cmd(f"docker compose -f {compose_file} logs --tail=50{svc}", timeout=15)
+        return {"success": True, "logs": stdout or stderr}
+    return {"error": "Unknown docker action"}
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args): pass
+
+    def _check_auth(self):
+        if self.headers.get("X-Agent-Secret") != SECRET:
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Forbidden"}).encode())
+            return False
+        return True
+
+    def _respond(self, data, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def _read_body(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > 0:
+            return json.loads(self.rfile.read(length))
+        return {}
+
+    def do_GET(self):
+        if not self._check_auth(): return
+        if self.path == "/status":
+            self._respond(get_status())
+        elif self.path == "/health":
+            self._respond({"ok": True, "version": "2.0"})
+        else:
+            self._respond({"error": "Not found"}, 404)
+
+    def do_POST(self):
+        if not self._check_auth(): return
+        body = self._read_body()
+        if self.path == "/start":
+            self._respond(start_tunnel())
+        elif self.path == "/stop":
+            self._respond(stop_tunnel())
+        elif self.path == "/docker":
+            action = body.get("action", "")
+            service = body.get("service")
+            self._respond(docker_action(action, service))
+        else:
+            self._respond({"error": "Not found"}, 404)
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+
+print(f"🟢 OmniSync Agent v2 en puerto {PORT}")
+http.server.HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+PYEOF
+
+# ── Crear servicio systemd para el agente ──
+cat > /etc/systemd/system/omnisync-agent.service << EOF
+[Unit]
+Description=OmniSync VPS Agent v2 (Docker + Cloudflare Tunnel)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=$INSTALL_DIR/agent
+Environment=AGENT_PORT=${AGENT_PORT}
+Environment=AGENT_SECRET=${AGENT_SECRET}
+Environment=INSTALL_DIR=${INSTALL_DIR}
+ExecStart=/usr/bin/python3 $INSTALL_DIR/agent/agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable omnisync-agent
+echo -e "${GREEN}Agente OmniSync configurado ✓${NC}"
 
 # Firewall
 if command -v ufw &> /dev/null; then
   echo -e "${YELLOW}Abriendo puertos en firewall...${NC}"
   ufw allow 80/tcp >/dev/null 2>&1
   ufw allow 443/tcp >/dev/null 2>&1
-  ufw allow 3000/tcp >/dev/null 2>&1
-  ufw allow 8000/tcp >/dev/null 2>&1
-  ufw allow 8080/tcp >/dev/null 2>&1
+  ufw allow ${AGENT_PORT}/tcp comment "OmniSync Agent" >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
   echo -e "${GREEN}Puertos abiertos ✓${NC}"
@@ -378,6 +586,9 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
 docker compose up -d --build 2>&1 | tail -5
+
+# Start the agent
+systemctl restart omnisync-agent
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
@@ -495,9 +706,18 @@ echo "║  Panel Web:     http://$VPS_IP                            "
 echo "║  API Health:    http://$VPS_IP/api/health                 "
 echo "║  daloRADIUS:    http://$VPS_IP/daloradius/                "
 echo "║  PHPNuxBill:    http://$VPS_IP/nuxbill/                   "
+echo "║  Portal Cautivo: http://$VPS_IP/portal                   "
 echo "║                                                          ║"
-echo "║  Acceso directo por puertos:                             ║"
-echo "║  API :3000 | daloRADIUS :8000 | NuxBill :8080            ║"
+echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
+echo "║  ─────────────────────────────────────────────           ║"
+echo "║  Agente:     puerto $AGENT_PORT (activo)                  "
+echo "║  Secret:     ${AGENT_SECRET}                              "
+echo "║  cloudflared: $(cloudflared --version 2>/dev/null | head -1 || echo 'instalado')"
+echo "║                                                          ║"
+echo "║  Para activar HTTPS:                                     ║"
+echo "║  1. Ve a Servicios VPS → Cloudflare → Quick Tunnel       ║"
+echo "║  2. Ingresa IP: $VPS_IP y puerto: $AGENT_PORT            "
+echo "║  3. Haz clic en 'Iniciar' para obtener la URL HTTPS      ║"
 echo "║                                                          ║"
 echo "║  🔑 CREDENCIALES                                          ║"
 echo "║  ─────────────────────────────────────────────           ║"
@@ -511,7 +731,6 @@ echo "║    Pass:     radius                                      ║"
 echo "║                                                          ║"
 echo "║  PHPNuxBill:                                             ║"
 echo "║    URL:      http://$VPS_IP/nuxbill/                     ║"
-echo "║    Si lo pide: completar setup en /nuxbill/install       ║"
 echo "║    DB Host: mariadb | DB: phpnuxbill                     ║"
 echo "║    DB User: nuxbill | DB Pass: ${NUXBILL_DB_PASSWORD}    "
 echo "║                                                          ║"
@@ -523,6 +742,19 @@ echo "║  MariaDB (RADIUS):                                      ║"
 echo "║    DB: radius | User: radius                             ║"
 echo "║    Pass: ${RADIUS_DB_PASSWORD}                           "
 echo "║                                                          ║"
+echo "║  📡 CONFIGURAR MIKROTIK HOTSPOT                          ║"
+echo "║  ─────────────────────────────────────────────           ║"
+echo "║  1. IP → Hotspot → Server Profiles → tu_perfil           ║"
+echo "║     Login Page: http://$VPS_IP/portal                    ║"
+echo "║                                                          ║"
+echo "║  2. IP → Hotspot → Walled Garden → Add:                  ║"
+echo "║     Dst. Host: $VPS_IP                                   ║"
+echo "║     Action: allow                                        ║"
+echo "║                                                          ║"
+echo "║  3. Cuando actives el tunnel HTTPS, agregar también:     ║"
+echo "║     Dst. Host: *.trycloudflare.com                       ║"
+echo "║     Action: allow                                        ║"
+echo "║                                                          ║"
 echo "║  ⚠️  CAMBIA LAS CONTRASEÑAS DEL PANEL INMEDIATAMENTE     ║"
 echo "║                                                          ║"
 echo "╚══════════════════════════════════════════════════════════╝${NC}"
@@ -530,7 +762,8 @@ echo ""
 echo -e "${YELLOW}Comandos útiles:${NC}"
 echo "  Estado:          cd $INSTALL_DIR && docker compose ps"
 echo "  Logs:            cd $INSTALL_DIR && docker compose logs -f"
-echo "  Logs de un svc:  cd $INSTALL_DIR && docker compose logs api --tail 50"
+echo "  Agente:          systemctl status omnisync-agent"
+echo "  Logs agente:     journalctl -u omnisync-agent -f"
 echo "  Reiniciar:       cd $INSTALL_DIR && docker compose restart"
 echo "  Reconstruir:     cd $INSTALL_DIR && docker compose up -d --build"
 echo ""
