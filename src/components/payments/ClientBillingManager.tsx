@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CreateInvoiceDialog } from "./CreateInvoiceDialog";
+import CreateInvoiceDialog from "./CreateInvoiceDialog";
 
 interface ClientBillingManagerProps { mikrotikId: string | null; }
 interface Invoice { id: string; invoice_number: string; amount: number; due_date: string; status: string; paid_at: string | null; paid_via: string | null; billing_period_start: string; billing_period_end: string; client_id: string | null; contract_id: string | null; }
@@ -180,9 +180,8 @@ export function ClientBillingManager({ mikrotikId }: ClientBillingManagerProps) 
         </DialogContent>
       </Dialog>
 
-      <CreateInvoiceDialog open={createInvoiceDialogOpen} onOpenChange={setCreateInvoiceDialogOpen} mikrotikId={mikrotikId || ""}
-        clients={ispClients?.map((c: any) => ({ id: c.id, client_name: c.client_name, username: c.username || c.client_name, phone: c.phone, email: c.email, identification_number: c.identification_number, total_monthly_price: c.total_monthly_price || null, plan_or_speed: c.plan_or_speed || null })) || []}
-        loadingClients={loadingClients} />
+      <CreateInvoiceDialog mikrotikId={mikrotikId || ""}
+        clients={ispClients?.map((c: any) => ({ id: c.id, client_name: c.client_name, username: c.username || c.client_name, total_monthly_price: c.total_monthly_price || null, service_price: c.service_price || null })) || []} />
     </div>
   );
 }
