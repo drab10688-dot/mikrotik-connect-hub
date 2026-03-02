@@ -171,26 +171,6 @@ services:
     networks:
       - omnisync-net
 
-  # ============================================
-  # Netdata - Monitoreo del sistema
-  # ============================================
-  netdata:
-    image: netdata/netdata:stable
-    container_name: omnisync-netdata
-    restart: unless-stopped
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - apparmor:unconfined
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "19999:19999"
-    networks:
-      - omnisync-net
-
 volumes:
   postgres_data:
   mariadb_data:
