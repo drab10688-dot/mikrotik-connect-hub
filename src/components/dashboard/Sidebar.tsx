@@ -18,7 +18,8 @@ import {
   UserPlus,
   ImagePlus,
   X,
-  CreditCard
+  CreditCard,
+  Monitor
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -35,6 +36,7 @@ import { Receipt } from "lucide-react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Monitor, label: "Hotspot Monitor", path: "/hotspot-monitor" },
   { icon: Users, label: "Clientes", path: "/clients" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: Activity, label: "Vouchers", path: "/voucher-inventory" },
