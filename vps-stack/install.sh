@@ -431,21 +431,44 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 echo ""
 echo -e "${CYAN}Probando endpoints HTTP...${NC}"
 
+HTTP_OK=0
+HTTP_FAIL=0
+FAILED_ENDPOINTS=""
+
 test_endpoint() {
   local name=$1
   local url=$2
-  local status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null)
+  local service=${3:-}
+  local status
+
+  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "$url" 2>/dev/null || echo "000")
+
   if [ "$status" -ge 200 ] && [ "$status" -lt 400 ]; then
     echo -e "  ${GREEN}✓ $name — HTTP $status${NC}"
+    HTTP_OK=$((HTTP_OK + 1))
   else
     echo -e "  ${RED}✗ $name — HTTP $status${NC}"
+    HTTP_FAIL=$((HTTP_FAIL + 1))
+    FAILED_ENDPOINTS="$FAILED_ENDPOINTS $name"
+
+    if [ -n "$service" ]; then
+      echo -e "    ${YELLOW}Últimas líneas de $service:${NC}"
+      docker compose logs "$service" --tail 5 2>/dev/null | sed 's/^/    /'
+    fi
   fi
 }
 
-test_endpoint "Panel Web"    "http://localhost"
-test_endpoint "API Health"   "http://localhost/api/health"
-test_endpoint "daloRADIUS"   "http://localhost/daloradius/"
-test_endpoint "PHPNuxBill"   "http://localhost/nuxbill/"
+test_endpoint "Panel Web"    "http://localhost" "nginx"
+test_endpoint "API Health"   "http://localhost/api/health" "api"
+test_endpoint "daloRADIUS"   "http://localhost/daloradius/" "daloradius"
+test_endpoint "PHPNuxBill"   "http://localhost/nuxbill/" "phpnuxbill"
+
+echo ""
+echo -e "  Resultado HTTP: ${GREEN}$HTTP_OK OK${NC} / ${RED}$HTTP_FAIL fallidos${NC}"
+
+if [ "$HTTP_FAIL" -gt 0 ]; then
+  echo -e "${YELLOW}  Endpoints con fallo:${FAILED_ENDPOINTS}${NC}"
+fi
 
 if [ "$TOTAL_FAIL" -gt 0 ]; then
   echo ""

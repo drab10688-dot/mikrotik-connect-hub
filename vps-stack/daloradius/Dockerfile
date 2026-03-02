@@ -14,18 +14,27 @@ RUN git clone --depth 1 https://github.com/lirantal/daloradius.git /tmp/daloradi
     && rm -rf /tmp/daloradius \
     && rm -f /var/www/html/index.html
 
-# The newer daloRADIUS has its web root under /var/www/html/app/
-# We need to detect and fix the DocumentRoot
-RUN if [ -d /var/www/html/app ] && [ -f /var/www/html/app/index.php ]; then \
-      echo "Detected new daloRADIUS structure (app/ directory)"; \
-      sed -i 's|/var/www/html|/var/www/html/app|g' /etc/apache2/sites-available/000-default.conf; \
-      # Also update apache2.conf Directory block
-      sed -i 's|<Directory /var/www/>|<Directory /var/www/html/app/>|' /etc/apache2/apache2.conf; \
-    elif [ -f /var/www/html/index.php ]; then \
-      echo "Detected classic daloRADIUS structure"; \
-    else \
-      echo "WARNING: No index.php found, listing files:"; \
-      find /var/www/html -name "index.php" -maxdepth 3 2>/dev/null; \
+# Fallback entrypoint for newer daloRADIUS layouts that don't ship /index.php at web root
+RUN if [ ! -f /var/www/html/index.php ]; then \
+      printf '%s\n' \
+        "<?php" \
+        "\$targets = [" \
+        "  'login.php'," \
+        "  'app/users/login.php'," \
+        "  'app/operators/login.php'," \
+        "  'app/index.php'" \
+        "];" \
+        "" \
+        "foreach (\$targets as \$target) {" \
+        "  if (file_exists(__DIR__ . '/' . \$target)) {" \
+        "    header('Location: ' . \$target);" \
+        "    exit;" \
+        "  }" \
+        "}" \
+        "" \
+        "http_response_code(500);" \
+        "echo 'daloRADIUS entrypoint not found';" \
+        > /var/www/html/index.php; \
     fi
 
 # Apache config for port 8000
