@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL - Base de datos principal
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnisync-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-omnisync}
+      POSTGRES_USER: ${DB_USER:-omnisync}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme_postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - omnisync-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-omnisync}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # API Backend - Node.js/Express
+  # ============================================
+  api:
+    build: ./api
+    container_name: omnisync-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-omnisync}
+      DB_USER: ${DB_USER:-omnisync}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme_postgres}
+      JWT_SECRET: ${JWT_SECRET:-changeme_jwt_secret_min_32_chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      MIKROTIK_HOST: ${MIKROTIK_HOST:-192.168.88.1}
+      MIKROTIK_PORT: ${MIKROTIK_PORT:-443}
+      MIKROTIK_USER: ${MIKROTIK_USER:-admin}
+      MIKROTIK_PASS: ${MIKROTIK_PASS:-}
+      RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - omnisync-net
+
+  # ============================================
+  # Nginx - Reverse Proxy + Frontend
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: omnisync-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+    networks:
+      - omnisync-net
+
+  # ============================================
+  # MariaDB - Base de datos para FreeRADIUS
+  # ============================================
+  mariadb:
+    image: mariadb:11
+    container_name: omnisync-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme_mysql}
+      MYSQL_DATABASE: radius
+      MYSQL_USER: radius
+      MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - omnisync-net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # FreeRADIUS - Autenticación RADIUS
+  # ============================================
+  freeradius:
+    image: freeradius/freeradius-server:latest
+    container_name: omnisync-freeradius
+    restart: unless-stopped
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    volumes:
+      - ./radius/clients.conf:/etc/freeradius/clients.conf:ro
+      - ./radius/mods-enabled/sql:/etc/freeradius/mods-enabled/sql:ro
+      - ./radius/sites-enabled/default:/etc/freeradius/sites-enabled/default:ro
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - omnisync-net
+
+  # ============================================
+  # daloRADIUS - Panel web para RADIUS (opcional)
+  # ============================================
+  daloradius:
+    image: laucasse/daloradius:latest
+    container_name: omnisync-daloradius
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mariadb
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: radius
+      MYSQL_USER: radius
+      MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
+    ports:
+      - "8000:80"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - omnisync-net
+
+  # ============================================
+  # Netdata - Monitoreo del sistema
+  # ============================================
+  netdata:
+    image: netdata/netdata:stable
+    container_name: omnisync-netdata
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "19999:19999"
+    networks:
+      - omnisync-net
+
+volumes:
+  postgres_data:
+  mariadb_data:
+
+networks:
+  omnisync-net:
+    driver: bridge
