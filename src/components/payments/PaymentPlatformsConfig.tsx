@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { paymentPlatformsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,11 +58,7 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
     queryKey: ['payment-platforms', mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) return [];
-      const { data, error } = await supabase
-        .from('payment_platforms')
-        .select('*')
-        .eq('mikrotik_id', mikrotikId);
-      if (error) throw error;
+      const data = await paymentPlatformsApi.list(mikrotikId);
       return data;
     },
     enabled: !!mikrotikId
@@ -71,9 +67,9 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
   // Update local state when data loads
   useEffect(() => {
     if (platforms) {
-      const wompi = platforms.find(p => p.platform === 'wompi');
-      const mp = platforms.find(p => p.platform === 'mercadopago');
-      const nequi = platforms.find(p => p.platform === 'nequi');
+      const wompi = platforms.find((p: any) => p.platform === 'wompi');
+      const mp = platforms.find((p: any) => p.platform === 'mercadopago');
+      const nequi = platforms.find((p: any) => p.platform === 'nequi');
       if (wompi) {
         setWompiConfig({
           id: wompi.id,
@@ -114,32 +110,19 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
     mutationFn: async (config: PlatformConfig) => {
       if (!mikrotikId) throw new Error('No MikroTik seleccionado');
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No autenticado');
-
+      // auth logic is handled in api-client automatically
       const payload = {
         mikrotik_id: mikrotikId,
-        created_by: user.id,
         platform: config.platform,
         is_active: config.is_active,
         public_key: config.public_key || null,
         private_key: config.private_key || null,
         webhook_secret: config.webhook_secret || null,
-        environment: config.environment
+        environment: config.environment,
+        id: config.id
       };
 
-      if (config.id) {
-        const { error } = await supabase
-          .from('payment_platforms')
-          .update(payload)
-          .eq('id', config.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('payment_platforms')
-          .insert(payload);
-        if (error) throw error;
-      }
+      await paymentPlatformsApi.update(payload);
     },
     onSuccess: (_, config) => {
       const platformNames: Record<string, string> = {
@@ -150,7 +133,7 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
       toast.success(`Configuración de ${platformNames[config.platform]} guardada`);
       queryClient.invalidateQueries({ queryKey: ['payment-platforms'] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(`Error al guardar: ${error.message}`);
     }
   });
@@ -158,11 +141,7 @@ export function PaymentPlatformsConfig({ mikrotikId }: PaymentPlatformsConfigPro
   // Delete platform mutation
   const deleteMutation = useMutation({
     mutationFn: async (platformId: string) => {
-      const { error } = await supabase
-        .from('payment_platforms')
-        .delete()
-        .eq('id', platformId);
-      if (error) throw error;
+      await paymentPlatformsApi.delete(platformId);
     },
     onSuccess: () => {
       toast.success("Configuración eliminada");

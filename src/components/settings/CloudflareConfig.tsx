@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,12 +44,7 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
     queryKey: ["cloudflare-config", mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) return null;
-      const { data, error } = await supabase
-        .from("cloudflare_config")
-        .select("*")
-        .eq("mikrotik_id", mikrotikId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await vpsApi.getCloudflareConfig(mikrotikId!);
       return data;
     },
     enabled: !!mikrotikId,
@@ -83,13 +78,10 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
         updated_at: new Date().toISOString(),
       };
 
-      if (config?.id) {
-        const { error } = await supabase.from("cloudflare_config").update(payload).eq("id", config.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("cloudflare_config").insert(payload);
-        if (error) throw error;
-      }
+      await vpsApi.updateCloudflareConfig({
+        ...payload,
+        id: config?.id
+      });
 
       return { secret, port: parseInt(vpsPort) || 3847 };
     },
@@ -105,11 +97,7 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
   // Call the agent via our edge function
   const agentActionMutation = useMutation({
     mutationFn: async (action: string) => {
-      const { data, error } = await supabase.functions.invoke("cloudflare-tunnel-agent", {
-        body: { mikrotik_id: mikrotikId, action },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await vpsApi.tunnelAgent(mikrotikId!, action);
       return data;
     },
     onSuccess: (data, action) => {
@@ -156,13 +144,11 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
         created_by: user.id,
         updated_at: new Date().toISOString(),
       };
-      if (config?.id) {
-        const { error } = await supabase.from("cloudflare_config").update(payload).eq("id", config.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("cloudflare_config").insert(payload);
-        if (error) throw error;
-      }
+      
+      await vpsApi.updateCloudflareConfig({
+        ...payload,
+        id: config?.id
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
