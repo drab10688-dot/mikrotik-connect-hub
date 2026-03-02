@@ -344,3 +344,27 @@ export const transactionsApi = {
     return apiGet<any[]>(`/billing/transactions?${query}`);
   },
 };
+
+// ─── MikroTik Command API (generic) ──────────────────────
+export const mikrotikCommandApi = {
+  exec: (mikrotikId: string, command: string, params?: any) =>
+    apiPost<any>('/mikrotik/command', { mikrotik_id: mikrotikId, command, params }),
+};
+
+// ─── Accounting API ──────────────────────────────────────
+export const accountingApi = {
+  summary: (mikrotikId: string, startDate: string, endDate: string) =>
+    apiGet<any>(`/accounting/summary?mikrotik_id=${mikrotikId}&start_date=${startDate}&end_date=${endDate}`),
+};
+
+// ─── Diagnostics API ─────────────────────────────────────
+export const diagnosticsApi = {
+  run: (host: string, port: number) =>
+    apiPost<any>('/system/diagnostics', { host, port, action: 'full-diagnostic' }),
+};
+
+// ─── Hotspot Login API (public) ──────────────────────────
+export const hotspotLoginApi = {
+  login: (mikrotikId: string, username: string, password: string) =>
+    apiPost<any>('/hotspot/login', { mikrotik_id: mikrotikId, username, password }, { noAuth: true }),
+};
