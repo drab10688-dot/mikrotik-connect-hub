@@ -28,6 +28,7 @@ interface VpsService {
   port: number;
   subdomain: string;
   path?: string;
+  proxyPath?: string;
   icon: React.ElementType;
   color: string;
   defaultCreds?: string;
@@ -86,15 +87,23 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
   }, [config]);
 
   const services: VpsService[] = [
-    { name: "OmniSync Panel", description: "Panel principal de gestión ISP", port: 80, subdomain: "panel", icon: Server, color: "text-primary" },
-    { name: "API Backend", description: "API REST del servidor", port: 3000, subdomain: "api", path: "/api/health", icon: Database, color: "text-blue-500" },
-    { name: "daloRADIUS", description: "Gestión RADIUS - Auth multi-vendedor", port: 8000, subdomain: "radius", icon: Wifi, color: "text-green-500", defaultCreds: "administrator / radius" },
-    { name: "PHPNuxBill", description: "Billing Hotspot - Gestión de cobros", port: 8080, subdomain: "billing", icon: CreditCard, color: "text-amber-500" },
-    { name: "Netdata", description: "Monitoreo del servidor en tiempo real", port: 19999, subdomain: "monitor", icon: BarChart3, color: "text-purple-500" },
+    { name: "OmniSync Panel", description: "Panel principal de gestión ISP", port: 80, subdomain: "panel", proxyPath: "/", icon: Server, color: "text-primary" },
+    { name: "API Backend", description: "API REST del servidor", port: 3000, subdomain: "api", path: "/api/health", proxyPath: "/api/health", icon: Database, color: "text-blue-500" },
+    { name: "daloRADIUS", description: "Gestión RADIUS - Auth multi-vendedor", port: 8000, subdomain: "radius", proxyPath: "/daloradius/", icon: Wifi, color: "text-green-500", defaultCreds: "administrator / radius" },
+    { name: "PHPNuxBill", description: "Billing Hotspot - Gestión de cobros", port: 8080, subdomain: "billing", proxyPath: "/nuxbill/", icon: CreditCard, color: "text-amber-500" },
+    { name: "Netdata", description: "Monitoreo del servidor en tiempo real", port: 19999, subdomain: "monitor", proxyPath: "/netdata/", icon: BarChart3, color: "text-purple-500" },
   ];
 
   const getServiceUrl = (service: VpsService) => {
-    if (useDomain && cloudflareDomain) return `https://${service.subdomain}.${cloudflareDomain}${service.path || ''}`;
+    if (useDomain && cloudflareDomain) {
+      return `https://${service.subdomain}.${cloudflareDomain}${service.path || ''}`;
+    }
+
+    const isSameHost = vpsHost === window.location.hostname;
+    if (isSameHost && service.proxyPath) {
+      return `${window.location.origin}${service.proxyPath}`;
+    }
+
     return `http://${vpsHost}:${service.port}${service.path || ''}`;
   };
 
