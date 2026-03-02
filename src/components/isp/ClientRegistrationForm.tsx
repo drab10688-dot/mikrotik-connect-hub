@@ -13,7 +13,7 @@ import { ServicePricesManager } from "./ServicePricesManager";
 import { useServiceOptions, ServiceOption } from "@/hooks/useServiceOptions";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { clientsApi } from "@/lib/api-client";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { usePPPoEProfiles } from "@/hooks/useMikrotikData";
 
@@ -39,7 +39,6 @@ interface ClientFormData {
   pais: string;
   latitud: string;
   longitud: string;
-  // Campos adicionales para Simple Queues
   uploadSpeed: string;
   downloadSpeed: string;
 }
@@ -71,13 +70,9 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
   const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
   const pppoeProfiles = (pppoeProfilesData as any[]) || [];
   
-  // Hook para servicios adicionales desde la base de datos
   const { services: serviceOptions, loading: loadingServices } = useServiceOptions(mikrotikId);
 
-  // Toggle para Simple Queues vs PPPoE
   const [useSimpleQueues, setUseSimpleQueues] = useState(false);
-
-  // Sistema de precios guardados - versión actualizada para refrescar
   const [pricesVersion, setPricesVersion] = useState(0);
 
   const getSpeedPrices = (): Record<string, string> => {
@@ -90,44 +85,24 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
     return saved ? JSON.parse(saved) : {};
   };
 
-  // Lista de velocidades disponibles
   const availableSpeeds = ['1M', '2M', '3M', '4M', '5M', '6M', '8M', '10M', '15M', '20M', '25M', '30M', '50M', '100M'];
 
   const [formData, setFormData] = useState<ClientFormData>({
-    nombre: "",
-    apellidos: "",
-    clientePotencial: false,
-    numeroIdentificacion: "",
-    numeroCajaNap: "",
-    numeroPuertoCajaNap: "",
-    plan: "",
-    precio: "",
-    opcionTv: "solo-internet",
-    precioServicioAdicional: "0",
-    precioTotal: "",
-    correoElectronico: "",
-    telefono: "",
-    telegramChatId: "",
-    calle: "",
-    calle2: "",
-    ciudad: "",
-    codigoPostal: "",
-    pais: "Colombia",
-    latitud: "",
-    longitud: "",
-    uploadSpeed: "10M",
-    downloadSpeed: "10M",
+    nombre: "", apellidos: "", clientePotencial: false, numeroIdentificacion: "",
+    numeroCajaNap: "", numeroPuertoCajaNap: "", plan: "", precio: "",
+    opcionTv: "solo-internet", precioServicioAdicional: "0", precioTotal: "",
+    correoElectronico: "", telefono: "", telegramChatId: "",
+    calle: "", calle2: "", ciudad: "", codigoPostal: "", pais: "Colombia",
+    latitud: "", longitud: "", uploadSpeed: "10M", downloadSpeed: "10M",
   });
 
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
-  // Función para obtener el precio de un servicio
   const getServicePriceByName = (serviceName: string): number => {
     const service = serviceOptions.find(s => s.name === serviceName);
     return service?.price || 0;
   };
 
-  // Función para calcular el precio total
   const calculateTotal = (precioBase: string, serviceName: string): string => {
     const servicePrice = getServicePriceByName(serviceName);
     const cleanPrice = (price: string): number => {
@@ -143,32 +118,22 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
       
-      // Auto-completar precio cuando cambia la velocidad de bajada (Simple Queues)
       if (field === "downloadSpeed" && typeof value === "string") {
         const savedPrice = getSpeedPrices()[value];
-        if (savedPrice) {
-          updated.precio = savedPrice;
-          updated.precioTotal = calculateTotal(savedPrice, updated.opcionTv);
-        }
+        if (savedPrice) { updated.precio = savedPrice; updated.precioTotal = calculateTotal(savedPrice, updated.opcionTv); }
       }
       
-      // Auto-completar precio cuando cambia el plan (PPPoE)
       if (field === "plan" && typeof value === "string") {
         const savedPrice = getPlanPrices()[value];
-        if (savedPrice) {
-          updated.precio = savedPrice;
-          updated.precioTotal = calculateTotal(savedPrice, updated.opcionTv);
-        }
+        if (savedPrice) { updated.precio = savedPrice; updated.precioTotal = calculateTotal(savedPrice, updated.opcionTv); }
       }
 
-      // Cuando cambia la opción de TV, actualizar precio del servicio y total
       if (field === "opcionTv" && typeof value === "string") {
         const servicePrice = getServicePriceByName(value);
         updated.precioServicioAdicional = servicePrice.toString();
         updated.precioTotal = calculateTotal(updated.precio, value);
       }
 
-      // Cuando cambia el precio base, recalcular total
       if (field === "precio" && typeof value === "string") {
         updated.precioTotal = calculateTotal(value, updated.opcionTv);
       }
@@ -178,197 +143,37 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
   };
 
   const handleGetLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocalización no soportada en este navegador");
-      return;
-    }
-
+    if (!navigator.geolocation) { toast.error("Geolocalización no soportada en este navegador"); return; }
     setIsGettingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setFormData(prev => ({
-          ...prev,
-          latitud: position.coords.latitude.toFixed(6),
-          longitud: position.coords.longitude.toFixed(6),
-        }));
+        setFormData(prev => ({ ...prev, latitud: position.coords.latitude.toFixed(6), longitud: position.coords.longitude.toFixed(6) }));
         toast.success("Ubicación obtenida correctamente");
         setIsGettingLocation(false);
       },
-      (error) => {
-        toast.error("No se pudo obtener la ubicación: " + error.message);
-        setIsGettingLocation(false);
-      }
+      (error) => { toast.error("No se pudo obtener la ubicación: " + error.message); setIsGettingLocation(false); }
     );
   };
 
-  // Función para sanitizar y formatear nombre para MikroTik (Nombre.Apellido.Etc)
   const formatUsernameForMikrotik = (nombre: string, apellidos: string): string => {
     const sanitizeWord = (word: string): string => {
-      return word
-        .replace(/ñ/g, 'n')
-        .replace(/Ñ/g, 'N')
-        .replace(/á/g, 'a')
-        .replace(/é/g, 'e')
-        .replace(/í/g, 'i')
-        .replace(/ó/g, 'o')
-        .replace(/ú/g, 'u')
-        .replace(/ü/g, 'u')
-        .replace(/Á/g, 'A')
-        .replace(/É/g, 'E')
-        .replace(/Í/g, 'I')
-        .replace(/Ó/g, 'O')
-        .replace(/Ú/g, 'U')
-        .replace(/Ü/g, 'U')
-        .replace(/[^a-zA-Z]/g, '');
+      return word.replace(/ñ/g, 'n').replace(/Ñ/g, 'N').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ü/g, 'u').replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U').replace(/Ü/g, 'U').replace(/[^a-zA-Z]/g, '');
     };
-
-    const capitalize = (word: string): string => {
-      if (!word) return '';
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    };
-
-    // Combinar nombre y apellidos, dividir por espacios
+    const capitalize = (word: string): string => { if (!word) return ''; return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(); };
     const fullName = `${nombre} ${apellidos}`.trim();
     const words = fullName.split(/\s+/).filter(w => w.length > 0);
-    
-    // Sanitizar y capitalizar cada palabra, luego unir con puntos
     const formattedParts = words.map(word => capitalize(sanitizeWord(word))).filter(w => w.length > 0);
-    
     return formattedParts.join('.');
-  };
-
-  // Función para convertir IP a número para comparación
-  const ipToNumber = (ip: string): number => {
-    const parts = ip.split('.').map(Number);
-    return parts[0] * 16777216 + parts[1] * 65536 + parts[2] * 256 + parts[3];
-  };
-
-  // Función para incrementar una IP
-  const incrementIP = (ip: string): string => {
-    const parts = ip.split('.').map(Number);
-    parts[3]++;
-    if (parts[3] > 254) {
-      parts[3] = 1;
-      parts[2]++;
-      if (parts[2] > 255) {
-        parts[2] = 0;
-        parts[1]++;
-      }
-    }
-    return parts.join('.');
-  };
-
-  // Función para obtener la siguiente IP disponible basada en usuarios PPPoE
-  const getNextAvailableIPFromPPPoE = async (): Promise<string> => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) throw new Error("No hay sesión activa");
-
-    const response = await supabase.functions.invoke('mikrotik-v6-api', {
-      body: {
-        mikrotikId,
-        command: 'ppp-secrets',
-        action: 'list'
-      }
-    });
-
-    if (!response.data?.success) {
-      throw new Error("No se pudo obtener la lista de usuarios PPPoE");
-    }
-
-    const secrets = response.data.data || [];
-    let highestIP = "";
-    let highestIPValue = 0;
-
-    secrets.forEach((secret: any) => {
-      const service = (secret.service || '').toLowerCase();
-      if (service !== 'pppoe') return;
-
-      const remoteAddress = secret['remote-address'] || secret.remoteAddress || '';
-      if (!remoteAddress || remoteAddress === '') return;
-
-      const ipValue = ipToNumber(remoteAddress);
-      if (ipValue > highestIPValue) {
-        highestIPValue = ipValue;
-        highestIP = remoteAddress;
-      }
-    });
-
-    if (!highestIP) {
-      throw new Error("No se encontraron usuarios PPPoE con IP remota asignada");
-    }
-
-    return incrementIP(highestIP);
-  };
-
-  // Función para obtener la siguiente IP disponible basada en Simple Queues
-  const getNextAvailableIPFromQueues = async (): Promise<string> => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) throw new Error("No hay sesión activa");
-
-    const response = await supabase.functions.invoke('mikrotik-v6-api', {
-      body: {
-        mikrotikId,
-        command: 'simple-queues',
-      }
-    });
-
-    if (!response.data?.success) {
-      throw new Error("No se pudo obtener la lista de Simple Queues");
-    }
-
-    const queues = response.data.data || [];
-    let highestIP = "";
-    let highestIPValue = 0;
-
-    queues.forEach((queue: any) => {
-      // El target puede ser una IP como "192.168.1.100/32" o "192.168.1.100"
-      const target = queue.target || '';
-      if (!target) return;
-
-      // Extraer la IP del target (quitar /32 o cualquier máscara)
-      const ipMatch = target.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-      if (!ipMatch) return;
-
-      const ip = ipMatch[1];
-      const ipValue = ipToNumber(ip);
-      if (ipValue > highestIPValue) {
-        highestIPValue = ipValue;
-        highestIP = ip;
-      }
-    });
-
-    if (!highestIP) {
-      throw new Error("No se encontraron Simple Queues con IP asignada. Configure al menos una cola manualmente primero.");
-    }
-
-    return incrementIP(highestIP);
   };
 
   const resetFormData = () => {
     setFormData({
-      nombre: "",
-      apellidos: "",
-      clientePotencial: false,
-      numeroIdentificacion: "",
-      numeroCajaNap: "",
-      numeroPuertoCajaNap: "",
-      plan: "",
-      precio: "",
-      opcionTv: "solo-internet",
-      precioServicioAdicional: "0",
-      precioTotal: "",
-      correoElectronico: "",
-      telefono: "",
-      telegramChatId: "",
-      calle: "",
-      calle2: "",
-      ciudad: "",
-      codigoPostal: "",
-      pais: "Colombia",
-      latitud: "",
-      longitud: "",
-      uploadSpeed: "10M",
-      downloadSpeed: "10M",
+      nombre: "", apellidos: "", clientePotencial: false, numeroIdentificacion: "",
+      numeroCajaNap: "", numeroPuertoCajaNap: "", plan: "", precio: "",
+      opcionTv: "solo-internet", precioServicioAdicional: "0", precioTotal: "",
+      correoElectronico: "", telefono: "", telegramChatId: "",
+      calle: "", calle2: "", ciudad: "", codigoPostal: "", pais: "Colombia",
+      latitud: "", longitud: "", uploadSpeed: "10M", downloadSpeed: "10M",
     });
   };
 
@@ -378,199 +183,52 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       
       const username = formatUsernameForMikrotik(data.nombre, data.apellidos);
       
-      // Crear comentario con toda la información del cliente
-      const clientInfo = [
-        `${data.nombre} ${data.apellidos}`,
-        data.correoElectronico,
-        data.telefono,
-        `${data.calle}${data.calle2 ? ', ' + data.calle2 : ''}`,
-        `${data.ciudad}, ${data.codigoPostal}`,
-        data.numeroCajaNap ? `NAP: ${data.numeroCajaNap}-${data.numeroPuertoCajaNap}` : '',
-        data.latitud && data.longitud ? `GPS: ${data.latitud}, ${data.longitud}` : ''
-      ].filter(Boolean).join(' | ');
+      const parsePrice = (price: string): number => {
+        const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
+        return isNaN(num) ? 0 : num;
+      };
+      
+      const basePrice = parsePrice(data.precio);
+      const servicePrice = parsePrice(data.precioServicioAdicional);
+      const totalPrice = basePrice + servicePrice;
 
-      if (useSimpleQueues) {
-        // Crear Simple Queue
-        const nextIP = await getNextAvailableIPFromQueues();
-        const maxLimit = `${data.uploadSpeed}/${data.downloadSpeed}`;
-        
-        const { data: result, error } = await supabase.functions.invoke("mikrotik-v6-api", {
-          body: {
-            mikrotikId,
-            command: "simple-queue-add",
-            params: {
-              name: username,
-              target: `${nextIP}/32`,
-              "max-limit": maxLimit,
-              comment: clientInfo,
-            },
-          },
-        });
+      // Call the unified register endpoint that handles MikroTik + DB
+      const result = await clientsApi.register({
+        mikrotik_id: mikrotikId,
+        use_simple_queues: useSimpleQueues,
+        username,
+        password: useStandardPassword ? standardPassword : undefined,
+        plan: data.plan || undefined,
+        upload_speed: data.uploadSpeed,
+        download_speed: data.downloadSpeed,
+        client_name: `${data.nombre} ${data.apellidos}`,
+        identification_number: data.numeroIdentificacion,
+        phone: data.telefono,
+        email: data.correoElectronico,
+        telegram_chat_id: data.telegramChatId || null,
+        address: `${data.calle}${data.calle2 ? ', ' + data.calle2 : ''}`,
+        city: data.ciudad,
+        latitude: data.latitud,
+        longitude: data.longitud,
+        is_potential_client: data.clientePotencial,
+        comment: data.numeroCajaNap ? `NAP: ${data.numeroCajaNap}-${data.numeroPuertoCajaNap}` : null,
+        service_option: data.opcionTv || null,
+        service_price: servicePrice,
+        total_monthly_price: totalPrice > 0 ? totalPrice : basePrice,
+        nap_box: data.numeroCajaNap,
+        nap_port: data.numeroPuertoCajaNap,
+      });
 
-        if (error) throw error;
-        if (!result.success) throw new Error(result.error);
-        
-        return { 
-          username, 
-          remoteIP: nextIP, 
-          clientName: `${data.nombre} ${data.apellidos}`,
-          type: 'queue' as const,
-          speed: maxLimit
-        };
-      } else {
-        // Crear PPPoE
-        if (!useStandardPassword || !standardPassword) {
-          throw new Error("Configure una contraseña estándar antes de registrar clientes PPPoE");
-        }
-        
-        const nextIP = await getNextAvailableIPFromPPPoE();
-        const password = standardPassword;
-        
-        const { data: result, error } = await supabase.functions.invoke("mikrotik-v6-api", {
-          body: {
-            mikrotikId,
-            command: "ppp-secret-add",
-            params: {
-              name: username,
-              password: password,
-              service: "pppoe",
-              profile: data.plan || undefined,
-              "remote-address": nextIP,
-              comment: clientInfo,
-            },
-          },
-        });
-
-        if (error) throw error;
-        if (!result.success) throw new Error(result.error);
-        
-        return { 
-          username, 
-          password, 
-          remoteIP: nextIP, 
-          clientName: `${data.nombre} ${data.apellidos}`,
-          type: 'pppoe' as const
-        };
-      }
+      return result;
     },
-    onSuccess: async (result) => {
-      // Guardar en el historial de clientes
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData.user) {
-          // Parse service price
-          const parsePrice = (price: string): number => {
-            const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
-            return isNaN(num) ? 0 : num;
-          };
-          
-          const basePrice = parsePrice(formData.precio);
-          const servicePrice = parsePrice(formData.precioServicioAdicional);
-          const totalPrice = basePrice + servicePrice;
-
-          // Insert client
-          const { data: clientData, error: clientError } = await supabase.from('isp_clients').insert({
-            mikrotik_id: mikrotikId,
-            created_by: userData.user.id,
-            client_name: result.clientName,
-            identification_number: formData.numeroIdentificacion,
-            phone: formData.telefono,
-            email: formData.correoElectronico,
-            telegram_chat_id: formData.telegramChatId || null,
-            address: `${formData.calle}${formData.calle2 ? ', ' + formData.calle2 : ''}`,
-            city: formData.ciudad,
-            latitude: formData.latitud,
-            longitude: formData.longitud,
-            connection_type: result.type === 'pppoe' ? 'pppoe' : 'simple_queue',
-            username: result.username,
-            assigned_ip: result.remoteIP,
-            plan_or_speed: result.type === 'pppoe' ? formData.plan : result.speed,
-            is_potential_client: formData.clientePotencial,
-            comment: formData.numeroCajaNap ? `NAP: ${formData.numeroCajaNap}-${formData.numeroPuertoCajaNap}` : null,
-            service_option: formData.opcionTv || null,
-            service_price: servicePrice,
-            total_monthly_price: totalPrice > 0 ? totalPrice : basePrice
-          }).select('id').single();
-
-          if (!clientError && clientData && !formData.clientePotencial) {
-            // Get universal billing config for this mikrotik
-            const { data: billingConfig } = await supabase
-              .from('billing_config')
-              .select('*')
-              .eq('mikrotik_id', mikrotikId)
-              .maybeSingle();
-
-            const billingDay = billingConfig?.billing_day || 1;
-            const gracePeriodDays = billingConfig?.grace_period_days || 5;
-            const invoiceMaturityDays = (billingConfig as any)?.invoice_maturity_days || 15;
-            const billingType = (billingConfig as any)?.billing_type || 'advance';
-            const monthlyAmount = totalPrice > 0 ? totalPrice : basePrice;
-
-            // Calculate next billing date
-            const now = new Date();
-            let nextBillingDate = new Date(now.getFullYear(), now.getMonth(), billingDay);
-            if (nextBillingDate <= now) {
-              nextBillingDate = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
-            }
-
-            // Create billing settings for the client
-            await supabase.from('client_billing_settings').insert({
-              client_id: clientData.id,
-              mikrotik_id: mikrotikId,
-              billing_day: billingDay,
-              grace_period_days: gracePeriodDays,
-              monthly_amount: monthlyAmount,
-              next_billing_date: nextBillingDate.toISOString().split('T')[0]
-            });
-
-            // Only create invoice immediately if billing type is 'advance' (factura anticipada)
-            if (billingType === 'advance') {
-              const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
-              const billingStart = new Date(now.getFullYear(), now.getMonth(), 1);
-              const billingEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-              
-              // Due date = creation date + invoice maturity days
-              const dueDate = new Date(now);
-              dueDate.setDate(dueDate.getDate() + invoiceMaturityDays);
-
-              await supabase.from('client_invoices').insert({
-                client_id: clientData.id,
-                mikrotik_id: mikrotikId,
-                invoice_number: invoiceNumber,
-                amount: monthlyAmount,
-                billing_period_start: billingStart.toISOString().split('T')[0],
-                billing_period_end: billingEnd.toISOString().split('T')[0],
-                due_date: dueDate.toISOString().split('T')[0],
-                status: 'pending',
-                service_breakdown: {
-                  plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
-                  basePrice: basePrice,
-                  serviceOption: formData.opcionTv,
-                  servicePrice: servicePrice
-                }
-              });
-            }
-            // If billing type is 'due', invoice will be generated on the billing day by a scheduled job
-          }
-        }
-      } catch (err) {
-        console.error('Error saving client to history:', err);
-      }
-
+    onSuccess: (result) => {
       const isPPPoE = result.type === 'pppoe';
       const message = isPPPoE 
         ? `🌐 *Datos de conexión PPPoE*\n\n👤 Cliente: ${result.clientName}\n📧 Usuario: ${result.username}\n🔑 Contraseña: ${result.password}\n🌍 IP Asignada: ${result.remoteIP}\n\n¡Gracias por confiar en nosotros!`
         : `🌐 *Datos de conexión*\n\n👤 Cliente: ${result.clientName}\n📧 Nombre: ${result.username}\n🌍 IP Asignada: ${result.remoteIP}\n⚡ Velocidad: ${result.speed}\n\n¡Gracias por confiar en nosotros!`;
       
-      const copyToClipboard = () => {
-        navigator.clipboard.writeText(message.replace(/\*/g, ''));
-        toast.success("Copiado al portapapeles");
-      };
-
-      const shareWhatsApp = () => {
-        const encodedMessage = encodeURIComponent(message);
-        window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
-      };
+      const copyToClipboard = () => { navigator.clipboard.writeText(message.replace(/\*/g, '')); toast.success("Copiado al portapapeles"); };
+      const shareWhatsApp = () => { window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank'); };
 
       toast.success(
         <div className="space-y-3">
@@ -583,567 +241,184 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
             {!isPPPoE && <p><strong>Velocidad:</strong> {result.speed}</p>}
           </div>
           <div className="flex gap-2 pt-2">
-            <button
-              onClick={copyToClipboard}
-              className="flex-1 px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90"
-            >
-              📋 Copiar
-            </button>
-            <button
-              onClick={shareWhatsApp}
-              className="flex-1 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
-            >
-              📱 WhatsApp
-            </button>
+            <button onClick={copyToClipboard} className="flex-1 px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:bg-primary/90">📋 Copiar</button>
+            <button onClick={shareWhatsApp} className="flex-1 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">📱 WhatsApp</button>
           </div>
         </div>,
         { duration: 30000 }
       );
-      
-      if (useSimpleQueues) {
-        queryClient.invalidateQueries({ queryKey: ["isp-simple-queues"] });
-      } else {
-        queryClient.invalidateQueries({ queryKey: ["isp-pppoe-users"] });
+
+      // Notify parent
+      if (onClientRegistered) {
+        onClientRegistered({
+          clientName: result.clientName,
+          identification: formData.numeroIdentificacion,
+          address: `${formData.calle}${formData.calle2 ? ', ' + formData.calle2 : ''}`,
+          phone: formData.telefono,
+          email: formData.correoElectronico,
+          plan: isPPPoE ? formData.plan : `${formData.downloadSpeed}/${formData.uploadSpeed}`,
+          speed: isPPPoE ? '' : `${formData.uploadSpeed}/${formData.downloadSpeed}`,
+          price: formData.precio,
+          serviceOption: formData.opcionTv,
+          servicePrice: formData.precioServicioAdicional,
+          totalPrice: formData.precioTotal,
+        });
       }
-      queryClient.invalidateQueries({ queryKey: ["isp-clients"] });
-      
-      // Notificar datos del cliente registrado para el contrato
-      const registeredData: RegisteredClientData = {
-        clientName: result.clientName,
-        identification: formData.numeroIdentificacion,
-        address: `${formData.calle}${formData.calle2 ? ', ' + formData.calle2 : ''}, ${formData.ciudad}`,
-        phone: formData.telefono,
-        email: formData.correoElectronico,
-        plan: result.type === 'pppoe' ? formData.plan : 'Simple Queue',
-        speed: result.type === 'pppoe' ? '' : result.speed || '',
-        price: formData.precio,
-        serviceOption: formData.opcionTv,
-        servicePrice: formData.precioServicioAdicional,
-        totalPrice: formData.precioTotal || formData.precio,
-      };
-      onClientRegistered?.(registeredData);
-      
+
+      queryClient.invalidateQueries({ queryKey: ['isp-clients'] });
+      queryClient.invalidateQueries({ queryKey: ['pppoe-users'] });
       resetFormData();
       onSuccess?.();
     },
     onError: (error: any) => {
-      toast.error(error.message || "Error al registrar cliente");
+      toast.error(`Error: ${error.message}`);
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.nombre || !formData.apellidos || !formData.numeroIdentificacion) {
-      toast.error("Por favor complete los campos obligatorios");
+    if (!formData.nombre || !formData.apellidos) {
+      toast.error("Nombre y apellidos son requeridos");
       return;
     }
-
-    // Validar según el tipo de conexión
-    if (!useSimpleQueues && !formData.plan) {
-      toast.error("Seleccione un plan de servicio");
+    if (!useSimpleQueues && (!useStandardPassword || !standardPassword)) {
+      toast.error("Configure una contraseña estándar antes de registrar clientes PPPoE");
       return;
     }
-
-    if (useSimpleQueues && (!formData.uploadSpeed || !formData.downloadSpeed)) {
-      toast.error("Seleccione las velocidades de subida y bajada");
-      return;
-    }
-
-    if (!formData.latitud || !formData.longitud) {
-      toast.warning("Recuerde: Debe compartir su ubicación GPS para completar el registro");
-    }
-
     createClientMutation.mutate(formData);
   };
 
+  if (!mikrotikId) {
+    return (
+      <Card><CardContent className="flex items-center justify-center py-12">
+        <div className="text-center"><AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium">Sin conexión</h3><p className="text-muted-foreground">Conecta un dispositivo MikroTik desde Configuración</p></div>
+      </CardContent></Card>
+    );
+  }
+
   return (
-    <Card className="border-2">
-      <CardContent className="pt-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Sección General */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">General</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre *</Label>
-                <Input
-                  id="nombre"
-                  placeholder="Juan"
-                  value={formData.nombre}
-                  onChange={(e) => updateField("nombre", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="apellidos">Apellidos *</Label>
-                <Input
-                  id="apellidos"
-                  placeholder="Pérez"
-                  value={formData.apellidos}
-                  onChange={(e) => updateField("apellidos", e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="clientePotencial"
-                checked={formData.clientePotencial}
-                onCheckedChange={(checked) => updateField("clientePotencial", checked as boolean)}
-              />
-              <Label htmlFor="clientePotencial" className="text-sm cursor-pointer">
-                Cliente potencial
-              </Label>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="numeroIdentificacion">Número de Identificación *</Label>
-              <Input
-                id="numeroIdentificacion"
-                placeholder="1234567890"
-                value={formData.numeroIdentificacion}
-                onChange={(e) => updateField("numeroIdentificacion", e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="numeroCajaNap">Número Caja NAP</Label>
-                <Input
-                  id="numeroCajaNap"
-                  placeholder="NAP-001"
-                  value={formData.numeroCajaNap}
-                  onChange={(e) => updateField("numeroCajaNap", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="numeroPuertoCajaNap">Número Puerto Caja NAP</Label>
-                <Input
-                  id="numeroPuertoCajaNap"
-                  placeholder="8"
-                  value={formData.numeroPuertoCajaNap}
-                  onChange={(e) => updateField("numeroPuertoCajaNap", e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Sección Tipo de Conexión */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">Tipo de Conexión</h3>
-            
-            {/* Selector de tipo de conexión */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Opción PPPoE */}
-              <button
-                type="button"
-                onClick={() => setUseSimpleQueues(false)}
-                className={`p-4 rounded-lg border-2 text-left transition-all ${
-                  !useSimpleQueues 
-                    ? 'border-cyan-500 bg-cyan-500/10 ring-2 ring-cyan-500/20' 
-                    : 'border-muted hover:border-cyan-500/50 hover:bg-muted/50'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-lg ${!useSimpleQueues ? 'bg-cyan-500/20' : 'bg-muted'}`}>
-                    <Cable className={`h-5 w-5 ${!useSimpleQueues ? 'text-cyan-500' : 'text-muted-foreground'}`} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className={`font-semibold ${!useSimpleQueues ? 'text-cyan-600 dark:text-cyan-400' : 'text-foreground'}`}>
-                        PPPoE
-                      </p>
-                      {!useSimpleQueues && (
-                        <span className="px-2 py-0.5 text-xs font-medium bg-cyan-500 text-white rounded-full">
-                          Seleccionado
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Crear usuario PPPoE con perfil de velocidad
-                    </p>
-                  </div>
-                </div>
-              </button>
-
-              {/* Opción Simple Queues */}
-              <button
-                type="button"
-                onClick={() => setUseSimpleQueues(true)}
-                className={`p-4 rounded-lg border-2 text-left transition-all ${
-                  useSimpleQueues 
-                    ? 'border-orange-500 bg-orange-500/10 ring-2 ring-orange-500/20' 
-                    : 'border-muted hover:border-orange-500/50 hover:bg-muted/50'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-lg ${useSimpleQueues ? 'bg-orange-500/20' : 'bg-muted'}`}>
-                    <Gauge className={`h-5 w-5 ${useSimpleQueues ? 'text-orange-500' : 'text-muted-foreground'}`} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className={`font-semibold ${useSimpleQueues ? 'text-orange-600 dark:text-orange-400' : 'text-foreground'}`}>
-                        Simple Queues
-                      </p>
-                      {useSimpleQueues && (
-                        <span className="px-2 py-0.5 text-xs font-medium bg-orange-500 text-white rounded-full">
-                          Seleccionado
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Crear cola de ancho de banda con IP estática
-                    </p>
-                  </div>
-                </div>
-              </button>
-            </div>
-            
-            {/* Información del tipo seleccionado */}
-            <div className={`text-sm p-3 rounded-lg ${useSimpleQueues ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-cyan-500/10 border border-cyan-500/20'}`}>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Connection type toggle */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <Label className="text-base font-semibold">Tipo de Conexión</Label>
+            <div className="flex items-center gap-4">
               {useSimpleQueues ? (
-                <p className="text-orange-700 dark:text-orange-400">
-                  <strong>Simple Queue:</strong> Se creará una cola con límite de velocidad. La IP se asignará automáticamente basándose en las colas existentes.
-                </p>
+                <ServicePricesManager mikrotikId={mikrotikId} onPricesChange={() => setPricesVersion(v => v + 1)} />
               ) : (
-                <p className="text-cyan-700 dark:text-cyan-400">
-                  <strong>PPPoE:</strong> Se creará un usuario PPPoE. La IP se asignará automáticamente basándose en los usuarios existentes.
-                </p>
+                <PlanPricesManager plans={pppoeProfiles.map((p: any) => ({ name: p.name, rateLimit: p['rate-limit'] || '-' }))} speeds={availableSpeeds} useSimpleQueues={useSimpleQueues} onPricesChange={() => setPricesVersion(v => v + 1)} />
               )}
             </div>
           </div>
 
-          {/* Sección Plan de Servicio */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">
-              {useSimpleQueues ? 'Configuración de Velocidad' : 'Plan de Servicio'}
-            </h3>
-            
-            {useSimpleQueues ? (
-              /* Campos de velocidad para Simple Queues */
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="uploadSpeed">Velocidad de Subida *</Label>
-                  <Select value={formData.uploadSpeed} onValueChange={(value) => updateField("uploadSpeed", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccione velocidad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {['1M', '2M', '3M', '4M', '5M', '6M', '8M', '10M', '15M', '20M', '25M', '30M', '50M', '100M'].map((speed) => (
-                        <SelectItem key={speed} value={speed}>
-                          {speed.replace('M', ' Mbps')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="downloadSpeed">Velocidad de Bajada *</Label>
-                  <Select value={formData.downloadSpeed} onValueChange={(value) => updateField("downloadSpeed", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccione velocidad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {['1M', '2M', '3M', '4M', '5M', '6M', '8M', '10M', '15M', '20M', '25M', '30M', '50M', '100M'].map((speed) => (
-                        <SelectItem key={speed} value={speed}>
-                          {speed.replace('M', ' Mbps')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+          <RadioGroup value={useSimpleQueues ? "queue" : "pppoe"} onValueChange={(val) => setUseSimpleQueues(val === "queue")} className="grid grid-cols-2 gap-4">
+            <div className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer ${!useSimpleQueues ? 'border-primary bg-primary/5' : ''}`}>
+              <RadioGroupItem value="pppoe" id="pppoe" />
+              <Label htmlFor="pppoe" className="cursor-pointer flex items-center gap-2"><Cable className="h-4 w-4" />PPPoE</Label>
+            </div>
+            <div className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer ${useSimpleQueues ? 'border-primary bg-primary/5' : ''}`}>
+              <RadioGroupItem value="queue" id="queue" />
+              <Label htmlFor="queue" className="cursor-pointer flex items-center gap-2"><Gauge className="h-4 w-4" />Simple Queue</Label>
+            </div>
+          </RadioGroup>
+        </CardContent>
+      </Card>
+
+      {/* Client info */}
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Nombre *</Label><Input value={formData.nombre} onChange={(e) => updateField("nombre", e.target.value)} required /></div>
+            <div className="space-y-2"><Label>Apellidos *</Label><Input value={formData.apellidos} onChange={(e) => updateField("apellidos", e.target.value)} required /></div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox id="potencial" checked={formData.clientePotencial} onCheckedChange={(checked) => updateField("clientePotencial", checked === true)} />
+            <Label htmlFor="potencial">Cliente potencial (no crear en MikroTik)</Label>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2"><Label>Identificación</Label><Input value={formData.numeroIdentificacion} onChange={(e) => updateField("numeroIdentificacion", e.target.value)} /></div>
+            <div className="space-y-2"><Label>Teléfono</Label><Input value={formData.telefono} onChange={(e) => updateField("telefono", e.target.value)} /></div>
+            <div className="space-y-2"><Label>Correo</Label><Input type="email" value={formData.correoElectronico} onChange={(e) => updateField("correoElectronico", e.target.value)} /></div>
+          </div>
+
+          <div className="space-y-2"><Label>Telegram Chat ID</Label><Input value={formData.telegramChatId} onChange={(e) => updateField("telegramChatId", e.target.value)} placeholder="Opcional" /></div>
+
+          {/* Plan / Speed selection */}
+          {useSimpleQueues ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2"><Label>Velocidad de Bajada</Label>
+                <Select value={formData.downloadSpeed} onValueChange={(v) => updateField("downloadSpeed", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{availableSpeeds.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
               </div>
-            ) : (
-              /* Selector de perfil PPPoE */
-              <div className="space-y-2">
-                <Label htmlFor="plan">Seleccione su plan *</Label>
-                <Select value={formData.plan} onValueChange={(value) => updateField("plan", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un plan" />
-                  </SelectTrigger>
+              <div className="space-y-2"><Label>Velocidad de Subida</Label>
+                <Select value={formData.uploadSpeed} onValueChange={(v) => updateField("uploadSpeed", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{availableSpeeds.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Plan PPPoE</Label>
+              {loadingProfiles ? <p className="text-sm text-muted-foreground">Cargando perfiles...</p> : (
+                <Select value={formData.plan} onValueChange={(v) => updateField("plan", v)}><SelectTrigger><SelectValue placeholder="Seleccionar plan" /></SelectTrigger>
+                  <SelectContent>{pppoeProfiles.map((p: any) => <SelectItem key={p['.id'] || p.name} value={p.name}>{p.name}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2"><Label>Precio Base</Label><Input value={formData.precio} onChange={(e) => updateField("precio", e.target.value)} placeholder="$0" /></div>
+            <div className="space-y-2">
+              <Label>Servicio Adicional</Label>
+              {loadingServices ? <p className="text-sm text-muted-foreground">Cargando...</p> : (
+                <Select value={formData.opcionTv} onValueChange={(v) => updateField("opcionTv", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {loadingProfiles ? (
-                      <SelectItem value="loading" disabled>Cargando perfiles...</SelectItem>
-                    ) : !pppoeProfiles || pppoeProfiles.length === 0 ? (
-                      <SelectItem value="empty" disabled>No hay perfiles disponibles</SelectItem>
-                    ) : (
-                      pppoeProfiles.map((profile: any, index: number) => (
-                        <SelectItem key={profile[".id"] || profile.name || `profile-${index}`} value={profile.name || ""}>
-                          {profile.name} {profile["rate-limit"] && `(${profile["rate-limit"]})`}
-                        </SelectItem>
-                      ))
-                    )}
+                    <SelectItem value="solo-internet">Solo Internet</SelectItem>
+                    {serviceOptions.map(opt => <SelectItem key={opt.id} value={opt.name}>{opt.name} - ${opt.price.toLocaleString('es-CO')}</SelectItem>)}
                   </SelectContent>
                 </Select>
-              </div>
-            )}
-
-            {/* Campo de precio del plan con gestor de precios */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="precio">Precio Mensual del Plan</Label>
-                <PlanPricesManager
-                  plans={pppoeProfiles.map((p: any) => ({ 
-                    name: p.name, 
-                    rateLimit: p["rate-limit"] 
-                  }))}
-                  speeds={availableSpeeds}
-                  useSimpleQueues={useSimpleQueues}
-                  onPricesChange={() => setPricesVersion(v => v + 1)}
-                />
-              </div>
-              <Input
-                id="precio"
-                placeholder="Ej: $50.000 COP/mes"
-                value={formData.precio}
-                onChange={(e) => updateField("precio", e.target.value)}
-              />
-              {/* Mostrar si hay precio guardado */}
-              {useSimpleQueues && formData.downloadSpeed && getSpeedPrices()[formData.downloadSpeed] && (
-                <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                  <span>✓</span> Precio configurado: {getSpeedPrices()[formData.downloadSpeed]}
-                </p>
-              )}
-              {!useSimpleQueues && formData.plan && getPlanPrices()[formData.plan] && (
-                <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                  <span>✓</span> Precio configurado: {getPlanPrices()[formData.plan]}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                El precio se carga automáticamente según el plan/velocidad configurado
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Servicios Adicionales *</Label>
-                <ServicePricesManager mikrotikId={mikrotikId} onPricesChange={() => setPricesVersion(v => v + 1)} />
-              </div>
-              {loadingServices ? (
-                <p className="text-sm text-muted-foreground">Cargando servicios...</p>
-              ) : (
-                <RadioGroup
-                  value={formData.opcionTv}
-                  onValueChange={(value) => updateField("opcionTv", value)}
-                  className="space-y-2"
-                >
-                  {serviceOptions.map((service) => (
-                    <div key={service.id} className="flex items-center space-x-2">
-                      <RadioGroupItem value={service.name} id={service.id} />
-                      <Label htmlFor={service.id} className="cursor-pointer font-normal flex-1">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className={`font-medium ${service.name === 'Solo Internet' ? 'text-primary' : ''}`}>
-                              {service.name}
-                            </span>
-                            {service.description && (
-                              <span className="text-muted-foreground text-sm block">{service.description}</span>
-                            )}
-                          </div>
-                          {service.price > 0 && (
-                            <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                              +${service.price.toLocaleString('es-CO')}
-                            </span>
-                          )}
-                        </div>
-                      </Label>
-                    </div>
-                  ))}
-                </RadioGroup>
               )}
             </div>
-
-            {/* Precio Total */}
-            {formData.precio && formData.precioServicioAdicional && parseFloat(formData.precioServicioAdicional.replace(/[^0-9.,]/g, "").replace(",", ".")) > 0 && (
-              <div className="bg-muted/50 border rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Precio del plan:</span>
-                  <span>{formData.precio}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Servicio adicional:</span>
-                  <span className="text-green-600 dark:text-green-400">+${parseFloat(formData.precioServicioAdicional.replace(/[^0-9.,]/g, "").replace(",", ".")).toLocaleString('es-CO')}</span>
-                </div>
-                <div className="flex justify-between font-semibold border-t pt-2">
-                  <span>Total mensual:</span>
-                  <span className="text-primary">{formData.precioTotal}</span>
-                </div>
-              </div>
-            )}
+            <div className="space-y-2"><Label>Precio Total</Label><Input value={formData.precioTotal} readOnly className="font-bold" /></div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Sección Información de Contacto */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">Información de Contacto</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="correoElectronico">Correo Electrónico *</Label>
-                <Input
-                  id="correoElectronico"
-                  type="email"
-                  placeholder="correo@ejemplo.com"
-                  value={formData.correoElectronico}
-                  onChange={(e) => updateField("correoElectronico", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="telefono">Teléfono *</Label>
-                <Input
-                  id="telefono"
-                  type="tel"
-                  placeholder="+57 300 123 4567"
-                  value={formData.telefono}
-                  onChange={(e) => updateField("telefono", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="telegramChatId">Telegram Chat ID (para notificaciones automáticas)</Label>
-              <Input
-                id="telegramChatId"
-                placeholder="123456789"
-                value={formData.telegramChatId}
-                onChange={(e) => updateField("telegramChatId", e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                El cliente debe iniciar una conversación con el bot de Telegram para obtener su Chat ID
-              </p>
-            </div>
+      {/* Address */}
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" /><Label className="text-base font-semibold">Dirección</Label></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Calle / Dirección</Label><Input value={formData.calle} onChange={(e) => updateField("calle", e.target.value)} /></div>
+            <div className="space-y-2"><Label>Complemento</Label><Input value={formData.calle2} onChange={(e) => updateField("calle2", e.target.value)} /></div>
           </div>
-
-          {/* Sección Ubicación */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-foreground border-b pb-2">Ubicación</h3>
-            
-            <div className="space-y-2">
-              <Label htmlFor="calle">Calle *</Label>
-              <Input
-                id="calle"
-                placeholder="Calle 123 #45-67"
-                value={formData.calle}
-                onChange={(e) => updateField("calle", e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="calle2">Calle 2 (Opcional)</Label>
-              <Input
-                id="calle2"
-                placeholder="Apartamento, Edificio, Torre, etc."
-                value={formData.calle2}
-                onChange={(e) => updateField("calle2", e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ciudad">Ciudad *</Label>
-                <Input
-                  id="ciudad"
-                  placeholder="Cali"
-                  value={formData.ciudad}
-                  onChange={(e) => updateField("ciudad", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="codigoPostal">Código Postal *</Label>
-                <Input
-                  id="codigoPostal"
-                  placeholder="760001"
-                  value={formData.codigoPostal}
-                  onChange={(e) => updateField("codigoPostal", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2 col-span-2 md:col-span-1">
-                <Label htmlFor="pais">País *</Label>
-                <Input
-                  id="pais"
-                  placeholder="Colombia"
-                  value={formData.pais}
-                  onChange={(e) => updateField("pais", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
-              <h4 className="font-medium flex items-center gap-2 text-sm uppercase text-muted-foreground">
-                <MapPin className="w-4 h-4" />
-                Ubicación de GPS
-              </h4>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="latitud">Latitud de GPS</Label>
-                  <Input
-                    id="latitud"
-                    placeholder="Haga clic en 'Obtener ubicación'"
-                    value={formData.latitud}
-                    onChange={(e) => updateField("latitud", e.target.value)}
-                    readOnly
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="longitud">Longitud de GPS</Label>
-                  <Input
-                    id="longitud"
-                    placeholder="Haga clic en 'Obtener ubicación'"
-                    value={formData.longitud}
-                    onChange={(e) => updateField("longitud", e.target.value)}
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2">
-                <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  <strong>Recuerde:</strong> Debe compartir su ubicación GPS para completar el registro. Esto nos permite planificar la instalación del servicio.
-                </p>
-              </div>
-
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="w-full"
-                onClick={handleGetLocation}
-                disabled={isGettingLocation}
-              >
-                <MapPin className="w-4 h-4 mr-2" />
-                {isGettingLocation ? "Obteniendo ubicación..." : "Obtener Ubicación GPS"}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2"><Label>Ciudad</Label><Input value={formData.ciudad} onChange={(e) => updateField("ciudad", e.target.value)} /></div>
+            <div className="space-y-2"><Label>Código Postal</Label><Input value={formData.codigoPostal} onChange={(e) => updateField("codigoPostal", e.target.value)} /></div>
+            <div className="space-y-2"><Label>País</Label><Input value={formData.pais} onChange={(e) => updateField("pais", e.target.value)} /></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>NAP / Caja</Label><Input value={formData.numeroCajaNap} onChange={(e) => updateField("numeroCajaNap", e.target.value)} /></div>
+            <div className="space-y-2"><Label>Puerto NAP</Label><Input value={formData.numeroPuertoCajaNap} onChange={(e) => updateField("numeroPuertoCajaNap", e.target.value)} /></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2"><Label>Latitud</Label><Input value={formData.latitud} onChange={(e) => updateField("latitud", e.target.value)} /></div>
+            <div className="space-y-2"><Label>Longitud</Label><Input value={formData.longitud} onChange={(e) => updateField("longitud", e.target.value)} /></div>
+            <div className="flex items-end">
+              <Button type="button" variant="outline" onClick={handleGetLocation} disabled={isGettingLocation}>
+                <MapPin className="h-4 w-4 mr-2" />{isGettingLocation ? "Obteniendo..." : "Obtener GPS"}
               </Button>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Botón de registro */}
-          <Button 
-            type="submit" 
-            className={`w-full ${useSimpleQueues 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600' 
-              : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600'}`}
-            size="lg"
-            disabled={
-              createClientMutation.isPending || 
-              !formData.nombre || 
-              !formData.apellidos || 
-              !formData.numeroIdentificacion || 
-              (useSimpleQueues ? (!formData.uploadSpeed || !formData.downloadSpeed) : !formData.plan)
-            }
-          >
-            {useSimpleQueues ? <Gauge className="w-5 h-5 mr-2" /> : <Cable className="w-5 h-5 mr-2" />}
-            {createClientMutation.isPending 
-              ? "Registrando..." 
-              : useSimpleQueues 
-                ? "Registrar con Simple Queue" 
-                : "Registrar con PPPoE"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+      <Button type="submit" className="w-full" disabled={createClientMutation.isPending}>
+        <UserPlus className="h-4 w-4 mr-2" />
+        {createClientMutation.isPending ? "Registrando..." : "Registrar Cliente"}
+      </Button>
+    </form>
   );
 }

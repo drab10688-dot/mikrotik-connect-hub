@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { clientsApi, billingApi, invoicesApi, addressListApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +64,6 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   const { data: pppoeProfilesData, isLoading: loadingProfiles } = usePPPoEProfiles();
   const pppoeProfiles = (pppoeProfilesData as any[]) || [];
 
-  // Sistema de precios guardados desde localStorage
   const getPlanPrices = (): Record<string, string> => {
     const saved = localStorage.getItem("isp_plan_prices");
     return saved ? JSON.parse(saved) : {};
@@ -74,70 +73,40 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     queryKey: ["isp-clients-manager", mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) return [];
-      
-      const { data, error } = await supabase
-        .from("isp_clients")
-        .select("*")
-        .eq("mikrotik_id", mikrotikId)
-        .eq("is_potential_client", false)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      return clientsApi.list(mikrotikId, { is_potential_client: false });
     },
     enabled: !!mikrotikId,
   });
 
-  // Fetch billing settings to know suspension status
   const { data: billingSettings } = useQuery({
     queryKey: ["billing-settings-suspension", mikrotikId],
     queryFn: async () => {
       if (!mikrotikId) return [];
-      
-      const { data, error } = await supabase
-        .from("client_billing_settings")
-        .select("client_id, is_suspended")
-        .eq("mikrotik_id", mikrotikId);
-
-      if (error) throw error;
-      return (data || []) as BillingSetting[];
+      return billingApi.listSuspension(mikrotikId);
     },
     enabled: !!mikrotikId,
   });
 
   const getClientSuspensionStatus = (clientId: string): boolean => {
-    const setting = billingSettings?.find(s => s.client_id === clientId);
+    const setting = billingSettings?.find((s: BillingSetting) => s.client_id === clientId);
     return setting?.is_suspended || false;
   };
 
   const updateMutation = useMutation({
     mutationFn: async (client: Partial<IspClient> & { id: string }) => {
-      const { error } = await supabase
-        .from("isp_clients")
-        .update({
-          client_name: client.client_name,
-          identification_number: client.identification_number,
-          phone: client.phone,
-          email: client.email,
-          address: client.address,
-          city: client.city,
-          plan_or_speed: client.plan_or_speed,
-          comment: client.comment,
-          service_option: client.service_option,
-          service_price: client.service_price,
-          total_monthly_price: client.total_monthly_price,
-        })
-        .eq("id", client.id);
-      
-      if (error) throw error;
-
-      // Also update billing settings if they exist
-      if (client.total_monthly_price) {
-        await supabase
-          .from("client_billing_settings")
-          .update({ monthly_amount: client.total_monthly_price })
-          .eq("client_id", client.id);
-      }
+      await clientsApi.update(client.id, {
+        client_name: client.client_name,
+        identification_number: client.identification_number,
+        phone: client.phone,
+        email: client.email,
+        address: client.address,
+        city: client.city,
+        plan_or_speed: client.plan_or_speed,
+        comment: client.comment,
+        service_option: client.service_option,
+        service_price: client.service_price,
+        total_monthly_price: client.total_monthly_price,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["isp-clients-manager"] });
@@ -152,97 +121,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
 
   const deleteMutation = useMutation({
     mutationFn: async ({ client, deleteFromMikrotik }: { client: IspClient; deleteFromMikrotik: boolean }) => {
-      // If deleteFromMikrotik is true, delete from MikroTik first
-      if (deleteFromMikrotik && mikrotikId) {
-        try {
-          if (client.connection_type === 'pppoe') {
-            // Delete PPPoE user from MikroTik
-            const functionName = mikrotikVersion === 'v6' ? 'mikrotik-v6-api' : 'mikrotik-pppoe';
-            
-            const response = await supabase.functions.invoke(functionName, {
-              body: mikrotikVersion === 'v6' 
-                ? {
-                    mikrotikId,
-                    command: 'ppp-secret-remove',
-                    params: { name: client.username }
-                  }
-                : {
-                    mikrotikId,
-                    action: 'remove',
-                    name: client.username
-                  }
-            });
-
-            if (response.error) {
-              console.error('MikroTik PPPoE delete error:', response.error);
-              throw new Error(response.error.message || 'Error al eliminar PPPoE');
-            }
-            
-            if (response.data && !response.data.success) {
-              console.warn('MikroTik PPPoE delete warning:', response.data.error);
-              // Don't throw, just warn - the user might already be deleted from MikroTik
-              toast.warning(`Advertencia MikroTik: ${response.data.error}`);
-            }
-          } else if (client.connection_type === 'simple_queue') {
-            // Delete Simple Queue from MikroTik
-            const functionName = mikrotikVersion === 'v6' ? 'mikrotik-v6-api' : 'mikrotik-connect';
-            
-            const response = await supabase.functions.invoke(functionName, {
-              body: mikrotikVersion === 'v6'
-                ? {
-                    mikrotikId,
-                    command: 'simple-queue-remove',
-                    params: { name: client.username }
-                  }
-                : {
-                    mikrotikId,
-                    action: 'queue-remove',
-                    name: client.username
-                  }
-            });
-
-            if (response.error) {
-              console.error('MikroTik Queue delete error:', response.error);
-              throw new Error(response.error.message || 'Error al eliminar Queue');
-            }
-            
-            if (response.data && !response.data.success) {
-              console.warn('MikroTik Queue delete warning:', response.data.error);
-              toast.warning(`Advertencia MikroTik: ${response.data.error}`);
-            }
-          }
-        } catch (error: any) {
-          console.error('Error deleting from MikroTik:', error);
-          // Continue with local deletion even if MikroTik deletion fails
-          toast.warning(`No se pudo eliminar del MikroTik: ${error.message}`);
-        }
-      }
-
-      // Delete billing settings first (if exists)
-      await supabase
-        .from('client_billing_settings')
-        .delete()
-        .eq('client_id', client.id);
-
-      // Delete invoices related to this client
-      await supabase
-        .from('client_invoices')
-        .delete()
-        .eq('client_id', client.id);
-
-      // Delete contracts related to this client
-      await supabase
-        .from('isp_contracts')
-        .delete()
-        .eq('client_id', client.id);
-
-      // Finally delete the client
-      const { error } = await supabase
-        .from("isp_clients")
-        .delete()
-        .eq("id", client.id);
-      
-      if (error) throw error;
+      await clientsApi.delete(client.id, deleteFromMikrotik);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["isp-clients-manager"] });
@@ -271,7 +150,6 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     deleteMutation.mutate({ client: deletingClient, deleteFromMikrotik });
   };
 
-  // Función para parsear precio de string a número
   const parsePrice = (price: string): number => {
     const num = parseFloat(price.replace(/[^0-9.,]/g, "").replace(",", "."));
     return isNaN(num) ? 0 : num;
@@ -300,7 +178,6 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   };
 
   const handleServiceOptionChange = (value: string) => {
-    // Calcular precio base del plan
     const planPrices = getPlanPrices();
     const savedPlanPrice = planPrices[editForm.plan_or_speed || ""];
     const basePrice = savedPlanPrice ? parsePrice(savedPlanPrice) : 
@@ -329,41 +206,22 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
   const handleGenerateInvoice = async (client: IspClient) => {
     setGeneratingInvoice(client.id);
     try {
-      // Get client contract for contract number
-      const { data: contract } = await supabase
-        .from("isp_contracts")
-        .select("id, contract_number")
-        .eq("client_id", client.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
-
-      // Get billing settings for the amount
-      const { data: billing } = await supabase
-        .from("client_billing_settings")
-        .select("*")
-        .eq("client_id", client.id)
-        .single();
-
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const dueDate = addMonths(monthStart, 1);
-      
-      const invoiceNumber = `FAC-${format(now, "yyyyMMdd")}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-      const amount = billing?.monthly_amount || client.total_monthly_price || 0;
+      const result = await invoicesApi.generateForClient({
+        mikrotik_id: mikrotikId,
+        client_id: client.id,
+      });
 
       const invoiceData = {
-        invoice_number: invoiceNumber,
-        amount: amount,
-        due_date: format(dueDate, "yyyy-MM-dd"),
-        billing_period_start: format(monthStart, "yyyy-MM-dd"),
-        billing_period_end: format(monthEnd, "yyyy-MM-dd"),
+        invoice_number: result.invoice_number,
+        amount: result.amount,
+        due_date: result.due_date,
+        billing_period_start: result.billing_period_start,
+        billing_period_end: result.billing_period_end,
         status: "pending",
         paid_at: null,
         paid_via: null,
-        contract_number: contract?.contract_number || null,
-        service_breakdown: {
+        contract_number: result.contract_number || null,
+        service_breakdown: result.service_breakdown || {
           plan_name: `Plan ${client.plan_or_speed || "Internet"}`,
           plan_price: (client.total_monthly_price || 0) - (client.service_price || 0),
           service_option: client.service_option,
@@ -379,29 +237,6 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
         identification_number: client.identification_number,
       };
 
-      // Save invoice to database first
-      const { error: insertError } = await supabase
-        .from("client_invoices")
-        .insert({
-          mikrotik_id: mikrotikId,
-          client_id: client.id,
-          contract_id: contract?.id || null,
-          invoice_number: invoiceNumber,
-          amount: amount,
-          due_date: format(dueDate, "yyyy-MM-dd"),
-          billing_period_start: format(monthStart, "yyyy-MM-dd"),
-          billing_period_end: format(monthEnd, "yyyy-MM-dd"),
-          status: "pending",
-          service_breakdown: invoiceData.service_breakdown,
-        });
-
-      if (insertError) {
-        console.error("Error saving invoice:", insertError);
-        toast.error("Error al guardar la factura en la base de datos");
-        return;
-      }
-
-      // Generate and download PDF
       await generateInvoicePDF(invoiceData, clientData);
       toast.success("Factura creada y descargada correctamente");
     } catch (error: any) {
@@ -424,30 +259,16 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     setSuspendingClient(client.id);
     
     try {
-      // Get configured suspension address list
       const suspensionList = getSuspensionAddressList();
       
-      // Call edge function to add/remove from address-list
-      const response = await supabase.functions.invoke("mikrotik-address-list", {
-        body: {
-          mikrotikId,
-          action,
-          address: client.assigned_ip,
-          clientId: client.id,
-          listName: suspensionList,
-          comment: `${client.client_name} - ${isSuspended ? "Reactivado" : "Suspendido"} manualmente`,
-        },
+      await addressListApi.toggleSuspension(mikrotikId, {
+        action,
+        address: client.assigned_ip,
+        clientId: client.id,
+        listName: suspensionList,
+        comment: `${client.client_name} - ${isSuspended ? "Reactivado" : "Suspendido"} manualmente`,
       });
 
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      if (!response.data?.success) {
-        throw new Error(response.data?.error || "Error en la operación");
-      }
-
-      // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ["billing-settings-suspension"] });
       queryClient.invalidateQueries({ queryKey: ["billing-settings"] });
 
@@ -464,7 +285,7 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
     }
   };
 
-  const filteredClients = clients?.filter(client => 
+  const filteredClients = clients?.filter((client: IspClient) => 
     client.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.identification_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -607,7 +428,6 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-center gap-1">
-                          {/* Suspend/Reactivate button */}
                           {client.assigned_ip && (
                             <Button
                               variant="ghost"
@@ -680,55 +500,30 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
           <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-2">
             <div className="grid gap-2">
               <Label htmlFor="edit-name">Nombre del Cliente</Label>
-              <Input
-                id="edit-name"
-                value={editForm.client_name || ""}
-                onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })}
-              />
+              <Input id="edit-name" value={editForm.client_name || ""} onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="edit-id">Número de Identificación</Label>
-              <Input
-                id="edit-id"
-                value={editForm.identification_number || ""}
-                onChange={(e) => setEditForm({ ...editForm, identification_number: e.target.value })}
-              />
+              <Input id="edit-id" value={editForm.identification_number || ""} onChange={(e) => setEditForm({ ...editForm, identification_number: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="edit-phone">Teléfono</Label>
-                <Input
-                  id="edit-phone"
-                  value={editForm.phone || ""}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                />
+                <Input id="edit-phone" value={editForm.phone || ""} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit-email">Email</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  value={editForm.email || ""}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                />
+                <Input id="edit-email" type="email" value={editForm.email || ""} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
               </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="edit-address">Dirección</Label>
-              <Input
-                id="edit-address"
-                value={editForm.address || ""}
-                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-              />
+              <Input id="edit-address" value={editForm.address || ""} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="edit-city">Ciudad</Label>
-                <Input
-                  id="edit-city"
-                  value={editForm.city || ""}
-                  onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                />
+                <Input id="edit-city" value={editForm.city || ""} onChange={(e) => setEditForm({ ...editForm, city: e.target.value })} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit-plan">Plan/Velocidad</Label>
@@ -738,13 +533,8 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                     Cargando planes...
                   </div>
                 ) : (
-                  <Select
-                    value={editForm.plan_or_speed || ""}
-                    onValueChange={handlePlanChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar plan" />
-                    </SelectTrigger>
+                  <Select value={editForm.plan_or_speed || ""} onValueChange={handlePlanChange}>
+                    <SelectTrigger><SelectValue placeholder="Seleccionar plan" /></SelectTrigger>
                     <SelectContent>
                       {pppoeProfiles.map((profile: any) => {
                         const planPrices = getPlanPrices();
@@ -761,7 +551,6 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
               </div>
             </div>
             
-            {/* Servicio Adicional */}
             <div className="grid gap-2">
               <Label>Servicio Adicional</Label>
               {loadingServices ? (
@@ -770,13 +559,8 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                   Cargando servicios...
                 </div>
               ) : (
-                <Select
-                  value={editForm.service_option || "none"}
-                  onValueChange={handleServiceOptionChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar servicio" />
-                  </SelectTrigger>
+                <Select value={editForm.service_option || "none"} onValueChange={handleServiceOptionChange}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar servicio" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sin servicio adicional</SelectItem>
                     {serviceOptions?.map((option) => (
@@ -794,34 +578,21 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
               )}
             </div>
 
-            {/* Precio Total */}
             <div className="grid gap-2">
               <Label htmlFor="edit-total">Precio Mensual Total</Label>
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="edit-total"
-                  type="number"
-                  value={editForm.total_monthly_price || 0}
-                  onChange={(e) => setEditForm({ ...editForm, total_monthly_price: parseFloat(e.target.value) || 0 })}
-                  className="font-medium"
-                />
+                <Input id="edit-total" type="number" value={editForm.total_monthly_price || 0} onChange={(e) => setEditForm({ ...editForm, total_monthly_price: parseFloat(e.target.value) || 0 })} className="font-medium" />
               </div>
             </div>
 
             <div className="grid gap-2">
               <Label htmlFor="edit-comment">Comentario</Label>
-              <Input
-                id="edit-comment"
-                value={editForm.comment || ""}
-                onChange={(e) => setEditForm({ ...editForm, comment: e.target.value })}
-              />
+              <Input id="edit-comment" value={editForm.comment || ""} onChange={(e) => setEditForm({ ...editForm, comment: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingClient(null)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setEditingClient(null)}>Cancelar</Button>
             <Button onClick={handleSaveEdit} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Guardando..." : "Guardar Cambios"}
             </Button>
@@ -853,38 +624,18 @@ export function ClientsManager({ mikrotikId, mikrotikVersion }: ClientsManagerPr
                   )}
                 </ul>
                 <div className="flex items-center gap-2 pt-2">
-                  <input
-                    type="checkbox"
-                    id="delete-mikrotik"
-                    checked={deleteFromMikrotik}
-                    onChange={(e) => setDeleteFromMikrotik(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
+                  <input type="checkbox" id="delete-mikrotik" checked={deleteFromMikrotik} onChange={(e) => setDeleteFromMikrotik(e.target.checked)} className="h-4 w-4 rounded border-gray-300" />
                   <label htmlFor="delete-mikrotik" className="text-sm font-medium">
                     También eliminar del MikroTik ({deletingClient?.connection_type === 'pppoe' ? 'PPPoE' : 'Queue'})
                   </label>
                 </div>
-                <p className="text-destructive font-medium pt-2">
-                  Esta acción no se puede deshacer.
-                </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Eliminando...
-                </>
-              ) : (
-                "Eliminar Completamente"
-              )}
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleteMutation.isPending ? "Eliminando..." : "Eliminar Todo"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

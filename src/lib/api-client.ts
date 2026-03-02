@@ -149,12 +149,20 @@ export const devicesApi = {
 
 // ─── Clients API ──────────────────────────────────────────
 export const clientsApi = {
-  list: (mikrotikId: string) => apiGet<any[]>(`/clients?mikrotik_id=${mikrotikId}`),
+  list: (mikrotikId: string, params?: { is_potential_client?: boolean; limit?: number }) => {
+    const query = new URLSearchParams({ mikrotik_id: mikrotikId });
+    if (params?.is_potential_client !== undefined) query.set('is_potential_client', String(params.is_potential_client));
+    if (params?.limit) query.set('limit', String(params.limit));
+    return apiGet<any[]>(`/clients?${query}`);
+  },
   get: (id: string) => apiGet<any>(`/clients/${id}`),
   create: (client: any) => apiPost('/clients', client),
   update: (id: string, client: any) => apiPut(`/clients/${id}`, client),
-  delete: (id: string) => apiDelete(`/clients/${id}`),
+  delete: (id: string, deleteFromMikrotik?: boolean) => apiDelete(`/clients/${id}?delete_mikrotik=${deleteFromMikrotik ?? false}`),
   search: (identification: string) => apiGet<any>(`/clients/search?identification=${identification}`),
+  register: (data: any) => apiPost('/clients/register', data),
+  scan: (mikrotikId: string, scanType: string) => apiPost('/clients/scan', { mikrotik_id: mikrotikId, scan_type: scanType }),
+  importClients: (mikrotikId: string, clients: any[]) => apiPost('/clients/import', { mikrotik_id: mikrotikId, clients }),
 };
 
 // ─── PPPoE API ────────────────────────────────────────────
@@ -217,25 +225,42 @@ export const addressListApi = {
   list: (mikrotikId: string) => apiGet<any[]>(`/address-list?mikrotik_id=${mikrotikId}`),
   add: (mikrotikId: string, data: any) => apiPost('/address-list', { mikrotik_id: mikrotikId, ...data }),
   remove: (mikrotikId: string, id: string) => apiDelete(`/address-list/${id}?mikrotik_id=${mikrotikId}`),
+  toggleSuspension: (mikrotikId: string, data: any) => apiPost('/address-list/toggle-suspension', { mikrotik_id: mikrotikId, ...data }),
 };
 
 // ─── Billing API ──────────────────────────────────────────
 export const billingApi = {
   getConfig: (mikrotikId: string) => apiGet<any>(`/billing/config?mikrotik_id=${mikrotikId}`),
-  updateConfig: (mikrotikId: string, config: any) => apiPut('/billing/config', { mikrotik_id: mikrotikId, ...config }),
+  saveConfig: (data: any) => apiPost('/billing/config', data),
   clientSettings: (clientId: string) => apiGet<any>(`/billing/client/${clientId}`),
   updateClientSettings: (clientId: string, settings: any) => apiPut(`/billing/client/${clientId}`, settings),
+  listSettings: (mikrotikId: string) => apiGet<any[]>(`/billing/settings?mikrotik_id=${mikrotikId}`),
+  listSuspension: (mikrotikId: string) => apiGet<any[]>(`/billing/suspension-status?mikrotik_id=${mikrotikId}`),
 };
 
 // ─── Invoices API ─────────────────────────────────────────
 export const invoicesApi = {
-  list: (mikrotikId: string) => apiGet<any[]>(`/invoices?mikrotik_id=${mikrotikId}`),
+  list: (mikrotikId: string, params?: { status?: string | string[]; start_date?: string; end_date?: string; limit?: number; with_contracts?: boolean }) => {
+    const query = new URLSearchParams({ mikrotik_id: mikrotikId });
+    if (params?.status) {
+      const statuses = Array.isArray(params.status) ? params.status : [params.status];
+      statuses.forEach(s => query.append('status', s));
+    }
+    if (params?.start_date) query.set('start_date', params.start_date);
+    if (params?.end_date) query.set('end_date', params.end_date);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.with_contracts) query.set('with_contracts', 'true');
+    return apiGet<any[]>(`/invoices?${query}`);
+  },
   get: (id: string) => apiGet<any>(`/invoices/${id}`),
   create: (data: any) => apiPost('/invoices', data),
   update: (id: string, data: any) => apiPut(`/invoices/${id}`, data),
   delete: (id: string) => apiDelete(`/invoices/${id}`),
   markPaid: (id: string, paymentData: any) => apiPost(`/invoices/${id}/pay`, paymentData),
   generateBatch: (mikrotikId: string) => apiPost('/invoices/generate', { mikrotik_id: mikrotikId }),
+  generateForClient: (data: any) => apiPost('/invoices/generate-single', data),
+  paidHistory: (mikrotikId: string, startDate: string, endDate: string) =>
+    apiGet<any[]>(`/invoices/paid-history?mikrotik_id=${mikrotikId}&start_date=${startDate}&end_date=${endDate}`),
 };
 
 // ─── Users/Admin API ──────────────────────────────────────
@@ -307,4 +332,15 @@ export const paymentPlatformsApi = {
   list: (mikrotikId: string) => apiGet<any[]>(`/billing/platforms?mikrotik_id=${mikrotikId}`),
   update: (platform: any) => apiPost('/billing/platforms', platform),
   delete: (id: string) => apiDelete(`/billing/platforms/${id}`),
+};
+
+// ─── Transactions API ─────────────────────────────────────
+export const transactionsApi = {
+  list: (mikrotikId: string, params?: { status?: string; start_date?: string; end_date?: string }) => {
+    const query = new URLSearchParams({ mikrotik_id: mikrotikId });
+    if (params?.status) query.set('status', params.status);
+    if (params?.start_date) query.set('start_date', params.start_date);
+    if (params?.end_date) query.set('end_date', params.end_date);
+    return apiGet<any[]>(`/billing/transactions?${query}`);
+  },
 };
