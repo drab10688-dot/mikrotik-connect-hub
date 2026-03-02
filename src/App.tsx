@@ -31,6 +31,7 @@ import AssignDevices from "./pages/Admin/AssignDevices";
 import RegisterUser from "./pages/Admin/RegisterUser";
 import Secretaries from "./pages/Admin/Secretaries";
 import NotFound from "./pages/NotFound";
+import CaptivePortal from "./pages/CaptivePortal";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ const App = () => (
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/verify-contract" element={<VerifyContract />} />
         <Route path="/pay" element={<ClientPaymentPortal />} />
+        <Route path="/portal" element={<CaptivePortal />} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
