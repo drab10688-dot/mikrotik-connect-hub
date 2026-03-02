@@ -198,6 +198,59 @@ export type Database = {
           },
         ]
       }
+      cloudflare_config: {
+        Row: {
+          api_token: string | null
+          created_at: string
+          created_by: string
+          domain: string | null
+          id: string
+          is_active: boolean
+          mikrotik_id: string
+          mode: string
+          tunnel_id: string | null
+          tunnel_name: string | null
+          tunnel_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_token?: string | null
+          created_at?: string
+          created_by: string
+          domain?: string | null
+          id?: string
+          is_active?: boolean
+          mikrotik_id: string
+          mode?: string
+          tunnel_id?: string | null
+          tunnel_name?: string | null
+          tunnel_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_token?: string | null
+          created_at?: string
+          created_by?: string
+          domain?: string | null
+          id?: string
+          is_active?: boolean
+          mikrotik_id?: string
+          mode?: string
+          tunnel_id?: string | null
+          tunnel_name?: string | null
+          tunnel_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloudflare_config_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: true
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       isp_clients: {
         Row: {
           address: string | null

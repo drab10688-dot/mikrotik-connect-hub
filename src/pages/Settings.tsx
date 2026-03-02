@@ -12,6 +12,7 @@ import { Router, Wifi } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
+import { CloudflareConfig } from "@/components/settings/CloudflareConfig";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -348,6 +349,7 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+          <CloudflareConfig mikrotikId={selectedDevice || null} />
         </div>
       </div>
     </div>
