@@ -2,7 +2,7 @@ FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y \
     git unzip libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
-    libmariadb-dev libgd-dev libcurl4-openssl-dev \
+    libmariadb-dev libgd-dev libcurl4-openssl-dev default-mysql-client \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) gd mysqli pdo pdo_mysql curl \
     && a2enmod rewrite \

@@ -63,77 +63,79 @@ else
 fi
 
 # ─── Check existing installation ──────────────────
-if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-  echo ""
-  echo -e "${YELLOW}⚠ OmniSync ya está instalado en este VPS${NC}"
-  echo ""
-  echo "  1) Reinstalar (elimina todo y vuelve a instalar)"
-  echo "  2) Actualizar (descarga código nuevo, mantiene datos)"
-  echo "  3) Desinstalar (elimina todo completamente)"
-  echo "  4) Cancelar"
-  echo ""
-  read -p "Selecciona una opción [1-4]: " OPTION < /dev/tty
-  
-  case "$OPTION" in
-    1)
-      echo -e "${YELLOW}Deteniendo servicios...${NC}"
-      cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
-      cd /root
-      rm -rf "$INSTALL_DIR"
-      echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
-      ;;
-    2)
-      echo -e "${YELLOW}Actualizando archivos...${NC}"
-      TEMP_DIR=$(mktemp -d)
-      git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
-      # Backup .env
-      cp "$INSTALL_DIR/.env" /tmp/omnisync-env-backup 2>/dev/null || true
-      # Copy new stack files
-      cp -r "$TEMP_DIR"/vps-stack/* "$INSTALL_DIR"/
-      # Restore .env
-      cp /tmp/omnisync-env-backup "$INSTALL_DIR/.env" 2>/dev/null || true
-      
-      # Rebuild frontend
-      echo -e "${YELLOW}Recompilando panel web...${NC}"
-      cd "$TEMP_DIR"
-      echo "VITE_API_BASE_URL=/api" > .env.production
-      npm install --legacy-peer-deps 2>/dev/null || npm install
-      npm run build
-      mkdir -p "$INSTALL_DIR/frontend/dist"
-      rm -rf "$INSTALL_DIR/frontend/dist"/*
-      cp -r dist/* "$INSTALL_DIR/frontend/dist"/
-      
-      # Regenerate radius configs from .env
-      cd "$INSTALL_DIR"
-      source .env 2>/dev/null || true
-      generate_radius_configs
-      
-      rm -rf "$TEMP_DIR" /tmp/omnisync-env-backup
-      
-      # Regenerate nuxbill init SQL
-      generate_nuxbill_sql
-      
-      docker compose up -d --build
-      echo -e "${GREEN}✓ Actualización completada${NC}"
-      VPS_IP=$(hostname -I | awk '{print $1}')
-      echo -e "${GREEN}Panel: http://$VPS_IP${NC}"
-      exit 0
-      ;;
-    3)
-      echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
-      read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
-      if [ "$CONFIRM" = "ELIMINAR" ]; then
+handle_existing_installation() {
+  if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    echo ""
+    echo -e "${YELLOW}⚠ OmniSync ya está instalado en este VPS${NC}"
+    echo ""
+    echo "  1) Reinstalar (elimina todo y vuelve a instalar)"
+    echo "  2) Actualizar (descarga código nuevo, mantiene datos)"
+    echo "  3) Desinstalar (elimina todo completamente)"
+    echo "  4) Cancelar"
+    echo ""
+    read -p "Selecciona una opción [1-4]: " OPTION < /dev/tty
+
+    case "$OPTION" in
+      1)
+        echo -e "${YELLOW}Deteniendo servicios...${NC}"
         cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
+        cd /root
         rm -rf "$INSTALL_DIR"
-        echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
-      fi
-      exit 0
-      ;;
-    *)
-      exit 0
-      ;;
-  esac
-fi
+        echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
+        ;;
+      2)
+        echo -e "${YELLOW}Actualizando archivos...${NC}"
+        TEMP_DIR=$(mktemp -d)
+        git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
+        # Backup .env
+        cp "$INSTALL_DIR/.env" /tmp/omnisync-env-backup 2>/dev/null || true
+        # Copy new stack files
+        cp -r "$TEMP_DIR"/vps-stack/* "$INSTALL_DIR"/
+        # Restore .env
+        cp /tmp/omnisync-env-backup "$INSTALL_DIR/.env" 2>/dev/null || true
+
+        # Rebuild frontend
+        echo -e "${YELLOW}Recompilando panel web...${NC}"
+        cd "$TEMP_DIR"
+        echo "VITE_API_BASE_URL=/api" > .env.production
+        npm install --legacy-peer-deps 2>/dev/null || npm install
+        npm run build
+        mkdir -p "$INSTALL_DIR/frontend/dist"
+        rm -rf "$INSTALL_DIR/frontend/dist"/*
+        cp -r dist/* "$INSTALL_DIR/frontend/dist"/
+
+        # Regenerate radius configs from .env
+        cd "$INSTALL_DIR"
+        source .env 2>/dev/null || true
+        generate_radius_configs
+
+        rm -rf "$TEMP_DIR" /tmp/omnisync-env-backup
+
+        # Regenerate nuxbill init SQL
+        generate_nuxbill_sql
+
+        docker compose up -d --build
+        echo -e "${GREEN}✓ Actualización completada${NC}"
+        VPS_IP=$(hostname -I | awk '{print $1}')
+        echo -e "${GREEN}Panel: http://$VPS_IP${NC}"
+        exit 0
+        ;;
+      3)
+        echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
+        read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
+        if [ "$CONFIRM" = "ELIMINAR" ]; then
+          cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
+          rm -rf "$INSTALL_DIR"
+          echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
+        fi
+        exit 0
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
+  fi
+}
 
 # ═══════════════════════════════════════════════════
 # Helper functions
@@ -208,6 +210,9 @@ GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
 FLUSH PRIVILEGES;
 NUXEOF
 }
+
+# Validate existing installation lifecycle actions (reinstall/update/uninstall)
+handle_existing_installation
 
 # ═══════════════════════════════════════════════════
 # FASE 1: Dependencias del sistema
@@ -482,8 +487,8 @@ echo "║    Usuario:  administrator                               ║"
 echo "║    Pass:     radius                                      ║"
 echo "║                                                          ║"
 echo "║  PHPNuxBill:                                             ║"
-echo "║    Usuario:  admin                                       ║"
-echo "║    Pass:     admin                                       ║"
+echo "║    URL:      http://$VPS_IP/nuxbill/                     ║"
+echo "║    Si lo pide: completar setup en /nuxbill/install       ║"
 echo "║    DB Host: mariadb | DB: phpnuxbill                     ║"
 echo "║    DB User: nuxbill | DB Pass: ${NUXBILL_DB_PASSWORD}    "
 echo "║                                                          ║"
