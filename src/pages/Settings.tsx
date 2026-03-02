@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
 import { CloudflareConfig } from "@/components/settings/CloudflareConfig";
+import { VpsDockerManager } from "@/components/settings/VpsDockerManager";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -350,6 +351,7 @@ export default function Settings() {
             </CardContent>
           </Card>
           <CloudflareConfig mikrotikId={selectedDevice || null} />
+          <VpsDockerManager mikrotikId={selectedDevice || null} />
         </div>
       </div>
     </div>

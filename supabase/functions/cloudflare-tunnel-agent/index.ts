@@ -11,7 +11,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -35,7 +34,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { mikrotik_id, action } = await req.json();
+    const { mikrotik_id, action, docker_action, docker_service } = await req.json();
 
     if (!mikrotik_id || !action) {
       return new Response(JSON.stringify({ error: "Missing mikrotik_id or action" }), {
@@ -44,7 +43,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get cloudflare config with agent info
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -72,9 +70,9 @@ Deno.serve(async (req) => {
 
     const agentUrl = `http://${config.agent_host}:${config.agent_port || 3847}`;
 
-    // Proxy the action to the VPS agent
     let endpoint = "";
     let method = "POST";
+    let body: string | undefined;
 
     switch (action) {
       case "status":
@@ -90,6 +88,10 @@ Deno.serve(async (req) => {
       case "install":
         endpoint = "/install";
         break;
+      case "docker":
+        endpoint = "/docker";
+        body = JSON.stringify({ action: docker_action, service: docker_service });
+        break;
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), {
           status: 400,
@@ -97,18 +99,23 @@ Deno.serve(async (req) => {
         });
     }
 
-    const agentResponse = await fetch(`${agentUrl}${endpoint}`, {
+    const fetchOptions: RequestInit = {
       method,
       headers: {
         "Content-Type": "application/json",
         "X-Agent-Secret": config.agent_secret,
       },
-      signal: AbortSignal.timeout(30000),
-    });
+      signal: AbortSignal.timeout(action === "docker" && docker_action === "pull" ? 300000 : 30000),
+    };
 
+    if (body && method === "POST") {
+      fetchOptions.body = body;
+    }
+
+    const agentResponse = await fetch(`${agentUrl}${endpoint}`, fetchOptions);
     const agentData = await agentResponse.json();
 
-    // If tunnel started successfully, save the URL
+    // Update tunnel state in DB
     if (action === "start" && agentData.url) {
       await adminClient
         .from("cloudflare_config")
@@ -120,7 +127,6 @@ Deno.serve(async (req) => {
         .eq("id", config.id);
     }
 
-    // If tunnel stopped, clear the URL
     if (action === "stop") {
       await adminClient
         .from("cloudflare_config")
