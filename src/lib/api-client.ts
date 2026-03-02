@@ -327,6 +327,15 @@ export const vpsApi = {
   docker: (mikrotikId: string, action: string, service?: string) => apiPost('/system/vps/docker', { mikrotik_id: mikrotikId, action, service }),
 };
 
+// ─── Backup API ───────────────────────────────────────────
+export const backupApi = {
+  list: () => apiGet<any>('/backups'),
+  create: (type: string) => apiPost('/backups/create', { type }),
+  restore: (filename: string) => apiPost('/backups/restore', { filename }),
+  delete: (filename: string) => apiDelete(`/backups/${encodeURIComponent(filename)}`),
+  downloadUrl: (filename: string) => `${getBaseUrl()}/backups/download/${encodeURIComponent(filename)}`,
+};
+
 // ─── Payment Platforms API ────────────────────────────────
 export const paymentPlatformsApi = {
   list: (mikrotikId: string) => apiGet<any[]>(`/billing/platforms?mikrotik_id=${mikrotikId}`),
