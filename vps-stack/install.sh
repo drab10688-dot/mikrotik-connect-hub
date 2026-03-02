@@ -54,7 +54,7 @@ if [ -f /etc/os-release ]; then
   if [ "$COMPATIBLE" = false ]; then
     echo -e "${RED}⚠ Sistema no soportado oficialmente: $PRETTY_NAME${NC}"
     echo -e "${YELLOW}Versiones soportadas: Ubuntu 20.04/22.04/24.04, Debian 11/12${NC}"
-    read -p "¿Deseas continuar de todos modos? (s/N): " FORCE_INSTALL
+    read -p "¿Deseas continuar de todos modos? (s/N): " FORCE_INSTALL < /dev/tty
     if [ "$FORCE_INSTALL" != "s" ] && [ "$FORCE_INSTALL" != "S" ]; then
       echo -e "${RED}Instalación cancelada.${NC}"
       exit 1
@@ -76,7 +76,7 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
   echo "  3) Desinstalar (elimina todo completamente)"
   echo "  4) Cancelar"
   echo ""
-  read -p "Selecciona una opción [1-4]: " OPTION
+  read -p "Selecciona una opción [1-4]: " OPTION < /dev/tty
   
   case "$OPTION" in
     1)
@@ -102,7 +102,7 @@ if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
       ;;
     3)
       echo -e "${RED}⚠ Esto eliminará TODOS los datos, contenedores y configuración.${NC}"
-      read -p "¿Estás seguro? Escribe 'ELIMINAR' para confirmar: " CONFIRM
+      read -p "¿Estás seguro? Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
       if [ "$CONFIRM" = "ELIMINAR" ]; then
         cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
         rm -rf "$INSTALL_DIR"
@@ -164,11 +164,11 @@ MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 # Ask for MikroTik config
 echo ""
 echo -e "${YELLOW}Configuración MikroTik:${NC}"
-read -p "Host/IP del MikroTik: " MIKROTIK_HOST
-read -p "Puerto API REST (443): " MIKROTIK_PORT
+read -p "Host/IP del MikroTik: " MIKROTIK_HOST < /dev/tty
+read -p "Puerto API REST (443): " MIKROTIK_PORT < /dev/tty
 MIKROTIK_PORT=${MIKROTIK_PORT:-443}
-read -p "Usuario MikroTik: " MIKROTIK_USER
-read -sp "Contraseña MikroTik: " MIKROTIK_PASS
+read -p "Usuario MikroTik: " MIKROTIK_USER < /dev/tty
+read -sp "Contraseña MikroTik: " MIKROTIK_PASS < /dev/tty
 echo ""
 
 # Create .env
