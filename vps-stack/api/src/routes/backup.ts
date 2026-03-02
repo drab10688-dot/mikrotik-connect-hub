@@ -189,7 +189,7 @@ backupRouter.delete('/:filename', async (req: AuthRequest, res: Response) => {
   if (!requireSuperAdmin(req, res)) return;
 
   try {
-    const { filename } = req.params;
+    const filename = req.params.filename as string;
     if (filename.includes('..') || filename.includes('/')) {
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
@@ -209,7 +209,7 @@ backupRouter.get('/download/:filename', async (req: AuthRequest, res: Response) 
   if (!requireSuperAdmin(req, res)) return;
 
   try {
-    const { filename } = req.params;
+    const filename = req.params.filename as string;
     if (filename.includes('..') || filename.includes('/')) {
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
@@ -217,7 +217,7 @@ backupRouter.get('/download/:filename', async (req: AuthRequest, res: Response) 
     const filePath = path.join(BACKUP_DIR, filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
 
-    res.download(filePath, filename);
+    res.download(filePath, filename as string);
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
