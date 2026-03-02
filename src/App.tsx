@@ -32,6 +32,7 @@ import RegisterUser from "./pages/Admin/RegisterUser";
 import Secretaries from "./pages/Admin/Secretaries";
 import NotFound from "./pages/NotFound";
 import CaptivePortal from "./pages/CaptivePortal";
+import HotspotMonitor from "./pages/HotspotMonitor";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
         <Route path="/pay" element={<ClientPaymentPortal />} />
         <Route path="/portal" element={<CaptivePortal />} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/hotspot-monitor" element={<ProtectedRoute><HotspotMonitor /></ProtectedRoute>} />
         <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
