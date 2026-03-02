@@ -33,6 +33,7 @@ import Secretaries from "./pages/Admin/Secretaries";
 import NotFound from "./pages/NotFound";
 import CaptivePortal from "./pages/CaptivePortal";
 import HotspotMonitor from "./pages/HotspotMonitor";
+import Accounting from "./pages/Accounting";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +63,7 @@ const App = () => (
         <Route path="/simple-queues" element={<ProtectedRoute><SimpleQueues /></ProtectedRoute>} />
         <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+        <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
         <Route path="/backup" element={<ProtectedRoute><Backup /></ProtectedRoute>} />
         <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
         <Route path="/payment-manager" element={<ProtectedRoute><PaymentManager /></ProtectedRoute>} />

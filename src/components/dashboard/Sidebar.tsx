@@ -19,7 +19,8 @@ import {
   ImagePlus,
   X,
   CreditCard,
-  Monitor
+  Monitor,
+  PiggyBank
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -47,6 +48,7 @@ const menuItems = [
   { icon: CreditCard, label: "Pagos", path: "/payment-manager" },
   { icon: Receipt, label: "Facturación", path: "/payments" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
+  { icon: PiggyBank, label: "Contabilidad", path: "/accounting" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
