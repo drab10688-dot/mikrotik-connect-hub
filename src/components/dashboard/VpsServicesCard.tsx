@@ -91,7 +91,6 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     { name: "API Backend", description: "API REST del servidor", port: 3000, subdomain: "api", path: "/api/health", proxyPath: "/api/health", icon: Database, color: "text-blue-500" },
     { name: "daloRADIUS", description: "Gestión RADIUS - Auth multi-vendedor", port: 8000, subdomain: "radius", proxyPath: "/daloradius/", icon: Wifi, color: "text-green-500", defaultCreds: "administrator / radius" },
     { name: "PHPNuxBill", description: "Billing Hotspot - Gestión de cobros", port: 8080, subdomain: "billing", proxyPath: "/nuxbill/", icon: CreditCard, color: "text-amber-500" },
-    { name: "Netdata", description: "Monitoreo del servidor en tiempo real", port: 19999, subdomain: "monitor", proxyPath: "/netdata/", icon: BarChart3, color: "text-purple-500" },
   ];
 
   const getServiceUrl = (service: VpsService) => {

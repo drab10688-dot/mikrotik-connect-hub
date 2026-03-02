@@ -216,7 +216,6 @@ if command -v ufw &> /dev/null; then
   ufw allow 3000/tcp >/dev/null 2>&1
   ufw allow 8000/tcp >/dev/null 2>&1
   ufw allow 8080/tcp >/dev/null 2>&1
-  ufw allow 19999/tcp >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
   echo -e "${GREEN}Puertos abiertos ✓${NC}"
@@ -273,16 +272,15 @@ echo -e "${GREEN}╔════════════════════
 echo "║           ¡Instalación completada! ✓                    ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║                                                          ║"
-echo "║  🌐 SERVICIOS (ACCESO RECOMENDADO)                        ║"
+echo "║  🌐 SERVICIOS                                             ║"
 echo "║  ─────────────────────────────────────────────           ║"
 echo "║  Panel Web:     http://$VPS_IP                            ║"
 echo "║  API Backend:   http://$VPS_IP/api/health                 ║"
 echo "║  daloRADIUS:    http://$VPS_IP/daloradius/                ║"
 echo "║  PHPNuxBill:    http://$VPS_IP/nuxbill/                   ║"
-echo "║  Netdata:       http://$VPS_IP/netdata/                   ║"
 echo "║                                                          ║"
 echo "║  (Directo por puertos, opcional):                        ║"
-echo "║  API :3000 | daloRADIUS :8000 | NuxBill :8080 | Netdata :19999 ║"
+echo "║  API :3000 | daloRADIUS :8000 | NuxBill :8080            ║"
 echo "║  🔑 CREDENCIALES                                          ║"
 echo "║  ─────────────────────────────────────────────           ║"
 echo "║  OmniSync Panel:                                         ║"
