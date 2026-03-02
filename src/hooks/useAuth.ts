@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { authApi, getToken, setToken, clearToken, getStoredUser, setStoredUser } from '@/lib/api-client';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { authApi, getToken, setToken, clearToken, getStoredUser, setStoredUser, ApiError } from '@/lib/api-client';
 import { clearSelectedDevice } from '@/lib/mikrotik';
 
 interface VpsUser {
@@ -9,13 +9,18 @@ interface VpsUser {
   role: 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary';
 }
 
+// Global session cache to avoid re-validating on every mount
+let cachedUser: VpsUser | null = null;
+let lastValidation = 0;
+const VALIDATION_INTERVAL = 5 * 60 * 1000; // Re-validate every 5 minutes
+
 export const useAuth = () => {
-  const [user, setUser] = useState<VpsUser | null>(getStoredUser());
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<VpsUser | null>(cachedUser || getStoredUser());
+  const [loading, setLoading] = useState(!cachedUser && !!getToken());
+  const validatingRef = useRef(false);
 
   const role = user?.role ?? null;
 
-  // Validate session on mount
   useEffect(() => {
     let mounted = true;
 
@@ -27,18 +32,38 @@ export const useAuth = () => {
         return;
       }
 
+      // Skip if recently validated
+      const now = Date.now();
+      if (cachedUser && (now - lastValidation) < VALIDATION_INTERVAL) {
+        setUser(cachedUser);
+        setLoading(false);
+        return;
+      }
+
+      // Prevent concurrent validations
+      if (validatingRef.current) return;
+      validatingRef.current = true;
+
       try {
         const { user: userData } = await authApi.me();
         if (!mounted) return;
+        cachedUser = userData;
+        lastValidation = Date.now();
         setUser(userData);
         setStoredUser(userData);
-      } catch {
+      } catch (err) {
         if (!mounted) return;
-        // Token invalid or expired
-        clearToken();
-        clearSelectedDevice();
-        setUser(null);
+        // Only clear session on explicit 401 (invalid token)
+        if (err instanceof ApiError && err.status === 401) {
+          cachedUser = null;
+          clearToken();
+          clearSelectedDevice();
+          setUser(null);
+        }
+        // For network errors, keep the stored user
+        // so navigation doesn't kick them out
       } finally {
+        validatingRef.current = false;
         if (mounted) setLoading(false);
       }
     };
@@ -48,6 +73,8 @@ export const useAuth = () => {
   }, []);
 
   const signOut = useCallback(async () => {
+    cachedUser = null;
+    lastValidation = 0;
     clearSelectedDevice();
     clearToken();
     setUser(null);

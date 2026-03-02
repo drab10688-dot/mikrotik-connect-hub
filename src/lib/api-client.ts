@@ -94,12 +94,6 @@ export const api = async <T = any>(
   if (!response.ok) {
     let errorData: any;
     try { errorData = await response.json(); } catch { errorData = null; }
-    
-    // Auto-logout on 401
-    if (response.status === 401) {
-      clearToken();
-      window.location.href = '/login';
-    }
 
     throw new ApiError(
       errorData?.error || errorData?.message || `Error ${response.status}`,
