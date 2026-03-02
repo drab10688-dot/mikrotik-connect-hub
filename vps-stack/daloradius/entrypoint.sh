@@ -7,6 +7,8 @@ echo "=== Configurando daloRADIUS ==="
 CONFIG_LOCATIONS=(
   "/var/www/html/library/daloradius.conf.php"
   "/var/www/html/app/common/includes/daloradius.conf.php"
+  "/var/www/html/daloradius/library/daloradius.conf.php"
+  "/var/www/html/daloradius/app/common/includes/daloradius.conf.php"
 )
 
 CONFIGURED=false
@@ -45,7 +47,10 @@ for i in $(seq 1 30); do
       for sql_file in \
         /var/www/html/contrib/db/fr3-mariadb-freeradius.sql \
         /var/www/html/contrib/db/mariadb-freeradius.sql \
-        /var/www/html/contrib/db/mysql-freeradius.sql; do
+        /var/www/html/contrib/db/mysql-freeradius.sql \
+        /var/www/html/daloradius/contrib/db/fr3-mariadb-freeradius.sql \
+        /var/www/html/daloradius/contrib/db/mariadb-freeradius.sql \
+        /var/www/html/daloradius/contrib/db/mysql-freeradius.sql; do
         if [ -f "$sql_file" ]; then
           echo "Importando: $sql_file"
           mysql -h "${MYSQL_HOST:-mariadb}" -u "${MYSQL_USER:-radius}" -p"${MYSQL_PASSWORD:-radiusdbpw}" "${MYSQL_DATABASE:-radius}" < "$sql_file" 2>/dev/null || true
@@ -56,7 +61,9 @@ for i in $(seq 1 30); do
       # Import daloRADIUS schema
       for sql_file in \
         /var/www/html/contrib/db/mariadb-daloradius.sql \
-        /var/www/html/contrib/db/mysql-daloradius.sql; do
+        /var/www/html/contrib/db/mysql-daloradius.sql \
+        /var/www/html/daloradius/contrib/db/mariadb-daloradius.sql \
+        /var/www/html/daloradius/contrib/db/mysql-daloradius.sql; do
         if [ -f "$sql_file" ]; then
           echo "Importando: $sql_file"
           mysql -h "${MYSQL_HOST:-mariadb}" -u "${MYSQL_USER:-radius}" -p"${MYSQL_PASSWORD:-radiusdbpw}" "${MYSQL_DATABASE:-radius}" < "$sql_file" 2>/dev/null || true

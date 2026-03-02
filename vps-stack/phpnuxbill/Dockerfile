@@ -22,6 +22,13 @@ RUN sed -i 's/80/8080/g' /etc/apache2/sites-available/000-default.conf \
 # Enable .htaccess
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
+# Production PHP settings (avoid warning/deprecation noise in UI)
+RUN { \
+      echo 'display_errors=Off'; \
+      echo 'log_errors=On'; \
+      echo 'error_reporting=E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_WARNING'; \
+    } > /usr/local/etc/php/conf.d/zz-production.ini
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
