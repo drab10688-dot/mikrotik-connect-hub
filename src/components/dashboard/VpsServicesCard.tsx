@@ -59,7 +59,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     || localStorage.getItem('vps_ip')
     || window.location.hostname;
 
-  const portalUrl = `${window.location.origin}/portal${mikrotikId ? `?id=${mikrotikId}` : ""}`;
+  const portalUrl = `${window.location.origin}/portal`;
 
   // Load domain config
   useEffect(() => {
@@ -68,11 +68,12 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     if (saved) { setCloudflareDomain(saved); setDomainInput(saved); setUseDomain(enabled); }
   }, []);
 
-  // Load Cloudflare tunnel config
+  // Load Cloudflare tunnel config (works with or without mikrotikId)
+  const cloudflareConfigId = mikrotikId || localStorage.getItem("vps_cloudflare_id") || "default";
+  
   const { data: config } = useQuery({
-    queryKey: ["cloudflare-config", mikrotikId],
-    queryFn: () => vpsApi.getCloudflareConfig(mikrotikId!),
-    enabled: !!mikrotikId,
+    queryKey: ["cloudflare-config", cloudflareConfigId],
+    queryFn: () => vpsApi.getCloudflareConfig(cloudflareConfigId),
     refetchInterval: 5000,
   });
 
@@ -136,18 +137,19 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
 
   const saveAgentMutation = useMutation({
     mutationFn: async () => {
-      if (!mikrotikId || !user) throw new Error("Falta datos");
+      if (!user) throw new Error("Falta datos");
       if (!vpsIp.trim()) throw new Error("Ingresa la IP de tu VPS");
+      const effectiveId = mikrotikId || cloudflareConfigId;
       const secret = config?.agent_secret || generateSecret();
       await vpsApi.updateCloudflareConfig({
-        id: config?.id, mikrotik_id: mikrotikId, mode: "free",
+        id: config?.id, mikrotik_id: effectiveId, mode: "free",
         agent_host: vpsIp.trim(), agent_port: parseInt(vpsPort) || 3847,
         agent_secret: secret, created_by: user.id, updated_at: new Date().toISOString(),
       });
       return { secret, port: parseInt(vpsPort) || 3847 };
     },
     onSuccess: ({ secret, port }) => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
+      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", cloudflareConfigId] });
       navigator.clipboard.writeText(buildAgentScript(secret, port));
       toast.success("Script copiado. Pégalo en tu VPS.");
     },
@@ -155,9 +157,9 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
   });
 
   const agentActionMutation = useMutation({
-    mutationFn: (action: string) => vpsApi.tunnelAgent(mikrotikId!, action),
+    mutationFn: (action: string) => vpsApi.tunnelAgent(cloudflareConfigId, action),
     onSuccess: (data, action) => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
+      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", cloudflareConfigId] });
       if (action === "start" && data?.url) toast.success(`Tunnel activo: ${data.url}`);
       else if (action === "stop") toast.success("Tunnel detenido");
       else if (action === "status") toast.info(`Estado: ${data?.status || "desconocido"}`);
@@ -167,15 +169,16 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
 
   const savePaidMutation = useMutation({
     mutationFn: async () => {
-      if (!mikrotikId || !user || !apiToken.trim()) throw new Error("Datos incompletos");
+      if (!user || !apiToken.trim()) throw new Error("Datos incompletos");
+      const effectiveId = mikrotikId || cloudflareConfigId;
       await vpsApi.updateCloudflareConfig({
-        id: config?.id, mikrotik_id: mikrotikId, mode: "paid",
+        id: config?.id, mikrotik_id: effectiveId, mode: "paid",
         api_token: apiToken, domain: domain || null, tunnel_name: tunnelName || null,
         is_active: true, created_by: user.id, updated_at: new Date().toISOString(),
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
+      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", cloudflareConfigId] });
       toast.success("Config Pro guardada");
     },
     onError: (err: any) => toast.error(err.message),
@@ -292,12 +295,6 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
 
           {/* ═══ TAB: CLOUDFLARE TUNNEL ═══ */}
           <TabsContent value="cloudflare" className="space-y-4">
-            {!mikrotikId ? (
-              <div className="text-center py-8">
-                <Cloud className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p className="text-muted-foreground text-sm">Selecciona un dispositivo MikroTik primero</p>
-              </div>
-            ) : (
               <>
                 {/* Active tunnel banner */}
                 {isRunning && (
@@ -390,7 +387,6 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                   </TabsContent>
                 </Tabs>
               </>
-            )}
           </TabsContent>
 
           {/* ═══ TAB: PORTAL CAUTIVO ═══ */}
