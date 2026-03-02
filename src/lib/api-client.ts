@@ -292,3 +292,19 @@ export const serviceOptionsApi = {
   update: (id: string, data: any) => apiPut(`/clients/service-options/${id}`, data),
   delete: (id: string) => apiDelete(`/clients/service-options/${id}`),
 };
+
+// ─── Cloudflare/VPS API ───────────────────────────────────
+export const vpsApi = {
+  getCloudflareConfig: (mikrotikId: string) => apiGet<any>(`/system/cloudflare/config?mikrotik_id=${mikrotikId}`),
+  updateCloudflareConfig: (config: any) => apiPost('/system/cloudflare/config', config),
+  tunnelAgent: (mikrotikId: string, action: string, params?: any) => apiPost('/system/tunnel/agent', { mikrotik_id: mikrotikId, action, ...params }),
+  status: (mikrotikId: string) => apiGet<any>(`/system/vps/status?mikrotik_id=${mikrotikId}`),
+  docker: (mikrotikId: string, action: string, service?: string) => apiPost('/system/vps/docker', { mikrotik_id: mikrotikId, action, service }),
+};
+
+// ─── Payment Platforms API ────────────────────────────────
+export const paymentPlatformsApi = {
+  list: (mikrotikId: string) => apiGet<any[]>(`/billing/platforms?mikrotik_id=${mikrotikId}`),
+  update: (platform: any) => apiPost('/billing/platforms', platform),
+  delete: (id: string) => apiDelete(`/billing/platforms/${id}`),
+};

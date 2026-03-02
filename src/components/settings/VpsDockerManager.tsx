@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,11 +46,7 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
   const { data: status, isLoading } = useQuery<VpsStatus>({
     queryKey: ["vps-status", mikrotikId],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("cloudflare-tunnel-agent", {
-        body: { mikrotik_id: mikrotikId, action: "status" },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await vpsApi.status(mikrotikId!);
       return data;
     },
     enabled: !!mikrotikId,
@@ -59,11 +55,7 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
 
   const dockerMutation = useMutation({
     mutationFn: async ({ action, service }: { action: string; service?: string }) => {
-      const { data, error } = await supabase.functions.invoke("cloudflare-tunnel-agent", {
-        body: { mikrotik_id: mikrotikId, action: "docker", docker_action: action, docker_service: service },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await vpsApi.docker(mikrotikId!, action, service);
       return data;
     },
     onSuccess: (data, vars) => {

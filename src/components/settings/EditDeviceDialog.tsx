@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { devicesApi } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -51,12 +51,7 @@ export const EditDeviceDialog = ({ device }: EditDeviceDialogProps) => {
 
   const updateDeviceMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const { error } = await supabase
-        .from('mikrotik_devices')
-        .update(data)
-        .eq('id', device.id);
-
-      if (error) throw error;
+      await devicesApi.update(device.id, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
