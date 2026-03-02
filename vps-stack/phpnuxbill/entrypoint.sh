@@ -34,13 +34,75 @@ fi
 
 # Wait for MariaDB
 echo "Esperando MariaDB..."
+CONNECTED=false
 for i in $(seq 1 30); do
   if php -r "new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');" 2>/dev/null; then
     echo "MariaDB conectada ✓"
+    CONNECTED=true
     break
   fi
   echo "Reintentando ($i/30)..."
   sleep 2
 done
+
+# Auto-install PHPNuxBill schema if tbl_appconfig doesn't exist
+if [ "$CONNECTED" = true ]; then
+  TABLE_CHECK=$(php -r "
+    \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+    \$r = \$c->query(\"SHOW TABLES LIKE 'tbl_appconfig'\");
+    echo \$r->num_rows;
+    \$c->close();
+  " 2>/dev/null || echo "0")
+
+  if [ "$TABLE_CHECK" = "0" ]; then
+    echo "Tablas de PHPNuxBill no encontradas, buscando schema..."
+    
+    # Look for install SQL in common locations
+    SCHEMA_FOUND=false
+    for sql_file in \
+      /var/www/html/install/phpnuxbill.sql \
+      /var/www/html/install/sql/phpnuxbill.sql \
+      /var/www/html/system/uploads/phpnuxbill.sql \
+      /var/www/html/install/database.sql; do
+      if [ -f "$sql_file" ]; then
+        echo "Importando schema: $sql_file"
+        php -r "
+          \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+          \$sql = file_get_contents('$sql_file');
+          \$c->multi_query(\$sql);
+          while (\$c->next_result()) {;}
+          \$c->close();
+          echo 'OK';
+        " 2>/dev/null && SCHEMA_FOUND=true
+        break
+      fi
+    done
+
+    if [ "$SCHEMA_FOUND" = false ]; then
+      echo "⚠ No se encontró schema SQL automático."
+      echo "PHPNuxBill mostrará el instalador web en /install/"
+      echo "Archivos de instalación disponibles:"
+      find /var/www/html/install -name "*.sql" -o -name "*.php" 2>/dev/null | head -10
+    else
+      echo "Schema PHPNuxBill importado ✓"
+      
+      # Create default admin user if not exists
+      php -r "
+        \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+        \$r = \$c->query(\"SELECT id FROM tbl_users WHERE username='admin'\");
+        if (\$r && \$r->num_rows == 0) {
+          \$pass = md5('admin');
+          \$c->query(\"INSERT INTO tbl_users (username, password, fullname, user_type) VALUES ('admin', '\$pass', 'Administrator', 'Admin')\");
+          echo 'Admin user created';
+        } else {
+          echo 'Admin user exists';
+        }
+        \$c->close();
+      " 2>/dev/null || echo "Could not check admin user"
+    fi
+  else
+    echo "PHPNuxBill schema ya existe ✓"
+  fi
+fi
 
 exec "$@"
