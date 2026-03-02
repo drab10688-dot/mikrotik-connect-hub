@@ -1,4 +1,4 @@
-version: '3.8'
+# OmniSync Docker Stack
 
 services:
   # ============================================
@@ -123,7 +123,7 @@ services:
   # daloRADIUS - Panel web para RADIUS (opcional)
   # ============================================
   daloradius:
-    image: laucasse/daloradius:latest
+    image: ghcr.io/lirantal/daloradius:latest
     container_name: omnisync-daloradius
     restart: unless-stopped
     environment:
@@ -133,7 +133,7 @@ services:
       MYSQL_USER: radius
       MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
     ports:
-      - "8000:80"
+      - "8000:8000"
     depends_on:
       mariadb:
         condition: service_healthy
