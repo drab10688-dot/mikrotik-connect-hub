@@ -2,13 +2,13 @@ FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y \
     git unzip libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
-    libmariadb-dev libgd-dev \
+    libmariadb-dev libgd-dev default-mysql-client \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) gd mysqli pdo pdo_mysql \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Clone daloRADIUS - files go directly into web root
+# Clone daloRADIUS into web root
 RUN git clone --depth 1 https://github.com/lirantal/daloradius.git /tmp/daloradius \
     && cp -r /tmp/daloradius/. /var/www/html/ \
     && rm -rf /tmp/daloradius \
@@ -25,7 +25,6 @@ RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/Allo
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
 
-# Entrypoint script to configure DB connection
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
