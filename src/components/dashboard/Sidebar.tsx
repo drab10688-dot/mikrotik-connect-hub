@@ -1,26 +1,11 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import omnisyncLogo from "@/assets/omnisync-logo.png";
 import {
-  LayoutDashboard,
-  Users,
-  Wifi,
-  Activity,
-  Settings,
-  LogOut,
-  Router,
-  ShieldCheck,
-  BarChart3,
-  Ticket,
-  ListChecks,
-  Gauge,
-  Database,
-  UserPlus,
-  ImagePlus,
-  X,
-  CreditCard,
-  Monitor,
-  PiggyBank
+  LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
+  ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
+  UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
+  ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -32,12 +17,19 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-
 import { Receipt } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+const hotspotSubItems = [
+  { icon: LayoutDashboard, label: "Dashboard", section: "dashboard" },
+  { icon: Wifi, label: "Hotspot", section: "hotspot" },
+  { icon: Ticket, label: "Vouchers", section: "vouchers" },
+  { icon: ScrollText, label: "Log", section: "log" },
+  { icon: PiggyBank, label: "Contabilidad", section: "contabilidad" },
+];
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Monitor, label: "Hotspot Monitor", path: "/hotspot-monitor" },
   { icon: Users, label: "Clientes", path: "/clients" },
   { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
   { icon: ListChecks, label: "Address List", path: "/address-list" },
@@ -45,26 +37,33 @@ const menuItems = [
   { icon: CreditCard, label: "Pagos", path: "/payment-manager" },
   { icon: Receipt, label: "Facturación", path: "/payments" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
-  { icon: PiggyBank, label: "Contabilidad", path: "/accounting" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },
 ];
 
 export const Sidebar = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut, isSecretary } = useAuth();
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("Omnisync");
-  
+
+  const isHotspotActive = location.pathname === "/hotspot-monitor";
+  const currentSection = new URLSearchParams(location.search).get("section") || "dashboard";
+  const [hotspotOpen, setHotspotOpen] = useState(isHotspotActive);
+
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
-  // Load saved logo and business name from localStorage
+  useEffect(() => {
+    if (isHotspotActive) setHotspotOpen(true);
+  }, [isHotspotActive]);
+
   useEffect(() => {
     const savedLogo = localStorage.getItem("sidebar_logo");
     const savedName = localStorage.getItem("sidebar_business_name");
@@ -75,10 +74,7 @@ export const Sidebar = () => {
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 500000) {
-        toast.error("La imagen debe ser menor a 500KB");
-        return;
-      }
+      if (file.size > 500000) { toast.error("La imagen debe ser menor a 500KB"); return; }
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
@@ -96,11 +92,8 @@ export const Sidebar = () => {
     toast.info("Logo eliminado");
   };
 
-  // Filtrar menú para secretarias - Dashboard, PPPoE y Queues
-  const filteredMenuItems = isSecretary 
-    ? menuItems.filter(item => 
-        item.path === '/dashboard' || item.path === '/ppp' || item.path === '/simple-queues'
-      )
+  const filteredMenuItems = isSecretary
+    ? menuItems.filter(item => item.path === '/dashboard' || item.path === '/ppp' || item.path === '/simple-queues')
     : menuItems;
 
   const handleLogout = async () => {
@@ -115,17 +108,14 @@ export const Sidebar = () => {
 
   return (
     <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex flex-col border-r border-sidebar-border hidden md:flex">
-      {/* Logo section - Circular branding area */}
+      {/* Logo section */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex justify-center">
           <div className="relative group">
             {customLogo ? (
               <div className="w-28 h-28 rounded-full overflow-hidden relative bg-sidebar-accent/30 border-2 border-sidebar-border">
                 <img src={customLogo} alt="Logo" className="w-full h-full object-cover" />
-                <button
-                  onClick={handleRemoveLogo}
-                  className="absolute top-0 right-0 w-6 h-6 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
-                >
+                <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-6 h-6 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
                   <X className="w-3 h-3 text-destructive-foreground" />
                 </button>
               </div>
@@ -134,23 +124,12 @@ export const Sidebar = () => {
                 <img src={omnisyncLogo} alt="Omnisync" className="w-full h-full object-cover" />
               </div>
             )}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex"
-            >
+            <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex">
               <ImagePlus className="w-6 h-6 text-white" />
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
           </div>
         </div>
-        
-        {/* Host and version info */}
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70">
             <Router className="w-4 h-4" />
@@ -197,7 +176,40 @@ export const Sidebar = () => {
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            
+
+            {/* Hotspot Monitor collapsible */}
+            {!isSecretary && (
+              <Collapsible open={hotspotOpen} onOpenChange={setHotspotOpen}>
+                <CollapsibleTrigger className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                  isHotspotActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                )}>
+                  <Monitor className="w-5 h-5" />
+                  <span className="flex-1 text-left">Hotspot Monitor</span>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", hotspotOpen && "rotate-180")} />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-4 space-y-0.5 mt-0.5">
+                  {hotspotSubItems.map((sub) => (
+                    <NavLink
+                      key={sub.section}
+                      to={`/hotspot-monitor?section=${sub.section}`}
+                      className={cn(
+                        "flex items-center gap-2.5 px-4 py-2 rounded-lg transition-colors text-sm",
+                        isHotspotActive && currentSection === sub.section
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
+                      )}
+                    >
+                      <sub.icon className="w-4 h-4" />
+                      <span>{sub.label}</span>
+                    </NavLink>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
             {!isSecretary && (
               <div className="pt-4 mt-4 border-t border-sidebar-border">
                 <AdminMenu />

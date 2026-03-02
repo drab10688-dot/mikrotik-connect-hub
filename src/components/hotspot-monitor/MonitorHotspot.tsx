@@ -115,6 +115,26 @@ export function MonitorHotspot() {
   /system script add name="\$date-|-\$time-|-\$user-|-5000-|-\$address-|-\$mac-|-3d-|-3_Dias-|-\$comment" owner="\$month\$year" source=\$date comment=omnisync
 }}`;
 
+  const schedulerScript = `:local dateint do={:local montharray ( "jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec" );:local days [ :pick \$d 4 6 ];:local month [ :pick \$d 0 3 ];:local year [ :pick \$d 7 11 ];:local monthint ([ :find \$montharray \$month]);:local month (\$monthint + 1);:if ( [len \$month] = 1) do={:local zero ("0");:return [:tonum ("\$year\$zero\$month\$days")];} else={:return [:tonum ("\$year\$month\$days")];}};
+:local timeint do={ :local hours [ :pick \$t 0 2 ]; :local minutes [ :pick \$t 3 5 ]; :return (\$hours * 60 + \$minutes) ; };
+:local date [ /system clock get date ];
+:local time [ /system clock get time ];
+:local today [\$dateint d=\$date] ;
+:local curtime [\$timeint t=\$time] ;
+:foreach i in [ /ip hotspot user find where profile="3_Dias" ] do={
+  :local comment [ /ip hotspot user get \$i comment];
+  :local name [ /ip hotspot user get \$i name];
+  :local gettime [:pic \$comment 12 20];
+  :if ([:pic \$comment 3] = "/" and [:pic \$comment 6] = "/") do={
+    :local expd [\$dateint d=\$comment] ;
+    :local expt [\$timeint t=\$gettime] ;
+    :if ((\$expd < \$today and \$expt < \$curtime) or (\$expd < \$today and \$expt > \$curtime) or (\$expd = \$today and \$expt < \$curtime)) do={
+      [ /ip hotspot user remove \$i ];
+      [ /ip hotspot active remove [find where user=\$name] ];
+    }
+  }
+}`;
+
   const filteredActive = hotspotActive.filter((u: any) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
@@ -304,13 +324,12 @@ export function MonitorHotspot() {
               <CardTitle className="text-sm flex items-center gap-2"><Code className="h-4 w-4 text-primary" /> Script On-Login (Omnisync)</CardTitle>
               <CardDescription className="text-[10px]">
                 Coloca este script en el campo "On Login" de cada perfil hotspot para controlar la expiración automática por tiempo.
-                Modifica los valores según tu configuración (velocidad, validez, etc).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-medium">Script de ejemplo (3 días, 5Mbps)</Label>
+                  <Label className="text-xs font-medium">Script On-Login (3 días, 5Mbps)</Label>
                   <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => {
                     navigator.clipboard.writeText(onLoginScript);
                     toast.success("Script copiado al portapapeles");
@@ -318,14 +337,10 @@ export function MonitorHotspot() {
                     <Copy className="h-3 w-3 mr-1" /> Copiar
                   </Button>
                 </div>
-                <Textarea
-                  readOnly
-                  value={onLoginScript}
-                  className="font-mono text-[10px] leading-relaxed h-[280px] bg-muted/50 resize-none"
-                />
+                <Textarea readOnly value={onLoginScript} className="font-mono text-[10px] leading-relaxed h-[220px] bg-muted/50 resize-none" />
               </div>
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-1">
-                <p className="text-[10px] font-medium text-primary">📋 Instrucciones:</p>
+                <p className="text-[10px] font-medium text-primary">📋 Instrucciones On-Login:</p>
                 <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
                   <li>Copia el script de arriba</li>
                   <li>Ve a tu MikroTik → IP → Hotspot → User Profiles</li>
@@ -333,6 +348,40 @@ export function MonitorHotspot() {
                   <li>Pega el script en el campo <code className="bg-muted px-1 rounded">On Login</code></li>
                   <li>Modifica <code className="bg-muted px-1 rounded">interval="3d"</code> según la validez deseada</li>
                   <li>Ajusta la velocidad en <code className="bg-muted px-1 rounded">remc,5000,3d,5000</code></li>
+                </ol>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2"><Code className="h-4 w-4 text-primary" /> Script Scheduler (Expiración)</CardTitle>
+              <CardDescription className="text-[10px]">
+                Este script se coloca en System → Scheduler para eliminar automáticamente usuarios expirados del hotspot.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium">Script Scheduler (perfil: 3_Dias)</Label>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => {
+                    navigator.clipboard.writeText(schedulerScript);
+                    toast.success("Script copiado al portapapeles");
+                  }}>
+                    <Copy className="h-3 w-3 mr-1" /> Copiar
+                  </Button>
+                </div>
+                <Textarea readOnly value={schedulerScript} className="font-mono text-[10px] leading-relaxed h-[220px] bg-muted/50 resize-none" />
+              </div>
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-1">
+                <p className="text-[10px] font-medium text-primary">📋 Instrucciones Scheduler:</p>
+                <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+                  <li>Copia el script de arriba</li>
+                  <li>Ve a tu MikroTik → System → Scheduler</li>
+                  <li>Crea una nueva tarea con intervalo <code className="bg-muted px-1 rounded">00:01:00</code> (cada minuto)</li>
+                  <li>Pega el script en el campo <code className="bg-muted px-1 rounded">On Event</code></li>
+                  <li>Cambia <code className="bg-muted px-1 rounded">profile="3_Dias"</code> al nombre de tu perfil</li>
+                  <li>Este script revisa y elimina usuarios cuyo tiempo de expiración ya pasó</li>
                 </ol>
               </div>
             </CardContent>
