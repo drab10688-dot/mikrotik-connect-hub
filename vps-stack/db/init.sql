@@ -1,0 +1,443 @@
+-- ============================================
+-- OmniSync ISP Manager - PostgreSQL Schema
+-- ============================================
+
+-- Extensiones
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ============================================
+-- ENUM Types
+-- ============================================
+CREATE TYPE app_role AS ENUM ('super_admin', 'admin', 'user', 'reseller', 'secretary');
+CREATE TYPE billing_type AS ENUM ('advance', 'due');
+CREATE TYPE invoice_status AS ENUM ('pending', 'paid', 'overdue', 'cancelled');
+CREATE TYPE voucher_status AS ENUM ('available', 'sold', 'active', 'expired', 'used');
+CREATE TYPE connection_type AS ENUM ('pppoe', 'hotspot', 'static', 'dhcp');
+CREATE TYPE device_status AS ENUM ('active', 'pending', 'inactive');
+
+-- ============================================
+-- Users & Auth
+-- ============================================
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  full_name TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE user_roles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role app_role NOT NULL DEFAULT 'user',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, role)
+);
+
+-- ============================================
+-- MikroTik Devices
+-- ============================================
+CREATE TABLE mikrotik_devices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER DEFAULT 443,
+  username TEXT NOT NULL,
+  password TEXT NOT NULL,
+  version TEXT DEFAULT 'v7',
+  status device_status DEFAULT 'active',
+  hotspot_url TEXT DEFAULT 'http://192.168.88.1/login',
+  created_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE user_mikrotik_access (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  granted_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, mikrotik_id)
+);
+
+CREATE TABLE secretary_assignments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  secretary_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  assigned_by UUID NOT NULL REFERENCES users(id),
+  can_manage_pppoe BOOLEAN DEFAULT true,
+  can_create_pppoe BOOLEAN DEFAULT true,
+  can_edit_pppoe BOOLEAN DEFAULT true,
+  can_delete_pppoe BOOLEAN DEFAULT true,
+  can_disconnect_pppoe BOOLEAN DEFAULT true,
+  can_toggle_pppoe BOOLEAN DEFAULT true,
+  can_manage_queues BOOLEAN DEFAULT true,
+  can_create_queues BOOLEAN DEFAULT true,
+  can_edit_queues BOOLEAN DEFAULT true,
+  can_delete_queues BOOLEAN DEFAULT true,
+  can_toggle_queues BOOLEAN DEFAULT true,
+  can_suspend_queues BOOLEAN DEFAULT true,
+  can_reactivate_queues BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(secretary_id, mikrotik_id)
+);
+
+CREATE TABLE reseller_assignments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reseller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  assigned_by UUID NOT NULL REFERENCES users(id),
+  commission_percentage NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(reseller_id, mikrotik_id)
+);
+
+-- ============================================
+-- ISP Clients
+-- ============================================
+CREATE TABLE isp_clients (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  client_name TEXT NOT NULL,
+  identification_number TEXT,
+  username TEXT NOT NULL,
+  connection_type connection_type NOT NULL DEFAULT 'pppoe',
+  plan_or_speed TEXT,
+  assigned_ip TEXT,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  city TEXT,
+  latitude TEXT,
+  longitude TEXT,
+  comment TEXT,
+  service_option TEXT,
+  service_price NUMERIC DEFAULT 0,
+  total_monthly_price NUMERIC DEFAULT 0,
+  telegram_chat_id TEXT,
+  is_potential_client BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Company Info
+-- ============================================
+CREATE TABLE company_info (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  company_name TEXT,
+  nit TEXT,
+  address TEXT,
+  phone TEXT,
+  email TEXT,
+  logo_url TEXT,
+  created_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id)
+);
+
+-- ============================================
+-- Billing & Invoices
+-- ============================================
+CREATE TABLE billing_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  billing_type billing_type DEFAULT 'advance',
+  billing_day INTEGER DEFAULT 1,
+  invoice_maturity_days INTEGER DEFAULT 15,
+  grace_period_days INTEGER DEFAULT 5,
+  reminder_days_before INTEGER DEFAULT 3,
+  suspension_address_list TEXT DEFAULT 'morosos',
+  auto_send_telegram BOOLEAN DEFAULT false,
+  auto_send_whatsapp BOOLEAN DEFAULT false,
+  created_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id)
+);
+
+CREATE TABLE client_billing_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  client_id UUID REFERENCES isp_clients(id) ON DELETE CASCADE,
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  billing_day INTEGER DEFAULT 1,
+  monthly_amount NUMERIC NOT NULL,
+  grace_period_days INTEGER DEFAULT 5,
+  reminder_days_before INTEGER DEFAULT 3,
+  is_suspended BOOLEAN DEFAULT false,
+  suspended_at TIMESTAMPTZ,
+  last_payment_date DATE,
+  next_billing_date DATE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(client_id)
+);
+
+CREATE TABLE client_invoices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  contract_id UUID,
+  invoice_number TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  status invoice_status DEFAULT 'pending',
+  due_date DATE NOT NULL,
+  billing_period_start DATE NOT NULL,
+  billing_period_end DATE NOT NULL,
+  paid_at TIMESTAMPTZ,
+  paid_via TEXT,
+  payment_reference TEXT,
+  service_breakdown JSONB,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE payment_transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  invoice_id UUID REFERENCES client_invoices(id) ON DELETE SET NULL,
+  platform TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  currency TEXT DEFAULT 'COP',
+  status TEXT DEFAULT 'pending',
+  transaction_id TEXT,
+  external_reference TEXT,
+  payer_name TEXT,
+  payer_email TEXT,
+  raw_response JSONB,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Contracts
+-- ============================================
+CREATE TABLE isp_contracts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  created_by UUID NOT NULL REFERENCES users(id),
+  contract_number TEXT NOT NULL,
+  client_name TEXT NOT NULL,
+  identification TEXT NOT NULL,
+  address TEXT,
+  phone TEXT,
+  email TEXT,
+  plan TEXT NOT NULL,
+  speed TEXT,
+  price TEXT,
+  service_option TEXT,
+  service_price TEXT,
+  total_price TEXT,
+  equipment TEXT[],
+  status TEXT DEFAULT 'draft',
+  client_signature_url TEXT,
+  manager_signature_url TEXT,
+  pdf_url TEXT,
+  signed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Vouchers
+-- ============================================
+CREATE TABLE voucher_presets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  validity TEXT NOT NULL,
+  price NUMERIC DEFAULT 0,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE vouchers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  code TEXT NOT NULL,
+  password TEXT NOT NULL,
+  profile TEXT NOT NULL,
+  validity TEXT,
+  price NUMERIC,
+  status voucher_status DEFAULT 'available',
+  mikrotik_user_id TEXT,
+  sold_by UUID REFERENCES users(id),
+  sold_at TIMESTAMPTZ,
+  activated_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE voucher_sales_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  sold_by UUID REFERENCES users(id),
+  voucher_code TEXT NOT NULL,
+  voucher_password TEXT NOT NULL,
+  profile TEXT NOT NULL,
+  validity TEXT NOT NULL,
+  price NUMERIC DEFAULT 0,
+  total_uptime TEXT,
+  sold_at TIMESTAMPTZ,
+  activated_at TIMESTAMPTZ,
+  expired_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Service Options
+-- ============================================
+CREATE TABLE service_options (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  price NUMERIC DEFAULT 0,
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Payment Platforms
+-- ============================================
+CREATE TABLE payment_platforms (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  platform TEXT NOT NULL,
+  public_key TEXT,
+  private_key TEXT,
+  webhook_secret TEXT,
+  environment TEXT DEFAULT 'sandbox',
+  is_active BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Messaging Config
+-- ============================================
+CREATE TABLE telegram_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  bot_token TEXT NOT NULL,
+  bot_username TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id)
+);
+
+CREATE TABLE whatsapp_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  access_token TEXT NOT NULL,
+  phone_number_id TEXT NOT NULL,
+  business_account_id TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id)
+);
+
+-- ============================================
+-- Cloudflare / Tunnel Config
+-- ============================================
+CREATE TABLE cloudflare_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  mode TEXT DEFAULT 'free',
+  agent_host TEXT,
+  agent_port INTEGER DEFAULT 3847,
+  agent_secret TEXT,
+  tunnel_name TEXT,
+  tunnel_url TEXT,
+  tunnel_id TEXT,
+  domain TEXT,
+  api_token TEXT,
+  is_active BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id)
+);
+
+-- ============================================
+-- Indexes
+-- ============================================
+CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
+CREATE INDEX idx_mikrotik_access_user ON user_mikrotik_access(user_id);
+CREATE INDEX idx_mikrotik_access_device ON user_mikrotik_access(mikrotik_id);
+CREATE INDEX idx_isp_clients_mikrotik ON isp_clients(mikrotik_id);
+CREATE INDEX idx_isp_clients_username ON isp_clients(username);
+CREATE INDEX idx_isp_clients_identification ON isp_clients(identification_number);
+CREATE INDEX idx_invoices_client ON client_invoices(client_id);
+CREATE INDEX idx_invoices_status ON client_invoices(status);
+CREATE INDEX idx_invoices_due_date ON client_invoices(due_date);
+CREATE INDEX idx_vouchers_mikrotik ON vouchers(mikrotik_id);
+CREATE INDEX idx_vouchers_code ON vouchers(code);
+CREATE INDEX idx_vouchers_status ON vouchers(status);
+
+-- ============================================
+-- Helper Functions
+-- ============================================
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION has_role(_user_id UUID, _role app_role)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM user_roles WHERE user_id = _user_id AND role = _role
+  );
+$$ LANGUAGE sql STABLE;
+
+-- Apply updated_at triggers
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'users', 'mikrotik_devices', 'billing_config', 'client_billing_settings',
+    'client_invoices', 'payment_transactions', 'isp_contracts', 'vouchers',
+    'service_options', 'payment_platforms', 'telegram_config', 'whatsapp_config',
+    'cloudflare_config', 'company_info'
+  ] LOOP
+    EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t, t);
+  END LOOP;
+END $$;
+
+-- ============================================
+-- Default Super Admin (password: admin123)
+-- CAMBIAR EN PRODUCCIÓN
+-- ============================================
+INSERT INTO users (id, email, password_hash, full_name)
+VALUES (
+  uuid_generate_v4(),
+  'admin@omnisync.local',
+  crypt('admin123', gen_salt('bf')),
+  'Super Admin'
+);
+
+INSERT INTO user_roles (user_id, role)
+SELECT id, 'super_admin' FROM users WHERE email = 'admin@omnisync.local';
