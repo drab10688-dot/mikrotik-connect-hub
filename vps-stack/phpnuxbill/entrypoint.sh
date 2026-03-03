@@ -132,8 +132,13 @@ if [ "$CONNECTED" = true ]; then
   fi
 fi
 
-# 5) Crear admin si falta + forzar Live
+# 5) Crear admin si falta + forzar Live + configurar RADIUS DB
 if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
+  RADIUS_DB_HOST="${NUXBILL_DB_HOST:-mariadb}"
+  RADIUS_DB_USER="${RADIUS_DB_USER:-radius}"
+  RADIUS_DB_PASS="${RADIUS_DB_PASS:-changeme_radius}"
+  RADIUS_DB_NAME="${RADIUS_DB_NAME:-radius}"
+
   php -r "
     \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
     if (\$c->connect_error) { exit; }
@@ -148,6 +153,26 @@ if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
     }
 
     \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('app_stage', 'Live') ON DUPLICATE KEY UPDATE value='Live'\");
+
+    // Configurar conexión RADIUS DB para PHPNuxBill
+    \$radius_settings = [
+      'radius_host' => '${RADIUS_DB_HOST}',
+      'radius_user' => '${RADIUS_DB_USER}',
+      'radius_pass' => '${RADIUS_DB_PASS}',
+      'radius_name' => '${RADIUS_DB_NAME}',
+      'radius_db_host' => '${RADIUS_DB_HOST}',
+      'radius_db_user' => '${RADIUS_DB_USER}',
+      'radius_db_pass' => '${RADIUS_DB_PASS}',
+      'radius_db_name' => '${RADIUS_DB_NAME}',
+      'radius_enable' => '1',
+    ];
+    foreach (\$radius_settings as \$k => \$v) {
+      \$ks = \$c->real_escape_string(\$k);
+      \$vs = \$c->real_escape_string(\$v);
+      \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('\$ks', '\$vs') ON DUPLICATE KEY UPDATE value='\$vs'\");
+    }
+    echo 'RADIUS DB configurada ✓';
+
     \$c->close();
   " 2>/dev/null || true
 
