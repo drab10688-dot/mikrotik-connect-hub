@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
 import { saveSelectedDevice, cleanupLegacyStorage, clearSelectedDevice } from "@/lib/mikrotik";
-import { Router, Wifi, Loader2, CircleCheck, CircleX, AlertCircle } from "lucide-react";
+import { Router, Wifi, Loader2, CircleCheck, CircleX, AlertCircle, Copy } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
@@ -117,6 +117,34 @@ export default function Settings() {
     saveSelectedDevice({ id: device.id, name: device.name, host: device.host, port: device.port.toString(), version: device.version });
     toast.success(`Conectado a ${device.name}`);
     navigate("/dashboard");
+  };
+
+  const copyDiagnosticReport = async () => {
+    if (!diagnosticResult) return;
+
+    const device = devices?.find((d: any) => d.id === selectedDevice);
+    const report = {
+      generated_at: new Date().toISOString(),
+      route: window.location.pathname,
+      selected_device: device
+        ? {
+            id: device.id,
+            name: device.name,
+            host: device.host,
+            port: device.port,
+            version: device.version,
+            status: device.status,
+          }
+        : null,
+      diagnostic: diagnosticResult,
+    };
+
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      toast.success("Reporte de diagnóstico copiado");
+    } catch {
+      toast.error("No se pudo copiar el reporte");
+    }
   };
 
   return (
@@ -236,6 +264,13 @@ export default function Settings() {
                     </ul>
                   </div>
                 )}
+
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={copyDiagnosticReport}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar reporte técnico
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}

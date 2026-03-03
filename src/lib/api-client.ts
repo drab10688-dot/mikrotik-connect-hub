@@ -367,9 +367,9 @@ export const messagingApi = {
 
 // ─── Service Options API ──────────────────────────────────
 export const serviceOptionsApi = {
-  list: (mikrotikId: string) => apiGet<any[]>(`/clients/service-options?mikrotik_id=${mikrotikId}`),
-  create: (data: any) => apiPost('/clients/service-options', data),
-  update: (id: string, data: any) => apiPut(`/clients/service-options/${id}`, data),
+  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/clients/service-options?mikrotik_id=${mikrotikId}`)),
+  create: async (data: any) => unwrapData(await apiPost('/clients/service-options', data)),
+  update: async (id: string, data: any) => unwrapData(await apiPut(`/clients/service-options/${id}`, data)),
   delete: (id: string) => apiDelete(`/clients/service-options/${id}`),
 };
 
