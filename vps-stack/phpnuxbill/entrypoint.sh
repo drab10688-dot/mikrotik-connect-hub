@@ -68,11 +68,9 @@ if [ "$CONNECTED" = true ]; then
   if [ "$TABLE_CHECK" = "0" ]; then
     echo "Tablas no encontradas, buscando schema..."
 
-    # List all SQL files for debugging
     echo "Archivos SQL disponibles:"
     find "$NUXROOT" -name "*.sql" 2>/dev/null | head -20
 
-    # Search in common locations
     for sql_file in \
       "$NUXROOT/install/phpnuxbill.sql" \
       "$NUXROOT/install/sql/phpnuxbill.sql" \
@@ -103,7 +101,6 @@ if [ "$CONNECTED" = true ]; then
       echo "Schema importado ✓"
     else
       echo "⚠ No se encontró schema SQL. Acceda vía navegador para instalar."
-      # Don't delete install dir - let web installer work
       if [ -d "$NUXROOT/install" ]; then
         chown -R www-data:www-data "$NUXROOT/install"
         echo "Directorio install/ disponible para instalación web"
@@ -121,10 +118,8 @@ if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
     \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
     if (\$c->connect_error) { echo 'DB error'; exit; }
 
-    // Check if admin exists
     \$r = \$c->query(\"SELECT id FROM tbl_users WHERE username='admin'\");
     if (\$r && \$r->num_rows == 0) {
-      // PHPNuxBill uses md5 for passwords
       \$hash = md5('admin');
       \$c->query(\"INSERT INTO tbl_users (username, password, fullname, user_type, status) VALUES ('admin', '\$hash', 'Administrator', 'Admin', 'Active')\");
       echo 'Admin creado (admin/admin) ✓';
@@ -151,32 +146,73 @@ chmod -R 755 "$NUXROOT"
 
 # ── 7. Setup cron job for PHPNuxBill ──
 echo "Configurando cron job..."
-CRON_FILE="$NUXROOT/cron.php"
-if [ -f "$NUXROOT/system/cron.php" ]; then
+
+# Find the correct cron file
+CRON_FILE=""
+for candidate in \
+  "$NUXROOT/system/cron.php" \
+  "$NUXROOT/cron.php" \
+  "$NUXROOT/cron_run.php"; do
+  if [ -f "$candidate" ]; then
+    CRON_FILE="$candidate"
+    echo "Cron file encontrado: $CRON_FILE"
+    break
+  fi
+done
+
+if [ -z "$CRON_FILE" ]; then
+  # Create a minimal cron script that NuxBill expects
   CRON_FILE="$NUXROOT/system/cron.php"
-elif [ -f "$NUXROOT/cron_run.php" ]; then
-  CRON_FILE="$NUXROOT/cron_run.php"
+  mkdir -p "$NUXROOT/system"
+  cat > "$CRON_FILE" << 'CRONPHP'
+<?php
+// Minimal cron runner for PHPNuxBill
+$_app_stage = 'Live';
+if (file_exists(__DIR__ . '/../config.php')) {
+    include __DIR__ . '/../config.php';
+}
+// Try to load the framework cron
+$candidates = [
+    __DIR__ . '/boot.php',
+    __DIR__ . '/../system/boot.php',
+];
+foreach ($candidates as $boot) {
+    if (file_exists($boot)) {
+        include $boot;
+        break;
+    }
+}
+CRONPHP
+  chown www-data:www-data "$CRON_FILE"
+  echo "Cron file creado: $CRON_FILE"
 fi
 
-# Create cron entry - runs every 5 minutes
-echo "*/5 * * * * www-data php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
+# Write cron entry using proper crontab format
+echo "*/5 * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
 chmod 0644 /etc/cron.d/phpnuxbill
-crontab -u www-data /etc/cron.d/phpnuxbill 2>/dev/null || true
 
-# Also register in tbl_appconfig so NuxBill knows cron is set
+# Also set via crontab for www-data
+echo "*/5 * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" | crontab -u www-data - 2>/dev/null || true
+
+# Register cron as active in NuxBill database
 if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
   php -r "
     \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
     if (!\$c->connect_error) {
       \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('cron_last_run', NOW()) ON DUPLICATE KEY UPDATE value=NOW()\");
+      \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('cron_period', '5') ON DUPLICATE KEY UPDATE value='5'\");
       \$c->close();
+      echo 'Cron registrado en DB ✓';
     }
   " 2>/dev/null || true
 fi
 
-# Start cron daemon in background
-service cron start 2>/dev/null || cron 2>/dev/null || true
-echo "Cron configurado ✓"
+# Run cron once immediately so NuxBill detects it
+cd "$NUXROOT" && /usr/local/bin/php "$CRON_FILE" > /dev/null 2>&1 || true
+
+# Start cron daemon
+service cron start 2>/dev/null || /usr/sbin/cron 2>/dev/null || cron 2>/dev/null || true
+echo "Cron configurado y ejecutado ✓"
 
 echo "=== PHPNuxBill listo ==="
 exec "$@"
