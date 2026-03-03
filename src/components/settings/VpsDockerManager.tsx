@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,8 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  Server, Container, Play, Square, RefreshCw, Loader2,
-  HardDrive, Cpu, MemoryStick, ArrowUpDown, ScrollText, Download
+  Container,
+  Play,
+  Square,
+  RefreshCw,
+  Loader2,
+  HardDrive,
+  MemoryStick,
+  ScrollText,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 
 interface VpsDockerManagerProps {
@@ -16,27 +24,79 @@ interface VpsDockerManagerProps {
 
 interface ContainerInfo {
   status: string;
-  ports: string;
+  ports?: string;
+}
+
+interface RawContainerInfo {
+  name: string;
+  status: string;
+  ports?: string;
 }
 
 interface VpsStatus {
-  tunnel: { status: string; url: string | null };
-  containers: Record<string, ContainerInfo>;
-  docker_installed: boolean;
-  cloudflared_installed: boolean;
-  system: {
-    disk: { total: string; used: string; free: string; percent: string };
-    memory: { total: string; used: string; free: string };
+  containers?: Record<string, ContainerInfo> | RawContainerInfo[];
+  containers_map?: Record<string, ContainerInfo>;
+  system?: {
+    disk?: { total: string; used: string; free: string; percent: string };
+    memory?: { total: string; used: string; free: string };
   };
+  disk?: string;
+  memory?: string;
 }
 
-const SERVICES = [
-  { key: "routeros-proxy", label: "RouterOS API", icon: "🔌", desc: "Proxy REST para MikroTik" },
-  { key: "radius", label: "FreeRADIUS", icon: "🔐", desc: "Autenticación Hotspot/PPPoE" },
-  { key: "radius-db", label: "MariaDB", icon: "🗄️", desc: "Base de datos RADIUS" },
-  { key: "netdata", label: "Netdata", icon: "📊", desc: "Monitoreo del VPS" },
-  { key: "daloradius", label: "daloRADIUS", icon: "🌐", desc: "Panel web RADIUS" },
+interface ManagedService {
+  key: string;
+  aliases: string[];
+  label: string;
+  icon: string;
+  desc: string;
+  openPath?: string;
+}
+
+const SERVICES: ManagedService[] = [
+  { key: "api", aliases: ["api", "routeros-proxy", "omnisync-api"], label: "RouterOS API", icon: "🔌", desc: "Proxy REST para MikroTik" },
+  { key: "freeradius", aliases: ["freeradius", "radius", "omnisync-freeradius"], label: "FreeRADIUS", icon: "🔐", desc: "Autenticación Hotspot/PPPoE" },
+  { key: "mariadb", aliases: ["mariadb", "radius-db", "omnisync-mariadb"], label: "MariaDB", icon: "🗄️", desc: "Base de datos RADIUS" },
+  { key: "daloradius", aliases: ["daloradius", "omnisync-daloradius"], label: "daloRADIUS", icon: "🌐", desc: "Panel web RADIUS", openPath: "/daloradius/" },
+  { key: "phpnuxbill", aliases: ["phpnuxbill", "omnisync-phpnuxbill"], label: "PHPNuxBill", icon: "💳", desc: "Facturación ISP", openPath: "/nuxbill/" },
 ];
+
+const getApiOrigin = () => {
+  const stored = localStorage.getItem("vps_api_url");
+  if (!stored) return window.location.origin;
+  return stored.replace(/\/api\/?$/i, "").replace(/\/$/, "");
+};
+
+const normalizeContainers = (status?: VpsStatus): Record<string, ContainerInfo> => {
+  const map: Record<string, ContainerInfo> = {};
+
+  const register = (name: string, info: ContainerInfo) => {
+    map[name] = info;
+    const normalized = name.replace(/^omnisync-/, "");
+    map[normalized] = info;
+  };
+
+  if (!status) return map;
+
+  if (status.containers_map && typeof status.containers_map === "object") {
+    Object.entries(status.containers_map).forEach(([name, info]) => register(name, info));
+  }
+
+  if (Array.isArray(status.containers)) {
+    status.containers.forEach((container) => register(container.name, { status: container.status, ports: container.ports }));
+  } else if (status.containers && typeof status.containers === "object") {
+    Object.entries(status.containers).forEach(([name, info]) => register(name, info));
+  }
+
+  return map;
+};
+
+const getStatusBadge = (containerStatus?: string) => {
+  if (containerStatus?.toLowerCase().includes("up") || containerStatus?.toLowerCase().includes("running")) {
+    return <Badge variant="outline" className="text-[9px] border-green-500/30 text-green-600">Running</Badge>;
+  }
+  return <Badge variant="destructive" className="text-[9px]">Stopped</Badge>;
+};
 
 export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
   const queryClient = useQueryClient();
@@ -45,10 +105,7 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
 
   const { data: status, isLoading } = useQuery<VpsStatus>({
     queryKey: ["vps-status", mikrotikId],
-    queryFn: async () => {
-      const data = await vpsApi.status(mikrotikId!);
-      return data;
-    },
+    queryFn: async () => vpsApi.status(mikrotikId!),
     enabled: !!mikrotikId,
     refetchInterval: 10000,
   });
@@ -61,24 +118,29 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["vps-status", mikrotikId] });
       if (vars.action === "logs") {
-        setLogs(data?.logs || "Sin logs");
+        setLogs(data?.output || data?.logs || "Sin logs");
         setLogsService(vars.service || "all");
       } else {
-        toast.success(`Docker ${vars.action}: ${data?.message || "OK"}`);
+        toast.success(data?.message || `Docker ${vars.action} ejecutado`);
       }
     },
     onError: (err: any) => toast.error(err.message),
   });
 
+  const containersByName = useMemo(() => normalizeContainers(status), [status]);
+
   if (!mikrotikId) return null;
 
-  const hasContainers = status?.containers && Object.keys(status.containers).length > 0;
+  const diskText = status?.system?.disk
+    ? `${status.system.disk.used} / ${status.system.disk.total} (${status.system.disk.percent})`
+    : status?.disk;
 
-  const getStatusBadge = (containerStatus: string) => {
-    if (containerStatus?.toLowerCase().includes("up")) {
-      return <Badge variant="outline" className="text-[9px] border-green-500/30 text-green-600">Running</Badge>;
-    }
-    return <Badge variant="destructive" className="text-[9px]">Stopped</Badge>;
+  const memoryText = status?.system?.memory
+    ? `${status.system.memory.used} / ${status.system.memory.total}`
+    : status?.memory;
+
+  const openServicePanel = (path: string) => {
+    window.open(`${getApiOrigin()}${path}`, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -90,9 +152,7 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
           </div>
           <div className="flex-1">
             <CardTitle className="text-sm">Docker Containers (VPS)</CardTitle>
-            <CardDescription className="text-[10px]">
-              Gestión de servicios Docker en tu VPS
-            </CardDescription>
+            <CardDescription className="text-[10px]">Gestión de servicios Docker en tu VPS</CardDescription>
           </div>
           <Button
             size="sm"
@@ -107,32 +167,25 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* System Stats */}
-        {status?.system && (
+        {(diskText || memoryText) && (
           <div className="grid grid-cols-2 gap-2">
             <div className="p-2 rounded-lg bg-muted/50 border">
               <div className="flex items-center gap-1.5 mb-1">
                 <HardDrive className="h-3 w-3 text-muted-foreground" />
                 <span className="text-[10px] font-medium">Disco</span>
               </div>
-              <p className="text-xs font-mono">
-                {status.system.disk.used} / {status.system.disk.total}
-                <span className="text-muted-foreground ml-1">({status.system.disk.percent})</span>
-              </p>
+              <p className="text-xs font-mono">{diskText || "N/D"}</p>
             </div>
             <div className="p-2 rounded-lg bg-muted/50 border">
               <div className="flex items-center gap-1.5 mb-1">
                 <MemoryStick className="h-3 w-3 text-muted-foreground" />
                 <span className="text-[10px] font-medium">RAM</span>
               </div>
-              <p className="text-xs font-mono">
-                {status.system.memory.used} / {status.system.memory.total}
-              </p>
+              <p className="text-xs font-mono">{memoryText || "N/D"}</p>
             </div>
           </div>
         )}
 
-        {/* Global Actions */}
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -165,10 +218,10 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
           </Button>
         </div>
 
-        {/* Container List */}
         <div className="space-y-1.5">
           {SERVICES.map((svc) => {
-            const container = status?.containers?.[svc.key];
+            const container = svc.aliases.map((alias) => containersByName[alias]).find(Boolean);
+
             return (
               <div key={svc.key} className="flex items-center gap-2 p-2 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
                 <span className="text-sm">{svc.icon}</span>
@@ -182,6 +235,17 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
                   <p className="text-[10px] text-muted-foreground truncate">{svc.desc}</p>
                 </div>
                 <div className="flex gap-1">
+                  {svc.openPath && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => openServicePanel(svc.openPath)}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      Abrir
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -208,7 +272,6 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
           })}
         </div>
 
-        {/* Logs Panel */}
         {logsService && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -223,7 +286,6 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
           </div>
         )}
 
-        {/* Loading indicator */}
         {(isLoading || dockerMutation.isPending) && (
           <div className="flex items-center justify-center py-2">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

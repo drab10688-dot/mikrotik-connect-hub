@@ -140,15 +140,40 @@ systemRouter.get('/vps/status', async (req: AuthRequest, res: Response) => {
       results.memory = execSync("free -h | grep Mem | awk '{print $3\"/\"$2}'", { timeout: 3000 }).toString().trim();
     } catch {}
 
-    // Docker status
+    // Docker status (running + stopped)
     try {
-      const containers = execSync('docker ps --format "{{.Names}}:{{.Status}}" 2>/dev/null', { timeout: 5000 }).toString().trim();
-      results.containers = containers.split('\n').filter(Boolean).map(line => {
-        const [name, ...statusParts] = line.split(':');
-        return { name, status: statusParts.join(':') };
+      const rows = execSync('docker ps -a --format "{{.Names}}|{{.Status}}|{{.Ports}}" 2>/dev/null', { timeout: 5000 }).toString().trim();
+      const parsed = rows
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          const [name, status = '', ports = ''] = line.split('|');
+          return { name, status, ports };
+        });
+
+      const containersMap: Record<string, { status: string; ports: string }> = {};
+      const aliasMap: Record<string, string[]> = {
+        api: ['routeros-proxy'],
+        freeradius: ['radius'],
+        mariadb: ['radius-db'],
+      };
+
+      parsed.forEach((container) => {
+        const normalized = container.name.replace(/^omnisync-/, '');
+        const info = { status: container.status, ports: container.ports };
+
+        containersMap[container.name] = info;
+        containersMap[normalized] = info;
+        (aliasMap[normalized] || []).forEach((alias) => {
+          containersMap[alias] = info;
+        });
       });
+
+      results.containers = parsed;
+      results.containers_map = containersMap;
     } catch {
       results.containers = [];
+      results.containers_map = {};
     }
 
     res.json({ success: true, data: results });
@@ -165,25 +190,52 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
     }
 
     const { action, service } = req.body;
-    const validActions = ['restart', 'stop', 'start', 'logs', 'ps'];
-    if (!validActions.includes(action)) return res.status(400).json({ error: `Acción inválida. Válidas: ${validActions.join(', ')}` });
+    const validActions = ['restart', 'stop', 'start', 'logs', 'ps', 'up', 'down', 'pull'];
+    if (!validActions.includes(action)) {
+      return res.status(400).json({ error: `Acción inválida. Válidas: ${validActions.join(', ')}` });
+    }
+
+    const serviceAliases: Record<string, string> = {
+      'routeros-proxy': 'api',
+      'omnisync-api': 'api',
+      radius: 'freeradius',
+      'omnisync-freeradius': 'freeradius',
+      'radius-db': 'mariadb',
+      'omnisync-mariadb': 'mariadb',
+      daloradius: 'daloradius',
+      'omnisync-daloradius': 'daloradius',
+      phpnuxbill: 'phpnuxbill',
+      'omnisync-phpnuxbill': 'phpnuxbill',
+    };
+
+    const resolvedService = service
+      ? (serviceAliases[service] || service.replace(/^omnisync-/, ''))
+      : '';
+    const svcArg = resolvedService ? ` ${resolvedService}` : '';
 
     let cmd = '';
-    const svcArg = service ? ` ${service}` : '';
-
     switch (action) {
       case 'ps':
-        cmd = 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"';
+        cmd = 'docker compose -f /opt/omnisync/docker-compose.yml ps 2>&1';
         break;
       case 'logs':
-        cmd = `docker logs --tail 50 ${service || 'omnisync-api'} 2>&1`;
+        cmd = `docker compose -f /opt/omnisync/docker-compose.yml logs --tail 80${svcArg} 2>&1`;
+        break;
+      case 'up':
+        cmd = `docker compose -f /opt/omnisync/docker-compose.yml up -d${svcArg} 2>&1`;
+        break;
+      case 'down':
+        cmd = 'docker compose -f /opt/omnisync/docker-compose.yml down 2>&1';
+        break;
+      case 'pull':
+        cmd = `docker compose -f /opt/omnisync/docker-compose.yml pull${svcArg} 2>&1`;
         break;
       default:
         cmd = `docker compose -f /opt/omnisync/docker-compose.yml ${action}${svcArg} 2>&1`;
     }
 
-    const output = execSync(cmd, { timeout: 30000 }).toString();
-    res.json({ success: true, output });
+    const output = execSync(cmd, { timeout: 60000 }).toString();
+    res.json({ success: true, message: `Acción ${action} ejecutada`, output, service: resolvedService || null });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
