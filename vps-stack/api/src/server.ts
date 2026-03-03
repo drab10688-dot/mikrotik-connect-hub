@@ -15,6 +15,11 @@ import { invoicesRouter } from './routes/invoices';
 import { addressListRouter } from './routes/address-list';
 import { systemRouter } from './routes/system';
 import { backupRouter } from './routes/backup';
+import { usersRouter } from './routes/users';
+import { contractsRouter } from './routes/contracts';
+import { serviceOptionsRouter } from './routes/service-options';
+import { messagingRouter } from './routes/messaging';
+import { voucherPresetsRouter } from './routes/voucher-presets';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 
@@ -57,6 +62,11 @@ app.use('/api/invoices', authMiddleware, invoicesRouter);
 app.use('/api/address-list', authMiddleware, addressListRouter);
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/backups', authMiddleware, backupRouter);
+app.use('/api/auth/users', authMiddleware, usersRouter);
+app.use('/api/clients/contracts', authMiddleware, contractsRouter);
+app.use('/api/clients/service-options', authMiddleware, serviceOptionsRouter);
+app.use('/api/messaging', authMiddleware, messagingRouter);
+app.use('/api/vouchers/presets', authMiddleware, voucherPresetsRouter);
 
 // Cron: billing diario 6:00 AM
 cron.schedule('0 6 * * *', () => {

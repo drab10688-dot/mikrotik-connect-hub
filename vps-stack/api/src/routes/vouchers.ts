@@ -124,3 +124,24 @@ vouchersRouter.get('/:mikrotikId/presets', async (req: AuthRequest, res: Respons
     res.status(500).json({ error: error.message });
   }
 });
+
+// Sales history
+vouchersRouter.get('/:mikrotikId/sales-history', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+
+    const { rows } = await pool.query(
+      `SELECT vsh.*, u.email as sold_by_email, u.full_name as sold_by_name
+       FROM voucher_sales_history vsh
+       LEFT JOIN users u ON u.id = vsh.sold_by
+       WHERE vsh.mikrotik_id = $1
+       ORDER BY vsh.created_at DESC`,
+      [mikrotikId]
+    );
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
