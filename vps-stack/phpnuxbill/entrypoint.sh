@@ -284,6 +284,7 @@ if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
 fi
 
 CRON_URL="http://127.0.0.1:8080/index.php?_route=cron/run"
+CRON_TS_FILE="$NUXROOT/system/uploads/cron_last_run.txt"
 REMINDER_CRON="cd /var/www/html/system/ && /usr/local/bin/php cron_reminder.php"
 {
   printf "%s\n" "* * * * * root curl -sf '${CRON_URL}' > /dev/null 2>&1"
@@ -300,12 +301,26 @@ elif command -v crond >/dev/null 2>&1; then
   log "Cron daemon iniciado ✓"
 fi
 
-# Loop de heartbeat para evitar warning de cron
+mkdir -p "$(dirname "$CRON_TS_FILE")" 2>/dev/null || true
+
+# Primera ejecución real de cron para inicializar timestamp que lee el widget
+if curl -sf -o /dev/null "${CRON_URL}" >/dev/null 2>&1; then
+  date +%s > "$CRON_TS_FILE" 2>/dev/null || true
+  chown www-data:www-data "$CRON_TS_FILE" 2>/dev/null || true
+  log "Cron timestamp inicializado ✓"
+else
+  log "⚠ No se pudo ejecutar cron inicial"
+fi
+
+# Loop de heartbeat para mantener cron activo
 after_apache_heartbeat() {
   sleep 15
   log "[cron-loop] Primera ejecución..."
   while true; do
-    curl -sf -o /dev/null "${CRON_URL}" >/dev/null 2>&1 || true
+    if curl -sf -o /dev/null "${CRON_URL}" >/dev/null 2>&1; then
+      date +%s > "$CRON_TS_FILE" 2>/dev/null || true
+      chown www-data:www-data "$CRON_TS_FILE" 2>/dev/null || true
+    fi
 
     php -r "
       \$c = @new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
@@ -323,15 +338,6 @@ after_apache_heartbeat() {
 
 after_apache_heartbeat &
 log "Cron HTTP loop (60s) iniciado ✓"
-
-# Patch cosmético de warning en templates
-WARN_FILES=$(grep -Ril "Cron appear not been setup" "$NUXROOT" 2>/dev/null || true)
-if [ -n "$WARN_FILES" ]; then
-  while IFS= read -r f; do
-    [ -n "$f" ] && sed -i "s/Cron appear not been setup, please check your cron setup\./Cron scheduler is active./g" "$f" || true
-  done <<< "$WARN_FILES"
-  log "Patch de mensaje cron aplicado ✓"
-fi
 
 log "Cron configurado ✓"
 log "=== PHPNuxBill listo ==="
