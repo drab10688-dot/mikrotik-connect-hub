@@ -159,6 +159,13 @@ export const devicesApi = {
 // ─── Clients API ──────────────────────────────────────────
 export const clientsApi = {
   list: async (mikrotikId: string, params?: { is_potential_client?: boolean; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.is_potential_client !== undefined) query.set('is_potential_client', String(params.is_potential_client));
+    if (params?.limit) query.set('limit', String(params.limit));
+    const queryString = query.toString();
+    const endpoint = queryString ? `/clients/${mikrotikId}?${queryString}` : `/clients/${mikrotikId}`;
+    return unwrapArray(await apiGet<any>(endpoint));
+  },
   get: (id: string) => apiGet<any>(`/clients/${id}`),
   create: async (client: any) => {
     const mikrotikId = client?.mikrotik_id;
