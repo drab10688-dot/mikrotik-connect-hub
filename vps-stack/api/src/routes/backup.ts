@@ -10,6 +10,12 @@ import multer from 'multer';
 const execAsync = promisify(exec);
 const BACKUP_DIR = process.env.BACKUP_DIR || '/opt/omnisync/backups';
 
+const DB_HOST = process.env.DB_HOST || 'postgres';
+const DB_PORT = process.env.DB_PORT || '5432';
+const DB_USER = process.env.DB_USER || 'omnisync';
+const DB_PASSWORD = process.env.DB_PASSWORD || '';
+const DB_NAME = process.env.DB_NAME || 'omnisync';
+
 // Multer config for upload
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -25,13 +31,35 @@ const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } }); // 
 
 export const backupRouter = Router();
 
-// Only super_admin can manage backups
 function requireSuperAdmin(req: AuthRequest, res: Response): boolean {
   if (req.userRole !== 'super_admin') {
     res.status(403).json({ error: 'Solo super_admin puede gestionar backups' });
     return false;
   }
   return true;
+}
+
+/**
+ * Dump the PostgreSQL database using pg_dump via network (no docker needed).
+ * pg_dump must be available inside the API container.
+ */
+async function pgDump(outputPath: string): Promise<void> {
+  const env = { ...process.env, PGPASSWORD: DB_PASSWORD };
+  await execAsync(
+    `pg_dump -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -f "${outputPath}"`,
+    { timeout: 300000, env }
+  );
+}
+
+/**
+ * Restore a SQL file into PostgreSQL via psql over network.
+ */
+async function pgRestore(filePath: string): Promise<void> {
+  const env = { ...process.env, PGPASSWORD: DB_PASSWORD };
+  await execAsync(
+    `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -f "${filePath}"`,
+    { timeout: 300000, env }
+  );
 }
 
 // List existing backups
@@ -45,7 +73,7 @@ backupRouter.get('/', async (req: AuthRequest, res: Response) => {
 
     const files = fs.readdirSync(BACKUP_DIR);
     const backups = files
-      .filter(f => f.endsWith('.tar.gz') || f.endsWith('.sql') || f.endsWith('.tar'))
+      .filter(f => f.endsWith('.tar.gz') || f.endsWith('.sql') || f.endsWith('.tar') || f.endsWith('.gz') || f.endsWith('.bak'))
       .map(f => {
         const stats = fs.statSync(path.join(BACKUP_DIR, f));
         const type = f.includes('docker') ? 'docker' :
@@ -64,19 +92,11 @@ backupRouter.get('/', async (req: AuthRequest, res: Response) => {
     // Get disk usage
     let diskInfo = { total: '0', used: '0', available: '0', percent: '0%' };
     try {
-      const { stdout } = await execAsync("df -h /opt/omnisync | tail -1 | awk '{print $2,$3,$4,$5}'");
+      const { stdout } = await execAsync("df -h /opt/omnisync 2>/dev/null | tail -1 | awk '{print $2,$3,$4,$5}'");
       const parts = stdout.trim().split(' ');
-      diskInfo = { total: parts[0], used: parts[1], available: parts[2], percent: parts[3] };
-    } catch {}
-
-    // Get Docker status
-    let dockerServices: any[] = [];
-    try {
-      const { stdout } = await execAsync('cd /opt/omnisync && docker compose ps --format json 2>/dev/null || echo "[]"');
-      const lines = stdout.trim().split('\n').filter(l => l.startsWith('{'));
-      dockerServices = lines.map(l => {
-        try { return JSON.parse(l); } catch { return null; }
-      }).filter(Boolean);
+      if (parts.length >= 4) {
+        diskInfo = { total: parts[0], used: parts[1], available: parts[2], percent: parts[3] };
+      }
     } catch {}
 
     res.json({
@@ -84,7 +104,6 @@ backupRouter.get('/', async (req: AuthRequest, res: Response) => {
       data: {
         backups,
         disk: diskInfo,
-        services: dockerServices,
         backupDir: BACKUP_DIR,
       }
     });
@@ -98,56 +117,81 @@ backupRouter.post('/create', async (req: AuthRequest, res: Response) => {
   if (!requireSuperAdmin(req, res)) return;
 
   try {
-    const { type = 'full' } = req.body; // 'database', 'docker', 'config', 'full'
+    const { type = 'database' } = req.body; // 'database', 'config', 'full'
     if (!fs.existsSync(BACKUP_DIR)) {
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     let resultFile = '';
-    let commands: string[] = [];
 
     switch (type) {
-      case 'database':
+      case 'database': {
         resultFile = `db-backup-${timestamp}.sql`;
-        commands = [
-          `docker compose -f /opt/omnisync/docker-compose.yml exec -T postgres pg_dumpall -U ${process.env.DB_USER || 'omnisync'} > ${BACKUP_DIR}/${resultFile}`
-        ];
+        await pgDump(path.join(BACKUP_DIR, resultFile));
         break;
+      }
 
-      case 'docker':
-        resultFile = `docker-images-${timestamp}.tar`;
-        commands = [
-          `docker save -o ${BACKUP_DIR}/${resultFile} $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -v '<none>' | head -20)`
-        ];
-        break;
-
-      case 'config':
+      case 'config': {
         resultFile = `config-backup-${timestamp}.tar.gz`;
-        commands = [
-          `tar czf ${BACKUP_DIR}/${resultFile} -C /opt/omnisync .env docker-compose.yml nginx/ radius/ 2>/dev/null || true`
-        ];
-        break;
+        // Only backup config files accessible from the volume
+        const configFiles = ['.env', 'docker-compose.yml'].filter(f =>
+          fs.existsSync(path.join('/opt/omnisync', f))
+        ).join(' ');
 
-      case 'full':
-        resultFile = `full-backup-${timestamp}.tar.gz`;
-        const dbFile = `${BACKUP_DIR}/temp-db-${timestamp}.sql`;
-        commands = [
-          `docker compose -f /opt/omnisync/docker-compose.yml exec -T postgres pg_dumpall -U ${process.env.DB_USER || 'omnisync'} > ${dbFile}`,
-          `tar czf ${BACKUP_DIR}/${resultFile} -C /opt/omnisync .env docker-compose.yml nginx/ radius/ -C ${BACKUP_DIR} temp-db-${timestamp}.sql 2>/dev/null || true`,
-          `rm -f ${dbFile}`
-        ];
+        const configDirs = ['nginx', 'radius'].filter(d =>
+          fs.existsSync(path.join('/opt/omnisync', d))
+        ).join(' ');
+
+        const items = [configFiles, configDirs].filter(Boolean).join(' ');
+        if (items) {
+          await execAsync(
+            `tar czf ${BACKUP_DIR}/${resultFile} -C /opt/omnisync ${items} 2>/dev/null || true`,
+            { timeout: 120000 }
+          );
+        } else {
+          return res.status(400).json({ error: 'No se encontraron archivos de configuración para respaldar' });
+        }
         break;
+      }
+
+      case 'full': {
+        resultFile = `full-backup-${timestamp}.tar.gz`;
+        const dbFile = `db-temp-${timestamp}.sql`;
+        const dbPath = path.join(BACKUP_DIR, dbFile);
+
+        // Dump DB first
+        await pgDump(dbPath);
+
+        // Create tarball with config + db dump
+        const configItems = ['.env', 'docker-compose.yml'].filter(f =>
+          fs.existsSync(path.join('/opt/omnisync', f))
+        ).join(' ');
+
+        const configDirs = ['nginx', 'radius'].filter(d =>
+          fs.existsSync(path.join('/opt/omnisync', d))
+        ).join(' ');
+
+        await execAsync(
+          `tar czf ${BACKUP_DIR}/${resultFile} -C /opt/omnisync ${configItems} ${configDirs} -C ${BACKUP_DIR} ${dbFile} 2>/dev/null || true`,
+          { timeout: 300000 }
+        );
+
+        // Cleanup temp db file
+        fs.unlinkSync(dbPath);
+        break;
+      }
 
       default:
-        return res.status(400).json({ error: 'Tipo de backup inválido' });
+        return res.status(400).json({ error: 'Tipo de backup inválido. Usa: database, config, full' });
     }
 
-    for (const cmd of commands) {
-      await execAsync(cmd, { timeout: 300000 }); // 5 min timeout
+    const filePath = path.join(BACKUP_DIR, resultFile);
+    if (!fs.existsSync(filePath)) {
+      return res.status(500).json({ success: false, error: 'El archivo de backup no se creó correctamente' });
     }
 
-    const stats = fs.statSync(path.join(BACKUP_DIR, resultFile));
+    const stats = fs.statSync(filePath);
 
     res.json({
       success: true,
@@ -172,21 +216,16 @@ backupRouter.post('/restore', async (req: AuthRequest, res: Response) => {
     const { filename } = req.body;
     if (!filename) return res.status(400).json({ error: 'Nombre de archivo requerido' });
 
-    const filePath = path.join(BACKUP_DIR, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
-
     // Security: prevent path traversal
     if (filename.includes('..') || filename.includes('/')) {
       return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
 
+    const filePath = path.join(BACKUP_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+
     if (filename.endsWith('.sql')) {
-      await execAsync(
-        `cat ${filePath} | docker compose -f /opt/omnisync/docker-compose.yml exec -T postgres psql -U ${process.env.DB_USER || 'omnisync'}`,
-        { timeout: 300000 }
-      );
-    } else if (filename.endsWith('.tar')) {
-      await execAsync(`docker load -i ${filePath}`, { timeout: 600000 });
+      await pgRestore(filePath);
     } else if (filename.endsWith('.tar.gz')) {
       // Extract config files
       await execAsync(`tar xzf ${filePath} -C /opt/omnisync/ 2>/dev/null || true`, { timeout: 120000 });
