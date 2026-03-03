@@ -132,14 +132,17 @@ export const EditDeviceDialog = ({ device }: EditDeviceDialogProps) => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="port">Puerto</Label>
+                <Label htmlFor="port">Puerto API</Label>
                 <Input
                   id="port"
                   type="number"
                   value={formData.port}
-                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 443 })}
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  443 (HTTPS), 80 (HTTP), 8728, 8730...
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="version">Versión</Label>
@@ -151,7 +154,8 @@ export const EditDeviceDialog = ({ device }: EditDeviceDialogProps) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="v6">v6 (API)</SelectItem>
+                    <SelectItem value="v7">v7 (REST API)</SelectItem>
+                    <SelectItem value="v6">v6 (API Legacy)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
