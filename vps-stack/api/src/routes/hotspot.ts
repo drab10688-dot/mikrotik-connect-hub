@@ -1,9 +1,16 @@
 import { Router, Response } from 'express';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, authMiddleware, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { pool } from '../server';
 
 export const hotspotRouter = Router();
+
+// Keep hotspot login public; require JWT for all other hotspot routes
+hotspotRouter.use((req: AuthRequest, res: Response, next) => {
+  const isPublicLogin = req.method === 'POST' && /^\/login\/?$/.test(req.path);
+  if (isPublicLogin) return next();
+  return authMiddleware(req, res, next);
+});
 
 // List hotspot users
 hotspotRouter.get('/:mikrotikId/users', async (req: AuthRequest, res: Response) => {

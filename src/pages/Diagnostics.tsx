@@ -5,35 +5,90 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import {
-  Activity, CheckCircle, XCircle, Loader2, RefreshCw, Copy,
-  Server, Router, Wifi, Users, Gauge, ListChecks, CreditCard, Database, AlertCircle
+  Activity,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  RefreshCw,
+  Copy,
+  Server,
+  Router,
+  Wifi,
+  Users,
+  Gauge,
+  ListChecks,
+  CreditCard,
+  Database,
+  AlertCircle,
 } from "lucide-react";
 import { getApiBaseUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 
-interface EndpointTest {
+interface EndpointConfig {
   key: string;
   label: string;
   icon: React.ElementType;
-  endpoint: string;
+  paths: string[];
   needsDevice: boolean;
-  status: "idle" | "testing" | "ok" | "fail" | "skipped";
+}
+
+type TestStatus = "idle" | "testing" | "ok" | "fail" | "skipped";
+
+interface EndpointTest extends EndpointConfig {
+  status: TestStatus;
   latency?: number;
   error?: string;
   statusCode?: number;
+  testedPath?: string;
 }
 
-const ENDPOINTS: Omit<EndpointTest, "status">[] = [
-  { key: "health", label: "API Health", icon: Server, endpoint: "/health", needsDevice: false },
-  { key: "devices", label: "Dispositivos MikroTik", icon: Router, endpoint: "/devices", needsDevice: false },
-  { key: "system", label: "System Resource", icon: Activity, endpoint: "/system/{id}/resource", needsDevice: true },
-  { key: "pppoe", label: "PPPoE Secrets", icon: Wifi, endpoint: "/pppoe/{id}/secrets", needsDevice: true },
-  { key: "hotspot", label: "Hotspot Users", icon: Users, endpoint: "/hotspot/{id}/users", needsDevice: true },
-  { key: "queues", label: "Simple Queues", icon: Gauge, endpoint: "/queues/{id}", needsDevice: true },
-  { key: "address-list", label: "Address List", icon: ListChecks, endpoint: "/address-list/{id}", needsDevice: true },
-  { key: "service-options", label: "Service Options", icon: CreditCard, endpoint: "/service-options?mikrotik_id={id}", needsDevice: true },
-  { key: "billing", label: "Billing Config", icon: Database, endpoint: "/billing/{id}/config", needsDevice: true },
+const ENDPOINTS: EndpointConfig[] = [
+  { key: "health", label: "API Health", icon: Server, paths: ["/health"], needsDevice: false },
+  { key: "devices", label: "Dispositivos MikroTik", icon: Router, paths: ["/devices"], needsDevice: false },
+  { key: "system", label: "System Resource", icon: Activity, paths: ["/system/{id}/resource"], needsDevice: true },
+  { key: "pppoe", label: "PPPoE Secrets", icon: Wifi, paths: ["/pppoe/{id}/secrets"], needsDevice: true },
+  { key: "hotspot", label: "Hotspot Users", icon: Users, paths: ["/hotspot/{id}/users"], needsDevice: true },
+  { key: "queues", label: "Simple Queues", icon: Gauge, paths: ["/queues/{id}"], needsDevice: true },
+  { key: "address-list", label: "Address List", icon: ListChecks, paths: ["/address-list/{id}"], needsDevice: true },
+  {
+    key: "service-options",
+    label: "Service Options",
+    paths: ["/service-options?mikrotik_id={id}", "/clients/service-options?mikrotik_id={id}"],
+    icon: CreditCard,
+    needsDevice: true,
+  },
+  { key: "billing", label: "Billing Config", icon: Database, paths: ["/billing/{id}/config"], needsDevice: true },
 ];
+
+const parseErrorMessage = (raw: string, fallback: string) => {
+  if (!raw) return fallback;
+  try {
+    const json = JSON.parse(raw);
+    return json?.error || json?.message || fallback;
+  } catch {
+    if (raw.includes("Cannot GET")) return "Not Found";
+    const clean = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return clean.slice(0, 160) || fallback;
+  }
+};
+
+const copyText = async (text: string): Promise<boolean> => {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return ok;
+};
 
 export default function Diagnostics() {
   const [tests, setTests] = useState<EndpointTest[]>(
@@ -42,93 +97,108 @@ export default function Diagnostics() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const getDeviceId = (): string | null => localStorage.getItem("mikrotik_device_id");
+  const deviceId = localStorage.getItem("mikrotik_device_id");
 
-  const testEndpoint = async (ep: Omit<EndpointTest, "status">, deviceId: string | null): Promise<Partial<EndpointTest>> => {
+  const testEndpoint = async (ep: EndpointConfig): Promise<Partial<EndpointTest>> => {
     if (ep.needsDevice && !deviceId) {
       return { status: "skipped", error: "Sin dispositivo seleccionado" };
     }
 
-    const start = performance.now();
-    try {
-      const baseUrl = getApiBaseUrl();
-      const token = localStorage.getItem("vps_auth_token");
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+    const token = localStorage.getItem("vps_auth_token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
 
-      // Replace {id} placeholder with actual device ID
-      let path = ep.endpoint;
-      if (deviceId) {
-        path = path.replace("{id}", deviceId);
-      }
+    const baseUrl = getApiBaseUrl();
+    let lastFailure: Partial<EndpointTest> = { status: "fail", error: "No response" };
 
+    for (const pathTemplate of ep.paths) {
+      const path = pathTemplate.replace("{id}", deviceId || "");
       const url = `${baseUrl}${path}`;
-      const res = await fetch(url, { method: "GET", headers });
-      const latency = Math.round(performance.now() - start);
+      const started = performance.now();
 
-      if (res.ok) {
-        return { status: "ok", latency, statusCode: res.status };
-      }
-      const body = await res.text().catch(() => "");
-      // Try to extract error message from JSON
-      let errorMsg = res.statusText;
       try {
-        const json = JSON.parse(body);
-        errorMsg = json.error || json.message || res.statusText;
-      } catch {
-        if (body.length < 100 && !body.includes("<")) errorMsg = body;
+        const res = await fetch(url, { method: "GET", headers });
+        const latency = Math.round(performance.now() - started);
+
+        if (res.ok) {
+          return { status: "ok", statusCode: res.status, latency, testedPath: path };
+        }
+
+        const body = await res.text().catch(() => "");
+        const error = parseErrorMessage(body, res.statusText);
+
+        lastFailure = { status: "fail", statusCode: res.status, latency, error, testedPath: path };
+
+        // If current alias is missing, try next candidate path
+        if (res.status === 404) continue;
+        return lastFailure;
+      } catch (err: any) {
+        const latency = Math.round(performance.now() - started);
+        lastFailure = {
+          status: "fail",
+          latency,
+          error: err?.message || "Network error",
+          testedPath: path,
+        };
       }
-      return { status: "fail", latency, statusCode: res.status, error: errorMsg };
-    } catch (err: any) {
-      const latency = Math.round(performance.now() - start);
-      return { status: "fail", latency, error: err.message || "Network error" };
     }
+
+    return lastFailure;
   };
 
   const runAll = useCallback(async () => {
     setRunning(true);
     setProgress(0);
-    const deviceId = getDeviceId();
 
-    setTests((prev) => prev.map((t) => ({ ...t, status: "testing" as const, latency: undefined, error: undefined, statusCode: undefined })));
+    setTests((prev) =>
+      prev.map((t) => ({
+        ...t,
+        status: "testing",
+        latency: undefined,
+        error: undefined,
+        statusCode: undefined,
+        testedPath: undefined,
+      }))
+    );
 
     for (let i = 0; i < ENDPOINTS.length; i++) {
-      const ep = ENDPOINTS[i];
-      setTests((prev) => prev.map((t) => t.key === ep.key ? { ...t, status: "testing" } : t));
-
-      const result = await testEndpoint(ep, deviceId);
-
-      setTests((prev) => prev.map((t) => t.key === ep.key ? { ...t, ...result } : t));
+      const endpoint = ENDPOINTS[i];
+      const result = await testEndpoint(endpoint);
+      setTests((prev) => prev.map((t) => (t.key === endpoint.key ? { ...t, ...result } : t)));
       setProgress(Math.round(((i + 1) / ENDPOINTS.length) * 100));
     }
 
     setRunning(false);
-  }, []);
+  }, [deviceId]);
 
-  useEffect(() => { runAll(); }, []);
+  useEffect(() => {
+    runAll();
+  }, [runAll]);
 
   const passed = tests.filter((t) => t.status === "ok").length;
   const failed = tests.filter((t) => t.status === "fail").length;
   const skipped = tests.filter((t) => t.status === "skipped").length;
-  const total = tests.length;
-  const deviceId = getDeviceId();
 
   const copyReport = async () => {
     const report = {
       generated_at: new Date().toISOString(),
       api_base_url: getApiBaseUrl(),
       mikrotik_device_id: deviceId,
-      summary: { total, passed, failed, skipped },
-      tests: tests.map(({ key, label, status, latency, statusCode, error, endpoint }) => ({
-        key, label, status, latency_ms: latency, status_code: statusCode, error, endpoint,
+      summary: { total: tests.length, passed, failed, skipped },
+      tests: tests.map(({ key, label, status, testedPath, latency, statusCode, error }) => ({
+        key,
+        label,
+        status,
+        endpoint: testedPath,
+        latency_ms: latency,
+        status_code: statusCode,
+        error,
       })),
     };
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
-      toast.success("Reporte copiado al portapapeles");
-    } catch {
-      toast.error("No se pudo copiar");
-    }
+
+    const ok = await copyText(JSON.stringify(report, null, 2));
+    if (ok) toast.success("Reporte copiado");
+    else toast.error("No se pudo copiar el reporte");
   };
 
   return (
@@ -136,7 +206,6 @@ export default function Diagnostics() {
       <Sidebar />
       <div className="flex-1 p-4 md:p-8 md:ml-64">
         <div className="max-w-3xl mx-auto space-y-6">
-          {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
@@ -148,7 +217,7 @@ export default function Diagnostics() {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={copyReport} disabled={running}>
+              <Button variant="outline" size="sm" onClick={copyReport}>
                 <Copy className="h-4 w-4 mr-2" />Copiar Reporte
               </Button>
               <Button size="sm" onClick={runAll} disabled={running}>
@@ -158,17 +227,15 @@ export default function Diagnostics() {
             </div>
           </div>
 
-          {/* Device warning */}
           {!deviceId && (
-            <Card className="border-yellow-500/30 bg-yellow-500/5">
-              <CardContent className="py-3 flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-500 shrink-0" />
-                <p className="text-sm">No hay dispositivo MikroTik seleccionado. Ve a <strong>Configuración</strong> y conecta un dispositivo para probar todos los endpoints.</p>
+            <Card>
+              <CardContent className="py-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                Selecciona un dispositivo en Configuración para probar endpoints de MikroTik.
               </CardContent>
             </Card>
           )}
 
-          {/* Summary */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-3">
@@ -181,59 +248,40 @@ export default function Diagnostics() {
               </div>
               <Progress value={progress} className="h-2" />
               <p className="text-xs text-muted-foreground mt-2">
-                Base URL: {getApiBaseUrl()}
-                {deviceId && <> · Device: <code className="text-xs">{deviceId.slice(0, 8)}...</code></>}
+                Base URL: {getApiBaseUrl()} {deviceId ? `· Device: ${deviceId.slice(0, 8)}...` : ""}
               </p>
             </CardContent>
           </Card>
 
-          {/* Endpoint Results */}
           <div className="grid gap-3">
             {tests.map((test) => {
               const Icon = test.icon;
-              const bgColor = test.status === "ok" ? "bg-green-500/10"
-                : test.status === "fail" ? "bg-destructive/10"
-                : test.status === "skipped" ? "bg-yellow-500/10"
-                : "bg-muted";
-              const textColor = test.status === "ok" ? "text-green-500"
-                : test.status === "fail" ? "text-destructive"
-                : test.status === "skipped" ? "text-yellow-500"
-                : "text-muted-foreground";
-              const borderColor = test.status === "ok" ? "border-green-500/30"
-                : test.status === "fail" ? "border-destructive/30"
-                : test.status === "skipped" ? "border-yellow-500/20"
-                : "";
-
               return (
-                <Card key={test.key} className={borderColor}>
+                <Card key={test.key}>
                   <CardContent className="py-4 flex items-center gap-4">
-                    <div className={`p-2 rounded-lg ${bgColor}`}>
-                      <Icon className={`h-5 w-5 ${textColor}`} />
+                    <div className="p-2 rounded-lg bg-muted">
+                      <Icon className="h-5 w-5 text-muted-foreground" />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{test.label}</span>
-                        <code className="text-xs text-muted-foreground hidden sm:inline">{test.endpoint}</code>
+                        <code className="text-xs text-muted-foreground hidden sm:inline">{test.testedPath || test.paths[0]}</code>
                       </div>
-                      {test.error && (
-                        <p className="text-xs text-destructive/80 mt-1 truncate">{test.error}</p>
-                      )}
+                      {test.error && <p className="text-xs text-muted-foreground mt-1 truncate">{test.error}</p>}
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
-                      {test.latency !== undefined && (
-                        <span className="text-xs text-muted-foreground">{test.latency}ms</span>
-                      )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {test.latency !== undefined && <span className="text-xs text-muted-foreground">{test.latency}ms</span>}
                       {test.statusCode && (
                         <Badge variant={test.status === "ok" ? "secondary" : "destructive"} className="text-xs">
                           {test.statusCode}
                         </Badge>
                       )}
-                      {test.status === "testing" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                      {test.status === "ok" && <CheckCircle className="h-5 w-5 text-green-500" />}
-                      {test.status === "fail" && <XCircle className="h-5 w-5 text-destructive" />}
-                      {test.status === "skipped" && <AlertCircle className="h-5 w-5 text-yellow-500" />}
+                      {test.status === "testing" && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {test.status === "ok" && <CheckCircle className="h-5 w-5" />}
+                      {test.status === "fail" && <XCircle className="h-5 w-5" />}
+                      {test.status === "skipped" && <AlertCircle className="h-5 w-5" />}
                       {test.status === "idle" && <div className="h-5 w-5 rounded-full bg-muted" />}
                     </div>
                   </CardContent>
