@@ -22,6 +22,8 @@ function normalizePort(port: number | string): number {
   return normalized;
 }
 
+type NativeAuthMode = 'plain' | 'challenge-first';
+
 async function tryNativeApiWithFallback(
   config: MikroTikConfig,
   path: string,
@@ -29,20 +31,24 @@ async function tryNativeApiWithFallback(
   body?: Record<string, unknown>
 ): Promise<unknown> {
   const port = normalizePort(config.port);
-  const candidates: boolean[] = [];
+  const tlsCandidates: boolean[] = [];
 
-  if (typeof config.useTls === 'boolean') candidates.push(config.useTls);
-  if (!candidates.includes(port === 8729)) candidates.push(port === 8729);
-  if (!candidates.includes(true)) candidates.push(true);
-  if (!candidates.includes(false)) candidates.push(false);
+  if (typeof config.useTls === 'boolean') tlsCandidates.push(config.useTls);
+  if (!tlsCandidates.includes(port === 8729)) tlsCandidates.push(port === 8729);
+  if (!tlsCandidates.includes(false)) tlsCandidates.push(false);
+  if (!tlsCandidates.includes(true)) tlsCandidates.push(true);
+
+  const authModes: NativeAuthMode[] = ['plain', 'challenge-first'];
 
   let lastError: Error | null = null;
 
-  for (const useTls of candidates) {
-    try {
-      return await nativeApiCommand({ ...config, port, useTls }, path, method, body);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+  for (const authMode of authModes) {
+    for (const useTls of tlsCandidates) {
+      try {
+        return await nativeApiCommand({ ...config, port, useTls }, path, method, body, authMode, 7000);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
     }
   }
 
@@ -169,12 +175,14 @@ export async function nativeApiCommand(
   config: MikroTikConfig,
   path: string,
   method: string = 'GET',
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  authMode: NativeAuthMode = 'plain',
+  timeoutMs = 15000
 ): Promise<unknown> {
   const command = restPathToNativeCommand(path, method);
   const attrWords = bodyToApiWords(body);
   
-  const sentences = await nativeApiExecute(config, command, attrWords);
+  const sentences = await nativeApiExecute(config, command, attrWords, timeoutMs, authMode);
   
   // Parse response sentences into objects
   const results: Record<string, string>[] = [];
@@ -202,7 +210,8 @@ function nativeApiExecute(
   config: MikroTikConfig,
   command: string,
   extraWords: string[] = [],
-  timeoutMs = 15000
+  timeoutMs = 15000,
+  authMode: NativeAuthMode = 'plain'
 ): Promise<ApiSentence[]> {
   return new Promise((resolve, reject) => {
     const useTls = config.useTls ?? config.port === 8729;
@@ -210,6 +219,8 @@ function nativeApiExecute(
     let settled = false;
     let buffer = Buffer.alloc(0);
     let loginDone = false;
+    let challengeRequested = false;
+    let plainFallbackSent = false;
     const sentences: ApiSentence[] = [];
 
     const finish = (err?: Error) => {
@@ -235,6 +246,10 @@ function nativeApiExecute(
     };
 
     const sendLogin = () => {
+      if (authMode === 'challenge-first') {
+        sendSentence(['/login']);
+        return;
+      }
       sendSentence(['/login', `=name=${config.username}`, `=password=${config.password}`]);
     };
 
@@ -249,6 +264,10 @@ function nativeApiExecute(
       sendSentence(['/login', `=name=${config.username}`, `=response=${response}`]);
     };
 
+    const sendPlainLogin = () => {
+      sendSentence(['/login', `=name=${config.username}`, `=password=${config.password}`]);
+    };
+
     const sendCommand = () => {
       sendSentence([command, ...extraWords]);
     };
@@ -257,23 +276,35 @@ function nativeApiExecute(
       while (buffer.length > 0) {
         const result = tryReadSentence();
         if (!result) break;
-        
+
         const { sentence, bytesConsumed } = result;
         buffer = buffer.slice(bytesConsumed);
 
         if (!loginDone) {
           // Handle login response
           if (sentence.type === '!done') {
-            if (sentence.attrs['ret']) {
-              // Challenge-response needed (old RouterOS)
-              sendLoginChallenge(sentence.attrs['ret']);
-            } else {
-              // Login successful, send actual command
-              loginDone = true;
-              sendCommand();
+            const challenge = sentence.attrs['ret'];
+
+            if (challenge) {
+              challengeRequested = true;
+              sendLoginChallenge(challenge);
+              continue;
             }
+
+            // Some routers may not return challenge when doing /login only.
+            // Fall back to plain credentials once.
+            if (authMode === 'challenge-first' && !plainFallbackSent && !challengeRequested) {
+              plainFallbackSent = true;
+              sendPlainLogin();
+              continue;
+            }
+
+            // Login successful, send actual command
+            loginDone = true;
+            sendCommand();
           } else if (sentence.type === '!trap' || sentence.type === '!fatal') {
-            finish(new Error(`Login failed: ${sentence.attrs['message'] || 'unknown'}`));
+            const message = sentence.attrs['message'] || 'unknown';
+            finish(new Error(`Login failed (${authMode}): ${message}`));
             return;
           }
         } else {
@@ -354,6 +385,9 @@ function nativeApiExecute(
 
     socket.on('data', onData);
     socket.on('error', onError);
+    socket.on('timeout', () => {
+      finish(new Error(`MikroTik API socket timeout (${authMode})`));
+    });
     socket.on('close', () => {
       if (!settled) finish(new Error('Connection closed'));
     });
