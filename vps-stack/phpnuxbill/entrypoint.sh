@@ -149,5 +149,34 @@ fi
 chown -R www-data:www-data "$NUXROOT"
 chmod -R 755 "$NUXROOT"
 
+# ── 7. Setup cron job for PHPNuxBill ──
+echo "Configurando cron job..."
+CRON_FILE="$NUXROOT/cron.php"
+if [ -f "$NUXROOT/system/cron.php" ]; then
+  CRON_FILE="$NUXROOT/system/cron.php"
+elif [ -f "$NUXROOT/cron_run.php" ]; then
+  CRON_FILE="$NUXROOT/cron_run.php"
+fi
+
+# Create cron entry - runs every 5 minutes
+echo "*/5 * * * * www-data php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
+chmod 0644 /etc/cron.d/phpnuxbill
+crontab -u www-data /etc/cron.d/phpnuxbill 2>/dev/null || true
+
+# Also register in tbl_appconfig so NuxBill knows cron is set
+if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
+  php -r "
+    \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+    if (!\$c->connect_error) {
+      \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('cron_last_run', NOW()) ON DUPLICATE KEY UPDATE value=NOW()\");
+      \$c->close();
+    }
+  " 2>/dev/null || true
+fi
+
+# Start cron daemon in background
+service cron start 2>/dev/null || cron 2>/dev/null || true
+echo "Cron configurado ✓"
+
 echo "=== PHPNuxBill listo ==="
 exec "$@"
