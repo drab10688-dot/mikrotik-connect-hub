@@ -29,10 +29,11 @@ RUN { \
       echo 'error_reporting=E_ALL & ~E_DEPRECATED & ~E_NOTICE & ~E_WARNING'; \
     } > /usr/local/etc/php/conf.d/zz-production.ini
 
-# Ensure system/uploads dir exists for PHPNuxBill
+# Ensure required dirs exist
 RUN mkdir -p /var/www/html/system/uploads \
     && mkdir -p /var/www/html/system/cache \
-    && mkdir -p /var/www/html/pages
+    && mkdir -p /var/www/html/pages \
+    && mkdir -p /var/www/html/ui/themes
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
