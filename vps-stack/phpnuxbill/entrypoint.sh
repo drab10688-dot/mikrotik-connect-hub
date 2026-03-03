@@ -199,9 +199,13 @@ if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
 fi
 
 CRON_URL="http://127.0.0.1:8080/index.php?_route=cron/run"
-printf "%s\n" "* * * * * root curl -sf '${CRON_URL}' > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
+REMINDER_CRON="cd /var/www/html/system/ && /usr/local/bin/php cron_reminder.php"
+{
+  printf "%s\n" "* * * * * root curl -sf '${CRON_URL}' > /dev/null 2>&1"
+  printf "%s\n" "0 7 * * * root ${REMINDER_CRON} > /dev/null 2>&1"
+} > /etc/cron.d/phpnuxbill
 chmod 0644 /etc/cron.d/phpnuxbill
-log "Cron job HTTP configurado: ${CRON_URL} ✓"
+log "Cron jobs configurados: expiración (1min) + recordatorios (7AM) ✓"
 
 if command -v cron >/dev/null 2>&1; then
   cron
