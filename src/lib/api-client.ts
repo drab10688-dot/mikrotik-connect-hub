@@ -312,8 +312,15 @@ export const serviceOptionsApi = {
   delete: (id: string) => apiDelete(`/clients/service-options/${id}`),
 };
 
-// ─── Cloudflare/VPS API ───────────────────────────────────
+// ─── Cloudflare Tunnel API (estilo Stream Player Pro) ─────
 export const vpsApi = {
+  // Tunnel directo en la API Node.js (sin agente Python)
+  tunnelStatus: () => apiGet<any>('/system/tunnel/status'),
+  tunnelInstall: () => apiPost<any>('/system/tunnel/install'),
+  tunnelStart: (port?: number) => apiPost<any>('/system/tunnel/start', { port: port || 80 }),
+  tunnelStop: () => apiPost<any>('/system/tunnel/stop'),
+
+  // Config DB (para modo Pro con API token)
   getCloudflareConfig: (mikrotikId: string) => apiGet<any>(`/system/cloudflare/config?mikrotik_id=${mikrotikId}`),
   updateCloudflareConfig: (config: any) => apiPost('/system/cloudflare/config', config),
   tunnelAgent: (mikrotikId: string, action: string, params?: any) => apiPost('/system/tunnel/agent', { mikrotik_id: mikrotikId, action, ...params }),

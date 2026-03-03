@@ -2,8 +2,15 @@ import { Router, Response } from 'express';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { pool } from '../server';
+import { tunnelRouter } from './tunnel';
+
+// Mount tunnel sub-router
+
 
 export const systemRouter = Router();
+
+// Tunnel management routes
+systemRouter.use('/tunnel', tunnelRouter);
 
 // System resource info
 systemRouter.get('/:mikrotikId/resource', async (req: AuthRequest, res: Response) => {
