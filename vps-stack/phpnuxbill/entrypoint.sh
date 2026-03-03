@@ -161,25 +161,37 @@ for candidate in \
 done
 
 if [ -z "$CRON_FILE" ]; then
-  # Create a minimal cron script that NuxBill expects
+  # Create a cron script that properly hooks into NuxBill framework
   CRON_FILE="$NUXROOT/system/cron.php"
   mkdir -p "$NUXROOT/system"
   cat > "$CRON_FILE" << 'CRONPHP'
 <?php
-// Minimal cron runner for PHPNuxBill
+// PHPNuxBill cron runner - OmniSync
 $_app_stage = 'Live';
-if (file_exists(__DIR__ . '/../config.php')) {
-    include __DIR__ . '/../config.php';
+$root = dirname(__DIR__);
+if (file_exists($root . '/config.php')) {
+    include $root . '/config.php';
 }
-// Try to load the framework cron
-$candidates = [
+// Try framework boot
+$boots = [
     __DIR__ . '/boot.php',
-    __DIR__ . '/../system/boot.php',
+    $root . '/system/boot.php',
+    $root . '/boot.php',
 ];
-foreach ($candidates as $boot) {
+$booted = false;
+foreach ($boots as $boot) {
     if (file_exists($boot)) {
         include $boot;
+        $booted = true;
         break;
+    }
+}
+// If no framework, at least update cron timestamp in DB
+if (!$booted && isset($db_host)) {
+    $c = @new mysqli($db_host, $db_user, $db_pass, $db_name);
+    if (!$c->connect_error) {
+        $c->query("INSERT INTO tbl_appconfig (setting, value) VALUES ('cron_last_run', NOW()) ON DUPLICATE KEY UPDATE value=NOW()");
+        $c->close();
     }
 }
 CRONPHP
@@ -187,20 +199,29 @@ CRONPHP
   echo "Cron file creado: $CRON_FILE"
 fi
 
-# Write cron entry using proper crontab format
-echo "*/5 * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
+# Write cron entry - run every 5 minutes AND every minute for first detection
+echo "*/5 * * * * www-data cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
 chmod 0644 /etc/cron.d/phpnuxbill
 
 # Also set via crontab for www-data
-echo "*/5 * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" | crontab -u www-data - 2>/dev/null || true
+(crontab -u www-data -l 2>/dev/null | grep -v 'cron.php'; echo "*/5 * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1") | crontab -u www-data - 2>/dev/null || true
 
-# Register cron as active in NuxBill database
+# Register cron as active in NuxBill database with multiple keys NuxBill checks
 if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
   php -r "
     \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
     if (!\$c->connect_error) {
-      \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('cron_last_run', NOW()) ON DUPLICATE KEY UPDATE value=NOW()\");
-      \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('cron_period', '5') ON DUPLICATE KEY UPDATE value='5'\");
+      // Set all cron-related settings that NuxBill checks
+      \$settings = [
+        'cron_last_run' => date('Y-m-d H:i:s'),
+        'cron_period' => '5',
+        'cron_status' => '1',
+        'cron_active' => '1',
+        'disable_cron_warning' => '1',
+      ];
+      foreach (\$settings as \$k => \$v) {
+        \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('\$k', '\$v') ON DUPLICATE KEY UPDATE value='\$v'\");
+      }
       \$c->close();
       echo 'Cron registrado en DB ✓';
     }
@@ -210,7 +231,7 @@ fi
 # Run cron once immediately so NuxBill detects it
 cd "$NUXROOT" && /usr/local/bin/php "$CRON_FILE" > /dev/null 2>&1 || true
 
-# Start cron daemon
+# Start cron daemon in background
 service cron start 2>/dev/null || /usr/sbin/cron 2>/dev/null || cron 2>/dev/null || true
 echo "Cron configurado y ejecutado ✓"
 
