@@ -13,10 +13,11 @@ import {
   ExternalLink, Server, Database, BarChart3, Wifi, CreditCard,
   Cloud, Globe, CheckCircle2, Copy, Save, Settings2,
   Terminal, Key, Play, Square, RefreshCw, Download, Loader2,
-  AlertCircle, Monitor, ExternalLink as LinkIcon
+  AlertCircle, Monitor, Palette
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { generateVpsInstallScript } from "@/lib/vps-install-script";
+import { PortalTemplateSelector } from "@/components/settings/PortalTemplateSelector";
 
 interface VpsServicesCardProps {
   mikrotikId?: string | null;
@@ -198,7 +199,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="services" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="services" className="flex items-center gap-1.5 text-xs">
               <Server className="h-3.5 w-3.5" />
               Servicios
@@ -210,7 +211,11 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
             </TabsTrigger>
             <TabsTrigger value="portal" className="flex items-center gap-1.5 text-xs">
               <Globe className="h-3.5 w-3.5" />
-              Portal Cautivo
+              Portal
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="flex items-center gap-1.5 text-xs">
+              <Palette className="h-3.5 w-3.5" />
+              Diseños
             </TabsTrigger>
           </TabsList>
 
@@ -546,6 +551,11 @@ add name=portal.omnisync.local address=${vpsHost || "TU_IP_VPS"} comment="OmniSy
                 )}
               </div>
             </div>
+          </TabsContent>
+
+          {/* ═══ TAB: DISEÑOS / PLANTILLAS ═══ */}
+          <TabsContent value="templates">
+            <PortalTemplateSelector />
           </TabsContent>
         </Tabs>
       </CardContent>
