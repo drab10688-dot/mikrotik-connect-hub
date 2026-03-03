@@ -231,9 +231,20 @@ fi
 # Run cron once immediately so NuxBill detects it
 cd "$NUXROOT" && /usr/local/bin/php "$CRON_FILE" > /dev/null 2>&1 || true
 
-# Start cron daemon in background
-service cron start 2>/dev/null || /usr/sbin/cron 2>/dev/null || cron 2>/dev/null || true
-echo "Cron configurado y ejecutado ✓"
+# Start cron daemon reliably - try multiple methods
+if command -v cron &>/dev/null; then
+  cron && echo "Cron daemon iniciado (cron) ✓"
+elif command -v crond &>/dev/null; then
+  crond && echo "Cron daemon iniciado (crond) ✓"
+else
+  # Fallback: run cron via background loop
+  echo "Cron daemon no disponible, usando loop en background"
+  (while true; do
+    cd "$NUXROOT" && /usr/local/bin/php "$CRON_FILE" > /dev/null 2>&1
+    sleep 300
+  done) &
+  echo "Cron loop iniciado ✓"
+fi
 
 echo "=== PHPNuxBill listo ==="
 exec "$@"
