@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -21,6 +21,11 @@ export default function CaptivePortal() {
   const [mikrotikId, setMikrotikId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [successData, setSuccessData] = useState<any>(null);
+  const [scanning, setScanning] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanIntervalRef = useRef<number | null>(null);
 
   const template = getSelectedTemplate();
   const s = template.styles;
@@ -39,6 +44,106 @@ export default function CaptivePortal() {
   }, []);
 
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
+
+  // Cleanup scanner on unmount
+  useEffect(() => {
+    return () => stopScanner();
+  }, []);
+
+  const startScanner = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setScanning(true);
+
+      // Dynamically import BarcodeDetector or fallback
+      scanIntervalRef.current = window.setInterval(async () => {
+        if (!videoRef.current || !canvasRef.current) return;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d");
+        if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+
+        // Try native BarcodeDetector
+        if ("BarcodeDetector" in window) {
+          try {
+            const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+            const barcodes = await detector.detect(canvas);
+            if (barcodes.length > 0) {
+              handleQRResult(barcodes[0].rawValue);
+              return;
+            }
+          } catch {}
+        }
+
+        // Fallback: try jsQR
+        try {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const { default: jsQR } = await import("jsqr");
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) {
+            handleQRResult(code.data);
+          }
+        } catch {}
+      }, 300);
+    } catch (err) {
+      toast.error("No se pudo acceder a la cámara");
+      console.error("Camera error:", err);
+    }
+  };
+
+  const stopScanner = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setScanning(false);
+  };
+
+  const handleQRResult = (rawValue: string) => {
+    stopScanner();
+    try {
+      const url = new URL(rawValue);
+      const code = url.searchParams.get("code") || url.searchParams.get("voucher");
+      const id = url.searchParams.get("id") || url.searchParams.get("mikrotik");
+      const user = url.searchParams.get("username");
+      const pass = url.searchParams.get("password");
+
+      if (id && !mikrotikId) setMikrotikId(id);
+
+      if (code) {
+        setVoucherCode(code);
+        setMode("voucher");
+        toast.success("Código QR detectado");
+      } else if (user) {
+        setUsername(user);
+        if (pass) setPassword(pass);
+        setMode("credentials");
+        toast.success("Credenciales detectadas");
+      } else {
+        toast.error("QR no contiene datos válidos");
+      }
+    } catch {
+      // Not a URL, treat as raw voucher code
+      setVoucherCode(rawValue.trim());
+      setMode("voucher");
+      toast.success("Código detectado");
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,6 +208,33 @@ export default function CaptivePortal() {
           <span className="text-xs font-mono" style={{ color: s.timeColor }}>{formattedTime}</span>
         </div>
       </div>
+
+      {/* QR Scanner Overlay */}
+      {scanning && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
+          <div className="relative w-72 h-72 rounded-2xl overflow-hidden border-2 border-white/20">
+            <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+            {/* Scan animation */}
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
+              <div className="absolute left-0 right-0 h-0.5 bg-indigo-400/80 animate-[scan_2s_ease-in-out_infinite]" />
+            </div>
+          </div>
+          <p className="text-white/80 text-sm mt-4">Apunta la cámara al código QR del voucher</p>
+          <Button
+            variant="ghost"
+            onClick={stopScanner}
+            className="mt-4 text-white hover:text-white/80 hover:bg-white/10"
+          >
+            <X className="h-5 w-5 mr-2" />
+            Cancelar
+          </Button>
+          <canvas ref={canvasRef} className="hidden" />
+        </div>
+      )}
 
       {/* Card */}
       <Card className="w-full max-w-md relative z-10 border-0 shadow-2xl" style={{ background: s.cardBg, backdropFilter: "blur(20px)", boxShadow: s.cardShadow }}>
@@ -198,13 +330,24 @@ export default function CaptivePortal() {
                 {mode === "voucher" ? (
                   <div className="space-y-2">
                     <label className="text-xs font-medium uppercase tracking-wider" style={{ color: s.labelColor }}>Código Voucher</label>
-                    <Input
-                      type="text" value={voucherCode} onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-                      placeholder="Ingresa tu código de voucher" disabled={status === "loading"}
-                      className="h-12 border-0 text-base text-center tracking-widest font-mono"
-                      style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
-                      autoComplete="off" autoFocus
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="text" value={voucherCode} onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                        placeholder="Ingresa o escanea tu código" disabled={status === "loading"}
+                        className="h-12 border-0 text-base text-center tracking-widest font-mono flex-1"
+                        style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
+                        autoComplete="off" autoFocus
+                      />
+                      <Button
+                        type="button"
+                        onClick={startScanner}
+                        disabled={status === "loading"}
+                        className="h-12 w-12 shrink-0 border-0"
+                        style={{ background: s.inputBg }}
+                      >
+                        <ScanLine className="h-5 w-5" style={{ color: s.labelColor }} />
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -274,6 +417,14 @@ export default function CaptivePortal() {
           </div>
         </div>
       </Card>
+
+      {/* Scan animation keyframes */}
+      <style>{`
+        @keyframes scan {
+          0%, 100% { top: 10%; }
+          50% { top: 85%; }
+        }
+      `}</style>
     </div>
   );
 }
