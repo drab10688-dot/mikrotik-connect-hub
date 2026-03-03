@@ -130,33 +130,6 @@ services:
       - omnisync-net
 
   # ============================================
-  # daloRADIUS - Panel web para RADIUS
-  # ============================================
-  daloradius:
-    build:
-      context: ./daloradius
-      dockerfile: Dockerfile
-    container_name: omnisync-daloradius
-    restart: unless-stopped
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/radius-schema.sql:ro
-    environment:
-      MYSQL_HOST: mariadb
-      MYSQL_PORT: "3306"
-      MYSQL_DATABASE: radius
-      MYSQL_USER: radius
-      MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
-      DEFAULT_CLIENT_SECRET: ${RADIUS_SECRET:-testing123}
-      DEFAULT_FREERADIUS_SERVER: freeradius
-    networks:
-      - omnisync-net
-
-  # ============================================
   # PHPNuxBill - Billing Hotspot MikroTik
   # ============================================
   phpnuxbill:
