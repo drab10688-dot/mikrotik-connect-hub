@@ -58,6 +58,7 @@ interface ApiOptions {
   body?: any;
   headers?: Record<string, string>;
   noAuth?: boolean;
+  timeoutMs?: number;
 }
 
 export class ApiError extends Error {
@@ -75,7 +76,7 @@ export const api = async <T = any>(
   endpoint: string,
   options: ApiOptions = {}
 ): Promise<T> => {
-  const { method = 'GET', body, headers = {}, noAuth = false } = options;
+  const { method = 'GET', body, headers = {}, noAuth = false, timeoutMs = method === 'GET' ? 15000 : 30000 } = options;
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${endpoint}`;
 
@@ -100,7 +101,26 @@ export const api = async <T = any>(
     config.body = JSON.stringify(body);
   }
 
-  const response = await fetch(url, config);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...config,
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new ApiError(
+        `La solicitud tardó demasiado (${Math.ceil(timeoutMs / 1000)}s). Verifica la conexión del servidor.`,
+        408
+      );
+    }
+    throw new ApiError(error?.message || 'Error de conexión con la API', 0);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     let errorData: any;
@@ -117,7 +137,12 @@ export const api = async <T = any>(
   // Handle empty responses
   const text = await response.text();
   if (!text) return {} as T;
-  return JSON.parse(text) as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as T;
+  }
 };
 
 // Convenience methods

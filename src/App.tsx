@@ -35,51 +35,54 @@ import CaptivePortal from "./pages/CaptivePortal";
 import HotspotMonitor from "./pages/HotspotMonitor";
 import Accounting from "./pages/Accounting";
 import VpsServices from "./pages/VpsServices";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <Toaster />
-    <Sonner />
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/verify-contract" element={<VerifyContract />} />
-        <Route path="/pay" element={<ClientPaymentPortal />} />
-        <Route path="/portal" element={<CaptivePortal />} />
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/vps-services" element={<ProtectedRoute><VpsServices /></ProtectedRoute>} />
-        <Route path="/hotspot-monitor" element={<ProtectedRoute><HotspotMonitor /></ProtectedRoute>} />
-        <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
-        <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-        <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
-        <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
-        <Route path="/vouchers" element={<Navigate to="/hotspot-monitor" replace />} />
-        <Route path="/voucher-inventory" element={<Navigate to="/hotspot-monitor" replace />} />
-        <Route path="/hotspot-profiles" element={<Navigate to="/hotspot-monitor" replace />} />
-        <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
-        <Route path="/address-list" element={<ProtectedRoute><AddressList /></ProtectedRoute>} />
-        <Route path="/simple-queues" element={<ProtectedRoute><SimpleQueues /></ProtectedRoute>} />
-        <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="/accounting" element={<Navigate to="/hotspot-monitor?section=contabilidad" replace />} />
-        <Route path="/backup" element={<ProtectedRoute><Backup /></ProtectedRoute>} />
-        <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
-        <Route path="/payment-manager" element={<ProtectedRoute><PaymentManager /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
-        <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
-        <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
-        <Route path="/admin/mikrotik-devices" element={<ProtectedRoute><MikrotikDevices /></ProtectedRoute>} />
-        <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />
-        <Route path="/admin/secretaries" element={<ProtectedRoute><Secretaries /></ProtectedRoute>} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/verify-contract" element={<VerifyContract />} />
+          <Route path="/pay" element={<ClientPaymentPortal />} />
+          <Route path="/portal" element={<CaptivePortal />} />
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/vps-services" element={<ProtectedRoute><VpsServices /></ProtectedRoute>} />
+          <Route path="/hotspot-monitor" element={<ProtectedRoute><HotspotMonitor /></ProtectedRoute>} />
+          <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
+          <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+          <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
+          <Route path="/vouchers" element={<Navigate to="/hotspot-monitor" replace />} />
+          <Route path="/voucher-inventory" element={<Navigate to="/hotspot-monitor" replace />} />
+          <Route path="/hotspot-profiles" element={<Navigate to="/hotspot-monitor" replace />} />
+          <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
+          <Route path="/address-list" element={<ProtectedRoute><AddressList /></ProtectedRoute>} />
+          <Route path="/simple-queues" element={<ProtectedRoute><SimpleQueues /></ProtectedRoute>} />
+          <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+          <Route path="/accounting" element={<Navigate to="/hotspot-monitor?section=contabilidad" replace />} />
+          <Route path="/backup" element={<ProtectedRoute><Backup /></ProtectedRoute>} />
+          <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+          <Route path="/payment-manager" element={<ProtectedRoute><PaymentManager /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
+          <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
+          <Route path="/admin/mikrotik-devices" element={<ProtectedRoute><MikrotikDevices /></ProtectedRoute>} />
+          <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />
+          <Route path="/admin/secretaries" element={<ProtectedRoute><Secretaries /></ProtectedRoute>} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </AppErrorBoundary>
   </QueryClientProvider>
 );
 
