@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { authApi, setToken, setStoredUser, setApiBaseUrl } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,10 +111,7 @@ export default function Login() {
             </div>
 
             <p className="text-sm text-slate-500 mt-6">
-              ¿No tienes cuenta?{' '}
-              <Link to="/signup" className="text-cyan-400 hover:text-cyan-300 hover:underline font-medium transition-colors">
-                Regístrate aquí
-              </Link>
+              Contacta al administrador para obtener una cuenta
             </p>
           </div>
         </div>
@@ -194,10 +191,7 @@ export default function Login() {
                 {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
               </Button>
               <p className="text-sm text-center text-slate-400">
-                ¿No tienes cuenta?{' '}
-                <Link to="/signup" className="text-cyan-400 hover:text-cyan-300 hover:underline font-medium transition-colors">
-                  Regístrate aquí
-                </Link>
+                Contacta al administrador para obtener una cuenta
               </p>
             </CardFooter>
           </form>

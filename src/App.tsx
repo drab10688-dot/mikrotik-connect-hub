@@ -48,7 +48,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/verify-contract" element={<VerifyContract />} />
           <Route path="/pay" element={<ClientPaymentPortal />} />
           <Route path="/portal" element={<CaptivePortal />} />
