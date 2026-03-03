@@ -17,6 +17,13 @@ DB_NAME="${NUXBILL_DB_NAME:-phpnuxbill}"
 APP_URL="${NUXBILL_APP_URL:-http://localhost:8080}"
 TZ_VALUE="${TZ:-America/Bogota}"
 
+# RADIUS DB (se escribe también en config.php para que PHPNuxBill cree la conexión 'radius')
+RADIUS_DB_HOST="${RADIUS_DB_HOST:-${NUXBILL_DB_HOST:-mariadb}}"
+RADIUS_DB_PORT="${RADIUS_DB_PORT:-3306}"
+RADIUS_DB_USER="${RADIUS_DB_USER:-radius}"
+RADIUS_DB_PASS="${RADIUS_DB_PASS:-changeme_radius}"
+RADIUS_DB_NAME="${RADIUS_DB_NAME:-radius}"
+
 APP_KEY=$(echo -n "${DB_PASS}${DB_HOST}" | md5sum | cut -d' ' -f1)
 
 # 1) Detectar instalación en subdirectorio y mover al webroot
@@ -37,6 +44,13 @@ if [ -n "$DB_HOST" ]; then
     echo "\$db_pass = '${DB_PASS}';"
     echo "\$db_password = '${DB_PASS}';"
     echo "\$db_name = '${DB_NAME}';"
+    echo
+    echo "\$radius_host = '${RADIUS_DB_HOST}';"
+    echo "\$radius_port = '${RADIUS_DB_PORT}';"
+    echo "\$radius_user = '${RADIUS_DB_USER}';"
+    echo "\$radius_pass = '${RADIUS_DB_PASS}';"
+    echo "\$radius_password = '${RADIUS_DB_PASS}';"
+    echo "\$radius_name = '${RADIUS_DB_NAME}';"
     echo
     echo "define('APP_URL', '${APP_URL}');"
     echo "\$APP_URL = APP_URL;"
