@@ -98,9 +98,11 @@ tunnelRouter.post('/start', (req: AuthRequest, res: Response) => {
   tunnelUrl = null;
   tunnelError = null;
 
+  // cloudflared runs inside the API container, so target nginx by Docker service name
+  const targetHost = req.body.host || 'nginx';
   const targetPort = req.body.port || 80;
 
-  tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${targetPort}`, '--no-autoupdate'], {
+  tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://${targetHost}:${targetPort}`, '--no-autoupdate'], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
