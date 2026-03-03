@@ -203,7 +203,6 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
       'radius-db': 'mariadb',
       'omnisync-mariadb': 'mariadb',
       phpnuxbill: 'phpnuxbill',
-      phpnuxbill: 'phpnuxbill',
       'omnisync-phpnuxbill': 'phpnuxbill',
     };
 
