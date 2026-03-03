@@ -206,9 +206,11 @@ generate_nuxbill_sql() {
   mkdir -p "$INSTALL_DIR/mariadb-init"
   cat > "$INSTALL_DIR/mariadb-init/02-nuxbill.sql" << NUXEOF
 -- PHPNuxBill Database Initialization
-CREATE DATABASE IF NOT EXISTS phpnuxbill;
+CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
 GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
+-- PHPNuxBill needs access to the radius database for its RADIUS module
+GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
 FLUSH PRIVILEGES;
 NUXEOF
 }
@@ -224,13 +226,14 @@ ensure_mariadb_accounts() {
     if docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
       docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" >/dev/null 2>&1 << SQL
 CREATE DATABASE IF NOT EXISTS radius;
-CREATE DATABASE IF NOT EXISTS phpnuxbill;
+CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${radius_pw}';
 ALTER USER 'radius'@'%' IDENTIFIED BY '${radius_pw}';
 GRANT ALL PRIVILEGES ON radius.* TO 'radius'@'%';
 CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
 ALTER USER 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
 GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
+GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
 FLUSH PRIVILEGES;
 SQL
       echo -e "${GREEN}Usuarios MariaDB sincronizados ✓${NC}"
