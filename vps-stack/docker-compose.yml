@@ -178,6 +178,8 @@ services:
       NUXBILL_DB_PASS: ${NUXBILL_DB_PASSWORD:-changeme_nuxbill}
       NUXBILL_DB_NAME: phpnuxbill
       NUXBILL_APP_URL: ${NUXBILL_APP_URL:-http://localhost:8080}
+      RADIUS_DB_HOST: mariadb
+      RADIUS_DB_PORT: "3306"
       RADIUS_DB_USER: radius
       RADIUS_DB_PASS: ${RADIUS_DB_PASSWORD:-changeme_radius}
       RADIUS_DB_NAME: radius
