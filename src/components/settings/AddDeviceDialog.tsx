@@ -20,8 +20,8 @@ export const AddDeviceDialog = () => {
     host: '',
     username: '',
     password: '',
-    port: 8728,
-    version: 'v6',
+    port: 443,
+    version: 'v7',
     hotspot_url: 'http://192.168.88.1/login',
   });
 
@@ -52,8 +52,8 @@ export const AddDeviceDialog = () => {
         host: '',
         username: '',
         password: '',
-        port: 8728,
-        version: 'v6',
+        port: 443,
+        version: 'v7',
         hotspot_url: 'http://192.168.88.1/login',
       });
     },
@@ -158,7 +158,8 @@ export const AddDeviceDialog = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="v6">v6 (API)</SelectItem>
+                    <SelectItem value="v7">v7 (REST API)</SelectItem>
+                    <SelectItem value="v6">v6 (API Legacy)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
