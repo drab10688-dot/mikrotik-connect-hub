@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,13 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
-  ExternalLink, Server, Database, BarChart3, Wifi, CreditCard,
+  ExternalLink, Server, Database, Wifi, CreditCard,
   Cloud, Globe, CheckCircle2, Copy, Save, Settings2,
-  Terminal, Key, Play, Square, RefreshCw, Download, Loader2,
-  AlertCircle, Monitor, Palette
+  Play, Square, Loader2, Palette, Terminal, Monitor
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { generateVpsInstallScript } from "@/lib/vps-install-script";
 import { PortalTemplateSelector } from "@/components/settings/PortalTemplateSelector";
 
 interface VpsServicesCardProps {
@@ -49,13 +47,6 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
   const [useDomain, setUseDomain] = useState(false);
   const [showDomainConfig, setShowDomainConfig] = useState(false);
 
-  // Tunnel state
-  const [vpsIp, setVpsIp] = useState("");
-  const [vpsPort, setVpsPort] = useState("3847");
-  const [apiToken, setApiToken] = useState("");
-  const [domain, setDomain] = useState("");
-  const [tunnelName, setTunnelName] = useState("");
-
   const vpsHost = localStorage.getItem('vps_api_url')?.replace(/https?:\/\//, '').replace(/:\d+.*/, '')
     || localStorage.getItem('vps_ip')
     || window.location.hostname;
@@ -78,15 +69,6 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     refetchInterval: 5000,
   });
 
-  useEffect(() => {
-    if (config) {
-      setVpsIp(config.agent_host || "");
-      setVpsPort(String(config.agent_port || 3847));
-      setApiToken(config.api_token || "");
-      setDomain(config.domain || "");
-      setTunnelName(config.tunnel_name || "");
-    }
-  }, [config]);
 
   const services: VpsService[] = [
     { name: "OmniSync Panel", description: "Panel principal de gestión ISP", port: 80, subdomain: "panel", proxyPath: "/", icon: Server, color: "text-primary" },
@@ -131,62 +113,22 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     toast.success("Config Nginx copiada");
   };
 
-  // ─── Tunnel mutations ───────────────────────────
-  const buildAgentScript = useCallback((secret: string, port: number) => {
-    return generateVpsInstallScript({ secret, port, portalUrl });
-  }, [portalUrl]);
-
-  const saveAgentMutation = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("Falta datos");
-      if (!vpsIp.trim()) throw new Error("Ingresa la IP de tu VPS");
-      const effectiveId = mikrotikId || cloudflareConfigId;
-      const secret = config?.agent_secret || generateSecret();
-      await vpsApi.updateCloudflareConfig({
-        id: config?.id, mikrotik_id: effectiveId, mode: "free",
-        agent_host: vpsIp.trim(), agent_port: parseInt(vpsPort) || 3847,
-        agent_secret: secret, created_by: user.id, updated_at: new Date().toISOString(),
-      });
-      return { secret, port: parseInt(vpsPort) || 3847 };
-    },
-    onSuccess: ({ secret, port }) => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", cloudflareConfigId] });
-      navigator.clipboard.writeText(buildAgentScript(secret, port));
-      toast.success("Script copiado. Pégalo en tu VPS.");
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
-
+  // ─── Tunnel mutation (simple start/stop) ───────────────────────────
   const agentActionMutation = useMutation({
-    mutationFn: (action: string) => vpsApi.tunnelAgent(cloudflareConfigId, action),
+    mutationFn: (action: string) => {
+      if (action === "start") return vpsApi.tunnelStart(80);
+      if (action === "stop") return vpsApi.tunnelStop();
+      return vpsApi.tunnelStatus();
+    },
     onSuccess: (data, action) => {
       queryClient.invalidateQueries({ queryKey: ["cloudflare-config", cloudflareConfigId] });
       if (action === "start" && data?.url) toast.success(`Tunnel activo: ${data.url}`);
       else if (action === "stop") toast.success("Tunnel detenido");
-      else if (action === "status") toast.info(`Estado: ${data?.status || "desconocido"}`);
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
-
-  const savePaidMutation = useMutation({
-    mutationFn: async () => {
-      if (!user || !apiToken.trim()) throw new Error("Datos incompletos");
-      const effectiveId = mikrotikId || cloudflareConfigId;
-      await vpsApi.updateCloudflareConfig({
-        id: config?.id, mikrotik_id: effectiveId, mode: "paid",
-        api_token: apiToken, domain: domain || null, tunnel_name: tunnelName || null,
-        is_active: true, created_by: user.id, updated_at: new Date().toISOString(),
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", cloudflareConfigId] });
-      toast.success("Config Pro guardada");
     },
     onError: (err: any) => toast.error(err.message),
   });
 
   const isRunning = config?.is_active && config?.tunnel_url;
-  const agentConfigured = config?.agent_host && config?.agent_secret;
 
   return (
     <Card>
@@ -300,98 +242,71 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
 
           {/* ═══ TAB: CLOUDFLARE TUNNEL ═══ */}
           <TabsContent value="cloudflare" className="space-y-4">
-              <>
-                {/* Active tunnel banner */}
-                {isRunning && (
-                  <div className="p-3 rounded-lg border border-green-500/20 bg-green-500/5 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span className="font-medium text-sm text-green-700 dark:text-green-400">Tunnel Activo</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 text-xs bg-background px-2 py-1.5 rounded border truncate">{config?.tunnel_url}</code>
-                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { navigator.clipboard.writeText(config?.tunnel_url || ""); toast.success("Copiado"); }}>
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="icon" className="h-7 w-7" asChild>
-                        <a href={config?.tunnel_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" /></a>
-                      </Button>
-                    </div>
+            <div className="flex flex-col items-center justify-center py-6 space-y-5">
+              <div className="p-4 rounded-full bg-primary/10">
+                <Cloud className="h-10 w-10 text-primary" />
+              </div>
+
+              <div className="text-center space-y-1">
+                <h3 className="font-semibold text-lg">Cloudflare Tunnel</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Genera una URL HTTPS pública para tu portal cautivo con un solo clic.
+                </p>
+              </div>
+
+              {/* URL activa */}
+              {isRunning && config?.tunnel_url && (
+                <div className="w-full p-3 rounded-lg border border-green-500/20 bg-green-500/5 space-y-2">
+                  <div className="flex items-center gap-2 justify-center">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-700 dark:text-green-400">Tunnel Activo</span>
                   </div>
-                )}
-
-                <Tabs defaultValue={config?.mode || "free"} className="space-y-3">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="free" className="text-xs"><Terminal className="h-3.5 w-3.5 mr-1" />Quick Tunnel (Gratis)</TabsTrigger>
-                    <TabsTrigger value="paid" className="text-xs"><Key className="h-3.5 w-3.5 mr-1" />API Token (Pro)</TabsTrigger>
-                  </TabsList>
-
-                  {/* Free tunnel */}
-                  <TabsContent value="free" className="space-y-3">
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Paso 1: IP del VPS</Label>
-                      <div className="grid grid-cols-[1fr,80px] gap-2">
-                        <Input value={vpsIp} onChange={(e) => setVpsIp(e.target.value)} placeholder="123.456.789.0" className="h-8 text-sm" />
-                        <Input value={vpsPort} onChange={(e) => setVpsPort(e.target.value)} placeholder="3847" className="h-8 text-sm" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Paso 2: Instalar agente</Label>
-                      <Button onClick={() => saveAgentMutation.mutate()} disabled={saveAgentMutation.isPending || !vpsIp.trim()} variant="outline" size="sm" className="w-full">
-                        {saveAgentMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
-                        Copiar script de instalación
-                      </Button>
-                    </div>
-                    {agentConfigured && (
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium">Paso 3: Control</Label>
-                        <div className="grid grid-cols-3 gap-2">
-                          <Button size="sm" onClick={() => agentActionMutation.mutate("start")} disabled={agentActionMutation.isPending || !!isRunning}>
-                            {agentActionMutation.isPending && agentActionMutation.variables === "start" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-1" />}
-                            Iniciar
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => agentActionMutation.mutate("stop")} disabled={agentActionMutation.isPending || !isRunning}>
-                            {agentActionMutation.isPending && agentActionMutation.variables === "stop" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5 mr-1" />}
-                            Detener
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => agentActionMutation.mutate("status")} disabled={agentActionMutation.isPending}>
-                            {agentActionMutation.isPending && agentActionMutation.variables === "status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-                            Estado
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    <p className="text-[10px] text-muted-foreground">⚠️ Abre el puerto {vpsPort || "3847"} en el firewall. La URL del Quick Tunnel cambia al reiniciar.</p>
-                  </TabsContent>
-
-                  {/* Paid tunnel */}
-                  <TabsContent value="paid" className="space-y-3">
-                    <div className="p-3 rounded-lg border border-primary/20 bg-primary/5">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Globe className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium text-primary">Named Tunnel - Dominio Personalizado</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">HTTPS permanente con tu propio dominio.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">API Token de Cloudflare</Label>
-                      <Input type="password" value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder="Tu API token" className="h-8 text-sm" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Nombre del Tunnel</Label>
-                      <Input value={tunnelName} onChange={(e) => setTunnelName(e.target.value)} placeholder="omnisync-portal" className="h-8 text-sm" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Dominio personalizado</Label>
-                      <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="portal.tudominio.com" className="h-8 text-sm" />
-                    </div>
-                    <Button onClick={() => savePaidMutation.mutate()} disabled={savePaidMutation.isPending || !apiToken.trim()} size="sm" className="w-full">
-                      {savePaidMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Key className="h-3.5 w-3.5 mr-1" />}
-                      Guardar configuración Pro
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-background px-2 py-1.5 rounded border truncate text-center">{config.tunnel_url}</code>
+                    <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={() => { navigator.clipboard.writeText(config.tunnel_url || ""); toast.success("URL copiada"); }}>
+                      <Copy className="h-3 w-3" />
                     </Button>
-                  </TabsContent>
-                </Tabs>
-              </>
+                    <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" asChild>
+                      <a href={config.tunnel_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" /></a>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Botón principal ON/OFF */}
+              {isRunning ? (
+                <Button
+                  size="lg"
+                  variant="destructive"
+                  className="w-full max-w-xs"
+                  onClick={() => agentActionMutation.mutate("stop")}
+                  disabled={agentActionMutation.isPending}
+                >
+                  {agentActionMutation.isPending && agentActionMutation.variables === "stop"
+                    ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    : <Square className="h-4 w-4 mr-2" />
+                  }
+                  Desactivar Tunnel
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="w-full max-w-xs"
+                  onClick={() => agentActionMutation.mutate("start")}
+                  disabled={agentActionMutation.isPending}
+                >
+                  {agentActionMutation.isPending && agentActionMutation.variables === "start"
+                    ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    : <Play className="h-4 w-4 mr-2" />
+                  }
+                  Activar Tunnel
+                </Button>
+              )}
+
+              <p className="text-[10px] text-muted-foreground text-center max-w-xs">
+                La URL del Quick Tunnel puede cambiar al reiniciar el servidor. Configura el Walled Garden de MikroTik con esta URL.
+              </p>
+            </div>
           </TabsContent>
 
           {/* ═══ TAB: PORTAL CAUTIVO ═══ */}
