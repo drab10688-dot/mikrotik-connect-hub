@@ -115,6 +115,8 @@ handle_existing_installation() {
         generate_nuxbill_sql
 
         docker compose up -d --build
+        sleep 10
+        ensure_mariadb_accounts || true
         echo -e "${GREEN}✓ Actualización completada${NC}"
         VPS_IP=$(hostname -I | awk '{print $1}')
         echo -e "${GREEN}Panel: http://$VPS_IP${NC}"
@@ -209,6 +211,36 @@ CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
 GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
 FLUSH PRIVILEGES;
 NUXEOF
+}
+
+ensure_mariadb_accounts() {
+  local root_pw="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
+  local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
+  local nuxbill_pw="${NUXBILL_DB_PASSWORD:-changeme_nuxbill}"
+
+  echo -e "${YELLOW}Sincronizando usuarios MariaDB (radius/nuxbill)...${NC}"
+
+  for i in $(seq 1 15); do
+    if docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
+      docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" >/dev/null 2>&1 << SQL
+CREATE DATABASE IF NOT EXISTS radius;
+CREATE DATABASE IF NOT EXISTS phpnuxbill;
+CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${radius_pw}';
+ALTER USER 'radius'@'%' IDENTIFIED BY '${radius_pw}';
+GRANT ALL PRIVILEGES ON radius.* TO 'radius'@'%';
+CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
+ALTER USER 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
+GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
+FLUSH PRIVILEGES;
+SQL
+      echo -e "${GREEN}Usuarios MariaDB sincronizados ✓${NC}"
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo -e "${YELLOW}⚠ No se pudo sincronizar usuarios MariaDB automáticamente${NC}"
+  return 1
 }
 
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
@@ -390,6 +422,9 @@ docker compose up -d --build 2>&1 | tail -5
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
 sleep 20
 
+# Ensure DB users/passwords are in sync even on existing volumes
+ensure_mariadb_accounts || true
+
 # ═══════════════════════════════════════════════════
 # FASE 5: Verificación de servicios
 # ═══════════════════════════════════════════════════
@@ -465,10 +500,10 @@ test_endpoint() {
   fi
 }
 
-test_endpoint "Panel Web"    "http://localhost" "nginx"
-test_endpoint "API Health"   "http://localhost/api/health" "api"
-test_endpoint "daloRADIUS"   "http://localhost/daloradius/" "daloradius"
-test_endpoint "PHPNuxBill"   "http://localhost/nuxbill/" "phpnuxbill"
+test_endpoint "Panel Web"        "http://localhost" "nginx"
+test_endpoint "API Health"       "http://localhost/api/health" "api"
+test_endpoint "daloRADIUS Login" "http://localhost/daloradius/login.php" "daloradius"
+test_endpoint "PHPNuxBill Admin" "http://localhost/nuxbill/admin" "phpnuxbill"
 
 echo ""
 echo -e "  Resultado HTTP: ${GREEN}$HTTP_OK OK${NC} / ${RED}$HTTP_FAIL fallidos${NC}"
@@ -500,8 +535,8 @@ echo "║  🌐 ACCESOS                                               ║"
 echo "║  ─────────────────────────────────────────────           ║"
 echo "║  Panel Web:      http://$VPS_IP                            "
 echo "║  API Health:     http://$VPS_IP/api/health                 "
-echo "║  daloRADIUS:     http://$VPS_IP/daloradius/                "
-echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/                   "
+echo "║  daloRADIUS:     http://$VPS_IP/daloradius/login.php      "
+echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/admin             "
 echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
