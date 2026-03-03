@@ -170,6 +170,8 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+    volumes:
+      - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/radius-schema.sql:ro
     environment:
       NUXBILL_DB_HOST: mariadb
       NUXBILL_DB_USER: nuxbill

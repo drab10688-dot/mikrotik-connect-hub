@@ -134,7 +134,7 @@ fi
 
 # 5) Crear admin si falta + forzar Live + configurar RADIUS DB + inicializar tablas RADIUS
 if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
-  RADIUS_DB_HOST="${NUXBILL_DB_HOST:-mariadb}"
+  RADIUS_DB_HOST="${RADIUS_DB_HOST:-${NUXBILL_DB_HOST:-mariadb}}"
   RADIUS_DB_USER="${RADIUS_DB_USER:-radius}"
   RADIUS_DB_PASS="${RADIUS_DB_PASS:-changeme_radius}"
   RADIUS_DB_NAME="${RADIUS_DB_NAME:-radius}"
@@ -156,7 +156,16 @@ if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
         log "Schema RADIUS importado ✓" || \
         log "⚠ No se pudo importar schema RADIUS con mysql client, intentando con PHP..."
 
-      # Fallback: importar con PHP si mysql client no está disponible
+      # Revalidar si ya se creó tabla nas
+      RADIUS_TABLE_CHECK=$(php -r "
+        \$c = new mysqli('${RADIUS_DB_HOST}', '${RADIUS_DB_USER}', '${RADIUS_DB_PASS}', '${RADIUS_DB_NAME}');
+        if (\$c->connect_error) { echo '0'; exit; }
+        \$r = \$c->query(\"SHOW TABLES LIKE 'nas'\");
+        echo ((\$r && \$r->num_rows > 0) ? '1' : '0');
+        \$c->close();
+      " 2>/dev/null || echo "0")
+
+      # Fallback: importar con PHP solo si todavía no existe nas
       if [ "$RADIUS_TABLE_CHECK" = "0" ]; then
         php -r "
           \$c = new mysqli('${RADIUS_DB_HOST}', '${RADIUS_DB_USER}', '${RADIUS_DB_PASS}', '${RADIUS_DB_NAME}');
