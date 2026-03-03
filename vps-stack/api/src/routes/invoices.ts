@@ -32,7 +32,57 @@ invoicesRouter.get('/:mikrotikId', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Create invoice
+// Get single invoice
+invoicesRouter.get('/detail/:invoiceId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoiceId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT i.*, c.client_name, c.identification_number, c.username
+       FROM client_invoices i
+       LEFT JOIN isp_clients c ON c.id = i.client_id
+       WHERE i.id = $1`,
+      [invoiceId]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Factura no encontrada' });
+    res.json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update invoice
+invoicesRouter.put('/detail/:invoiceId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoiceId } = req.params;
+    const fields = req.body;
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (['mikrotik_id', 'id'].includes(key)) continue;
+      if (key === 'status') {
+        setClauses.push(`${key} = $${i}::invoice_status`);
+      } else {
+        setClauses.push(`${key} = $${i}`);
+      }
+      values.push(value);
+      i++;
+    }
+
+    if (setClauses.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    values.push(invoiceId);
+    const { rows } = await pool.query(
+      `UPDATE client_invoices SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Factura no encontrada' });
+    res.json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 invoicesRouter.post('/:mikrotikId', async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotikId } = req.params;
@@ -69,7 +119,7 @@ invoicesRouter.post('/:mikrotikId/pay/:invoiceId', async (req: AuthRequest, res:
 
     // Update invoice
     const { rows } = await pool.query(
-      `UPDATE client_invoices SET status = 'paid', paid_at = now(), paid_via = $1, payment_reference = $2
+      `UPDATE client_invoices SET status = 'paid'::invoice_status, paid_at = now(), paid_via = $1, payment_reference = $2
        WHERE id = $3 AND mikrotik_id = $4 RETURNING *`,
       [paid_via, payment_reference, invoiceId, mikrotikId]
     );
@@ -200,7 +250,7 @@ invoicesRouter.get('/paid-history', async (req: AuthRequest, res: Response) => {
     let query = `SELECT i.*, c.client_name, c.identification_number
                  FROM client_invoices i
                  LEFT JOIN isp_clients c ON c.id = i.client_id
-                 WHERE i.mikrotik_id = $1 AND i.status = 'paid'`;
+                 WHERE i.mikrotik_id = $1 AND i.status = 'paid'::invoice_status`;
     const params: any[] = [mikrotikId];
 
     if (startDate) {

@@ -49,12 +49,12 @@ app.get('/api/health', (_, res) => {
 
 // Public routes
 app.use('/api/auth', authRouter);
+app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need auth via route-level check
 
 // Protected routes
 app.use('/api/devices', authMiddleware, devicesRouter);
 app.use('/api/clients', authMiddleware, clientsRouter);
 app.use('/api/pppoe', authMiddleware, pppoeRouter);
-app.use('/api/hotspot', authMiddleware, hotspotRouter);
 app.use('/api/queues', authMiddleware, queuesRouter);
 app.use('/api/vouchers', authMiddleware, vouchersRouter);
 app.use('/api/billing', authMiddleware, billingRouter);
@@ -67,6 +67,24 @@ app.use('/api/clients/contracts', authMiddleware, contractsRouter);
 app.use('/api/clients/service-options', authMiddleware, serviceOptionsRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/vouchers/presets', authMiddleware, voucherPresetsRouter);
+
+// Aliases for frontend compatibility
+app.use('/api/mikrotik', authMiddleware, (req, res, next) => {
+  // Forward /api/mikrotik/command to /api/system/mikrotik/command
+  if (req.path === '/command' && req.method === 'POST') {
+    req.url = '/mikrotik/command';
+    return systemRouter(req, res, next);
+  }
+  next();
+});
+app.use('/api/accounting', authMiddleware, (req, res, next) => {
+  // Forward /api/accounting/summary to /api/system/accounting/summary
+  if (req.path === '/summary' && req.method === 'GET') {
+    req.url = '/accounting/summary';
+    return systemRouter(req, res, next);
+  }
+  next();
+});
 
 // Cron: billing diario 6:00 AM
 cron.schedule('0 6 * * *', () => {

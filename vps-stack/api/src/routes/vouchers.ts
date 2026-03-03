@@ -50,7 +50,7 @@ vouchersRouter.post('/:mikrotikId/generate', async (req: AuthRequest, res: Respo
       // Save in DB
       const { rows } = await pool.query(
         `INSERT INTO vouchers (mikrotik_id, created_by, code, password, profile, validity, price, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'available') RETURNING *`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'available'::voucher_status) RETURNING *`,
         [mikrotikId, req.userId, code, password, profile, validity, price || 0]
       );
 
@@ -71,8 +71,8 @@ vouchersRouter.post('/:mikrotikId/sell/:voucherId', async (req: AuthRequest, res
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
     const { rows } = await pool.query(
-      `UPDATE vouchers SET status = 'sold', sold_by = $1, sold_at = now()
-       WHERE id = $2 AND mikrotik_id = $3 AND status = 'available' RETURNING *`,
+      `UPDATE vouchers SET status = 'sold'::voucher_status, sold_by = $1, sold_at = now()
+       WHERE id = $2 AND mikrotik_id = $3 AND status = 'available'::voucher_status RETURNING *`,
       [req.userId, voucherId, mikrotikId]
     );
 

@@ -29,7 +29,7 @@ async function generateDueInvoices(pool: Pool, dayOfMonth: number) {
      JOIN client_billing_settings bs ON bs.client_id = c.id
      JOIN billing_config bc ON bc.mikrotik_id = c.mikrotik_id
      WHERE bs.billing_day = $1
-       AND bc.billing_type = 'due'
+       AND bc.billing_type = 'due'::billing_type
        AND c.is_potential_client = false
        AND bs.is_suspended = false`,
     [dayOfMonth]
@@ -81,14 +81,14 @@ async function checkOverdueInvoices(pool: Pool) {
      FROM client_invoices i
      JOIN isp_clients c ON c.id = i.client_id
      JOIN billing_config bc ON bc.mikrotik_id = i.mikrotik_id
-     WHERE i.status = 'pending'
+     WHERE i.status = 'pending'::invoice_status
        AND i.due_date + (bc.grace_period_days || ' days')::interval < $1`,
     [today]
   );
 
   for (const invoice of overdue) {
     // Mark invoice as overdue
-    await pool.query("UPDATE client_invoices SET status = 'overdue' WHERE id = $1", [invoice.id]);
+    await pool.query("UPDATE client_invoices SET status = 'overdue'::invoice_status WHERE id = $1", [invoice.id]);
 
     // Suspend client
     await pool.query(

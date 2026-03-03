@@ -379,6 +379,58 @@ CREATE TABLE cloudflare_config (
 );
 
 -- ============================================
+-- Profiles (mirrors Supabase auth.users info)
+-- ============================================
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  full_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- Telegram Messages
+-- ============================================
+CREATE TABLE telegram_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  chat_id TEXT NOT NULL,
+  message_type TEXT NOT NULL DEFAULT 'text',
+  message_content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  telegram_message_id TEXT,
+  error_message TEXT,
+  related_invoice_id UUID REFERENCES client_invoices(id) ON DELETE SET NULL,
+  related_contract_id UUID REFERENCES isp_contracts(id) ON DELETE SET NULL,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- WhatsApp Messages
+-- ============================================
+CREATE TABLE whatsapp_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  phone_number TEXT NOT NULL,
+  message_type TEXT NOT NULL DEFAULT 'text',
+  message_content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  whatsapp_message_id TEXT,
+  error_message TEXT,
+  related_invoice_id UUID REFERENCES client_invoices(id) ON DELETE SET NULL,
+  related_contract_id UUID REFERENCES isp_contracts(id) ON DELETE SET NULL,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
 -- Indexes
 -- ============================================
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
@@ -393,6 +445,9 @@ CREATE INDEX idx_invoices_due_date ON client_invoices(due_date);
 CREATE INDEX idx_vouchers_mikrotik ON vouchers(mikrotik_id);
 CREATE INDEX idx_vouchers_code ON vouchers(code);
 CREATE INDEX idx_vouchers_status ON vouchers(status);
+CREATE INDEX idx_profiles_user_id ON profiles(user_id);
+CREATE INDEX idx_telegram_messages_mikrotik ON telegram_messages(mikrotik_id);
+CREATE INDEX idx_whatsapp_messages_mikrotik ON whatsapp_messages(mikrotik_id);
 
 -- ============================================
 -- Helper Functions
@@ -421,7 +476,7 @@ BEGIN
     'users', 'mikrotik_devices', 'billing_config', 'client_billing_settings',
     'client_invoices', 'payment_transactions', 'isp_contracts', 'vouchers',
     'service_options', 'payment_platforms', 'telegram_config', 'whatsapp_config',
-    'cloudflare_config', 'company_info'
+    'cloudflare_config', 'company_info', 'profiles'
   ] LOOP
     EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t, t);
   END LOOP;
@@ -440,4 +495,8 @@ VALUES (
 );
 
 INSERT INTO user_roles (user_id, role)
-SELECT id, 'super_admin' FROM users WHERE email = 'admin@omnisync.local';
+SELECT id, 'super_admin'::app_role FROM users WHERE email = 'admin@omnisync.local';
+
+-- Create profile for default admin
+INSERT INTO profiles (user_id, email, full_name)
+SELECT id, email, full_name FROM users WHERE email = 'admin@omnisync.local';

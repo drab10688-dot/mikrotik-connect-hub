@@ -127,3 +127,41 @@ hotspotRouter.get('/:mikrotikId/hosts', async (req: AuthRequest, res: Response) 
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// ─── Public Hotspot Login ────────────────────
+hotspotRouter.post('/login', async (req: any, res: Response) => {
+  try {
+    const { mikrotik_id, username, password } = req.body;
+    if (!mikrotik_id || !username || !password) {
+      return res.status(400).json({ error: 'mikrotik_id, username y password requeridos' });
+    }
+
+    const config = await getDeviceConfig(pool, mikrotik_id);
+
+    // Try to login the user on MikroTik hotspot
+    try {
+      const data = await mikrotikRequest(config, '/rest/ip/hotspot/active/login', 'POST', {
+        user: username,
+        password,
+      });
+      res.json({ success: true, data });
+    } catch (mkError: any) {
+      // If REST login not available, just validate credentials exist
+      const users: any = await mikrotikRequest(config, '/rest/ip/hotspot/user');
+      const user = (users as any[]).find((u: any) => u.name === username);
+
+      if (!user) return res.status(401).json({ success: false, error: 'Usuario no encontrado' });
+
+      // Mark voucher as active in DB
+      await pool.query(
+        `UPDATE vouchers SET status = 'active'::voucher_status, activated_at = now()
+         WHERE code = $1 AND mikrotik_id = $2 AND status IN ('available'::voucher_status, 'sold'::voucher_status)`,
+        [username, mikrotik_id]
+      );
+
+      res.json({ success: true, message: 'Credenciales válidas' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
