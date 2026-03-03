@@ -189,7 +189,7 @@ export const Sidebar = () => {
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 )}>
                   <Monitor className="w-5 h-5" />
-                  <span className="flex-1 text-left">Hotspot Monitor</span>
+                  <span className="flex-1 text-left">Hotspot</span>
                   <ChevronDown className={cn("w-4 h-4 transition-transform", hotspotOpen && "rotate-180")} />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pl-4 space-y-0.5 mt-0.5">
