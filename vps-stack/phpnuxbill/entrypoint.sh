@@ -132,13 +132,50 @@ if [ "$CONNECTED" = true ]; then
   fi
 fi
 
-# 5) Crear admin si falta + forzar Live + configurar RADIUS DB
+# 5) Crear admin si falta + forzar Live + configurar RADIUS DB + inicializar tablas RADIUS
 if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
   RADIUS_DB_HOST="${NUXBILL_DB_HOST:-mariadb}"
   RADIUS_DB_USER="${RADIUS_DB_USER:-radius}"
   RADIUS_DB_PASS="${RADIUS_DB_PASS:-changeme_radius}"
   RADIUS_DB_NAME="${RADIUS_DB_NAME:-radius}"
 
+  # 5a) Asegurar que las tablas RADIUS existen en MariaDB
+  RADIUS_SCHEMA="/docker-entrypoint-initdb.d/radius-schema.sql"
+  if [ -f "$RADIUS_SCHEMA" ]; then
+    RADIUS_TABLE_CHECK=$(php -r "
+      \$c = new mysqli('${RADIUS_DB_HOST}', '${RADIUS_DB_USER}', '${RADIUS_DB_PASS}', '${RADIUS_DB_NAME}');
+      if (\$c->connect_error) { echo '0'; exit; }
+      \$r = \$c->query(\"SHOW TABLES LIKE 'nas'\");
+      echo ((\$r && \$r->num_rows > 0) ? '1' : '0');
+      \$c->close();
+    " 2>/dev/null || echo "0")
+
+    if [ "$RADIUS_TABLE_CHECK" = "0" ]; then
+      log "Tablas RADIUS no encontradas, importando schema..."
+      mysql -h"${RADIUS_DB_HOST}" -u"${RADIUS_DB_USER}" -p"${RADIUS_DB_PASS}" "${RADIUS_DB_NAME}" < "$RADIUS_SCHEMA" 2>/dev/null && \
+        log "Schema RADIUS importado ✓" || \
+        log "⚠ No se pudo importar schema RADIUS con mysql client, intentando con PHP..."
+
+      # Fallback: importar con PHP si mysql client no está disponible
+      if [ "$RADIUS_TABLE_CHECK" = "0" ]; then
+        php -r "
+          \$c = new mysqli('${RADIUS_DB_HOST}', '${RADIUS_DB_USER}', '${RADIUS_DB_PASS}', '${RADIUS_DB_NAME}');
+          if (\$c->connect_error) { echo 'Error: '.\$c->connect_error; exit(1); }
+          \$sql = file_get_contents('${RADIUS_SCHEMA}');
+          \$c->multi_query(\$sql);
+          do { if (\$r = \$c->store_result()) \$r->free(); } while (\$c->more_results() && \$c->next_result());
+          echo 'Schema RADIUS importado via PHP ✓';
+          \$c->close();
+        " 2>/dev/null || log "⚠ Error importando schema RADIUS"
+      fi
+    else
+      log "Tablas RADIUS ya existen ✓"
+    fi
+  else
+    log "⚠ Schema RADIUS no encontrado en $RADIUS_SCHEMA"
+  fi
+
+  # 5b) Crear admin + configurar RADIUS
   php -r "
     \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
     if (\$c->connect_error) { exit; }
