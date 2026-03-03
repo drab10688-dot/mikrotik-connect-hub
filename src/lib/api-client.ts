@@ -5,17 +5,28 @@
  * Configure the API_BASE_URL via environment variable or localStorage.
  */
 
+const normalizeApiBaseUrl = (url: string): string => {
+  const trimmed = url.trim().replace(/\/$/, '');
+  if (!trimmed) return '/api';
+
+  // Si solo pasan host/base, forzamos sufijo /api
+  if (/\/api$/i.test(trimmed)) return trimmed;
+  return `${trimmed}/api`;
+};
+
 const getBaseUrl = (): string => {
   // Priority: 1) env var, 2) localStorage, 3) same-origin /api
-  return (
-    import.meta.env.VITE_API_BASE_URL ||
-    localStorage.getItem('vps_api_url') ||
-    '/api'
-  );
+  const envBase = import.meta.env.VITE_API_BASE_URL;
+  if (envBase) return normalizeApiBaseUrl(envBase);
+
+  const storedBase = localStorage.getItem('vps_api_url');
+  if (storedBase) return normalizeApiBaseUrl(storedBase);
+
+  return '/api';
 };
 
 export const setApiBaseUrl = (url: string) => {
-  localStorage.setItem('vps_api_url', url);
+  localStorage.setItem('vps_api_url', normalizeApiBaseUrl(url));
 };
 
 export const getApiBaseUrl = () => getBaseUrl();
@@ -95,11 +106,12 @@ export const api = async <T = any>(
     let errorData: any;
     try { errorData = await response.json(); } catch { errorData = null; }
 
-    throw new ApiError(
-      errorData?.error || errorData?.message || `Error ${response.status}`,
-      response.status,
-      errorData
-    );
+    const isMissingLocalApi = response.status === 404 && baseUrl === '/api';
+    const message = isMissingLocalApi
+      ? 'API VPS no encontrada en este dominio. Configura la URL de tu VPS para continuar.'
+      : (errorData?.error || errorData?.message || `Error ${response.status}`);
+
+    throw new ApiError(message, response.status, errorData);
   }
 
   // Handle empty responses
