@@ -35,9 +35,11 @@ export function useServiceOptions(mikrotikId: string | null | undefined) {
       } else {
         await initializeDefaultServices(mikrotikId);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching services:", error);
-      toast.error("Error al cargar servicios");
+      // Fallback local para no bloquear el módulo de clientes
+      setServices(DEFAULT_SERVICES.map((s, idx) => ({ ...s, id: `local-${idx + 1}` })));
+      toast.warning("No se pudieron cargar servicios del servidor. Usando valores por defecto.");
     } finally {
       setLoading(false);
     }
