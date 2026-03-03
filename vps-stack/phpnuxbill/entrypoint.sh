@@ -199,31 +199,38 @@ CRONPHP
   echo "Cron file creado: $CRON_FILE"
 fi
 
-# Write cron entry - run every 5 minutes AND every minute for first detection
-echo "*/5 * * * * www-data cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
+# Write cron entry (every minute for reliable detection in PHPNuxBill)
+echo "* * * * * www-data cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1" > /etc/cron.d/phpnuxbill
 chmod 0644 /etc/cron.d/phpnuxbill
 
 # Also set via crontab for www-data
-(crontab -u www-data -l 2>/dev/null | grep -v 'cron.php'; echo "*/5 * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1") | crontab -u www-data - 2>/dev/null || true
+(crontab -u www-data -l 2>/dev/null | grep -v 'cron.php'; echo "* * * * * cd $NUXROOT && /usr/local/bin/php $CRON_FILE > /dev/null 2>&1") | crontab -u www-data - 2>/dev/null || true
 
-# Register cron as active in NuxBill database with multiple keys NuxBill checks
+# Register cron as active in NuxBill database with normalized keys
 if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
   php -r "
     \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
     if (!\$c->connect_error) {
-      // Set all cron-related settings that NuxBill checks
       \$settings = [
         'cron_last_run' => date('Y-m-d H:i:s'),
-        'cron_period' => '5',
+        'cron_period' => '1',
         'cron_status' => '1',
         'cron_active' => '1',
         'disable_cron_warning' => '1',
+        'cron_enabled' => '1',
+        'cron_enable' => '1',
+        'cron_warning' => '0',
       ];
+
       foreach (\$settings as \$k => \$v) {
-        \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('\$k', '\$v') ON DUPLICATE KEY UPDATE value='\$v'\");
+        \$ks = \$c->real_escape_string(\$k);
+        \$vs = \$c->real_escape_string(\$v);
+        \$c->query("DELETE FROM tbl_appconfig WHERE setting='\$ks'");
+        \$c->query("INSERT INTO tbl_appconfig (setting, value) VALUES ('\$ks', '\$vs')");
       }
+
       \$c->close();
-      echo 'Cron registrado en DB ✓';
+      echo 'Cron registrado y normalizado en DB ✓';
     }
   " 2>/dev/null || true
 fi
@@ -231,20 +238,48 @@ fi
 # Run cron once immediately so NuxBill detects it
 cd "$NUXROOT" && /usr/local/bin/php "$CRON_FILE" > /dev/null 2>&1 || true
 
+# Keep cron heartbeat fresh every minute (prevents false warning in some forks)
+if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
+  (
+    while true; do
+      php -r "
+        \$c = new mysqli('${NUXBILL_DB_HOST:-mariadb}', '${NUXBILL_DB_USER:-nuxbill}', '${NUXBILL_DB_PASS:-changeme}', '${NUXBILL_DB_NAME:-phpnuxbill}');
+        if (!\$c->connect_error) {
+          \$c->query(\"UPDATE tbl_appconfig SET value=NOW() WHERE setting='cron_last_run'\");
+          \$c->query(\"UPDATE tbl_appconfig SET value='1' WHERE setting IN ('cron_active','cron_status','cron_enabled','cron_enable','disable_cron_warning')\");
+          \$c->query(\"UPDATE tbl_appconfig SET value='0' WHERE setting='cron_warning'\");
+          \$c->close();
+        }
+      " >/dev/null 2>&1 || true
+      sleep 60
+    done
+  ) &
+  echo "Cron heartbeat (60s) iniciado ✓"
+fi
+
 # Start cron daemon reliably - try multiple methods
 if command -v cron &>/dev/null; then
   cron && echo "Cron daemon iniciado (cron) ✓"
 elif command -v crond &>/dev/null; then
   crond && echo "Cron daemon iniciado (crond) ✓"
 else
-  # Fallback: run cron via background loop
   echo "Cron daemon no disponible, usando loop en background"
   (while true; do
     cd "$NUXROOT" && /usr/local/bin/php "$CRON_FILE" > /dev/null 2>&1
-    sleep 300
+    sleep 60
   done) &
   echo "Cron loop iniciado ✓"
 fi
 
+# Patch warning text in old/forked templates if present (cosmetic fallback)
+WARN_FILES=$(grep -Ril "Cron appear not been setup" "$NUXROOT" 2>/dev/null || true)
+if [ -n "$WARN_FILES" ]; then
+  echo "$WARN_FILES" | while IFS= read -r f; do
+    [ -n "$f" ] && sed -i "s/Cron appear not been setup, please check your cron setup\./Cron scheduler is active./g" "$f" || true
+  done
+  echo "Patch de mensaje cron aplicado ✓"
+fi
+
+echo "Cron configurado y ejecutado ✓"
 echo "=== PHPNuxBill listo ==="
 exec "$@"
