@@ -199,7 +199,7 @@ export default function Settings() {
                   { label: 'API del panel', data: diagnosticResult.panel_api ? { ok: diagnosticResult.panel_api.ok, message: diagnosticResult.panel_api.message } : null },
                   { label: `Conectividad TCP (${diagnosticResult.device?.port ?? '-'})`, data: diagnosticResult.checks?.tcp },
                   { label: 'Credenciales', data: diagnosticResult.checks?.credentials },
-                  { label: 'API REST MikroTik', data: diagnosticResult.checks?.rest_api },
+                  { label: 'API MikroTik', data: diagnosticResult.checks?.rest_api },
                 ].map((item) => {
                   if (!item.data) return null;
                   const { label, variant, Icon } = statusBadge(item.data.ok);
