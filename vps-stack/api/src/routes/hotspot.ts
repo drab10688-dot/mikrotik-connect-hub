@@ -3,7 +3,6 @@ import { AuthRequest, authMiddleware, verifyDeviceAccess } from '../middleware/a
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { validateVoucher, activateVoucher, validateCustomer, getCustomerActivePlan } from '../lib/nuxbill';
 import { pool } from '../server';
-import { pool } from '../server';
 
 export const hotspotRouter = Router();
 
