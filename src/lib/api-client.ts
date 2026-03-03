@@ -400,7 +400,7 @@ export const vpsApi = {
     throw new Error('El modo Pro de Cloudflare aún no está disponible en esta instalación VPS');
   },
   tunnelAgent: (mikrotikId: string, action: string, params?: any) => apiPost('/system/tunnel/agent', { mikrotik_id: mikrotikId, action, ...params }),
-  status: (mikrotikId: string) => apiGet<any>(`/system/vps/status?mikrotik_id=${mikrotikId}`),
+  status: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/system/vps/status?mikrotik_id=${mikrotikId}`)),
   docker: (mikrotikId: string, action: string, service?: string) => apiPost('/system/vps/docker', { mikrotik_id: mikrotikId, action, service }),
 };
 
