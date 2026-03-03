@@ -262,9 +262,6 @@ export function VpsBackupManager() {
                 <SelectItem value="database">
                   <span className="flex items-center gap-2"><Database className="h-4 w-4" /> Solo Base de Datos</span>
                 </SelectItem>
-                <SelectItem value="docker">
-                  <span className="flex items-center gap-2"><Package className="h-4 w-4" /> Solo Imágenes Docker</span>
-                </SelectItem>
                 <SelectItem value="config">
                   <span className="flex items-center gap-2"><Settings className="h-4 w-4" /> Solo Configuración</span>
                 </SelectItem>
