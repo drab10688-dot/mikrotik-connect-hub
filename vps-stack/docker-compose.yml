@@ -48,6 +48,11 @@ services:
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
       BACKUP_DIR: /opt/omnisync/backups
+      NUXBILL_DB_HOST: mariadb
+      NUXBILL_DB_PORT: 3306
+      NUXBILL_DB_USER: ${NUXBILL_DB_USER:-nuxbill}
+      NUXBILL_DB_PASS: ${NUXBILL_DB_PASS:-changeme_nuxbill}
+      NUXBILL_DB_NAME: ${NUXBILL_DB_NAME:-phpnuxbill}
     ports:
       - "3000:3000"
     volumes:

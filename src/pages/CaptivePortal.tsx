@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock } from "lucide-react";
+import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -9,14 +9,18 @@ import omnisyncLogo from "@/assets/omnisync-sphere.png";
 import { getSelectedTemplate, getCustomLogo, getCustomTitle } from "@/lib/portal-templates";
 
 type PortalStatus = "idle" | "loading" | "success" | "error";
+type LoginMode = "voucher" | "credentials";
 
 export default function CaptivePortal() {
+  const [mode, setMode] = useState<LoginMode>("voucher");
+  const [voucherCode, setVoucherCode] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<PortalStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [mikrotikId, setMikrotikId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [successData, setSuccessData] = useState<any>(null);
 
   const template = getSelectedTemplate();
   const s = template.styles;
@@ -28,25 +32,53 @@ export default function CaptivePortal() {
     const id = params.get("id") || params.get("mikrotik");
     if (id) setMikrotikId(id);
     const u = params.get("username"); const p = params.get("password");
-    if (u) setUsername(u); if (p) setPassword(p);
+    if (u) { setUsername(u); setMode("credentials"); }
+    if (p) setPassword(p);
+    const code = params.get("code") || params.get("voucher");
+    if (code) { setVoucherCode(code); setMode("voucher"); }
   }, []);
 
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim()) { toast.error("Ingresa usuario y contraseña"); return; }
     if (!mikrotikId) { toast.error("Dispositivo no configurado"); return; }
+
+    if (mode === "voucher") {
+      if (!voucherCode.trim()) { toast.error("Ingresa el código del voucher"); return; }
+    } else {
+      if (!username.trim() || !password.trim()) { toast.error("Ingresa usuario y contraseña"); return; }
+    }
+
     setStatus("loading"); setErrorMsg("");
+
     try {
-      const data = await hotspotLoginApi.login(mikrotikId, username.trim(), password.trim());
-      if (!data?.success) { setStatus("error"); setErrorMsg(data?.error || "Error de autenticación"); return; }
+      const params = mode === "voucher"
+        ? { mikrotik_id: mikrotikId, code: voucherCode.trim(), mode: 'voucher' as const }
+        : { mikrotik_id: mikrotikId, username: username.trim(), password: password.trim(), mode: 'customer' as const };
+
+      const data = await hotspotLoginApi.nuxbillLogin(params);
+
+      if (!data?.success) {
+        setStatus("error");
+        setErrorMsg(data?.error || "Error de autenticación");
+        return;
+      }
+
       setStatus("success");
+      setSuccessData(data.data);
+
       const hotspotUrl = data.data.hotspotUrl;
-      const loginUrl = `${hotspotUrl}?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+      const loginUser = data.data.username;
+      const loginPass = data.data.password || password;
+      const loginUrl = `${hotspotUrl}?username=${encodeURIComponent(loginUser)}&password=${encodeURIComponent(loginPass)}`;
+
       toast.success("¡Autenticación exitosa! Conectando...");
-      setTimeout(() => { window.location.href = loginUrl; }, 1500);
-    } catch (err: any) { setStatus("error"); setErrorMsg(err.message || "Error de conexión"); }
+      setTimeout(() => { window.location.href = loginUrl; }, 2000);
+    } catch (err: any) {
+      setStatus("error");
+      setErrorMsg(err.message || "Error de conexión");
+    }
   };
 
   const formattedTime = currentTime.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
@@ -75,7 +107,7 @@ export default function CaptivePortal() {
       {/* Card */}
       <Card className="w-full max-w-md relative z-10 border-0 shadow-2xl" style={{ background: s.cardBg, backdropFilter: "blur(20px)", boxShadow: s.cardShadow }}>
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px" style={{ background: s.cardTopLine }} />
-        <div className="p-8 space-y-8">
+        <div className="p-8 space-y-6">
           {/* Header */}
           <div className="text-center space-y-3">
             <div className="flex justify-center">
@@ -99,40 +131,105 @@ export default function CaptivePortal() {
             <p className="text-xs capitalize" style={{ color: s.dateColor }}>{formattedDate}</p>
           </div>
 
+          {/* Mode Toggle */}
+          {status !== "success" && (
+            <div className="flex rounded-lg overflow-hidden" style={{ background: s.inputBg }}>
+              <button
+                type="button"
+                onClick={() => setMode("voucher")}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all"
+                style={{
+                  background: mode === "voucher" ? s.buttonBg : "transparent",
+                  color: mode === "voucher" ? s.buttonColor : s.labelColor,
+                }}
+              >
+                <Ticket className="h-4 w-4" />
+                Voucher
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("credentials")}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all"
+                style={{
+                  background: mode === "credentials" ? s.buttonBg : "transparent",
+                  color: mode === "credentials" ? s.buttonColor : s.labelColor,
+                }}
+              >
+                <User className="h-4 w-4" />
+                Usuario
+              </button>
+            </div>
+          )}
+
           {/* Success or Form */}
           {status === "success" ? (
-            <div className="text-center space-y-4 py-6">
+            <div className="text-center space-y-4 py-4">
               <div className="flex justify-center">
                 <div className="rounded-full p-4" style={{ background: s.successBg }}>
                   <CheckCircle2 className="h-12 w-12" style={{ color: s.successColor }} />
                 </div>
               </div>
               <p className="text-lg font-semibold" style={{ color: s.titleColor }}>¡Conectado exitosamente!</p>
+              {successData && (
+                <div className="text-left space-y-1 p-3 rounded-lg" style={{ background: s.inputBg }}>
+                  {successData.plan && (
+                    <p className="text-xs" style={{ color: s.subtitleColor }}>
+                      <span className="font-medium">Plan:</span> {successData.plan}
+                    </p>
+                  )}
+                  {successData.validity && (
+                    <p className="text-xs" style={{ color: s.subtitleColor }}>
+                      <span className="font-medium">Validez:</span> {successData.validity}
+                    </p>
+                  )}
+                  {successData.fullname && (
+                    <p className="text-xs" style={{ color: s.subtitleColor }}>
+                      <span className="font-medium">Bienvenido:</span> {successData.fullname}
+                    </p>
+                  )}
+                </div>
+              )}
               <Loader2 className="h-5 w-5 animate-spin mx-auto" style={{ color: s.successColor }} />
+              <p className="text-xs" style={{ color: s.subtitleColor }}>Redirigiendo al hotspot...</p>
             </div>
           ) : (
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium uppercase tracking-wider" style={{ color: s.labelColor }}>Usuario / PIN</label>
-                  <Input
-                    type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Ingresa tu usuario o PIN" disabled={status === "loading"}
-                    className="h-12 border-0 text-base"
-                    style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
-                    autoComplete="username" autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium uppercase tracking-wider" style={{ color: s.labelColor }}>Contraseña</label>
-                  <Input
-                    type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Ingresa tu contraseña" disabled={status === "loading"}
-                    className="h-12 border-0 text-base"
-                    style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
-                    autoComplete="current-password"
-                  />
-                </div>
+                {mode === "voucher" ? (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium uppercase tracking-wider" style={{ color: s.labelColor }}>Código Voucher</label>
+                    <Input
+                      type="text" value={voucherCode} onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                      placeholder="Ingresa tu código de voucher" disabled={status === "loading"}
+                      className="h-12 border-0 text-base text-center tracking-widest font-mono"
+                      style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
+                      autoComplete="off" autoFocus
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider" style={{ color: s.labelColor }}>Usuario</label>
+                      <Input
+                        type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                        placeholder="Ingresa tu usuario" disabled={status === "loading"}
+                        className="h-12 border-0 text-base"
+                        style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
+                        autoComplete="username" autoFocus
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider" style={{ color: s.labelColor }}>Contraseña</label>
+                      <Input
+                        type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Ingresa tu contraseña" disabled={status === "loading"}
+                        className="h-12 border-0 text-base"
+                        style={{ background: s.inputBg, color: s.inputColor, boxShadow: s.inputBorder }}
+                        autoComplete="current-password"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {status === "error" && (
@@ -144,7 +241,7 @@ export default function CaptivePortal() {
 
               <Button
                 type="submit"
-                disabled={status === "loading" || !username.trim() || !password.trim()}
+                disabled={status === "loading" || (mode === "voucher" ? !voucherCode.trim() : (!username.trim() || !password.trim()))}
                 className="w-full h-12 text-base font-semibold border-0"
                 style={{
                   background: status === "loading" ? s.buttonBgLoading : s.buttonBg,
@@ -155,7 +252,11 @@ export default function CaptivePortal() {
                 {status === "loading" ? (
                   <span className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Verificando...</span>
                 ) : (
-                  <span className="flex items-center gap-2"><Wifi className="h-5 w-5" />Conectarse a Internet<ArrowRight className="h-4 w-4" /></span>
+                  <span className="flex items-center gap-2">
+                    <Wifi className="h-5 w-5" />
+                    {mode === "voucher" ? "Activar Voucher" : "Conectarse a Internet"}
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
                 )}
               </Button>
             </form>
