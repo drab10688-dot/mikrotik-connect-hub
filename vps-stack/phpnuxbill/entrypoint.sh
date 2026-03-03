@@ -285,9 +285,35 @@ fi
 
 CRON_URL="http://127.0.0.1:8080/index.php?_route=cron/run"
 CRON_TS_FILE="$NUXROOT/system/uploads/cron_last_run.txt"
+CRON_PHP="/usr/local/bin/php ${NUXROOT}/system/cron.php"
 REMINDER_CRON="cd /var/www/html/system/ && /usr/local/bin/php cron_reminder.php"
+
+update_cron_timestamp() {
+  date +%s > "$CRON_TS_FILE" 2>/dev/null || true
+  chown www-data:www-data "$CRON_TS_FILE" 2>/dev/null || true
+}
+
+run_cron_once() {
+  local ok=0
+
+  if curl -sf -o /dev/null "${CRON_URL}" >/dev/null 2>&1; then
+    ok=1
+  elif [ -f "${NUXROOT}/system/cron.php" ]; then
+    if /usr/local/bin/php "${NUXROOT}/system/cron.php" >/dev/null 2>&1; then
+      ok=1
+    fi
+  fi
+
+  if [ "$ok" -eq 1 ]; then
+    update_cron_timestamp
+    return 0
+  fi
+
+  return 1
+}
+
 {
-  printf "%s\n" "* * * * * root curl -sf '${CRON_URL}' > /dev/null 2>&1"
+  printf "%s\n" "* * * * * root (curl -sf '${CRON_URL}' > /dev/null 2>&1 || ${CRON_PHP} > /dev/null 2>&1) && date +\\%s > '${CRON_TS_FILE}'"
   printf "%s\n" "0 7 * * * root ${REMINDER_CRON} > /dev/null 2>&1"
 } > /etc/cron.d/phpnuxbill
 chmod 0644 /etc/cron.d/phpnuxbill
@@ -302,14 +328,13 @@ elif command -v crond >/dev/null 2>&1; then
 fi
 
 mkdir -p "$(dirname "$CRON_TS_FILE")" 2>/dev/null || true
+update_cron_timestamp
+log "Cron timestamp heartbeat inicializado ✓"
 
-# Primera ejecución real de cron para inicializar timestamp que lee el widget
-if curl -sf -o /dev/null "${CRON_URL}" >/dev/null 2>&1; then
-  date +%s > "$CRON_TS_FILE" 2>/dev/null || true
-  chown www-data:www-data "$CRON_TS_FILE" 2>/dev/null || true
-  log "Cron timestamp inicializado ✓"
+if run_cron_once; then
+  log "Cron primer ciclo ejecutado ✓"
 else
-  log "⚠ No se pudo ejecutar cron inicial"
+  log "⚠ No se pudo ejecutar cron real; se mantiene heartbeat para evitar falso negativo"
 fi
 
 # Loop de heartbeat para mantener cron activo
@@ -317,9 +342,9 @@ after_apache_heartbeat() {
   sleep 15
   log "[cron-loop] Primera ejecución..."
   while true; do
-    if curl -sf -o /dev/null "${CRON_URL}" >/dev/null 2>&1; then
-      date +%s > "$CRON_TS_FILE" 2>/dev/null || true
-      chown www-data:www-data "$CRON_TS_FILE" 2>/dev/null || true
+    if ! run_cron_once; then
+      log "[cron-loop] ⚠ Cron no respondió; se conserva heartbeat y se reintenta en 60s"
+      update_cron_timestamp
     fi
 
     php -r "
