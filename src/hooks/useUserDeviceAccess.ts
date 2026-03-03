@@ -17,8 +17,22 @@ export const useUserDeviceAccess = () => {
         // Secretaries see assigned devices
         const assignments = await secretariesApi.myAssignments();
         return assignments
-          .map((a: any) => a.mikrotik_devices || a.device)
-          .filter((d: any) => d && d.status === 'active');
+          .map((a: any) => {
+            // Handle nested device object or flat fields
+            if (a.mikrotik_devices && typeof a.mikrotik_devices === 'object') {
+              return a.mikrotik_devices;
+            }
+            // Fallback: build device from flat fields
+            return {
+              id: a.mikrotik_id || a.device_id,
+              name: a.device_name || a.name,
+              host: a.host,
+              port: a.port || 8728,
+              version: a.version || 'v7',
+              status: a.device_status || 'active',
+            };
+          })
+          .filter((d: any) => d && d.id && d.status === 'active');
       } else {
         // Regular users see their own devices
         return await devicesApi.list();
