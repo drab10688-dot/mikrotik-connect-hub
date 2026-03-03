@@ -1,24 +1,51 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { devicesApi, secretariesApi, apiGet } from "@/lib/api-client";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { devicesApi, secretariesApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
 import { saveSelectedDevice, cleanupLegacyStorage, clearSelectedDevice } from "@/lib/mikrotik";
-import { Router, Wifi } from "lucide-react";
+import { Router, Wifi, Loader2, CircleCheck, CircleX, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
 import { CloudflareConfig } from "@/components/settings/CloudflareConfig";
 import { VpsDockerManager } from "@/components/settings/VpsDockerManager";
 
+interface DiagnosticCheck {
+  ok: boolean | null;
+  message: string;
+  code?: string;
+  technical_error?: string;
+  latency_ms?: number | null;
+}
+
+interface ConnectionDiagnosticResult {
+  connected: boolean;
+  panel_api?: { ok: boolean; message: string };
+  device?: { host: string; port: number; version: string };
+  checks?: {
+    tcp?: DiagnosticCheck;
+    credentials?: DiagnosticCheck;
+    rest_api?: DiagnosticCheck;
+  };
+}
+
+const statusBadge = (ok: boolean | null) => {
+  if (ok === true) return { label: "OK", variant: "default" as const, Icon: CircleCheck };
+  if (ok === false) return { label: "FALLA", variant: "destructive" as const, Icon: CircleX };
+  return { label: "NO EVALUADO", variant: "secondary" as const, Icon: AlertCircle };
+};
+
 export default function Settings() {
   const navigate = useNavigate();
   const { user, isSuperAdmin, isAdmin, isSecretary } = useAuth();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
+  const [diagnosticResult, setDiagnosticResult] = useState<ConnectionDiagnosticResult | null>(null);
 
   useEffect(() => { cleanupLegacyStorage(); }, []);
 
@@ -51,6 +78,31 @@ export default function Settings() {
     const activeDevices = devices.filter((d: any) => d.status === 'active');
     if (activeDevices.length === 1 && !selectedDevice) setSelectedDevice(activeDevices[0].id);
   }, [devices, isLoading, selectedDevice]);
+
+  useEffect(() => {
+    setDiagnosticResult(null);
+  }, [selectedDevice]);
+
+  const diagnoseConnectionMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedDevice) throw new Error("Selecciona un dispositivo MikroTik");
+      const response = await devicesApi.diagnoseConnection(selectedDevice);
+      if (!response?.success) throw new Error(response?.error || "No se pudo ejecutar el diagnóstico");
+      return response.data as ConnectionDiagnosticResult;
+    },
+    onSuccess: (data) => {
+      setDiagnosticResult(data);
+      if (data.connected) {
+        toast.success("Conexión MikroTik verificada correctamente");
+      } else {
+        toast.warning("Diagnóstico completado: se detectaron fallos en la conexión");
+      }
+    },
+    onError: (error: any) => {
+      setDiagnosticResult(null);
+      toast.error(error.message || 'Error al diagnosticar la conexión');
+    },
+  });
 
   const handleConnect = () => {
     if (!selectedDevice) { toast.error("Selecciona un dispositivo MikroTik"); return; }
@@ -104,13 +156,69 @@ export default function Settings() {
                       </div>
                     ) : null;
                   })()}
-                  <Button onClick={handleConnect} className="w-full" disabled={!selectedDevice || devices.find((d: any) => d.id === selectedDevice)?.status !== 'active'}>
-                    <Router className="h-4 w-4 mr-2" />Conectar
-                  </Button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => diagnoseConnectionMutation.mutate()}
+                      disabled={!selectedDevice || diagnoseConnectionMutation.isPending}
+                    >
+                      {diagnoseConnectionMutation.isPending ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Verificando...</>
+                      ) : (
+                        <><AlertCircle className="h-4 w-4 mr-2" />Verificar Conexión</>
+                      )}
+                    </Button>
+                    <Button onClick={handleConnect} disabled={!selectedDevice || devices.find((d: any) => d.id === selectedDevice)?.status !== 'active'}>
+                      <Router className="h-4 w-4 mr-2" />Conectar
+                    </Button>
+                  </div>
                 </>
               )}
             </CardContent>
           </Card>
+
+          {diagnosticResult && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Resultado del Diagnóstico</CardTitle>
+                <CardDescription>
+                  {diagnosticResult.connected
+                    ? 'Conexión operativa: red, credenciales y API REST funcionando.'
+                    : 'Se detectó un problema. Revisa el detalle para corregirlo rápido.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  { label: 'API del panel', data: diagnosticResult.panel_api ? { ok: diagnosticResult.panel_api.ok, message: diagnosticResult.panel_api.message } : null },
+                  { label: `Conectividad TCP (${diagnosticResult.device?.port ?? '-'})`, data: diagnosticResult.checks?.tcp },
+                  { label: 'Credenciales', data: diagnosticResult.checks?.credentials },
+                  { label: 'API REST MikroTik', data: diagnosticResult.checks?.rest_api },
+                ].map((item) => {
+                  if (!item.data) return null;
+                  const { label, variant, Icon } = statusBadge(item.data.ok);
+                  return (
+                    <div key={item.label} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Icon className="h-4 w-4" />
+                          {item.label}
+                        </div>
+                        <Badge variant={variant}>{label}</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{item.data.message}</p>
+                      {'latency_ms' in item.data && typeof item.data.latency_ms === 'number' && (
+                        <p className="text-xs text-muted-foreground">Latencia TCP: {item.data.latency_ms}ms</p>
+                      )}
+                      {'technical_error' in item.data && item.data.technical_error && (
+                        <p className="text-xs text-muted-foreground">Detalle técnico: {item.data.technical_error}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
           <CloudflareConfig mikrotikId={selectedDevice || null} mikrotikDevice={null} />
           <VpsDockerManager mikrotikId={selectedDevice || null} />
         </div>
