@@ -52,6 +52,7 @@ services:
       - "3000:3000"
     volumes:
       - backup_data:/opt/omnisync/backups
+      - /usr/local/bin/cloudflared:/usr/local/bin/cloudflared:ro
     depends_on:
       postgres:
         condition: service_healthy
