@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine, X } from "lucide-react";
+import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine, X, Camera, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -26,6 +26,8 @@ export default function CaptivePortal() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cameraSupported, setCameraSupported] = useState(true);
 
   const template = getSelectedTemplate();
   const s = template.styles;
@@ -51,6 +53,17 @@ export default function CaptivePortal() {
   }, []);
 
   const startScanner = async () => {
+    // Check if we're in a secure context (HTTPS or localhost)
+    const isSecure = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure || !navigator.mediaDevices?.getUserMedia) {
+      // No camera access available - offer file upload fallback
+      setCameraSupported(false);
+      toast.info("Cámara no disponible (se requiere HTTPS). Usa la opción de subir imagen.");
+      fileInputRef.current?.click();
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
@@ -58,11 +71,10 @@ export default function CaptivePortal() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
       setScanning(true);
 
-      // Dynamically import BarcodeDetector or fallback
       scanIntervalRef.current = window.setInterval(async () => {
         if (!videoRef.current || !canvasRef.current) return;
         const video = videoRef.current;
@@ -86,20 +98,60 @@ export default function CaptivePortal() {
           } catch {}
         }
 
-        // Fallback: try jsQR
+        // Fallback: jsQR
         try {
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const { default: jsQR } = await import("jsqr");
           const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code) {
-            handleQRResult(code.data);
-          }
+          if (code) handleQRResult(code.data);
         } catch {}
       }, 300);
-    } catch (err) {
-      toast.error("No se pudo acceder a la cámara");
+    } catch (err: any) {
       console.error("Camera error:", err);
+      setCameraSupported(false);
+      if (err.name === 'NotAllowedError') {
+        toast.error("Permiso de cámara denegado. Usa la opción de subir imagen.");
+      } else if (err.name === 'NotFoundError') {
+        toast.error("No se encontró cámara. Usa la opción de subir imagen.");
+      } else {
+        toast.error("No se pudo acceder a la cámara. Usa la opción de subir imagen.");
+      }
+      fileInputRef.current?.click();
     }
+  };
+
+  const handleFileQR = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.src = url;
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { toast.error("Error procesando imagen"); return; }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { default: jsQR } = await import("jsqr");
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      
+      if (code) {
+        handleQRResult(code.data);
+      } else {
+        toast.error("No se detectó código QR en la imagen");
+      }
+    } catch (err) {
+      toast.error("Error al procesar la imagen");
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const stopScanner = () => {
@@ -344,9 +396,22 @@ export default function CaptivePortal() {
                         disabled={status === "loading"}
                         className="h-12 w-12 shrink-0 border-0"
                         style={{ background: s.inputBg }}
+                        title={cameraSupported ? "Escanear QR con cámara" : "Subir imagen con QR"}
                       >
-                        <ScanLine className="h-5 w-5" style={{ color: s.labelColor }} />
+                        {cameraSupported ? (
+                          <ScanLine className="h-5 w-5" style={{ color: s.labelColor }} />
+                        ) : (
+                          <ImageIcon className="h-5 w-5" style={{ color: s.labelColor }} />
+                        )}
                       </Button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleFileQR}
+                        className="hidden"
+                      />
                     </div>
                   </div>
                 ) : (
