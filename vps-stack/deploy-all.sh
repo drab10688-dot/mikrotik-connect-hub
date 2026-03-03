@@ -15,12 +15,77 @@ TMP_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
 
+# Cargar variables del stack para usar contraseñas reales en verificaciones/reparaciones
+if [ -f "$APP_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$APP_DIR/.env"
+  set +a
+fi
+
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
+RADIUS_DB_PASSWORD="${RADIUS_DB_PASSWORD:-changeme_radius}"
+NUXBILL_DB_PASSWORD="${NUXBILL_DB_PASSWORD:-changeme_nuxbill}"
+
+ensure_mariadb_accounts() {
+  echo "  → Sincronizando usuarios MariaDB (radius/nuxbill)..."
+  for i in $(seq 1 20); do
+    if docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" >/dev/null 2>&1; then
+      docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" >/dev/null 2>&1 <<SQL
+CREATE DATABASE IF NOT EXISTS radius;
+CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${RADIUS_DB_PASSWORD}';
+ALTER USER 'radius'@'%' IDENTIFIED BY '${RADIUS_DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON radius.* TO 'radius'@'%';
+CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${NUXBILL_DB_PASSWORD}';
+ALTER USER 'nuxbill'@'%' IDENTIFIED BY '${NUXBILL_DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
+GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
+FLUSH PRIVILEGES;
+SQL
+      echo "  ✓ Usuarios MariaDB sincronizados"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "  ⚠ No se pudo sincronizar usuarios MariaDB automáticamente"
+  return 1
+}
+
+ensure_radius_schema() {
+  local schema_file="$APP_DIR/radius/sql/schema.sql"
+  [ -f "$schema_file" ] || {
+    echo "  ⚠ No existe $schema_file"
+    return 1
+  }
+
+  local has_nas
+  has_nas=$(docker exec omnisync-mariadb mariadb -uradius -p"${RADIUS_DB_PASSWORD}" -Nse \
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='radius' AND table_name='nas';" 2>/dev/null || echo "0")
+
+  if [ "$has_nas" != "1" ]; then
+    echo "  → Tabla nas no existe, importando schema radius..."
+    docker exec -i omnisync-mariadb mariadb -uradius -p"${RADIUS_DB_PASSWORD}" radius < "$schema_file"
+  fi
+
+  has_nas=$(docker exec omnisync-mariadb mariadb -uradius -p"${RADIUS_DB_PASSWORD}" -Nse \
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='radius' AND table_name='nas';" 2>/dev/null || echo "0")
+
+  if [ "$has_nas" = "1" ]; then
+    echo "  ✓ Tabla nas verificada"
+    return 0
+  fi
+
+  echo "  ✗ La tabla nas sigue sin existir"
+  return 1
+}
+
 echo "╔══════════════════════════════════════════════╗"
 echo "║  OmniSync - Deploy API + Frontend            ║"
 echo "╚══════════════════════════════════════════════╝"
 
 # ─── Prerequisites ─────────────────────────────
-echo "[1/8] Verificando dependencias..."
+echo "[1/10] Verificando dependencias..."
 apt-get update -y >/dev/null 2>&1 || true
 apt-get install -y git curl rsync ca-certificates >/dev/null 2>&1 || true
 
@@ -31,11 +96,11 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 # ─── Clone ─────────────────────────────────────
-echo "[2/8] Clonando repositorio..."
+echo "[2/10] Clonando repositorio..."
 git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TMP_DIR/app"
 
 # ─── Update API source ────────────────────────
-echo "[3/8] Actualizando código del API..."
+echo "[3/10] Actualizando código del API..."
 # Preserve .env and docker volumes, only update source code
 rsync -a --delete \
   --exclude='node_modules' \
@@ -57,27 +122,33 @@ cp "$TMP_DIR/app/vps-stack/deploy-frontend.sh" "$APP_DIR/deploy-frontend.sh" 2>/
 cp "$TMP_DIR/app/vps-stack/deploy-all.sh" "$APP_DIR/deploy-all.sh" 2>/dev/null || true
 chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 
-# ─── Rebuild API container ────────────────────
-echo "[4/8] Reconstruyendo contenedor API..."
+# ─── Rebuild core containers ───────────────────
+echo "[4/10] Reconstruyendo API + PHPNuxBill..."
 cd "$APP_DIR"
-docker compose build --no-cache api
+docker compose up -d --build api phpnuxbill mariadb
 
-echo "[5/8] Reiniciando API..."
-docker compose up -d api
+echo "[5/10] Sincronizando cuentas MariaDB..."
+ensure_mariadb_accounts || true
+
+echo "[6/10] Verificando schema radius (tabla nas)..."
+ensure_radius_schema || true
+
+echo "[7/10] Reiniciando FreeRADIUS + PHPNuxBill..."
+docker compose up -d freeradius phpnuxbill
 
 # ─── Build Frontend ───────────────────────────
-echo "[6/8] Compilando frontend..."
+echo "[8/10] Compilando frontend..."
 cd "$TMP_DIR/app"
 echo "VITE_API_BASE_URL=/api" > .env.production
 npm ci --legacy-peer-deps 2>/dev/null || npm install --legacy-peer-deps
 npm run build
 
-echo "[7/8] Desplegando frontend..."
+echo "[9/10] Desplegando frontend..."
 mkdir -p "$DIST_DIR"
 rsync -a --delete dist/ "$DIST_DIR/"
 
 # ─── Restart Nginx ────────────────────────────
-echo "[8/8] Reiniciando Nginx..."
+echo "[10/10] Reiniciando Nginx..."
 cd "$APP_DIR"
 docker compose restart nginx
 
