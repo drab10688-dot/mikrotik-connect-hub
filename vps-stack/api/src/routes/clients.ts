@@ -63,7 +63,6 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
 
     const connectionType = use_simple_queues ? 'static' : 'pppoe';
     let remoteIP = '';
-    let localIP = '';
     let generatedPassword = password || Math.random().toString(36).slice(2, 10);
     let resultType = use_simple_queues ? 'queue' : 'pppoe';
     let mikrotikCreated = false;
@@ -109,7 +108,6 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
               const nextLast = maxLast + 1;
               if (nextLast <= 254) {
                 remoteIP = `${mostCommonPrefix}.${nextLast}`;
-                localIP = `${mostCommonPrefix}.1`;
               }
             }
           } catch (scanErr: any) {
@@ -124,7 +122,6 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
             comment: client_name,
           };
           if (remoteIP) secretPayload['remote-address'] = remoteIP;
-          if (localIP) secretPayload['local-address'] = localIP;
 
           await mikrotikRequest({ ...config, useTls }, '/rest/ppp/secret/add', 'POST', secretPayload);
         }
