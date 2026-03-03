@@ -24,26 +24,8 @@ RUN git clone --depth 1 --branch 2.0 https://github.com/lirantal/daloradius.git 
 # Debug: list what we got so we can see the structure in build logs
 RUN echo "=== daloRADIUS file structure ===" && ls -la /var/www/html/ && echo "=== end ==="
 
-# Create a robust index.php that finds the login page regardless of layout
-RUN echo '<?php' > /var/www/html/index.php && \
-    echo '// Auto-generated router for daloRADIUS' >> /var/www/html/index.php && \
-    echo '$paths = array(' >> /var/www/html/index.php && \
-    echo '  "app/operators/login.php",' >> /var/www/html/index.php && \
-    echo '  "app/users/login.php",' >> /var/www/html/index.php && \
-    echo '  "login.php",' >> /var/www/html/index.php && \
-    echo '  "app/index.php"' >> /var/www/html/index.php && \
-    echo ');' >> /var/www/html/index.php && \
-    echo 'foreach ($paths as $p) {' >> /var/www/html/index.php && \
-    echo '  if (file_exists(__DIR__ . "/" . $p)) {' >> /var/www/html/index.php && \
-    echo '    header("Location: " . $p);' >> /var/www/html/index.php && \
-    echo '    exit;' >> /var/www/html/index.php && \
-    echo '  }' >> /var/www/html/index.php && \
-    echo '}' >> /var/www/html/index.php && \
-    echo 'echo "<h1>daloRADIUS</h1><pre>";' >> /var/www/html/index.php && \
-    echo 'echo "Files found:\n";' >> /var/www/html/index.php && \
-    echo '$iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__, RecursiveDirectoryIterator::SKIP_DOTS));' >> /var/www/html/index.php && \
-    echo 'foreach ($iter as $f) { if (strpos($f->getFilename(), "login") !== false || strpos($f->getFilename(), "index") !== false) echo $f->getPathname() . "\n"; }' >> /var/www/html/index.php && \
-    echo 'echo "</pre>";' >> /var/www/html/index.php
+# index.php router is created at runtime by entrypoint.sh
+# (git clone overwrites any file created here during build)
 
 # Pre-create config directories for both v1 and v2 layouts
 RUN mkdir -p /var/www/html/app/common/includes \
