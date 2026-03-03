@@ -53,6 +53,9 @@ app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need 
 
 // Protected routes
 app.use('/api/devices', authMiddleware, devicesRouter);
+// IMPORTANT: register specific /api/clients sub-routes before generic /api/clients
+app.use('/api/clients/contracts', authMiddleware, contractsRouter);
+app.use('/api/clients/service-options', authMiddleware, serviceOptionsRouter);
 app.use('/api/clients', authMiddleware, clientsRouter);
 app.use('/api/pppoe', authMiddleware, pppoeRouter);
 app.use('/api/queues', authMiddleware, queuesRouter);
@@ -63,8 +66,6 @@ app.use('/api/address-list', authMiddleware, addressListRouter);
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/backups', authMiddleware, backupRouter);
 app.use('/api/auth/users', authMiddleware, usersRouter);
-app.use('/api/clients/contracts', authMiddleware, contractsRouter);
-app.use('/api/clients/service-options', authMiddleware, serviceOptionsRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/vouchers/presets', authMiddleware, voucherPresetsRouter);
 
