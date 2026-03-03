@@ -59,9 +59,9 @@ const App = () => (
           <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
           <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
-          <Route path="/vouchers" element={<Navigate to="/hotspot-monitor" replace />} />
-          <Route path="/voucher-inventory" element={<Navigate to="/hotspot-monitor" replace />} />
-          <Route path="/hotspot-profiles" element={<Navigate to="/hotspot-monitor" replace />} />
+          <Route path="/vouchers" element={<ProtectedRoute><Vouchers /></ProtectedRoute>} />
+          <Route path="/voucher-inventory" element={<ProtectedRoute><VoucherInventory /></ProtectedRoute>} />
+          <Route path="/hotspot-profiles" element={<ProtectedRoute><HotspotProfiles /></ProtectedRoute>} />
           <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
           <Route path="/address-list" element={<ProtectedRoute><AddressList /></ProtectedRoute>} />
           <Route path="/simple-queues" element={<ProtectedRoute><SimpleQueues /></ProtectedRoute>} />

@@ -11,7 +11,8 @@ import { useSecretaries } from '@/hooks/useSecretaries';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import { devicesApi, usersApi } from '@/lib/api-client';
-import { Plus, Trash2, Settings, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Settings } from 'lucide-react';
+import { Sidebar } from '@/components/dashboard/Sidebar';
 import { toast } from 'sonner';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useNavigate } from 'react-router-dom';
@@ -100,14 +101,14 @@ export default function Secretaries() {
   const navigate = useNavigate();
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}><ArrowLeft className="h-5 w-5" /></Button>
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <div className="flex-1 p-4 md:p-8 md:ml-64">
+      <div className="max-w-7xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Gestión de Asistentes</h1>
           <p className="text-muted-foreground">Asigna asistentes con permisos personalizados para administrar PPPoE y Queues</p>
         </div>
-      </div>
 
       <Card>
         <CardHeader>
@@ -227,6 +228,8 @@ export default function Secretaries() {
           )}
         </CardContent>
       </Card>
+    </div>
+    </div>
     </div>
   );
 }
