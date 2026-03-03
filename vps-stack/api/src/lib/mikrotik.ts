@@ -14,6 +14,41 @@ interface MikroTikConfig {
   useTls?: boolean;
 }
 
+function normalizePort(port: number | string): number {
+  const normalized = typeof port === 'string' ? Number(port) : port;
+  if (!Number.isFinite(normalized)) {
+    throw new Error(`Puerto de MikroTik inválido: ${String(port)}`);
+  }
+  return normalized;
+}
+
+async function tryNativeApiWithFallback(
+  config: MikroTikConfig,
+  path: string,
+  method: string = 'GET',
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  const port = normalizePort(config.port);
+  const candidates: boolean[] = [];
+
+  if (typeof config.useTls === 'boolean') candidates.push(config.useTls);
+  if (!candidates.includes(port === 8729)) candidates.push(port === 8729);
+  if (!candidates.includes(true)) candidates.push(true);
+  if (!candidates.includes(false)) candidates.push(false);
+
+  let lastError: Error | null = null;
+
+  for (const useTls of candidates) {
+    try {
+      return await nativeApiCommand({ ...config, port, useTls }, path, method, body);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  throw lastError || new Error('No fue posible conectar por API nativa MikroTik');
+}
+
 // ─── REST API Client ─────────────────────────────────────
 
 export async function mikrotikRequest(
@@ -22,15 +57,18 @@ export async function mikrotikRequest(
   method: string = 'GET',
   body?: Record<string, unknown>
 ): Promise<unknown> {
-  // If port is native API, use native client instead
-  if (isNativeApiPort(config.port)) {
-    return nativeApiCommand(config, path, method, body);
+  const port = normalizePort(config.port);
+  const normalizedConfig: MikroTikConfig = { ...config, port };
+
+  // If port is native API, prioritize native client with TLS/plain fallback.
+  if (isNativeApiPort(port)) {
+    return tryNativeApiWithFallback(normalizedConfig, path, method, body);
   }
 
-  const useTls = config.useTls ?? (config.port === 443 || config.port === 8729);
+  const useTls = normalizedConfig.useTls ?? (port === 443 || port === 8729);
   const protocol = useTls ? 'https' : 'http';
-  const url = `${protocol}://${config.host}:${config.port}${path}`;
-  const authString = Buffer.from(`${config.username}:${config.password}`).toString('base64');
+  const url = `${protocol}://${normalizedConfig.host}:${port}${path}`;
+  const authString = Buffer.from(`${normalizedConfig.username}:${normalizedConfig.password}`).toString('base64');
 
   const options: RequestInit = {
     method,
@@ -167,7 +205,7 @@ function nativeApiExecute(
   timeoutMs = 15000
 ): Promise<ApiSentence[]> {
   return new Promise((resolve, reject) => {
-    const useTls = config.port === 8729;
+    const useTls = config.useTls ?? config.port === 8729;
     let socket: Socket;
     let settled = false;
     let buffer = Buffer.alloc(0);
@@ -435,8 +473,10 @@ export function testNativeApiLogin(
 }
 
 /** Check if a port is likely a native MikroTik API port */
-export function isNativeApiPort(port: number): boolean {
-  return port === 8728 || port === 8729 || (port >= 8730 && port <= 8799);
+export function isNativeApiPort(port: number | string): boolean {
+  const normalizedPort = typeof port === 'string' ? Number(port) : port;
+  return Number.isFinite(normalizedPort)
+    && (normalizedPort === 8728 || normalizedPort === 8729 || (normalizedPort >= 8730 && normalizedPort <= 8799));
 }
 
 function normalizeStringParam(value: string | string[] | undefined, paramName: string): string {
@@ -455,9 +495,11 @@ export async function getDeviceConfig(pool: any, mikrotikIdParam: string | strin
 
   if (!rows[0]) throw new Error('Dispositivo no encontrado');
 
+  const port = normalizePort(rows[0].port);
+
   return {
     host: rows[0].host,
-    port: rows[0].port,
+    port,
     username: rows[0].username,
     password: rows[0].password,
   };
@@ -474,8 +516,8 @@ export async function mikrotikRequestWithFallback(
 ): Promise<{ data: unknown; usedConfig: { protocol: string; port: number } }> {
   // If native port, use native API directly
   if (isNativeApiPort(config.port)) {
-    const data = await nativeApiCommand(config, path, method, body);
-    return { data, usedConfig: { protocol: 'native-api', port: config.port } };
+    const data = await tryNativeApiWithFallback(config, path, method, body);
+    return { data, usedConfig: { protocol: 'native-api', port: normalizePort(config.port) } };
   }
 
   const strategies: Array<{ useTls: boolean; port: number; label: string }> = [];
