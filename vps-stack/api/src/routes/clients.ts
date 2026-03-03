@@ -63,6 +63,7 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
 
     const connectionType = use_simple_queues ? 'static' : 'pppoe';
     let remoteIP = '';
+    let localIP = '';
     let generatedPassword = password || Math.random().toString(36).slice(2, 10);
     let resultType = use_simple_queues ? 'queue' : 'pppoe';
     let mikrotikCreated = false;
@@ -83,13 +84,49 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
             comment: client_name,
           });
         } else {
-          await mikrotikRequest({ ...config, useTls }, '/rest/ppp/secret/add', 'POST', {
+          // Auto-detect next available remote IP from existing PPP secrets
+          try {
+            const existingSecrets = await mikrotikRequest({ ...config, useTls }, '/rest/ppp/secret/print') as any[];
+            const remoteIPs = (existingSecrets || [])
+              .map((s: any) => s['remote-address'] || '')
+              .filter((ip: string) => ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+
+            if (remoteIPs.length > 0) {
+              // Find the highest last octet in the same subnet
+              const parsed = remoteIPs.map((ip: string) => {
+                const parts = ip.split('.').map(Number);
+                return { prefix: parts.slice(0, 3).join('.'), last: parts[3] };
+              });
+              // Use the most common prefix (subnet)
+              const prefixCounts: Record<string, number> = {};
+              parsed.forEach((p: any) => { prefixCounts[p.prefix] = (prefixCounts[p.prefix] || 0) + 1; });
+              const mostCommonPrefix = Object.entries(prefixCounts).sort((a, b) => b[1] - a[1])[0][0];
+              
+              const maxLast = parsed
+                .filter((p: any) => p.prefix === mostCommonPrefix)
+                .reduce((max: number, p: any) => Math.max(max, p.last), 0);
+              
+              const nextLast = maxLast + 1;
+              if (nextLast <= 254) {
+                remoteIP = `${mostCommonPrefix}.${nextLast}`;
+                localIP = `${mostCommonPrefix}.1`;
+              }
+            }
+          } catch (scanErr: any) {
+            console.warn('Could not scan existing PPP secrets for IP assignment:', scanErr.message);
+          }
+
+          const secretPayload: any = {
             name: username,
             password: generatedPassword,
             service: 'pppoe',
             profile: plan || 'default',
             comment: client_name,
-          });
+          };
+          if (remoteIP) secretPayload['remote-address'] = remoteIP;
+          if (localIP) secretPayload['local-address'] = localIP;
+
+          await mikrotikRequest({ ...config, useTls }, '/rest/ppp/secret/add', 'POST', secretPayload);
         }
         mikrotikCreated = true;
       } catch (mkError: any) {
