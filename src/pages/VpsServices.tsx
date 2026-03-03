@@ -11,7 +11,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Acceso directo a daloRADIUS, PHPNuxBill y configuración de Cloudflare.
+            Acceso directo a PHPNuxBill y configuración de Cloudflare.
           </p>
         </div>
 

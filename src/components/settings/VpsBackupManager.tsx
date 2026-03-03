@@ -465,7 +465,7 @@ export function VpsBackupManager() {
                 <li>Configuración corrupta o perdida</li>
                 <li>Migración a otro VPS (solo copia el backup y restaura)</li>
               </ul>
-              <p className="mt-2"><strong>Tip:</strong> Usa el backup de <em>Imágenes Docker</em> para guardar daloRADIUS, PHPNuxBill y otras imágenes construidas. Si los repos originales desaparecen, podrás restaurar desde tu backup.</p>
+              <p className="mt-2"><strong>Tip:</strong> Usa el backup de <em>Imágenes Docker</em> para guardar PHPNuxBill y otras imágenes construidas. Si los repos originales desaparecen, podrás restaurar desde tu backup.</p>
             </div>
           </div>
         </CardContent>
