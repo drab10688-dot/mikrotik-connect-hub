@@ -1,8 +1,9 @@
 /**
- * MikroTik REST API Client
- * Supports RouterOS v7 REST API and v6 via API bridge
- * Handles both HTTPS (443) and HTTP (80/8728) connections
+ * MikroTik REST API Client + Native API v6 support
+ * Supports RouterOS v7 REST API and v6 via native binary protocol
  */
+import { Socket } from 'net';
+import * as tls from 'tls';
 
 interface MikroTikConfig {
   host: string;
@@ -36,10 +37,9 @@ export async function mikrotikRequest(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  const timeout = setTimeout(() => controller.abort(), 15000);
   options.signal = controller.signal;
 
-  // For self-signed certs on MikroTik
   if (useTls && typeof (globalThis as any).process !== 'undefined') {
     (options as any).agent = new (require('https').Agent)({ rejectUnauthorized: false });
   }
@@ -57,7 +57,6 @@ export async function mikrotikRequest(
     if (contentType.includes('json')) {
       return await response.json();
     }
-    // Some endpoints return empty or non-json
     const text = await response.text();
     try { return JSON.parse(text); } catch { return text; }
   } catch (error: unknown) {
@@ -70,9 +69,7 @@ export async function mikrotikRequest(
 }
 
 /**
- * Try multiple connection strategies for MikroTik
- * Always tries both HTTPS and HTTP on the configured port first,
- * then falls back to common alternative ports.
+ * Try multiple connection strategies for MikroTik REST API
  */
 export async function mikrotikRequestWithFallback(
   config: MikroTikConfig,
@@ -82,18 +79,14 @@ export async function mikrotikRequestWithFallback(
 ): Promise<{ data: unknown; usedConfig: { protocol: string; port: number } }> {
   const strategies: Array<{ useTls: boolean; port: number; label: string }> = [];
 
-  // 1) Try HTTPS on configured port
   strategies.push({ useTls: true, port: config.port, label: `HTTPS:${config.port}` });
-
-  // 2) Try HTTP on configured port
   strategies.push({ useTls: false, port: config.port, label: `HTTP:${config.port}` });
 
-  // 3) If not already tried, try common MikroTik ports
   const fallbackPorts = [443, 80, 8728, 8729];
   for (const port of fallbackPorts) {
     if (port === config.port) continue;
-    const tls = port === 443 || port === 8729;
-    strategies.push({ useTls: tls, port, label: `${tls ? 'HTTPS' : 'HTTP'}:${port}` });
+    const t = port === 443 || port === 8729;
+    strategies.push({ useTls: t, port, label: `${t ? 'HTTPS' : 'HTTP'}:${port}` });
   }
 
   let lastError: Error | null = null;
@@ -102,9 +95,7 @@ export async function mikrotikRequestWithFallback(
     try {
       const data = await mikrotikRequest(
         { ...config, port: strategy.port, useTls: strategy.useTls },
-        path,
-        method,
-        body
+        path, method, body
       );
       return {
         data,
@@ -112,15 +103,98 @@ export async function mikrotikRequestWithFallback(
       };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      // If credentials error, don't try other strategies
       const msg = lastError.message.toLowerCase();
-      if (msg.includes('401') || msg.includes('403')) {
-        throw lastError;
-      }
+      if (msg.includes('401') || msg.includes('403')) throw lastError;
     }
   }
 
   throw lastError || new Error('Todas las estrategias de conexión fallaron');
+}
+
+/**
+ * Test MikroTik native API login (v6 protocol on ports 8728/8729/8730+)
+ * Returns true if login succeeds, throws on failure
+ */
+export function testNativeApiLogin(
+  host: string,
+  port: number,
+  username: string,
+  password: string,
+  timeoutMs = 10000
+): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const useTls = port === 8729;
+    let socket: Socket;
+    let settled = false;
+    let buffer = Buffer.alloc(0);
+
+    const finish = (result: { success: boolean; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      try { socket.destroy(); } catch {}
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({ success: false, error: 'Timeout de conexión API nativa' }), timeoutMs);
+
+    const onConnect = () => {
+      // Send login command: /login\0=name=user\0=password=pass\0\0
+      const words = [`/login`, `=name=${username}`, `=password=${password}`];
+      const chunks: Buffer[] = [];
+      for (const word of words) {
+        const wb = Buffer.from(word, 'utf-8');
+        chunks.push(encodeLength(wb.length));
+        chunks.push(wb);
+      }
+      chunks.push(Buffer.from([0])); // end of sentence
+      socket.write(Buffer.concat(chunks));
+    };
+
+    const onData = (data: Buffer) => {
+      buffer = Buffer.concat([buffer, data]);
+      // Look for !done or !trap in the response
+      const str = buffer.toString('utf-8');
+      if (str.includes('!done')) {
+        clearTimeout(timer);
+        finish({ success: true });
+      } else if (str.includes('!trap')) {
+        clearTimeout(timer);
+        const msgMatch = str.match(/=message=([^\x00]+)/);
+        finish({ success: false, error: msgMatch ? msgMatch[1] : 'Login rechazado por el router' });
+      }
+    };
+
+    const onError = (err: Error) => {
+      clearTimeout(timer);
+      finish({ success: false, error: err.message });
+    };
+
+    if (useTls) {
+      socket = tls.connect({ host, port, rejectUnauthorized: false }, onConnect);
+    } else {
+      socket = new Socket();
+      socket.connect(port, host, onConnect);
+    }
+
+    socket.on('data', onData);
+    socket.on('error', onError);
+    socket.on('timeout', () => { clearTimeout(timer); finish({ success: false, error: 'Socket timeout' }); });
+    socket.setTimeout(timeoutMs);
+  });
+}
+
+/** Encode MikroTik API word length prefix */
+function encodeLength(len: number): Buffer {
+  if (len < 0x80) return Buffer.from([len]);
+  if (len < 0x4000) return Buffer.from([0x80 | (len >> 8), len & 0xff]);
+  if (len < 0x200000) return Buffer.from([0xc0 | (len >> 16), (len >> 8) & 0xff, len & 0xff]);
+  if (len < 0x10000000) return Buffer.from([0xe0 | (len >> 24), (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff]);
+  return Buffer.from([0xf0, (len >> 24) & 0xff, (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff]);
+}
+
+/** Check if a port is likely a native MikroTik API port */
+export function isNativeApiPort(port: number): boolean {
+  return port === 8728 || port === 8729 || (port >= 8730 && port <= 8799);
 }
 
 function normalizeStringParam(value: string | string[] | undefined, paramName: string): string {

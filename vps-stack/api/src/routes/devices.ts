@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { connect as netConnect } from 'net';
 import { pool } from '../server';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
-import { mikrotikRequest, mikrotikRequestWithFallback } from '../lib/mikrotik';
+import { mikrotikRequest, mikrotikRequestWithFallback, testNativeApiLogin, isNativeApiPort } from '../lib/mikrotik';
 
 export const devicesRouter = Router();
 
@@ -231,13 +231,13 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
     }
 
     // TCP OK - now try API with fallback
+    // First try REST API
     try {
       const result = await mikrotikRequestWithFallback(
         { host: device.host, username: device.username, password: device.password, port: tcpPort },
         '/rest/system/identity'
       );
 
-      // If connected on a different port, suggest updating
       const portChanged = tcpPort !== device.port;
 
       return res.json({
@@ -266,8 +266,73 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
           suggested_port: portChanged ? tcpPort : undefined,
         },
       });
-    } catch (error: unknown) {
-      const diagnostic = classifyMikrotikError(error);
+    } catch (restError: unknown) {
+      // REST API failed - try native API if port suggests it
+      const nativePort = isNativeApiPort(tcpPort) ? tcpPort : (isNativeApiPort(device.port) ? device.port : null);
+      
+      if (nativePort) {
+        try {
+          const nativeResult = await testNativeApiLogin(device.host, nativePort, device.username, device.password);
+          
+          if (nativeResult.success) {
+            return res.json({
+              success: true,
+              data: {
+                connected: true,
+                panel_api: { ok: true, message: 'Panel/API operativo' },
+                device: { id: device.id, name: device.name, host: device.host, port: device.port, version: device.version },
+                checks: {
+                  tcp: {
+                    ok: true, latency_ms: tcpLatency, code: 'ok',
+                    message: `Puerto ${nativePort} accesible (${tcpLatency}ms)`,
+                  },
+                  credentials: { ok: true, code: 'ok', message: 'Credenciales válidas (API nativa)' },
+                  rest_api: {
+                    ok: true, code: 'ok',
+                    message: `API nativa MikroTik respondiendo en puerto ${nativePort} (modo v6)`,
+                  },
+                },
+                recommendations: device.version !== 'v6'
+                  ? ['Tu router usa API nativa. Cambia la versión del dispositivo a "v6" para mejor compatibilidad.']
+                  : [],
+              },
+            });
+          } else {
+            // Native API connected but login failed
+            return res.json({
+              success: true,
+              data: {
+                connected: false,
+                panel_api: { ok: true, message: 'Panel/API operativo' },
+                device: { id: device.id, name: device.name, host: device.host, port: device.port, version: device.version },
+                checks: {
+                  tcp: {
+                    ok: true, latency_ms: tcpLatency, code: 'ok',
+                    message: `Puerto ${nativePort} accesible (${tcpLatency}ms)`,
+                  },
+                  credentials: {
+                    ok: false, code: 'credentials_error',
+                    message: nativeResult.error || 'Credenciales inválidas en API nativa',
+                  },
+                  rest_api: {
+                    ok: null, code: 'not_applicable',
+                    message: 'Router usa API nativa (no REST). Credenciales inválidas.',
+                  },
+                },
+                recommendations: [
+                  'Verifica usuario y contraseña en el router (Winbox → System → Users)',
+                  'Asegúrate que el usuario tenga permisos de "api" y "read"',
+                ],
+              },
+            });
+          }
+        } catch (nativeError: unknown) {
+          // Native API also failed - fall through to generic error
+        }
+      }
+
+      // Neither REST nor native API worked
+      const diagnostic = classifyMikrotikError(restError);
 
       const recommendations: string[] = [];
       if (diagnostic.code === 'credentials_error') {
@@ -276,10 +341,9 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
       } else if (diagnostic.code === 'rest_api_unavailable') {
         recommendations.push('La API REST requiere RouterOS v7+. Verifica con: /system resource print');
         recommendations.push('Habilita el servicio www-ssl o www en: /ip service enable www-ssl');
-        recommendations.push('Si usas RouterOS v6, configura el puerto API (8728) en su lugar');
+        recommendations.push('Si usas RouterOS v6, configura el puerto API (8728) y versión "v6"');
       } else if (diagnostic.code === 'tls_error') {
         recommendations.push('El certificado TLS del router puede ser auto-firmado. Intenta con HTTP (puerto 80)');
-        recommendations.push('O importa un certificado válido en el router');
       }
 
       return res.json({
