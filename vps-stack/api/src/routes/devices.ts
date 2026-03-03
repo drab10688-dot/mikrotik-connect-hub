@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { connect as netConnect } from 'net';
 import { pool } from '../server';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
-import { mikrotikRequest } from '../lib/mikrotik';
+import { mikrotikRequest, mikrotikRequestWithFallback } from '../lib/mikrotik';
 
 export const devicesRouter = Router();
 
@@ -159,7 +159,7 @@ devicesRouter.post('/:id/connect', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Diagnóstico detallado de conexión
+// Diagnóstico detallado de conexión con fallback automático
 devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -174,113 +174,127 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
     if (!rows[0]) return res.status(404).json({ error: 'Dispositivo no encontrado' });
 
     const device = rows[0];
-    const useTls = device.port === 443 || device.port === 8729;
 
-    const tcpCheck = await testTcpConnection(device.host, device.port);
+    // Try TCP on configured port first, then fallback ports
+    const portsToTry = [device.port];
+    if (device.port !== 443) portsToTry.push(443);
+    if (device.port !== 80) portsToTry.push(80);
+    if (device.port !== 8728) portsToTry.push(8728);
 
-    if (!tcpCheck.success) {
-      const code: ConnectionDiagnosticCode = tcpCheck.code === 'ENOTFOUND' ? 'dns_error' : 'port_unreachable';
+    let tcpOk = false;
+    let tcpLatency: number | null = null;
+    let tcpPort = device.port;
+    let tcpError = '';
+    let tcpCode = '';
+
+    for (const port of portsToTry) {
+      const check = await testTcpConnection(device.host, port, 5000);
+      if (check.success) {
+        tcpOk = true;
+        tcpLatency = check.latencyMs ?? null;
+        tcpPort = port;
+        break;
+      }
+      if (port === device.port) {
+        tcpError = check.error || '';
+        tcpCode = check.code || '';
+      }
+    }
+
+    if (!tcpOk) {
+      const code: ConnectionDiagnosticCode = tcpCode === 'ENOTFOUND' ? 'dns_error' : 'port_unreachable';
       return res.json({
         success: true,
         data: {
           connected: false,
           panel_api: { ok: true, message: 'Panel/API operativo' },
-          device: {
-            id: device.id,
-            name: device.name,
-            host: device.host,
-            port: device.port,
-            version: device.version,
-            tls: useTls,
-          },
+          device: { id: device.id, name: device.name, host: device.host, port: device.port, version: device.version },
           checks: {
             tcp: {
-              ok: false,
-              latency_ms: null,
-              code,
+              ok: false, latency_ms: null, code,
               message: code === 'dns_error'
-                ? 'El host no se resuelve por DNS o está mal escrito.'
-                : `No se pudo abrir conexión TCP al puerto ${device.port}.`,
-              technical_error: tcpCheck.error,
+                ? `El host "${device.host}" no se resuelve. Verifica que esté bien escrito o usa la IP directa.`
+                : `No se pudo conectar a ${device.host} en puertos ${portsToTry.join(', ')}. Verifica firewall, IP pública y que el router esté encendido.`,
+              technical_error: tcpError,
+              ports_tried: portsToTry,
             },
-            credentials: {
-              ok: null,
-              message: 'No evaluado porque falló la conexión de red/puerto.',
-            },
-            rest_api: {
-              ok: null,
-              message: 'No evaluado porque falló la conexión de red/puerto.',
-            },
+            credentials: { ok: null, message: 'No evaluado (falló conexión de red).' },
+            rest_api: { ok: null, message: 'No evaluado (falló conexión de red).' },
           },
+          recommendations: [
+            'Verifica que la IP/dominio del router sea accesible desde este servidor',
+            'Revisa que los puertos 443, 80 u 8728 estén abiertos en el firewall del router',
+            'Si usas IP privada, asegúrate que el VPS está en la misma red o usa un túnel',
+          ],
         },
       });
     }
 
+    // TCP OK - now try API with fallback
     try {
-      const identity = await mikrotikRequest(
-        { host: device.host, username: device.username, password: device.password, port: device.port, useTls },
+      const result = await mikrotikRequestWithFallback(
+        { host: device.host, username: device.username, password: device.password, port: tcpPort },
         '/rest/system/identity'
       );
+
+      // If connected on a different port, suggest updating
+      const portChanged = tcpPort !== device.port;
 
       return res.json({
         success: true,
         data: {
           connected: true,
           panel_api: { ok: true, message: 'Panel/API operativo' },
-          device: {
-            id: device.id,
-            name: device.name,
-            host: device.host,
-            port: device.port,
-            version: device.version,
-            tls: useTls,
-          },
+          device: { id: device.id, name: device.name, host: device.host, port: device.port, version: device.version },
           checks: {
             tcp: {
-              ok: true,
-              latency_ms: tcpCheck.latencyMs ?? null,
-              code: 'ok',
-              message: `Puerto ${device.port} accesible`,
+              ok: true, latency_ms: tcpLatency, code: 'ok',
+              message: portChanged
+                ? `Conectado en puerto ${tcpPort} (configurado: ${device.port}). Considera actualizar el puerto.`
+                : `Puerto ${tcpPort} accesible (${tcpLatency}ms)`,
             },
-            credentials: {
-              ok: true,
-              code: 'ok',
-              message: 'Credenciales válidas para API',
-            },
+            credentials: { ok: true, code: 'ok', message: 'Credenciales válidas' },
             rest_api: {
-              ok: true,
-              code: 'ok',
-              message: 'API REST disponible y respondiendo',
-              sample: identity,
+              ok: true, code: 'ok',
+              message: `API REST respondiendo vía ${result.usedConfig.protocol.toUpperCase()}:${result.usedConfig.port}`,
+              sample: result.data,
             },
           },
+          recommendations: portChanged
+            ? [`El router respondió en el puerto ${tcpPort}. Actualiza la configuración del dispositivo para usar este puerto.`]
+            : [],
+          suggested_port: portChanged ? tcpPort : undefined,
         },
       });
     } catch (error: unknown) {
       const diagnostic = classifyMikrotikError(error);
+
+      const recommendations: string[] = [];
+      if (diagnostic.code === 'credentials_error') {
+        recommendations.push('Verifica usuario y contraseña en el router (Winbox → System → Users)');
+        recommendations.push('Asegúrate que el usuario tenga el grupo "full" o permisos de "api" y "read"');
+      } else if (diagnostic.code === 'rest_api_unavailable') {
+        recommendations.push('La API REST requiere RouterOS v7+. Verifica con: /system resource print');
+        recommendations.push('Habilita el servicio www-ssl o www en: /ip service enable www-ssl');
+        recommendations.push('Si usas RouterOS v6, configura el puerto API (8728) en su lugar');
+      } else if (diagnostic.code === 'tls_error') {
+        recommendations.push('El certificado TLS del router puede ser auto-firmado. Intenta con HTTP (puerto 80)');
+        recommendations.push('O importa un certificado válido en el router');
+      }
 
       return res.json({
         success: true,
         data: {
           connected: false,
           panel_api: { ok: true, message: 'Panel/API operativo' },
-          device: {
-            id: device.id,
-            name: device.name,
-            host: device.host,
-            port: device.port,
-            version: device.version,
-            tls: useTls,
-          },
+          device: { id: device.id, name: device.name, host: device.host, port: device.port, version: device.version },
           checks: {
             tcp: {
-              ok: true,
-              latency_ms: tcpCheck.latencyMs ?? null,
-              code: 'ok',
-              message: `Puerto ${device.port} accesible`,
+              ok: true, latency_ms: tcpLatency, code: 'ok',
+              message: `Puerto ${tcpPort} accesible (${tcpLatency}ms)`,
             },
             credentials: {
-              ok: diagnostic.code !== 'credentials_error' ? null : false,
+              ok: diagnostic.code === 'credentials_error' ? false : null,
               code: diagnostic.code,
               message: diagnostic.code === 'credentials_error'
                 ? diagnostic.message
@@ -293,6 +307,7 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
               technical_error: diagnostic.raw_error,
             },
           },
+          recommendations,
         },
       });
     }

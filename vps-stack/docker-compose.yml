@@ -138,6 +138,8 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/radius-schema.sql:ro
     environment:
       MYSQL_HOST: mariadb
       MYSQL_PORT: "3306"

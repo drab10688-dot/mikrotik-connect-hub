@@ -22,6 +22,8 @@ interface DiagnosticCheck {
   code?: string;
   technical_error?: string;
   latency_ms?: number | null;
+  ports_tried?: number[];
+  sample?: unknown;
 }
 
 interface ConnectionDiagnosticResult {
@@ -33,6 +35,8 @@ interface ConnectionDiagnosticResult {
     credentials?: DiagnosticCheck;
     rest_api?: DiagnosticCheck;
   };
+  recommendations?: string[];
+  suggested_port?: number;
 }
 
 const statusBadge = (ok: boolean | null) => {
@@ -180,11 +184,14 @@ export default function Settings() {
           {diagnosticResult && (
             <Card>
               <CardHeader>
-                <CardTitle>Resultado del Diagnóstico</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  {diagnosticResult.connected ? <CircleCheck className="h-5 w-5 text-green-500" /> : <CircleX className="h-5 w-5 text-destructive" />}
+                  Resultado del Diagnóstico
+                </CardTitle>
                 <CardDescription>
                   {diagnosticResult.connected
                     ? 'Conexión operativa: red, credenciales y API REST funcionando.'
-                    : 'Se detectó un problema. Revisa el detalle para corregirlo rápido.'}
+                    : 'Se detectó un problema. Revisa el detalle y recomendaciones.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -210,11 +217,25 @@ export default function Settings() {
                         <p className="text-xs text-muted-foreground">Latencia TCP: {item.data.latency_ms}ms</p>
                       )}
                       {'technical_error' in item.data && item.data.technical_error && (
-                        <p className="text-xs text-muted-foreground">Detalle técnico: {item.data.technical_error}</p>
+                        <p className="text-xs font-mono text-destructive/70 bg-destructive/5 p-2 rounded">{item.data.technical_error}</p>
                       )}
                     </div>
                   );
                 })}
+
+                {diagnosticResult.recommendations && diagnosticResult.recommendations.length > 0 && (
+                  <div className="rounded-md border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-2">
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-yellow-500" />
+                      Recomendaciones
+                    </p>
+                    <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                      {diagnosticResult.recommendations.map((rec, i) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
