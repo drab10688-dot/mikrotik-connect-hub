@@ -40,6 +40,7 @@ const menuItems = [
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Settings, label: "Configuración", path: "/settings" },
+  { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
 
 export const Sidebar = () => {
