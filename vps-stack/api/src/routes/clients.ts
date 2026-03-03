@@ -6,7 +6,7 @@ import { getDeviceConfig, mikrotikRequest } from '../lib/mikrotik';
 export const clientsRouter = Router();
 
 // List clients
-clientsRouter.get('/:mikrotikId', async (req: AuthRequest, res: Response) => {
+clientsRouter.get('/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotikId } = req.params;
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
@@ -190,7 +190,7 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
 });
 
 // Add client (direct DB insert)
-clientsRouter.post('/:mikrotikId', async (req: AuthRequest, res: Response) => {
+clientsRouter.post('/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotikId } = req.params;
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
@@ -237,7 +237,7 @@ clientsRouter.post('/:mikrotikId', async (req: AuthRequest, res: Response) => {
 });
 
 // Update client
-clientsRouter.put('/:mikrotikId/:clientId', async (req: AuthRequest, res: Response) => {
+clientsRouter.put('/:mikrotikId([0-9a-fA-F-]{36})/:clientId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotikId, clientId } = req.params;
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
@@ -277,7 +277,7 @@ clientsRouter.put('/:mikrotikId/:clientId', async (req: AuthRequest, res: Respon
 });
 
 // Delete client
-clientsRouter.delete('/:mikrotikId/:clientId', async (req: AuthRequest, res: Response) => {
+clientsRouter.delete('/:mikrotikId([0-9a-fA-F-]{36})/:clientId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotikId, clientId } = req.params;
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
@@ -316,37 +316,70 @@ clientsRouter.post('/scan', async (req: AuthRequest, res: Response) => {
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotik_id);
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
+    const normalizedScanType = scan_type === 'queue' ? 'queues' : scan_type;
     const config = await getDeviceConfig(pool, mikrotik_id);
     const useTls = config.port === 443 || config.port === 8729;
 
-    let clients: any[] = [];
+    let scannedClients: any[] = [];
 
-    if (scan_type === 'pppoe' || scan_type === 'all') {
+    if (normalizedScanType === 'pppoe' || normalizedScanType === 'all') {
       try {
         const secrets = await mikrotikRequest({ ...config, useTls }, '/rest/ppp/secret/print') as any[];
-        clients.push(...(secrets || []).map((s: any) => ({
-          username: s.name,
-          connection_type: 'pppoe',
-          plan_or_speed: s.profile || 'default',
-          comment: s.comment || '',
-        })));
+        scannedClients.push(
+          ...(secrets || []).map((s: any) => ({
+            name: s.name,
+            ip: s['remote-address'] || s['caller-id'] || '',
+            type: 'pppoe',
+            profile: s.profile || 'default',
+            comment: s.comment || '',
+            disabled: s.disabled === true || s.disabled === 'true',
+          }))
+        );
       } catch (e) { /* skip */ }
     }
 
-    if (scan_type === 'queues' || scan_type === 'all') {
+    if (normalizedScanType === 'queues' || normalizedScanType === 'all') {
       try {
         const queues = await mikrotikRequest({ ...config, useTls }, '/rest/queue/simple/print') as any[];
-        clients.push(...(queues || []).map((q: any) => ({
-          username: q.name,
-          connection_type: 'static',
-          plan_or_speed: q['max-limit'] || '',
-          assigned_ip: q.target || '',
-          comment: q.comment || '',
-        })));
+        scannedClients.push(
+          ...(queues || []).map((q: any) => ({
+            name: q.name,
+            ip: typeof q.target === 'string' ? q.target.split('/')[0] : '',
+            type: 'queue',
+            speed: q['max-limit'] || '',
+            comment: q.comment || '',
+            disabled: q.disabled === true || q.disabled === 'true',
+          }))
+        );
       } catch (e) { /* skip */ }
     }
 
-    res.json({ data: clients });
+    const uniqueScanned = Array.from(
+      new Map(
+        scannedClients
+          .filter((client) => typeof client.name === 'string' && client.name.trim().length > 0)
+          .map((client) => [`${client.type}-${client.name.toLowerCase()}`, client])
+      ).values()
+    );
+
+    const { rows: registeredRows } = await pool.query(
+      'SELECT username FROM isp_clients WHERE mikrotik_id = $1',
+      [mikrotik_id]
+    );
+
+    const registeredUsernames = new Set(
+      registeredRows
+        .map((row: any) => String(row.username || '').toLowerCase())
+        .filter(Boolean)
+    );
+
+    const unregistered = uniqueScanned.filter((client) => !registeredUsernames.has(client.name.toLowerCase()));
+
+    res.json({
+      total: uniqueScanned.length,
+      registered: uniqueScanned.length - unregistered.length,
+      unregistered,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -362,23 +395,44 @@ clientsRouter.post('/import', async (req: AuthRequest, res: Response) => {
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
     let imported = 0;
+    const errors: string[] = [];
+
     for (const client of clients) {
       try {
+        const username = String(client.username || client.name || '').trim();
+        if (!username) {
+          errors.push('Cliente omitido: username vacío');
+          continue;
+        }
+
+        const inferredType = client.type === 'queue' ? 'static' : 'pppoe';
         const connType = ['pppoe', 'hotspot', 'static', 'dhcp'].includes(client.connection_type)
-          ? client.connection_type : 'pppoe';
+          ? client.connection_type
+          : inferredType;
 
         await pool.query(
           `INSERT INTO isp_clients (mikrotik_id, created_by, client_name, username, connection_type, plan_or_speed, assigned_ip, comment)
            VALUES ($1, $2, $3, $4, $5::connection_type, $6, $7, $8)
            ON CONFLICT DO NOTHING`,
-          [mikrotik_id, req.userId, client.client_name || client.username, client.username,
-           connType, client.plan_or_speed, client.assigned_ip || '', client.comment || '']
+          [
+            mikrotik_id,
+            req.userId,
+            client.client_name || client.name || username,
+            username,
+            connType,
+            client.plan_or_speed || client.profile || client.speed || '',
+            client.assigned_ip || client.ip || '',
+            client.comment || '',
+          ]
         );
+
         imported++;
-      } catch (e) { /* skip duplicates */ }
+      } catch (e: any) {
+        errors.push(e?.message || 'Error al importar cliente');
+      }
     }
 
-    res.json({ imported, total: clients.length });
+    res.json({ success: imported, total: clients.length, errors, imported });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
