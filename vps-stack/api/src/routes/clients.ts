@@ -65,6 +65,8 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
     let remoteIP = '';
     let generatedPassword = password || Math.random().toString(36).slice(2, 10);
     let resultType = use_simple_queues ? 'queue' : 'pppoe';
+    let mikrotikCreated = false;
+    let mikrotikError = '';
 
     // Create on MikroTik if not potential client
     if (!is_potential_client) {
@@ -73,7 +75,6 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
         const useTls = config.port === 443 || config.port === 8729;
 
         if (use_simple_queues) {
-          // Create simple queue
           const speed = `${upload_speed}/${download_speed}`;
           await mikrotikRequest({ ...config, useTls }, '/rest/queue/simple/add', 'POST', {
             name: username,
@@ -82,7 +83,6 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
             comment: client_name,
           });
         } else {
-          // Create PPPoE secret
           await mikrotikRequest({ ...config, useTls }, '/rest/ppp/secret/add', 'POST', {
             name: username,
             password: generatedPassword,
@@ -91,8 +91,10 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
             comment: client_name,
           });
         }
+        mikrotikCreated = true;
       } catch (mkError: any) {
-        console.error('MikroTik create error (continuing with DB):', mkError.message);
+        console.error('MikroTik create error:', mkError.message);
+        mikrotikError = mkError.message || 'Error desconocido al crear en MikroTik';
       }
     }
 
@@ -121,6 +123,22 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
       );
     }
 
+    // If MikroTik creation failed for a non-potential client, report it
+    if (!is_potential_client && !mikrotikCreated) {
+      return res.status(207).json({
+        data: rows[0],
+        type: resultType,
+        clientName: client_name,
+        username,
+        password: generatedPassword,
+        remoteIP,
+        speed: `${download_speed}/${upload_speed}`,
+        mikrotikCreated: false,
+        mikrotikError,
+        warning: `Cliente guardado en base de datos pero NO se pudo crear en MikroTik: ${mikrotikError}`,
+      });
+    }
+
     res.status(201).json({
       data: rows[0],
       type: resultType,
@@ -129,6 +147,7 @@ clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
       password: generatedPassword,
       remoteIP,
       speed: `${download_speed}/${upload_speed}`,
+      mikrotikCreated: is_potential_client ? null : true,
     });
   } catch (error: any) {
     console.error('Register client error:', error);

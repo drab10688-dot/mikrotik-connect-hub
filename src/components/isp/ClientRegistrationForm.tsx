@@ -230,9 +230,25 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
       const copyToClipboard = () => { navigator.clipboard.writeText(message.replace(/\*/g, '')); toast.success("Copiado al portapapeles"); };
       const shareWhatsApp = () => { window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank'); };
 
+      // Show MikroTik warning if creation failed
+      if (result.mikrotikCreated === false && result.mikrotikError) {
+        toast.error(
+          <div className="space-y-2">
+            <p className="font-semibold">⚠️ Cliente guardado pero NO creado en MikroTik</p>
+            <p className="text-sm">{result.mikrotikError}</p>
+            <p className="text-xs text-muted-foreground">Verifica la conexión con el router y créalo manualmente si es necesario.</p>
+          </div>,
+          { duration: 15000 }
+        );
+      }
+
       toast.success(
         <div className="space-y-3">
-          <p className="font-semibold">✅ Cliente registrado exitosamente ({isPPPoE ? 'PPPoE' : 'Simple Queue'})</p>
+          <p className="font-semibold">
+            {result.mikrotikCreated === false 
+              ? `⚠️ Cliente registrado en DB (sin MikroTik)` 
+              : `✅ Cliente registrado exitosamente (${isPPPoE ? 'PPPoE' : 'Simple Queue'})`}
+          </p>
           <div className="text-sm space-y-1 bg-muted p-2 rounded">
             <p><strong>Cliente:</strong> {result.clientName}</p>
             <p><strong>{isPPPoE ? 'Usuario' : 'Nombre'}:</strong> {result.username}</p>
