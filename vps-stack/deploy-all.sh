@@ -107,7 +107,7 @@ rsync -a --delete \
   "$TMP_DIR/app/vps-stack/api/" "$APP_DIR/api/"
 
 # Also update shared VPS files (docker-compose, db init, nginx, radius, etc.)
-for item in docker-compose.yml db nginx radius mariadb-init daloradius phpnuxbill; do
+for item in docker-compose.yml db nginx radius mariadb-init phpnuxbill; do
   if [ -e "$TMP_DIR/app/vps-stack/$item" ]; then
     if [ -d "$TMP_DIR/app/vps-stack/$item" ]; then
       rsync -a "$TMP_DIR/app/vps-stack/$item/" "$APP_DIR/$item/"

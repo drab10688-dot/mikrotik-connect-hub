@@ -506,7 +506,7 @@ check_service "API Backend" "omnisync-api"
 check_service "Nginx"       "omnisync-nginx"
 check_service "MariaDB"     "omnisync-mariadb"
 check_service "FreeRADIUS"  "omnisync-freeradius"
-check_service "daloRADIUS"  "omnisync-daloradius"
+
 check_service "PHPNuxBill"  "omnisync-phpnuxbill"
 
 echo ""
@@ -545,7 +545,7 @@ test_endpoint() {
 
 test_endpoint "Panel Web"        "http://localhost" "nginx"
 test_endpoint "API Health"       "http://localhost/api/health" "api"
-test_endpoint "daloRADIUS Login" "http://localhost/daloradius/login.php" "daloradius"
+
 test_endpoint "PHPNuxBill Admin" "http://localhost/nuxbill/admin" "phpnuxbill"
 
 echo ""
@@ -578,7 +578,7 @@ echo "║  🌐 ACCESOS                                               ║"
 echo "║  ─────────────────────────────────────────────           ║"
 echo "║  Panel Web:      http://$VPS_IP                            "
 echo "║  API Health:     http://$VPS_IP/api/health                 "
-echo "║  daloRADIUS:     http://$VPS_IP/daloradius/login.php      "
+
 echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/admin             "
 echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
@@ -597,9 +597,6 @@ echo "║  OmniSync Panel:                                         ║"
 echo "║    Email:    admin@omnisync.local                         ║"
 echo "║    Pass:     admin123                                     ║"
 echo "║                                                          ║"
-echo "║  daloRADIUS:                                             ║"
-echo "║    Usuario:  administrator                               ║"
-echo "║    Pass:     radius                                      ║"
 echo "║                                                          ║"
 echo "║  PHPNuxBill:                                             ║"
 echo "║    Usuario:  admin                                       ║"
