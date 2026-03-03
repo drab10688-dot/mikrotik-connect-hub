@@ -4,7 +4,7 @@ export interface MikroTikDeviceConfig {
   id: string;
   name: string;
   host: string;
-  port: string;
+  port: string | number;
   version: string;
 }
 
@@ -14,7 +14,7 @@ export const saveSelectedDevice = (device: MikroTikDeviceConfig) => {
   localStorage.setItem("mikrotik_host", device.host);
   localStorage.setItem("mikrotik_version", device.version);
   localStorage.setItem("mikrotik_device_name", device.name);
-  localStorage.setItem("mikrotik_port", device.port);
+  localStorage.setItem("mikrotik_port", String(device.port));
 };
 
 export const getSelectedDevice = (): MikroTikDeviceConfig | null => {
@@ -63,14 +63,13 @@ export const callMikroTikFunction = async (
   params: Record<string, any>
 ) => {
   const mikrotikId = getDeviceId();
-  // Route to appropriate VPS API endpoint based on function name
   const { apiPost } = await import("@/lib/api-client");
-  const { data } = await apiPost(`/system/command`, {
+  const response = await apiPost(`/system/mikrotik/command`, {
     mikrotik_id: mikrotikId,
     command: functionName,
     params,
   });
-  return data;
+  return (response as any)?.data ?? response;
 };
 
 export const testMikroTikConnection = async (mikrotikId: string, _version: string) => {
@@ -94,7 +93,8 @@ export const getSystemInfo = async (type: string = "resources") => {
   }
   // Fallback: generic command
   const { apiPost } = await import("@/lib/api-client");
-  return await apiPost(`/system/command`, { mikrotik_id: mikrotikId, command: type });
+  const response = await apiPost(`/system/mikrotik/command`, { mikrotik_id: mikrotikId, command: type });
+  return (response as any)?.data ?? response;
 };
 
 export const getHotspotUsers = async () => {

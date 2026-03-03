@@ -57,24 +57,31 @@ async function tryNativeApiWithFallback(
 
 // ─── REST API Client ─────────────────────────────────────
 
-export async function mikrotikRequest(
+function isRetryableConnectionError(error: Error): boolean {
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    msg.includes('econnrefused') ||
+    msg.includes('ehostunreach') ||
+    msg.includes('enetunreach') ||
+    msg.includes('socket hang up') ||
+    msg.includes('aborterror') ||
+    msg.includes('connection closed')
+  );
+}
+
+async function executeRestRequest(
   config: MikroTikConfig,
   path: string,
-  method: string = 'GET',
-  body?: Record<string, unknown>
+  method: string,
+  body: Record<string, unknown> | undefined,
+  useTls: boolean,
+  timeoutMs = 15000
 ): Promise<unknown> {
-  const port = normalizePort(config.port);
-  const normalizedConfig: MikroTikConfig = { ...config, port };
-
-  // If port is native API, prioritize native client with TLS/plain fallback.
-  if (isNativeApiPort(port)) {
-    return tryNativeApiWithFallback(normalizedConfig, path, method, body);
-  }
-
-  const useTls = normalizedConfig.useTls ?? (port === 443 || port === 8729);
   const protocol = useTls ? 'https' : 'http';
-  const url = `${protocol}://${normalizedConfig.host}:${port}${path}`;
-  const authString = Buffer.from(`${normalizedConfig.username}:${normalizedConfig.password}`).toString('base64');
+  const url = `${protocol}://${config.host}:${config.port}${path}`;
+  const authString = Buffer.from(`${config.username}:${config.password}`).toString('base64');
 
   const options: RequestInit = {
     method,
@@ -89,7 +96,7 @@ export async function mikrotikRequest(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   options.signal = controller.signal;
 
   if (useTls && typeof (globalThis as any).process !== 'undefined') {
@@ -109,16 +116,73 @@ export async function mikrotikRequest(
     if (contentType.includes('json')) {
       return await response.json();
     }
+
     const text = await response.text();
-    try { return JSON.parse(text); } catch { return text; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   } catch (error: unknown) {
     clearTimeout(timeout);
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('MikroTik connection timeout (15s)');
+      throw new Error(`MikroTik connection timeout (${timeoutMs}ms)`);
     }
     throw error;
   }
 }
+
+export async function mikrotikRequest(
+  config: MikroTikConfig,
+  path: string,
+  method: string = 'GET',
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  const port = normalizePort(config.port);
+  const normalizedConfig: MikroTikConfig = { ...config, port };
+
+  if (isNativeApiPort(port)) {
+    return tryNativeApiWithFallback(normalizedConfig, path, method, body);
+  }
+
+  const primaryUseTls = normalizedConfig.useTls ?? (port === 443 || port === 8729);
+
+  try {
+    return await executeRestRequest(normalizedConfig, path, method, body, primaryUseTls);
+  } catch (primaryError) {
+    const firstError = primaryError instanceof Error ? primaryError : new Error(String(primaryError));
+
+    // No hacemos fallback para errores de credenciales/permisos.
+    if (!isRetryableConnectionError(firstError) || /401|403/.test(firstError.message)) {
+      throw firstError;
+    }
+
+    const fallbackPorts = [443, 80, 8728, 8729, 8730];
+    let lastError: Error = firstError;
+
+    for (const fallbackPort of fallbackPorts) {
+      if (fallbackPort === port) continue;
+
+      const fallbackConfig: MikroTikConfig = {
+        ...normalizedConfig,
+        port: fallbackPort,
+        useTls: fallbackPort === 443 || fallbackPort === 8729,
+      };
+
+      try {
+        if (isNativeApiPort(fallbackPort)) {
+          return await tryNativeApiWithFallback(fallbackConfig, path, method, body);
+        }
+        return await executeRestRequest(fallbackConfig, path, method, body, !!fallbackConfig.useTls, 8000);
+      } catch (fallbackError) {
+        lastError = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+      }
+    }
+
+    throw new Error(`MikroTik no respondió en puerto ${port} ni en fallback automático. Último error: ${lastError.message}`);
+  }
+}
+
 
 // ─── Native Binary API Client (v6/v6.x/v7 API port) ─────
 
