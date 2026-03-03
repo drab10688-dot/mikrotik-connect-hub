@@ -246,6 +246,38 @@ SQL
   return 1
 }
 
+ensure_radius_schema() {
+  local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
+  local schema_file="$INSTALL_DIR/radius/sql/schema.sql"
+
+  [ -f "$schema_file" ] || {
+    echo -e "${YELLOW}⚠ No existe $schema_file${NC}"
+    return 1
+  }
+
+  echo -e "${YELLOW}Verificando tabla nas en base de datos radius...${NC}"
+
+  local has_nas
+  has_nas=$(docker exec omnisync-mariadb mariadb -uradius -p"${radius_pw}" -Nse \
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='radius' AND table_name='nas';" 2>/dev/null || echo "0")
+
+  if [ "$has_nas" != "1" ]; then
+    echo -e "${YELLOW}→ Tabla nas no existe, importando schema radius...${NC}"
+    docker exec -i omnisync-mariadb mariadb -uradius -p"${radius_pw}" radius < "$schema_file" 2>/dev/null || true
+
+    has_nas=$(docker exec omnisync-mariadb mariadb -uradius -p"${radius_pw}" -Nse \
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='radius' AND table_name='nas';" 2>/dev/null || echo "0")
+  fi
+
+  if [ "$has_nas" = "1" ]; then
+    echo -e "${GREEN}Tabla nas verificada ✓${NC}"
+    return 0
+  fi
+
+  echo -e "${RED}✗ La tabla nas sigue sin existir${NC}"
+  return 1
+}
+
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
 handle_existing_installation
 
@@ -427,6 +459,14 @@ sleep 20
 
 # Ensure DB users/passwords are in sync even on existing volumes
 ensure_mariadb_accounts || true
+
+# Import RADIUS schema (tabla nas) si falta
+ensure_radius_schema || true
+
+# Reiniciar PHPNuxBill y FreeRADIUS para que tomen las tablas recién creadas
+echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
+docker compose restart phpnuxbill freeradius
+sleep 5
 
 # ═══════════════════════════════════════════════════
 # FASE 5: Verificación de servicios
