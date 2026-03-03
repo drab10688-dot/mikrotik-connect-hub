@@ -56,6 +56,8 @@ app.use('/api/devices', authMiddleware, devicesRouter);
 // IMPORTANT: register specific /api/clients sub-routes before generic /api/clients
 app.use('/api/clients/contracts', authMiddleware, contractsRouter);
 app.use('/api/clients/service-options', authMiddleware, serviceOptionsRouter);
+// Stable alias to avoid route collisions with /api/clients/:mikrotikId in older deployments
+app.use('/api/service-options', authMiddleware, serviceOptionsRouter);
 app.use('/api/clients', authMiddleware, clientsRouter);
 app.use('/api/pppoe', authMiddleware, pppoeRouter);
 app.use('/api/queues', authMiddleware, queuesRouter);

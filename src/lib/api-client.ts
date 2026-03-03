@@ -366,11 +366,37 @@ export const messagingApi = {
 };
 
 // ─── Service Options API ──────────────────────────────────
+const serviceOptionsPrimaryBase = '/service-options';
+const serviceOptionsLegacyBase = '/clients/service-options';
+
+const callServiceOptions = async <T = any>(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  body?: any
+): Promise<T> => {
+  const call = async (base: string) => {
+    const endpoint = `${base}${path}`;
+    if (method === 'GET') return apiGet<T>(endpoint);
+    if (method === 'POST') return apiPost<T>(endpoint, body);
+    if (method === 'PUT') return apiPut<T>(endpoint, body);
+    return apiDelete<T>(endpoint);
+  };
+
+  try {
+    return await call(serviceOptionsPrimaryBase);
+  } catch (error: any) {
+    if (error instanceof ApiError && error.status === 404) {
+      return await call(serviceOptionsLegacyBase);
+    }
+    throw error;
+  }
+};
+
 export const serviceOptionsApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/clients/service-options?mikrotik_id=${mikrotikId}`)),
-  create: async (data: any) => unwrapData(await apiPost('/clients/service-options', data)),
-  update: async (id: string, data: any) => unwrapData(await apiPut(`/clients/service-options/${id}`, data)),
-  delete: (id: string) => apiDelete(`/clients/service-options/${id}`),
+  list: async (mikrotikId: string) => unwrapArray(await callServiceOptions<any>('GET', `?mikrotik_id=${mikrotikId}`)),
+  create: async (data: any) => unwrapData(await callServiceOptions('POST', '', data)),
+  update: async (id: string, data: any) => unwrapData(await callServiceOptions('PUT', `/${id}`, data)),
+  delete: (id: string) => callServiceOptions('DELETE', `/${id}`),
 };
 
 // ─── Cloudflare Tunnel API (estilo Stream Player Pro) ─────

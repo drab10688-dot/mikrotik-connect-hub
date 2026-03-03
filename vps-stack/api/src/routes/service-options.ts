@@ -43,15 +43,29 @@ serviceOptionsRouter.post('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Update
 serviceOptionsRouter.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, price, is_default } = req.body;
+    const { rows: currentRows } = await pool.query('SELECT * FROM service_options WHERE id = $1', [id]);
+    if (!currentRows[0]) return res.status(404).json({ error: 'Servicio no encontrado' });
+
+    const current = currentRows[0];
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, current.mikrotik_id);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+
+    const nextName = req.body.name ?? current.name;
+    const nextDescription = req.body.description ?? current.description;
+    const nextPrice = req.body.price ?? current.price;
+    const nextIsDefault = req.body.is_default ?? current.is_default;
+
     const { rows } = await pool.query(
-      `UPDATE service_options SET name=$1, description=$2, price=$3, is_default=$4 WHERE id=$5 RETURNING *`,
-      [name, description, price, is_default, id]
+      `UPDATE service_options
+       SET name=$1, description=$2, price=$3, is_default=$4, updated_at=now()
+       WHERE id=$5
+       RETURNING *`,
+      [nextName, nextDescription, nextPrice, nextIsDefault, id]
     );
+
     res.json({ data: rows[0] });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -62,6 +76,13 @@ serviceOptionsRouter.put('/:id', async (req: AuthRequest, res: Response) => {
 serviceOptionsRouter.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+
+    const { rows: currentRows } = await pool.query('SELECT mikrotik_id FROM service_options WHERE id = $1', [id]);
+    if (!currentRows[0]) return res.status(404).json({ error: 'Servicio no encontrado' });
+
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, currentRows[0].mikrotik_id);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+
     await pool.query('DELETE FROM service_options WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error: any) {
