@@ -1,9 +1,100 @@
 import { Router, Response } from 'express';
+import { connect as netConnect } from 'net';
 import { pool } from '../server';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest } from '../lib/mikrotik';
 
 export const devicesRouter = Router();
+
+type ConnectionDiagnosticCode =
+  | 'ok'
+  | 'port_unreachable'
+  | 'dns_error'
+  | 'credentials_error'
+  | 'rest_api_unavailable'
+  | 'tls_error'
+  | 'timeout'
+  | 'unknown_error';
+
+interface ConnectionDiagnostic {
+  code: ConnectionDiagnosticCode;
+  message: string;
+  raw_error?: string;
+}
+
+const testTcpConnection = async (host: string, port: number, timeoutMs = 5000) => {
+  return await new Promise<{ success: boolean; latencyMs?: number; error?: string; code?: string }>((resolve) => {
+    const startedAt = Date.now();
+    const socket = netConnect({ host, port });
+
+    let settled = false;
+
+    const finalize = (result: { success: boolean; latencyMs?: number; error?: string; code?: string }) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    socket.setTimeout(timeoutMs);
+
+    socket.on('connect', () => {
+      finalize({ success: true, latencyMs: Date.now() - startedAt });
+    });
+
+    socket.on('timeout', () => {
+      finalize({ success: false, error: `Timeout TCP al puerto ${port}`, code: 'ETIMEDOUT' });
+    });
+
+    socket.on('error', (error: NodeJS.ErrnoException) => {
+      finalize({ success: false, error: error.message, code: error.code });
+    });
+  });
+};
+
+const classifyMikrotikError = (error: unknown): ConnectionDiagnostic => {
+  const raw = error instanceof Error ? error.message : String(error || 'Error desconocido');
+  const message = raw.toLowerCase();
+
+  if (message.includes('401') || message.includes('403')) {
+    return {
+      code: 'credentials_error',
+      message: 'Credenciales inválidas o usuario sin permisos de API en MikroTik.',
+      raw_error: raw,
+    };
+  }
+
+  if (message.includes('404')) {
+    return {
+      code: 'rest_api_unavailable',
+      message: 'La API REST no está disponible en este router/puerto o la versión no la soporta.',
+      raw_error: raw,
+    };
+  }
+
+  if (message.includes('certificate') || message.includes('tls') || message.includes('ssl')) {
+    return {
+      code: 'tls_error',
+      message: 'Error TLS/SSL: revisa certificados, puerto HTTPS y configuración segura del router.',
+      raw_error: raw,
+    };
+  }
+
+  if (message.includes('timeout') || message.includes('timed out')) {
+    return {
+      code: 'timeout',
+      message: 'El router tardó demasiado en responder a la API.',
+      raw_error: raw,
+    };
+  }
+
+  return {
+    code: 'unknown_error',
+    message: 'No se pudo completar la validación de API con el router.',
+    raw_error: raw,
+  };
+};
+
 
 // List devices user has access to
 devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
@@ -57,6 +148,154 @@ devicesRouter.post('/:id/connect', async (req: AuthRequest, res: Response) => {
     );
 
     res.json({ success: true, data });
+  } catch (error: unknown) {
+    const diagnostic = classifyMikrotikError(error);
+    res.status(500).json({
+      success: false,
+      error: diagnostic.message,
+      error_code: diagnostic.code,
+      technical_error: diagnostic.raw_error,
+    });
+  }
+});
+
+// Diagnóstico detallado de conexión
+devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
+
+    const { rows } = await pool.query(
+      'SELECT id, name, host, port, username, password, version FROM mikrotik_devices WHERE id = $1',
+      [id]
+    );
+
+    if (!rows[0]) return res.status(404).json({ error: 'Dispositivo no encontrado' });
+
+    const device = rows[0];
+    const useTls = device.port === 443 || device.port === 8729;
+
+    const tcpCheck = await testTcpConnection(device.host, device.port);
+
+    if (!tcpCheck.success) {
+      const code: ConnectionDiagnosticCode = tcpCheck.code === 'ENOTFOUND' ? 'dns_error' : 'port_unreachable';
+      return res.json({
+        success: true,
+        data: {
+          connected: false,
+          panel_api: { ok: true, message: 'Panel/API operativo' },
+          device: {
+            id: device.id,
+            name: device.name,
+            host: device.host,
+            port: device.port,
+            version: device.version,
+            tls: useTls,
+          },
+          checks: {
+            tcp: {
+              ok: false,
+              latency_ms: null,
+              code,
+              message: code === 'dns_error'
+                ? 'El host no se resuelve por DNS o está mal escrito.'
+                : `No se pudo abrir conexión TCP al puerto ${device.port}.`,
+              technical_error: tcpCheck.error,
+            },
+            credentials: {
+              ok: null,
+              message: 'No evaluado porque falló la conexión de red/puerto.',
+            },
+            rest_api: {
+              ok: null,
+              message: 'No evaluado porque falló la conexión de red/puerto.',
+            },
+          },
+        },
+      });
+    }
+
+    try {
+      const identity = await mikrotikRequest(
+        { host: device.host, username: device.username, password: device.password, port: device.port, useTls },
+        '/rest/system/identity'
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          connected: true,
+          panel_api: { ok: true, message: 'Panel/API operativo' },
+          device: {
+            id: device.id,
+            name: device.name,
+            host: device.host,
+            port: device.port,
+            version: device.version,
+            tls: useTls,
+          },
+          checks: {
+            tcp: {
+              ok: true,
+              latency_ms: tcpCheck.latencyMs ?? null,
+              code: 'ok',
+              message: `Puerto ${device.port} accesible`,
+            },
+            credentials: {
+              ok: true,
+              code: 'ok',
+              message: 'Credenciales válidas para API',
+            },
+            rest_api: {
+              ok: true,
+              code: 'ok',
+              message: 'API REST disponible y respondiendo',
+              sample: identity,
+            },
+          },
+        },
+      });
+    } catch (error: unknown) {
+      const diagnostic = classifyMikrotikError(error);
+
+      return res.json({
+        success: true,
+        data: {
+          connected: false,
+          panel_api: { ok: true, message: 'Panel/API operativo' },
+          device: {
+            id: device.id,
+            name: device.name,
+            host: device.host,
+            port: device.port,
+            version: device.version,
+            tls: useTls,
+          },
+          checks: {
+            tcp: {
+              ok: true,
+              latency_ms: tcpCheck.latencyMs ?? null,
+              code: 'ok',
+              message: `Puerto ${device.port} accesible`,
+            },
+            credentials: {
+              ok: diagnostic.code !== 'credentials_error' ? null : false,
+              code: diagnostic.code,
+              message: diagnostic.code === 'credentials_error'
+                ? diagnostic.message
+                : 'No concluyente (ver diagnóstico de API).',
+            },
+            rest_api: {
+              ok: false,
+              code: diagnostic.code,
+              message: diagnostic.message,
+              technical_error: diagnostic.raw_error,
+            },
+          },
+        },
+      });
+    }
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

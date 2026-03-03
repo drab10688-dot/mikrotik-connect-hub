@@ -166,6 +166,8 @@ export const devicesApi = {
   create: async (device: any) => unwrapData(await apiPost('/devices', device)),
   update: async (id: string, device: any) => unwrapData(await apiPut(`/devices/${id}`, device)),
   delete: (id: string) => apiDelete(`/devices/${id}`),
+  testConnection: (id: string) => apiPost<any>(`/devices/${id}/connect`),
+  diagnoseConnection: (id: string) => apiPost<any>(`/devices/${id}/connect/diagnose`),
 };
 
 // ─── Clients API ──────────────────────────────────────────
