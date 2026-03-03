@@ -31,7 +31,10 @@ export default function UsersAdmin() {
 
   const { data: accesses } = useQuery({
     queryKey: ['user-mikrotik-accesses'],
-    queryFn: () => apiGet<any[]>('/devices/accesses'),
+    queryFn: async () => {
+      const response = await apiGet<any>('/devices/accesses');
+      return Array.isArray(response) ? response : response?.data || [];
+    },
   });
 
   const updateRoleMutation = useMutation({
@@ -178,22 +181,25 @@ export default function UsersAdmin() {
                   </TableHeader>
                   <TableBody>
                     {users.map((user: any) => {
-                      const isExpanded = expandedUsers.has(user.user_id);
+                      const userId = user.user_id || user.id;
+                      if (!userId) return null;
+
+                      const isExpanded = expandedUsers.has(userId);
                       const userRole = user.user_roles?.[0]?.role || user.role;
                       const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
-                      const userDevices = accesses?.filter((a: any) => a.user_id === user.user_id) || [];
-                      const createdDevices = devices?.filter((d: any) => d.created_by === user.user_id) || [];
+                      const userDevices = accesses?.filter((a: any) => a.user_id === userId) || [];
+                      const createdDevices = devices?.filter((d: any) => d.created_by === userId) || [];
                       const hasAssignedDevices = userDevices.length > 0;
                       const hasCreatedDevices = createdDevices.length > 0;
                       const hasActiveCreatedDevices = createdDevices.filter((d: any) => d.status === 'active').length > 0;
                       const shouldShowDevices = isAdminRole ? (hasAssignedDevices || hasCreatedDevices) : hasActiveCreatedDevices;
 
                       return (
-                        <Fragment key={user.id}>
+                        <Fragment key={userId}>
                           <TableRow>
                             <TableCell>
                               {shouldShowDevices && (
-                                <Button variant="ghost" size="sm" onClick={() => toggleUserExpansion(user.user_id)}>
+                                <Button variant="ghost" size="sm" onClick={() => toggleUserExpansion(userId)}>
                                   {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                 </Button>
                               )}
@@ -201,7 +207,7 @@ export default function UsersAdmin() {
                             <TableCell className="font-medium">{user.full_name || 'Sin nombre'}</TableCell>
                             <TableCell>{user.email}</TableCell>
                             <TableCell>
-                              <Select value={userRole || 'user'} onValueChange={(value) => handleRoleChange(user.user_id, value)}>
+                              <Select value={userRole || 'user'} onValueChange={(value) => handleRoleChange(userId, value)}>
                                 <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="super_admin"><div className="flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Super Admin</div></SelectItem>
@@ -212,7 +218,7 @@ export default function UsersAdmin() {
                             </TableCell>
                             <TableCell>{new Date(user.created_at).toLocaleDateString('es-ES')}</TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(user.user_id, user.full_name || user.email)}>
+                              <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(userId, user.full_name || user.email)}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
                             </TableCell>
@@ -228,7 +234,7 @@ export default function UsersAdmin() {
                                         {userDevices.map((access: any) => {
                                           const device = devices?.find((d: any) => d.id === access.mikrotik_id);
                                           if (!device) return null;
-                                          const isCreator = device.created_by === user.user_id;
+                                          const isCreator = device.created_by === userId;
                                           const isPending = device.status === 'pending';
                                           return (
                                             <div key={device.id} className="flex items-center justify-between p-3 bg-background rounded-lg border">
@@ -243,7 +249,7 @@ export default function UsersAdmin() {
                                                 ) : (
                                                   <>
                                                     <Button variant="outline" size="sm" onClick={() => handleToggleDeviceStatus(device.id, 'pending')}>Desactivar dispositivo</Button>
-                                                    <Button variant="destructive" size="sm" onClick={() => handleToggleAccess(user.user_id, device.id, true)}>Remover acceso</Button>
+                                                    <Button variant="destructive" size="sm" onClick={() => handleToggleAccess(userId, device.id, true)}>Remover acceso</Button>
                                                   </>
                                                 )}
                                                 {isCreator && (

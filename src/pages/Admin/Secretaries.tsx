@@ -66,7 +66,8 @@ export default function Secretaries() {
         role: 'secretary',
       });
 
-      const userId = response.user?.id;
+      const createdUser = (response as any)?.user || (response as any)?.data || response;
+      const userId = createdUser?.id;
       if (!userId) throw new Error('No se pudo obtener el ID del usuario creado');
 
       assignSecretary({
@@ -186,7 +187,7 @@ export default function Secretaries() {
               <TableBody>
                 {assignments.map((assignment: any) => (
                   <TableRow key={assignment.id}>
-                    <TableCell><div><p className="font-medium">{assignment.secretary_name || 'Sin nombre'}</p><p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.secretary_id}</p></div></TableCell>
+                    <TableCell><div><p className="font-medium">{assignment.secretary_name || assignment.full_name || 'Sin nombre'}</p><p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.email || assignment.secretary_id}</p></div></TableCell>
                     <TableCell><Switch checked={assignment.can_manage_pppoe} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_pppoe: checked })} /></TableCell>
                     <TableCell><Switch checked={assignment.can_manage_queues} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_queues: checked })} /></TableCell>
                     <TableCell>{new Date(assignment.created_at).toLocaleDateString()}</TableCell>

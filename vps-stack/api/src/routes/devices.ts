@@ -403,6 +403,62 @@ devicesRouter.post('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ─── User Device Access (Admin) ─────────────────
+devicesRouter.get('/accesses', async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.userRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Solo super_admin puede listar accesos' });
+    }
+
+    const { rows } = await pool.query(
+      'SELECT id, user_id, mikrotik_id, granted_by, created_at FROM user_mikrotik_access ORDER BY created_at DESC'
+    );
+
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.post('/accesses', async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.userRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Solo super_admin puede asignar accesos' });
+    }
+
+    const { user_id, mikrotik_id, granted_by } = req.body;
+    if (!user_id || !mikrotik_id) {
+      return res.status(400).json({ error: 'user_id y mikrotik_id son requeridos' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO user_mikrotik_access (user_id, mikrotik_id, granted_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
+      [user_id, mikrotik_id, granted_by || req.userId]
+    );
+
+    res.status(201).json({ data: rows[0] || null });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.delete('/accesses/:accessId', async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.userRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Solo super_admin puede remover accesos' });
+    }
+
+    const { accessId } = req.params;
+    await pool.query('DELETE FROM user_mikrotik_access WHERE id = $1', [accessId]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update device
 devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
@@ -410,12 +466,44 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
-    const { name, host, port, username, password, version } = req.body;
+    const fields = req.body || {};
+    const allowedFields = ['name', 'host', 'port', 'username', 'password', 'version', 'status', 'hotspot_url'];
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+
+    for (const field of allowedFields) {
+      if (fields[field] === undefined) continue;
+
+      if (field === 'status') {
+        const validStatuses = ['active', 'pending', 'rejected'];
+        if (!validStatuses.includes(fields.status)) {
+          return res.status(400).json({ error: 'Estado inválido' });
+        }
+        setClauses.push(`${field} = $${i}::device_status`);
+      } else {
+        setClauses.push(`${field} = $${i}`);
+      }
+
+      values.push(fields[field]);
+      i++;
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'No hay campos para actualizar' });
+    }
+
+    setClauses.push(`updated_at = NOW()`);
+    values.push(id);
+
     const { rows } = await pool.query(
-      `UPDATE mikrotik_devices SET name=$1, host=$2, port=$3, username=$4, password=$5, version=$6
-       WHERE id=$7 RETURNING *`,
-      [name, host, port, username, password, version, id]
+      `UPDATE mikrotik_devices SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
     );
+
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Dispositivo no encontrado' });
+    }
 
     res.json({ data: rows[0] });
   } catch (error) {
