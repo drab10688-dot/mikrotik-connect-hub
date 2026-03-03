@@ -28,7 +28,23 @@ clientsRouter.get('/:mikrotikId', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Register client (creates on MikroTik + DB)
+// Get single client by ID
+clientsRouter.get('/detail/:clientId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT c.*, bs.monthly_amount, bs.is_suspended, bs.billing_day, bs.next_billing_date
+       FROM isp_clients c
+       LEFT JOIN client_billing_settings bs ON bs.client_id = c.id
+       WHERE c.id = $1`,
+      [clientId]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Cliente no encontrado' });
+    res.json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 clientsRouter.post('/register', async (req: AuthRequest, res: Response) => {
   try {
     const {

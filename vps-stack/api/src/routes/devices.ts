@@ -18,15 +18,15 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
       query = `
         SELECT md.* FROM mikrotik_devices md
         INNER JOIN user_mikrotik_access uma ON uma.mikrotik_id = md.id
-        WHERE uma.user_id = $1 AND md.status = 'active'
+        WHERE uma.user_id = $1 AND md.status = 'active'::device_status
         UNION
         SELECT md.* FROM mikrotik_devices md
         INNER JOIN secretary_assignments sa ON sa.mikrotik_id = md.id
-        WHERE sa.secretary_id = $1 AND md.status = 'active'
+        WHERE sa.secretary_id = $1 AND md.status = 'active'::device_status
         UNION
         SELECT md.* FROM mikrotik_devices md
         INNER JOIN reseller_assignments ra ON ra.mikrotik_id = md.id
-        WHERE ra.reseller_id = $1 AND md.status = 'active'
+        WHERE ra.reseller_id = $1 AND md.status = 'active'::device_status
         ORDER BY name`;
       params = [req.userId!];
     }
@@ -68,7 +68,7 @@ devicesRouter.post('/', async (req: AuthRequest, res: Response) => {
     const { name, host, port, username, password, version } = req.body;
     const { rows } = await pool.query(
       `INSERT INTO mikrotik_devices (name, host, port, username, password, version, created_by, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active') RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status) RETURNING *`,
       [name, host, port || 443, username, password, version || 'v7', req.userId]
     );
 

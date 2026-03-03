@@ -178,7 +178,7 @@ export const clientsApi = {
     const endpoint = queryString ? `/clients/${mikrotikId}?${queryString}` : `/clients/${mikrotikId}`;
     return unwrapArray(await apiGet<any>(endpoint));
   },
-  get: (id: string) => apiGet<any>(`/clients/${id}`),
+  get: (id: string) => apiGet<any>(`/clients/detail/${id}`),
   create: async (client: any) => {
     const mikrotikId = client?.mikrotik_id;
     if (!mikrotikId) throw new Error('mikrotik_id es requerido para crear cliente');
@@ -293,13 +293,13 @@ export const invoicesApi = {
     const endpoint = queryString ? `/invoices/${mikrotikId}?${queryString}` : `/invoices/${mikrotikId}`;
     return unwrapArray(await apiGet<any>(endpoint));
   },
-  get: (id: string) => apiGet<any>(`/invoices/${id}`),
+  get: (id: string) => apiGet<any>(`/invoices/detail/${id}`),
   create: async (data: any) => {
     const mikrotikId = data?.mikrotik_id || getSelectedMikrotikId();
     if (!mikrotikId) throw new Error('mikrotik_id es requerido para crear factura');
     return unwrapData(await apiPost(`/invoices/${mikrotikId}`, data));
   },
-  update: (id: string, data: any) => apiPut(`/invoices/${id}`, data),
+  update: (id: string, data: any) => apiPut(`/invoices/detail/${id}`, data),
   delete: async (id: string, mikrotikId?: string) => {
     const resolvedMikrotikId = mikrotikId || getSelectedMikrotikId();
     if (!resolvedMikrotikId) throw new Error('Selecciona un MikroTik antes de eliminar factura');
