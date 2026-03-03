@@ -121,3 +121,167 @@ devicesRouter.delete('/:id', async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Error al eliminar dispositivo' });
   }
 });
+
+// ─── Reseller Assignments ─────────────────────
+devicesRouter.get('/:id/resellers', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+
+    const { rows } = await pool.query(
+      `SELECT ra.*, u.email, u.full_name
+       FROM reseller_assignments ra
+       LEFT JOIN users u ON u.id = ra.reseller_id
+       WHERE ra.mikrotik_id = $1`,
+      [id]
+    );
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.post('/:id/resellers', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reseller_id, commission_percentage } = req.body;
+
+    const { rows } = await pool.query(
+      `INSERT INTO reseller_assignments (reseller_id, mikrotik_id, assigned_by, commission_percentage)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [reseller_id, id, req.userId, commission_percentage || 0]
+    );
+    res.status(201).json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.put('/resellers/:assignmentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { assignmentId } = req.params;
+    const { commission_percentage } = req.body;
+    const { rows } = await pool.query(
+      'UPDATE reseller_assignments SET commission_percentage = $1 WHERE id = $2 RETURNING *',
+      [commission_percentage, assignmentId]
+    );
+    res.json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.delete('/resellers/:assignmentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { assignmentId } = req.params;
+    await pool.query('DELETE FROM reseller_assignments WHERE id = $1', [assignmentId]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Secretary Assignments ────────────────────
+devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT sa.*, md.name as device_name, md.host
+       FROM secretary_assignments sa
+       INNER JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
+       WHERE sa.secretary_id = $1`,
+      [req.userId]
+    );
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+
+    const { rows } = await pool.query(
+      `SELECT sa.*, u.email, u.full_name
+       FROM secretary_assignments sa
+       LEFT JOIN users u ON u.id = sa.secretary_id
+       WHERE sa.mikrotik_id = $1`,
+      [id]
+    );
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      secretary_id, can_manage_pppoe, can_create_pppoe, can_edit_pppoe,
+      can_delete_pppoe, can_disconnect_pppoe, can_toggle_pppoe,
+      can_manage_queues, can_create_queues, can_edit_queues,
+      can_delete_queues, can_toggle_queues, can_suspend_queues, can_reactivate_queues
+    } = req.body;
+
+    const { rows } = await pool.query(
+      `INSERT INTO secretary_assignments (
+        secretary_id, mikrotik_id, assigned_by,
+        can_manage_pppoe, can_create_pppoe, can_edit_pppoe, can_delete_pppoe,
+        can_disconnect_pppoe, can_toggle_pppoe,
+        can_manage_queues, can_create_queues, can_edit_queues, can_delete_queues,
+        can_toggle_queues, can_suspend_queues, can_reactivate_queues
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [secretary_id, id, req.userId,
+       can_manage_pppoe ?? true, can_create_pppoe ?? true, can_edit_pppoe ?? true, can_delete_pppoe ?? true,
+       can_disconnect_pppoe ?? true, can_toggle_pppoe ?? true,
+       can_manage_queues ?? true, can_create_queues ?? true, can_edit_queues ?? true, can_delete_queues ?? true,
+       can_toggle_queues ?? true, can_suspend_queues ?? true, can_reactivate_queues ?? true]
+    );
+    res.status(201).json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.put('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { assignmentId } = req.params;
+    const fields = req.body;
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (key.startsWith('can_')) {
+        setClauses.push(`${key} = $${i}`);
+        values.push(value);
+        i++;
+      }
+    }
+
+    if (setClauses.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    values.push(assignmentId);
+    const { rows } = await pool.query(
+      `UPDATE secretary_assignments SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    res.json({ data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+devicesRouter.delete('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { assignmentId } = req.params;
+    await pool.query('DELETE FROM secretary_assignments WHERE id = $1', [assignmentId]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});

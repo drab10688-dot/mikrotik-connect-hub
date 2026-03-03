@@ -63,3 +63,38 @@ addressListRouter.delete('/:mikrotikId/:entryId', async (req: AuthRequest, res: 
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Toggle suspension (add/remove from address list)
+addressListRouter.post('/toggle-suspension', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotik_id, address, list, action, comment } = req.body;
+    if (!mikrotik_id || !address || !list) {
+      return res.status(400).json({ error: 'mikrotik_id, address y list requeridos' });
+    }
+
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotik_id);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+
+    const config = await getDeviceConfig(pool, mikrotik_id);
+
+    if (action === 'remove') {
+      // Find and remove
+      const entries = await mikrotikRequest(config, '/rest/ip/firewall/address-list') as any[];
+      const entry = entries.find((e: any) => e.address === address && e.list === list);
+      if (entry) {
+        await mikrotikRequest(config, `/rest/ip/firewall/address-list/${entry['.id']}`, 'DELETE');
+      }
+    } else {
+      // Add
+      await mikrotikRequest(config, '/rest/ip/firewall/address-list/add', 'POST', {
+        list,
+        address,
+        comment: comment || 'Suspendido por OmniSync',
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
