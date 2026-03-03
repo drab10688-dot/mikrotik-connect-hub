@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   Cloud, Key, ExternalLink, Copy, CheckCircle2, AlertCircle,
-  Loader2, Terminal, Globe, Play, Square, RefreshCw, Server, Download
+  Loader2, Terminal, Globe, Play, Square, RefreshCw, Download
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { generateVpsInstallScript } from "@/lib/vps-install-script";
 
 interface CloudflareConfigProps {
   mikrotikId: string | null;
@@ -25,116 +24,83 @@ interface CloudflareConfigProps {
   } | null;
 }
 
-function generateSecret() {
-  return crypto.randomUUID().replace(/-/g, "");
-}
-
-export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfigProps) {
+export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [vpsIp, setVpsIp] = useState("");
-  const [vpsPort, setVpsPort] = useState("3847");
   const [apiToken, setApiToken] = useState("");
   const [domain, setDomain] = useState("");
   const [tunnelName, setTunnelName] = useState("");
 
   const portalUrl = `${window.location.origin}/portal${mikrotikId ? `?id=${mikrotikId}` : ""}`;
 
-  const { data: config, isLoading } = useQuery({
-    queryKey: ["cloudflare-config", mikrotikId],
-    queryFn: async () => {
-      if (!mikrotikId) return null;
-      const data = await vpsApi.getCloudflareConfig(mikrotikId!);
-      return data;
-    },
-    enabled: !!mikrotikId,
+  // ─── Quick Tunnel Status (directo en la API, estilo Stream Player Pro) ───
+  const { data: tunnelInfo, isLoading: tunnelLoading } = useQuery({
+    queryKey: ["tunnel-status"],
+    queryFn: () => vpsApi.tunnelStatus(),
     refetchInterval: 5000,
+  });
+
+  // ─── Pro Config (DB-based) ───
+  const { data: config } = useQuery({
+    queryKey: ["cloudflare-config", mikrotikId],
+    queryFn: () => vpsApi.getCloudflareConfig(mikrotikId!),
+    enabled: !!mikrotikId,
   });
 
   useEffect(() => {
     if (config) {
-      setVpsIp(config.agent_host || "");
-      setVpsPort(String(config.agent_port || 3847));
       setApiToken(config.api_token || "");
       setDomain(config.domain || "");
       setTunnelName(config.tunnel_name || "");
     }
   }, [config]);
 
-  // Save VPS config & generate install command
-  const saveAgentConfigMutation = useMutation({
-    mutationFn: async () => {
-      if (!mikrotikId || !user) throw new Error("Missing data");
-      if (!vpsIp.trim()) throw new Error("Ingresa la IP de tu VPS");
-
-      const secret = config?.agent_secret || generateSecret();
-      const payload = {
-        mikrotik_id: mikrotikId,
-        mode: "free",
-        agent_host: vpsIp.trim(),
-        agent_port: parseInt(vpsPort) || 3847,
-        agent_secret: secret,
-        created_by: user.id,
-        updated_at: new Date().toISOString(),
-      };
-
-      await vpsApi.updateCloudflareConfig({
-        ...payload,
-        id: config?.id
-      });
-
-      return { secret, port: parseInt(vpsPort) || 3847 };
-    },
-    onSuccess: ({ secret, port }) => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
-      const script = buildAgentScript(secret, port);
-      navigator.clipboard.writeText(script);
-      toast.success("Script de instalación copiado. Pégalo en tu VPS una sola vez.");
+  // ─── Tunnel Actions (directo, sin agente Python) ───
+  const installMutation = useMutation({
+    mutationFn: () => vpsApi.tunnelInstall(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["tunnel-status"] });
+      toast.success(data.message || "cloudflared instalado");
     },
     onError: (err: any) => toast.error(err.message),
   });
 
-  // Call the agent via our edge function
-  const agentActionMutation = useMutation({
-    mutationFn: async (action: string) => {
-      const data = await vpsApi.tunnelAgent(mikrotikId!, action);
-      return data;
-    },
-    onSuccess: (data, action) => {
-      queryClient.invalidateQueries({ queryKey: ["cloudflare-config", mikrotikId] });
-      if (action === "start" && data?.url) {
+  const startMutation = useMutation({
+    mutationFn: () => vpsApi.tunnelStart(80),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["tunnel-status"] });
+      if (data.url) {
         toast.success(`Tunnel activo: ${data.url}`);
-      } else if (action === "stop") {
-        toast.success("Tunnel detenido");
-      } else if (action === "status") {
-        toast.info(`Estado: ${data?.status || "desconocido"}`);
+      } else {
+        toast.info("Iniciando túnel, espera unos segundos...");
       }
     },
     onError: (err: any) => toast.error(err.message),
   });
 
-  const buildAgentScript = useCallback((secret: string, port: number) => {
-    return generateVpsInstallScript({
-      secret,
-      port,
-      portalUrl,
-      mikrotikHost: mikrotikDevice?.host,
-      mikrotikPort: mikrotikDevice?.port,
-      mikrotikUser: mikrotikDevice?.username,
-      mikrotikPass: mikrotikDevice?.password,
-    });
-  }, [portalUrl, mikrotikDevice]);
+  const stopMutation = useMutation({
+    mutationFn: () => vpsApi.tunnelStop(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tunnel-status"] });
+      toast.success("Tunnel detenido");
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Copiado al portapapeles");
-  };
+  const refreshMutation = useMutation({
+    mutationFn: () => vpsApi.tunnelStatus(),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["tunnel-status"], data);
+      toast.info(`Estado: ${data.status || "desconocido"}`);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
 
-  // Save paid config
+  // ─── Pro Config Save ───
   const savePaidMutation = useMutation({
     mutationFn: async () => {
       if (!mikrotikId || !user || !apiToken.trim()) throw new Error("Datos incompletos");
-      const payload = {
+      await vpsApi.updateCloudflareConfig({
         mikrotik_id: mikrotikId,
         mode: "paid",
         api_token: apiToken,
@@ -142,12 +108,7 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
         tunnel_name: tunnelName || null,
         is_active: true,
         created_by: user.id,
-        updated_at: new Date().toISOString(),
-      };
-      
-      await vpsApi.updateCloudflareConfig({
-        ...payload,
-        id: config?.id
+        id: config?.id,
       });
     },
     onSuccess: () => {
@@ -156,6 +117,11 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
     },
     onError: (err: any) => toast.error(err.message),
   });
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Copiado al portapapeles");
+  };
 
   if (!mikrotikId) {
     return (
@@ -168,8 +134,9 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
     );
   }
 
-  const isRunning = config?.is_active && config?.tunnel_url;
-  const agentConfigured = config?.agent_host && config?.agent_secret;
+  const isRunning = tunnelInfo?.status === "running" && tunnelInfo?.url;
+  const isInstalled = tunnelInfo?.installed;
+  const anyPending = installMutation.isPending || startMutation.isPending || stopMutation.isPending;
 
   return (
     <Card>
@@ -204,13 +171,13 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
             </div>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-sm bg-background px-3 py-2 rounded border truncate">
-                {config?.tunnel_url}
+                {tunnelInfo.url}
               </code>
-              <Button variant="outline" size="icon" onClick={() => handleCopy(config?.tunnel_url || "")}>
+              <Button variant="outline" size="icon" onClick={() => handleCopy(tunnelInfo.url)}>
                 <Copy className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="icon" asChild>
-                <a href={config?.tunnel_url || ""} target="_blank" rel="noopener noreferrer">
+                <a href={tunnelInfo.url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </Button>
@@ -236,7 +203,7 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
           </div>
         </div>
 
-        <Tabs defaultValue={config?.mode || "free"} className="space-y-4">
+        <Tabs defaultValue="free" className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="free" className="flex items-center gap-2">
               <Terminal className="h-4 w-4" />
@@ -248,104 +215,89 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
             </TabsTrigger>
           </TabsList>
 
-          {/* Free Tunnel with Agent */}
+          {/* ─── Quick Tunnel (estilo Stream Player Pro) ─── */}
           <TabsContent value="free" className="space-y-4">
-            {/* Step 1: VPS IP */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Server className="h-4 w-4 text-muted-foreground" />
-                <Label className="font-medium">Paso 1: Configura tu VPS</Label>
-              </div>
-              <div className="grid grid-cols-[1fr,100px] gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">IP del VPS</Label>
-                  <Input
-                    value={vpsIp}
-                    onChange={(e) => setVpsIp(e.target.value)}
-                    placeholder="123.456.789.0"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Puerto</Label>
-                  <Input
-                    value={vpsPort}
-                    onChange={(e) => setVpsPort(e.target.value)}
-                    placeholder="3847"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Step 2: Install Agent (one time) */}
+            {/* Step 1: Install cloudflared */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Download className="h-4 w-4 text-muted-foreground" />
-                <Label className="font-medium">Paso 2: Instala el agente (una sola vez)</Label>
+                <Label className="font-medium">Paso 1: Instalar cloudflared</Label>
+                {isInstalled && (
+                  <Badge variant="outline" className="text-xs text-green-600 border-green-500/30">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Instalado
+                  </Badge>
+                )}
               </div>
               <Button
-                onClick={() => saveAgentConfigMutation.mutate()}
-                disabled={saveAgentConfigMutation.isPending || !vpsIp.trim()}
+                onClick={() => installMutation.mutate()}
+                disabled={anyPending || isInstalled}
                 variant="outline"
                 className="w-full"
               >
-                {saveAgentConfigMutation.isPending ? (
+                {installMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Download className="h-4 w-4 mr-2" />
                 )}
-                Copiar script de instalación
+                {isInstalled ? "cloudflared ya instalado" : "Instalar cloudflared"}
               </Button>
-              <p className="text-xs text-muted-foreground">
-                Pega el script en tu VPS y ejecútalo con <code className="bg-muted px-1 rounded">sudo bash</code>. Solo necesitas hacerlo <strong>una vez</strong>.
-              </p>
             </div>
 
-            {/* Step 3: Control Panel */}
-            {agentConfigured && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Cloud className="h-4 w-4 text-muted-foreground" />
-                  <Label className="font-medium">Paso 3: Controla el tunnel</Label>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    onClick={() => agentActionMutation.mutate("start")}
-                    disabled={agentActionMutation.isPending || !!isRunning}
-                    className="w-full"
-                  >
-                    {agentActionMutation.isPending && agentActionMutation.variables === "start" ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4 mr-1" />
-                    )}
-                    Iniciar
-                  </Button>
-                  <Button
-                    onClick={() => agentActionMutation.mutate("stop")}
-                    disabled={agentActionMutation.isPending || !isRunning}
-                    variant="destructive"
-                    className="w-full"
-                  >
-                    {agentActionMutation.isPending && agentActionMutation.variables === "stop" ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <Square className="h-4 w-4 mr-1" />
-                    )}
-                    Detener
-                  </Button>
-                  <Button
-                    onClick={() => agentActionMutation.mutate("status")}
-                    disabled={agentActionMutation.isPending}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    {agentActionMutation.isPending && agentActionMutation.variables === "status" ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-1" />
-                    )}
-                    Estado
-                  </Button>
+            {/* Step 2: Control Panel */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Cloud className="h-4 w-4 text-muted-foreground" />
+                <Label className="font-medium">Paso 2: Controla el tunnel</Label>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  onClick={() => startMutation.mutate()}
+                  disabled={anyPending || !!isRunning || !isInstalled}
+                  className="w-full"
+                >
+                  {startMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-1" />
+                  )}
+                  Iniciar
+                </Button>
+                <Button
+                  onClick={() => stopMutation.mutate()}
+                  disabled={anyPending || !isRunning}
+                  variant="destructive"
+                  className="w-full"
+                >
+                  {stopMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Square className="h-4 w-4 mr-1" />
+                  )}
+                  Detener
+                </Button>
+                <Button
+                  onClick={() => refreshMutation.mutate()}
+                  disabled={refreshMutation.isPending}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {refreshMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                  )}
+                  Estado
+                </Button>
+              </div>
+            </div>
+
+            {/* Status info */}
+            {tunnelInfo?.error && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                  <p className="text-xs text-destructive">{tunnelInfo.error}</p>
                 </div>
               </div>
             )}
@@ -354,14 +306,14 @@ export function CloudflareConfig({ mikrotikId, mikrotikDevice }: CloudflareConfi
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="text-xs text-muted-foreground space-y-1">
-                  <p>⚠️ Asegúrate de abrir el puerto <strong>{vpsPort || "3847"}</strong> en el firewall del VPS</p>
                   <p>La URL del Quick Tunnel cambia si reinicias el proceso</p>
+                  <p>No necesitas configurar IP ni puertos, todo se maneja automáticamente</p>
                 </div>
               </div>
             </div>
           </TabsContent>
 
-          {/* Paid Token Tab */}
+          {/* ─── Paid Token Tab ─── */}
           <TabsContent value="paid" className="space-y-4">
             <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-3">
               <div className="flex items-center gap-2">
