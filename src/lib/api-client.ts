@@ -262,7 +262,7 @@ export const vouchersApi = {
   generate: async (mikrotikId: string, data: any) => unwrapArray(await apiPost(`/vouchers/${mikrotikId}/generate`, data)),
   delete: (mikrotikId: string, voucherId: string) => apiDelete(`/vouchers/${mikrotikId}/${voucherId}`),
   sell: (mikrotikId: string, voucherId: string, sellData: any) => apiPost(`/vouchers/${mikrotikId}/sell/${voucherId}`, sellData),
-  salesHistory: (mikrotikId: string) => apiGet<any[]>(`/vouchers/${mikrotikId}/sales-history`),
+  salesHistory: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/vouchers/${mikrotikId}/sales-history`)),
   presets: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/vouchers/${mikrotikId}/presets`)),
   createPreset: (data: any) => apiPost('/vouchers/presets', data),
   updatePreset: (id: string, data: any) => apiPut(`/vouchers/presets/${id}`, data),
@@ -302,10 +302,10 @@ export const billingApi = {
     if (!mikrotikId) throw new Error('mikrotik_id es requerido para guardar la configuración');
     return unwrapData(await apiPost(`/billing/${mikrotikId}/config`, data));
   },
-  clientSettings: (clientId: string) => apiGet<any>(`/billing/client/${clientId}`),
+  clientSettings: async (clientId: string) => unwrapData(await apiGet<any>(`/billing/client/${clientId}`)),
   updateClientSettings: (clientId: string, settings: any) => apiPut(`/billing/client/${clientId}`, settings),
-  listSettings: (mikrotikId: string) => apiGet<any[]>(`/billing/settings?mikrotik_id=${mikrotikId}`),
-  listSuspension: (mikrotikId: string) => apiGet<any[]>(`/billing/suspension-status?mikrotik_id=${mikrotikId}`),
+  listSettings: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/billing/settings?mikrotik_id=${mikrotikId}`)),
+  listSuspension: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/billing/suspension-status?mikrotik_id=${mikrotikId}`)),
 };
 
 // ─── Invoices API ─────────────────────────────────────────
@@ -339,8 +339,8 @@ export const invoicesApi = {
   },
   generateBatch: (mikrotikId: string) => apiPost('/invoices/generate', { mikrotik_id: mikrotikId }),
   generateForClient: (data: any) => apiPost('/invoices/generate-single', data),
-  paidHistory: (mikrotikId: string, startDate: string, endDate: string) =>
-    apiGet<any[]>(`/invoices/paid-history?mikrotik_id=${mikrotikId}&start_date=${startDate}&end_date=${endDate}`),
+  paidHistory: async (mikrotikId: string, startDate: string, endDate: string) =>
+    unwrapArray(await apiGet<any>(`/invoices/paid-history?mikrotik_id=${mikrotikId}&start_date=${startDate}&end_date=${endDate}`)),
 };
 
 // ─── Users/Admin API ──────────────────────────────────────
@@ -370,7 +370,7 @@ export const secretariesApi = {
 
 // ─── Contracts API ────────────────────────────────────────
 export const contractsApi = {
-  list: (mikrotikId: string) => apiGet<any[]>(`/clients/contracts?mikrotik_id=${mikrotikId}`),
+  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/clients/contracts?mikrotik_id=${mikrotikId}`)),
   get: (id: string) => apiGet<any>(`/clients/contracts/${id}`),
   create: (data: any) => apiPost('/clients/contracts', data),
   update: (id: string, data: any) => apiPut(`/clients/contracts/${id}`, data),
