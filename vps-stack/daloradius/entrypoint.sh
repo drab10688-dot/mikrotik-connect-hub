@@ -5,6 +5,26 @@ echo "=== Configurando daloRADIUS ==="
 
 WEBROOT="/var/www/html"
 
+# ── 0. Create proper index.php router (git clone overwrites Dockerfile version) ──
+cat > "$WEBROOT/index.php" << 'ROUTER'
+<?php
+// Auto-generated router for daloRADIUS
+$paths = array(
+  "app/operators/login.php",
+  "app/users/login.php",
+  "login.php",
+  "app/index.php"
+);
+foreach ($paths as $p) {
+  if (file_exists(__DIR__ . "/" . $p)) {
+    header("Location: " . $p);
+    exit;
+  }
+}
+echo "<h1>daloRADIUS</h1><p>No login page found.</p>";
+ROUTER
+chown www-data:www-data "$WEBROOT/index.php"
+
 # ── 1. Detect layout version ──
 if [ -d "$WEBROOT/app" ]; then
   LAYOUT="v2"
