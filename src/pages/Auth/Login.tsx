@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { authApi, setToken, setStoredUser, setApiBaseUrl, getApiBaseUrl } from '@/lib/api-client';
+import { authApi, setToken, setStoredUser, setApiBaseUrl } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,10 +20,7 @@ export default function Login() {
     email: '',
     password: '',
   });
-  const [apiUrl, setApiUrl] = useState(() => {
-    const currentBase = getApiBaseUrl();
-    return currentBase === '/api' ? '' : currentBase.replace(/\/api$/i, '');
-  });
+  const [apiUrl] = useState('');
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
@@ -186,22 +183,6 @@ export default function Login() {
                   disabled={loading}
                   className="h-11 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-cyan-500"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="api-url" className="text-slate-300">URL API VPS (opcional)</Label>
-                <Input
-                  id="api-url"
-                  type="url"
-                  placeholder="https://tu-servidor.com"
-                  value={apiUrl}
-                  onChange={(e) => setApiUrl(e.target.value)}
-                  disabled={loading}
-                  className="h-11 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-cyan-500"
-                />
-                <p className="text-xs text-slate-400">
-                  Si estás en preview de Lovable, ingresa aquí la URL pública de tu VPS.
-                </p>
               </div>
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">

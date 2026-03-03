@@ -592,7 +592,12 @@ devicesRouter.delete('/resellers/:assignmentId', async (req: AuthRequest, res: R
 devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT sa.*, md.name as device_name, md.host
+      `SELECT sa.*,
+              md.id as "device_id", md.name as device_name, md.host, md.port, md.version, md.status as device_status,
+              json_build_object(
+                'id', md.id, 'name', md.name, 'host', md.host,
+                'port', md.port, 'version', md.version, 'status', md.status
+              ) as mikrotik_devices
        FROM secretary_assignments sa
        INNER JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
        WHERE sa.secretary_id = $1`,
