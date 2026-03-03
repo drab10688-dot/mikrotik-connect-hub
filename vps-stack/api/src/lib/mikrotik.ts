@@ -71,9 +71,8 @@ export async function mikrotikRequest(
 
 /**
  * Try multiple connection strategies for MikroTik
- * 1) HTTPS on configured port
- * 2) HTTP on configured port (if not 443)
- * 3) HTTP on port 80
+ * Always tries both HTTPS and HTTP on the configured port first,
+ * then falls back to common alternative ports.
  */
 export async function mikrotikRequestWithFallback(
   config: MikroTikConfig,
@@ -83,18 +82,18 @@ export async function mikrotikRequestWithFallback(
 ): Promise<{ data: unknown; usedConfig: { protocol: string; port: number } }> {
   const strategies: Array<{ useTls: boolean; port: number; label: string }> = [];
 
-  // Primary: configured port with auto-TLS detection
-  const primaryTls = config.port === 443 || config.port === 8729;
-  strategies.push({ useTls: primaryTls, port: config.port, label: `${primaryTls ? 'HTTPS' : 'HTTP'}:${config.port}` });
+  // 1) Try HTTPS on configured port
+  strategies.push({ useTls: true, port: config.port, label: `HTTPS:${config.port}` });
 
-  // If primary is HTTPS, also try HTTP on same port
-  if (primaryTls) {
-    strategies.push({ useTls: false, port: config.port, label: `HTTP:${config.port}` });
-  }
+  // 2) Try HTTP on configured port
+  strategies.push({ useTls: false, port: config.port, label: `HTTP:${config.port}` });
 
-  // Try HTTP on port 80 if not already tried
-  if (config.port !== 80) {
-    strategies.push({ useTls: false, port: 80, label: 'HTTP:80' });
+  // 3) If not already tried, try common MikroTik ports
+  const fallbackPorts = [443, 80, 8728, 8729];
+  for (const port of fallbackPorts) {
+    if (port === config.port) continue;
+    const tls = port === 443 || port === 8729;
+    strategies.push({ useTls: tls, port, label: `${tls ? 'HTTPS' : 'HTTP'}:${port}` });
   }
 
   let lastError: Error | null = null;

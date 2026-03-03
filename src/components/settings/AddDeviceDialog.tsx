@@ -139,14 +139,17 @@ export const AddDeviceDialog = () => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="port">Puerto</Label>
+                <Label htmlFor="port">Puerto API</Label>
                 <Input
                   id="port"
                   type="number"
                   value={formData.port}
-                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 443 })}
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Común: 443 (HTTPS), 80 (HTTP), 8728 (API), 8730+
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="version">Versión</Label>
