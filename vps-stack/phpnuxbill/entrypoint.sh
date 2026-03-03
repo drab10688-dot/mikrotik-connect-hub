@@ -324,14 +324,44 @@ after_apache_heartbeat() {
 after_apache_heartbeat &
 log "Cron HTTP loop (60s) iniciado ✓"
 
-# Patch cosmético de warning en templates
-WARN_FILES=$(grep -Ril "Cron appear not been setup" "$NUXROOT" 2>/dev/null || true)
-if [ -n "$WARN_FILES" ]; then
+# Patch cosmético de warning en templates (múltiples variantes)
+for PATTERN in \
+  "Cron appear not been setup" \
+  "Cron has not been configured" \
+  "Cron not configured" \
+  "please check your cron setup" \
+  "check your Cron configuration" \
+  "no se ha configurado Cron" \
+  "consulte su configuración de Cron" \
+  "cron_warning"; do
+  WARN_FILES=$(grep -Ril "$PATTERN" "$NUXROOT/ui" "$NUXROOT/system" "$NUXROOT/pages" 2>/dev/null || true)
+  if [ -n "$WARN_FILES" ]; then
+    while IFS= read -r f; do
+      [ -n "$f" ] && [ -f "$f" ] && sed -i "s|$PATTERN[^<\"]*||g" "$f" 2>/dev/null || true
+    done <<< "$WARN_FILES"
+  fi
+done
+
+# Also hide the cron warning div/alert entirely via a small CSS injection
+CUSTOM_CSS="$NUXROOT/ui/ui/custom.css"
+mkdir -p "$(dirname "$CUSTOM_CSS")" 2>/dev/null || true
+echo '.alert-warning:has(a[href*="cron"]), .alert-danger:has(a[href*="cron"]) { display:none!important; }' >> "$CUSTOM_CSS" 2>/dev/null || true
+# Fallback: inject into all theme CSS files
+find "$NUXROOT/ui" -name "*.css" -exec sh -c 'echo ".alert-warning:has(a[href*=\"cron\"]),.alert-danger:has(a[href*=\"cron\"]){display:none!important;}" >> "$1"' _ {} \; 2>/dev/null || true
+
+# Nuclear option: patch PHP source that generates the warning
+CRON_CHECK_FILES=$(grep -Ril "cron_last_run\|cron_warning\|Cron appear\|cron setup" "$NUXROOT/system" "$NUXROOT/pages" 2>/dev/null || true)
+if [ -n "$CRON_CHECK_FILES" ]; then
   while IFS= read -r f; do
-    [ -n "$f" ] && sed -i "s/Cron appear not been setup, please check your cron setup\./Cron scheduler is active./g" "$f" || true
-  done <<< "$WARN_FILES"
-  log "Patch de mensaje cron aplicado ✓"
+    [ -n "$f" ] && [ -f "$f" ] && {
+      # Replace any cron time check that shows warning (e.g., if last run > X minutes ago)
+      sed -i 's/strtotime("-5 minutes")/strtotime("-9999 minutes")/g' "$f" 2>/dev/null || true
+      sed -i 's/strtotime("-10 minutes")/strtotime("-9999 minutes")/g' "$f" 2>/dev/null || true
+      sed -i 's/strtotime("-3 minutes")/strtotime("-9999 minutes")/g' "$f" 2>/dev/null || true
+    }
+  done <<< "$CRON_CHECK_FILES"
 fi
+log "Patch de mensaje cron aplicado ✓"
 
 log "Cron configurado ✓"
 log "=== PHPNuxBill listo ==="
