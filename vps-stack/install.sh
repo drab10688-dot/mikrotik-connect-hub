@@ -117,7 +117,11 @@ handle_existing_installation() {
 
         docker compose up -d --build
         sleep 10
-        ensure_mariadb_accounts || true
+        if ! ensure_mariadb_accounts; then
+          echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
+          echo -e "${YELLOW}Ejecuta: bash $INSTALL_DIR/repair-nuxbill-auth.sh${NC}"
+          exit 1
+        fi
         echo -e "${GREEN}✓ Actualización completada${NC}"
         VPS_IP=$(hostname -I | awk '{print $1}')
         echo -e "${GREEN}Panel: http://$VPS_IP${NC}"
@@ -501,8 +505,11 @@ docker compose up -d --build 2>&1 | tail -5
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
 sleep 20
 
-# Ensure DB users/passwords are in sync even on existing volumes
-ensure_mariadb_accounts || true
+if ! ensure_mariadb_accounts; then
+  echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
+  echo -e "${YELLOW}Ejecuta: bash $INSTALL_DIR/repair-nuxbill-auth.sh${NC}"
+  exit 1
+fi
 
 # Import RADIUS schema (tabla nas) si falta
 ensure_radius_schema || true
