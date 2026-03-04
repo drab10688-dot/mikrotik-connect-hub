@@ -12,7 +12,7 @@ CONFIG_FILE="$NUXROOT/config.php"
 
 DB_HOST="${NUXBILL_DB_HOST:-mariadb}"
 DB_USER="${NUXBILL_DB_USER:-nuxbill}"
-DB_PASS="${NUXBILL_DB_PASS:-changeme}"
+DB_PASS="${NUXBILL_DB_PASS:-${NUXBILL_DB_PASSWORD:-changeme_nuxbill}}"
 DB_NAME="${NUXBILL_DB_NAME:-phpnuxbill}"
 APP_URL="${NUXBILL_APP_URL:-http://localhost:8080}"
 TZ_VALUE="${TZ:-America/Bogota}"

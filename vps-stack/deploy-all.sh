@@ -143,6 +143,7 @@ done
 # Copy deploy scripts
 cp "$TMP_DIR/app/vps-stack/deploy-frontend.sh" "$APP_DIR/deploy-frontend.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/deploy-all.sh" "$APP_DIR/deploy-all.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/repair-nuxbill-auth.sh" "$APP_DIR/repair-nuxbill-auth.sh" 2>/dev/null || true
 chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 
 # ─── Rebuild core containers ───────────────────
@@ -152,7 +153,11 @@ sync_nuxbill_env_file
 docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."
-ensure_mariadb_accounts || true
+if ! ensure_mariadb_accounts; then
+  echo "  ✗ Error crítico: no se pudo sincronizar usuarios MariaDB (nuxbill/radius)"
+  echo "    Ejecuta: bash $APP_DIR/repair-nuxbill-auth.sh"
+  exit 1
+fi
 
 echo "[6/10] Verificando schema radius (tabla nas)..."
 ensure_radius_schema || true
