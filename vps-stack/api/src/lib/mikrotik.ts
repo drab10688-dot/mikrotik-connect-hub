@@ -65,9 +65,28 @@ function isRetryableConnectionError(error: Error): boolean {
     msg.includes('econnrefused') ||
     msg.includes('ehostunreach') ||
     msg.includes('enetunreach') ||
+    msg.includes('econnreset') ||
     msg.includes('socket hang up') ||
     msg.includes('aborterror') ||
-    msg.includes('connection closed')
+    msg.includes('connection closed') ||
+    msg.includes('client network socket disconnected') ||
+    msg.includes('before secure tls connection was established') ||
+    msg.includes('self-signed certificate') ||
+    msg.includes('wrong version number') ||
+    msg.includes('ssl') ||
+    msg.includes('tls')
+  );
+}
+
+function isLikelyTlsNegotiationError(error: Error): boolean {
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes('tls') ||
+    msg.includes('ssl') ||
+    msg.includes('certificate') ||
+    msg.includes('before secure tls connection was established') ||
+    msg.includes('wrong version number') ||
+    msg.includes('self-signed')
   );
 }
 
@@ -99,8 +118,15 @@ async function executeRestRequest(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   options.signal = controller.signal;
 
-  if (useTls && typeof (globalThis as any).process !== 'undefined') {
-    (options as any).agent = new (require('https').Agent)({ rejectUnauthorized: false });
+  if (useTls) {
+    try {
+      const { Agent } = require('undici');
+      (options as any).dispatcher = new Agent({
+        connect: { rejectUnauthorized: false },
+      });
+    } catch {
+      // noop: en Node 20+ undici está disponible por defecto
+    }
   }
 
   try {
@@ -157,8 +183,17 @@ export async function mikrotikRequest(
       throw firstError;
     }
 
-    const fallbackPorts = [443, 80, 8728, 8729, 8730];
     let lastError: Error = firstError;
+
+    // Intento rápido: mismo puerto con protocolo opuesto (HTTP <-> HTTPS)
+    try {
+      return await executeRestRequest(normalizedConfig, path, method, body, !primaryUseTls, 8000);
+    } catch (flipError) {
+      lastError = flipError instanceof Error ? flipError : new Error(String(flipError));
+    }
+
+    // Fallback por puertos comunes
+    const fallbackPorts = [443, 80, 8728, 8729, 8730];
 
     for (const fallbackPort of fallbackPorts) {
       if (fallbackPort === port) continue;
@@ -173,9 +208,21 @@ export async function mikrotikRequest(
         if (isNativeApiPort(fallbackPort)) {
           return await tryNativeApiWithFallback(fallbackConfig, path, method, body);
         }
+
         return await executeRestRequest(fallbackConfig, path, method, body, !!fallbackConfig.useTls, 8000);
       } catch (fallbackError) {
         lastError = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+
+        // Si es un error TLS en este puerto REST, intentamos protocolo opuesto una vez.
+        if (!isNativeApiPort(fallbackPort) && isLikelyTlsNegotiationError(lastError)) {
+          try {
+            return await executeRestRequest(fallbackConfig, path, method, body, !fallbackConfig.useTls, 7000);
+          } catch (oppositeProtocolError) {
+            lastError = oppositeProtocolError instanceof Error
+              ? oppositeProtocolError
+              : new Error(String(oppositeProtocolError));
+          }
+        }
       }
     }
 
