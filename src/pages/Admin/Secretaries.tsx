@@ -202,6 +202,19 @@ export default function Secretaries() {
                           <div className="flex items-center justify-between"><Label>Reactivar servicios</Label><Switch checked={canReactivateQueues} onCheckedChange={setCanReactivateQueues} /></div>
                         </div></AccordionContent>
                       </AccordionItem>
+                      <AccordionItem value="hotspot">
+                        <AccordionTrigger><div className="flex items-center justify-between w-full pr-4"><span>Permisos Hotspot</span><Switch checked={modulePerms.can_manage_hotspot} onCheckedChange={(v) => setModulePerms(prev => ({...prev, can_manage_hotspot: v}))} onClick={(e) => e.stopPropagation()} /></div></AccordionTrigger>
+                        <AccordionContent><div className="space-y-3 pl-4">
+                          <div className="flex items-center justify-between"><Label>Crear usuarios Hotspot</Label><Switch checked={canCreateHotspotUsers} onCheckedChange={setCanCreateHotspotUsers} /></div>
+                          <div className="flex items-center justify-between"><Label>Editar usuarios Hotspot</Label><Switch checked={canEditHotspotUsers} onCheckedChange={setCanEditHotspotUsers} /></div>
+                          <div className="flex items-center justify-between"><Label>Eliminar usuarios Hotspot</Label><Switch checked={canDeleteHotspotUsers} onCheckedChange={setCanDeleteHotspotUsers} /></div>
+                          <div className="flex items-center justify-between"><Label>Gestionar Vouchers</Label><Switch checked={canManageVouchers} onCheckedChange={setCanManageVouchers} /></div>
+                          <div className="flex items-center justify-between"><Label>Vender Vouchers</Label><Switch checked={canSellVouchers} onCheckedChange={setCanSellVouchers} /></div>
+                          <div className="flex items-center justify-between"><Label>Imprimir Vouchers</Label><Switch checked={canPrintVouchers} onCheckedChange={setCanPrintVouchers} /></div>
+                          <div className="flex items-center justify-between"><Label>Ver Contabilidad</Label><Switch checked={canViewHotspotAccounting} onCheckedChange={setCanViewHotspotAccounting} /></div>
+                          <div className="flex items-center justify-between"><Label>Ver Reportes</Label><Switch checked={canViewHotspotReports} onCheckedChange={setCanViewHotspotReports} /></div>
+                        </div></AccordionContent>
+                      </AccordionItem>
                     </Accordion>
                     <Button onClick={handleAssignSecretary} className="w-full">Asignar Secretaria</Button>
                   </div>
