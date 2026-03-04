@@ -238,7 +238,7 @@ export default function Secretaries() {
           ) : assignments && assignments.length > 0 ? (
             <Table>
               <TableHeader><TableRow>
-                <TableHead>Secretaria</TableHead><TableHead>PPPoE</TableHead><TableHead>Queues</TableHead><TableHead>Módulos</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Acciones</TableHead>
+                <TableHead>Secretaria</TableHead><TableHead>PPPoE</TableHead><TableHead>Queues</TableHead><TableHead>Hotspot</TableHead><TableHead>Módulos</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {assignments.map((assignment: any) => {
