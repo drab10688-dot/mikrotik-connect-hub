@@ -512,10 +512,10 @@ export function HmonUsers() {
         <TabsList className="h-9 flex-wrap">
           <TabsTrigger value="usuarios" className="text-xs gap-1"><Wifi className="h-3 w-3" />Usuarios</TabsTrigger>
           <TabsTrigger value="planes" className="text-xs gap-1"><Settings2 className="h-3 w-3" />Planes</TabsTrigger>
-          <TabsTrigger value="vouchers" className="text-xs gap-1"><Ticket className="h-3 w-3" />Vouchers</TabsTrigger>
-          <TabsTrigger value="imprimir" className="text-xs gap-1"><Printer className="h-3 w-3" />Imprimir</TabsTrigger>
-          <TabsTrigger value="contabilidad" className="text-xs gap-1"><PiggyBank className="h-3 w-3" />Contabilidad</TabsTrigger>
-          <TabsTrigger value="reportes" className="text-xs gap-1"><BarChart3 className="h-3 w-3" />Reportes</TabsTrigger>
+          {canManageVouchersP && <TabsTrigger value="vouchers" className="text-xs gap-1"><Ticket className="h-3 w-3" />Vouchers</TabsTrigger>}
+          {canPrintVouchersP && <TabsTrigger value="imprimir" className="text-xs gap-1"><Printer className="h-3 w-3" />Imprimir</TabsTrigger>}
+          {canViewAccounting && <TabsTrigger value="contabilidad" className="text-xs gap-1"><PiggyBank className="h-3 w-3" />Contabilidad</TabsTrigger>}
+          {canViewReports && <TabsTrigger value="reportes" className="text-xs gap-1"><BarChart3 className="h-3 w-3" />Reportes</TabsTrigger>}
         </TabsList>
 
         {/* ═══ USUARIOS TAB ═══ */}
