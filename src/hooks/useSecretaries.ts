@@ -19,6 +19,15 @@ interface AssignSecretaryParams {
   canToggleQueues?: boolean;
   canSuspendQueues?: boolean;
   canReactivateQueues?: boolean;
+  // Hotspot sub-permissions
+  canCreateHotspotUsers?: boolean;
+  canEditHotspotUsers?: boolean;
+  canDeleteHotspotUsers?: boolean;
+  canManageVouchers?: boolean;
+  canSellVouchers?: boolean;
+  canPrintVouchers?: boolean;
+  canViewHotspotAccounting?: boolean;
+  canViewHotspotReports?: boolean;
   // Module permissions
   can_manage_clients?: boolean;
   can_manage_payments?: boolean;
