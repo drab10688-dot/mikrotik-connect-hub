@@ -57,7 +57,7 @@ ${config.logo ? `<img src="${config.logo}" class="logo"/>` : ""}
 <div class="cred-item"><div class="lbl">Contraseña</div><div class="val">${voucher.password}</div></div>
 <div class="cred-item"><div class="lbl">Plan</div><div class="val">${voucher.profile}</div></div>
 ${voucher.validity ? `<div class="cred-item"><div class="lbl">Duración</div><div class="val">${voucher.validity}</div></div>` : ""}
-${voucher.price ? `<div class="cred-item"><div class="lbl">Precio</div><div class="val">$${voucher.price.toFixed(2)}</div></div>` : ""}
+${voucher.price ? `<div class="cred-item"><div class="lbl">Precio</div><div class="val">$${Number(voucher.price).toFixed(2)}</div></div>` : ""}
 </div>
 <div class="footer">Escanea el QR para conectarte automáticamente<br/>Powered by HMON • Omnisync</div>
 </div>
@@ -88,7 +88,7 @@ export async function printCardsA4(vouchers: PrintVoucher[], config: PrintConfig
     <div class="card-row"><span class="card-lbl">PWD:</span><span class="card-val">${v.password}</span></div>
     <div class="card-row"><span class="card-lbl">Plan:</span><span class="card-val">${v.profile}</span></div>
     ${v.validity ? `<div class="card-row"><span class="card-lbl">Dur:</span><span class="card-val">${v.validity}</span></div>` : ""}
-    ${v.price ? `<div class="card-row"><span class="card-lbl">$</span><span class="card-val">${v.price.toFixed(2)}</span></div>` : ""}
+    ${v.price ? `<div class="card-row"><span class="card-lbl">$</span><span class="card-val">${Number(v.price).toFixed(2)}</span></div>` : ""}
   </div>
 </div>`).join("");
 
