@@ -288,7 +288,20 @@ if [ -d "$THEME_SRC" ]; then
   fi
 fi
 
-# 6) Permisos
+# 6) Crear .htaccess si no existe (git clone no copia archivos ocultos)
+if [ ! -f "$NUXROOT/.htaccess" ]; then
+  cat > "$NUXROOT/.htaccess" << 'HTEOF'
+RewriteEngine On
+
+# Redirect to index.php if the requested file/directory doesn't exist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?_route=$1 [QSA,L]
+HTEOF
+  log ".htaccess creado ✓"
+fi
+
+# 6b) Permisos
 chown -R www-data:www-data "$NUXROOT"
 chmod -R 755 "$NUXROOT"
 
