@@ -3,19 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { useSearchParams } from "react-router-dom";
 import { HmonDashboard } from "@/components/hmon/HmonDashboard";
 import { HmonUsers } from "@/components/hmon/HmonUsers";
-import { HmonVouchers } from "@/components/hmon/HmonVouchers";
 import { HmonProfiles } from "@/components/hmon/HmonProfiles";
 import { HmonLog } from "@/components/hmon/HmonLog";
-import { HmonAccounting } from "@/components/hmon/HmonAccounting";
-import { LayoutDashboard, Wifi, Ticket, ScrollText, PiggyBank, Layers } from "lucide-react";
+import { LayoutDashboard, Wifi, ScrollText, Layers } from "lucide-react";
 
 const sectionMeta: Record<string, { label: string; icon: any }> = {
   dashboard: { label: "Dashboard", icon: LayoutDashboard },
   usuarios: { label: "Usuarios", icon: Wifi },
-  vouchers: { label: "Vouchers", icon: Ticket },
   perfiles: { label: "Perfiles", icon: Layers },
   log: { label: "Log", icon: ScrollText },
-  contabilidad: { label: "Contabilidad", icon: PiggyBank },
 };
 
 export default function HotspotMonitor() {
@@ -28,10 +24,8 @@ export default function HotspotMonitor() {
     switch (section) {
       case "dashboard": return <HmonDashboard />;
       case "usuarios": return <HmonUsers />;
-      case "vouchers": return <HmonVouchers />;
       case "perfiles": return <HmonProfiles />;
       case "log": return <HmonLog />;
-      case "contabilidad": return <HmonAccounting />;
       default: return <HmonDashboard />;
     }
   };
