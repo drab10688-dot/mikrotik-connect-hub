@@ -6,37 +6,7 @@ import { useAuth } from './useAuth';
 interface AssignSecretaryParams {
   secretaryId: string;
   mikrotikId: string;
-  canManagePppoe: boolean;
-  canManageQueues: boolean;
-  canCreatePppoe?: boolean;
-  canEditPppoe?: boolean;
-  canDeletePppoe?: boolean;
-  canDisconnectPppoe?: boolean;
-  canTogglePppoe?: boolean;
-  canCreateQueues?: boolean;
-  canEditQueues?: boolean;
-  canDeleteQueues?: boolean;
-  canToggleQueues?: boolean;
-  canSuspendQueues?: boolean;
-  canReactivateQueues?: boolean;
-  // Hotspot sub-permissions
-  canCreateHotspotUsers?: boolean;
-  canEditHotspotUsers?: boolean;
-  canDeleteHotspotUsers?: boolean;
-  canManageVouchers?: boolean;
-  canSellVouchers?: boolean;
-  canPrintVouchers?: boolean;
-  canViewHotspotAccounting?: boolean;
-  canViewHotspotReports?: boolean;
-  // Module permissions
-  can_manage_clients?: boolean;
-  can_manage_payments?: boolean;
-  can_manage_billing?: boolean;
-  can_manage_reports?: boolean;
-  can_manage_hotspot?: boolean;
-  can_manage_address_list?: boolean;
-  can_manage_backup?: boolean;
-  can_manage_vps_services?: boolean;
+  [key: string]: any; // All permission keys are dynamic
 }
 
 export const useSecretaries = (mikrotikId?: string) => {
@@ -54,37 +24,10 @@ export const useSecretaries = (mikrotikId?: string) => {
 
   const assignSecretaryMutation = useMutation({
     mutationFn: async (params: AssignSecretaryParams) => {
-      return await secretariesApi.assign(params.mikrotikId, {
-        secretary_id: params.secretaryId,
-        can_manage_pppoe: params.canManagePppoe,
-        can_manage_queues: params.canManageQueues,
-        can_create_pppoe: params.canCreatePppoe ?? true,
-        can_edit_pppoe: params.canEditPppoe ?? true,
-        can_delete_pppoe: params.canDeletePppoe ?? true,
-        can_disconnect_pppoe: params.canDisconnectPppoe ?? true,
-        can_toggle_pppoe: params.canTogglePppoe ?? true,
-        can_create_queues: params.canCreateQueues ?? true,
-        can_edit_queues: params.canEditQueues ?? true,
-        can_delete_queues: params.canDeleteQueues ?? true,
-        can_toggle_queues: params.canToggleQueues ?? true,
-        can_suspend_queues: params.canSuspendQueues ?? true,
-        can_reactivate_queues: params.canReactivateQueues ?? true,
-        can_manage_clients: params.can_manage_clients ?? true,
-        can_manage_payments: params.can_manage_payments ?? true,
-        can_manage_billing: params.can_manage_billing ?? true,
-        can_manage_reports: params.can_manage_reports ?? true,
-        can_manage_hotspot: params.can_manage_hotspot ?? true,
-        can_manage_address_list: params.can_manage_address_list ?? true,
-        can_manage_backup: params.can_manage_backup ?? true,
-        can_manage_vps_services: params.can_manage_vps_services ?? true,
-        can_create_hotspot_users: params.canCreateHotspotUsers ?? true,
-        can_edit_hotspot_users: params.canEditHotspotUsers ?? true,
-        can_delete_hotspot_users: params.canDeleteHotspotUsers ?? true,
-        can_manage_vouchers: params.canManageVouchers ?? true,
-        can_sell_vouchers: params.canSellVouchers ?? true,
-        can_print_vouchers: params.canPrintVouchers ?? true,
-        can_view_hotspot_accounting: params.canViewHotspotAccounting ?? true,
-        can_view_hotspot_reports: params.canViewHotspotReports ?? true,
+      const { secretaryId, mikrotikId, ...permData } = params;
+      return await secretariesApi.assign(mikrotikId, {
+        secretary_id: secretaryId,
+        ...permData,
       });
     },
     onSuccess: () => {
