@@ -564,10 +564,10 @@ export function HmonUsers() {
                       <TableCell className="text-[10px] text-muted-foreground max-w-[200px] truncate">{u.comment || "-"}</TableCell>
                       <TableCell><Badge variant={u.disabled === "true" ? "destructive" : "default"} className="text-[9px]">{u.disabled === "true" ? "Deshabilitado" : "Activo"}</Badge></TableCell>
                       <TableCell className="text-right">
-                        <div className="flex gap-0.5 justify-end">
-                          <Button variant="ghost" size="sm" onClick={() => handlePrintUser(u)} title="Imprimir"><Printer className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="sm" onClick={() => setDeleteId(u[".id"])}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                        </div>
+                         <div className="flex gap-0.5 justify-end">
+                          {canPrintVouchersP && <Button variant="ghost" size="sm" onClick={() => handlePrintUser(u)} title="Imprimir"><Printer className="h-3.5 w-3.5" /></Button>}
+                          {canDeleteUsers && <Button variant="ghost" size="sm" onClick={() => setDeleteId(u[".id"])}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
+                         </div>
                       </TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-xs">Sin usuarios</TableCell></TableRow>}
