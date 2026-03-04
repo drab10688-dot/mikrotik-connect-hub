@@ -10,6 +10,7 @@ import { pppoeRouter } from './routes/pppoe';
 import { hotspotRouter } from './routes/hotspot';
 import { queuesRouter } from './routes/queues';
 import { vouchersRouter } from './routes/vouchers';
+import { portalAdsRouter } from './routes/portal-ads';
 import { billingRouter } from './routes/billing';
 import { invoicesRouter } from './routes/invoices';
 import { addressListRouter } from './routes/address-list';
@@ -50,6 +51,11 @@ app.get('/api/health', (_, res) => {
 // Public routes
 app.use('/api/auth', authRouter);
 app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need auth via route-level check
+app.use('/api/portal-ads', (req, res, next) => {
+  // Public routes don't need auth
+  if (req.path.startsWith('/public/')) return next();
+  return authMiddleware(req, res, next);
+}, portalAdsRouter);
 
 // Protected routes
 app.use('/api/devices', authMiddleware, devicesRouter);

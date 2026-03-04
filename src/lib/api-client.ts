@@ -520,3 +520,19 @@ export const hotspotLoginApi = {
   nuxbillLogin: (params: { mikrotik_id: string; code?: string; username?: string; password?: string; mode?: 'voucher' | 'customer' }) =>
     apiPost<any>('/hotspot/nuxbill-login', params, { noAuth: true }),
 };
+
+// ─── Portal Ads API ──────────────────────────────────────
+export const portalAdsApi = {
+  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/portal-ads/${mikrotikId}`)),
+  create: (mikrotikId: string, data: any) => apiPost(`/portal-ads/${mikrotikId}`, data),
+  update: (mikrotikId: string, adId: string, data: any) => apiPut(`/portal-ads/${mikrotikId}/${adId}`, data),
+  delete: (mikrotikId: string, adId: string) => apiDelete(`/portal-ads/${mikrotikId}/${adId}`),
+  stats: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/portal-ads/${mikrotikId}/stats/summary`)),
+  // Public (no auth)
+  publicList: async (mikrotikId: string, position?: string) => {
+    const q = position ? `?position=${position}` : '';
+    return unwrapArray(await apiGet<any>(`/portal-ads/public/${mikrotikId}${q}`, { noAuth: true }));
+  },
+  trackImpression: (adId: string) => apiPost(`/portal-ads/public/${adId}/impression`, {}, { noAuth: true }),
+  trackClick: (adId: string) => apiPost(`/portal-ads/public/${adId}/click`, {}, { noAuth: true }),
+};

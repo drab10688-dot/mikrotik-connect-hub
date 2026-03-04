@@ -163,6 +163,23 @@ fi
 echo "[6/10] Verificando schema radius (tabla nas)..."
 ensure_radius_schema || true
 
+# ─── Migrate PostgreSQL (portal_ads) ──
+echo "[6.5/10] Migrando PostgreSQL..."
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+CREATE TABLE IF NOT EXISTS portal_ads (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL, description TEXT, image_url TEXT, link_url TEXT,
+  advertiser_name TEXT NOT NULL, advertiser_phone TEXT, advertiser_email TEXT,
+  position TEXT DEFAULT 'banner', is_active BOOLEAN DEFAULT true, priority INTEGER DEFAULT 0,
+  start_date DATE, end_date DATE, impressions INTEGER DEFAULT 0, clicks INTEGER DEFAULT 0,
+  monthly_fee NUMERIC DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
+CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
+" 2>/dev/null && echo "  ✓ portal_ads OK" || echo "  ⚠ portal_ads skip"
+
 echo "[7/10] Reiniciando FreeRADIUS + PHPNuxBill..."
 docker compose up -d freeradius phpnuxbill
 
