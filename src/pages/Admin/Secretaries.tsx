@@ -280,6 +280,12 @@ export default function Secretaries() {
                                       <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
                                     ))}
                                   </div>
+                                  <div className="space-y-3">
+                                    <h3 className="font-semibold">Permisos Hotspot</h3>
+                                    {[['can_create_hotspot_users','Crear usuarios'],['can_edit_hotspot_users','Editar usuarios'],['can_delete_hotspot_users','Eliminar usuarios'],['can_manage_vouchers','Gestionar Vouchers'],['can_sell_vouchers','Vender Vouchers'],['can_print_vouchers','Imprimir Vouchers'],['can_view_hotspot_accounting','Ver Contabilidad'],['can_view_hotspot_reports','Ver Reportes']].map(([key, label]) => (
+                                      <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </DialogContent>
