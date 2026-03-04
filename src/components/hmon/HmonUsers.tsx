@@ -20,6 +20,7 @@ import { useHotspotActiveUsers, useHotspotUsers } from "@/hooks/useMikrotikData"
 import { useVoucherInventory } from "@/hooks/useVoucherInventory";
 import { useVoucherPresets } from "@/hooks/useVoucherPresets";
 import { useAuth } from "@/hooks/useAuth";
+import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { ResellerManagement } from "@/components/vouchers/ResellerManagement";
 import { VoucherQRDialog } from "@/components/vouchers/VoucherQRDialog";
@@ -229,8 +230,20 @@ export function HmonUsers() {
   const [startDate, setStartDate] = useState<Date>(startOfMonth(new Date()));
   const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
 
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin, isSecretary } = useAuth();
+  const { assignments: secretaryAssignments } = useSecretaryPermissions();
   const qc = useQueryClient();
+
+  // Get hotspot sub-permissions for secretary
+  const currentPerms = secretaryAssignments?.find((a: any) => a.mikrotik_id === deviceId);
+  const canCreateUsers = !isSecretary || currentPerms?.can_create_hotspot_users !== false;
+  const canEditUsers = !isSecretary || currentPerms?.can_edit_hotspot_users !== false;
+  const canDeleteUsers = !isSecretary || currentPerms?.can_delete_hotspot_users !== false;
+  const canManageVouchersP = !isSecretary || currentPerms?.can_manage_vouchers !== false;
+  const canSellVouchersP = !isSecretary || currentPerms?.can_sell_vouchers !== false;
+  const canPrintVouchersP = !isSecretary || currentPerms?.can_print_vouchers !== false;
+  const canViewAccounting = !isSecretary || currentPerms?.can_view_hotspot_accounting !== false;
+  const canViewReports = !isSecretary || currentPerms?.can_view_hotspot_reports !== false;
 
   // Data queries
   const { data: activeData } = useHotspotActiveUsers();
@@ -499,10 +512,10 @@ export function HmonUsers() {
         <TabsList className="h-9 flex-wrap">
           <TabsTrigger value="usuarios" className="text-xs gap-1"><Wifi className="h-3 w-3" />Usuarios</TabsTrigger>
           <TabsTrigger value="planes" className="text-xs gap-1"><Settings2 className="h-3 w-3" />Planes</TabsTrigger>
-          <TabsTrigger value="vouchers" className="text-xs gap-1"><Ticket className="h-3 w-3" />Vouchers</TabsTrigger>
-          <TabsTrigger value="imprimir" className="text-xs gap-1"><Printer className="h-3 w-3" />Imprimir</TabsTrigger>
-          <TabsTrigger value="contabilidad" className="text-xs gap-1"><PiggyBank className="h-3 w-3" />Contabilidad</TabsTrigger>
-          <TabsTrigger value="reportes" className="text-xs gap-1"><BarChart3 className="h-3 w-3" />Reportes</TabsTrigger>
+          {canManageVouchersP && <TabsTrigger value="vouchers" className="text-xs gap-1"><Ticket className="h-3 w-3" />Vouchers</TabsTrigger>}
+          {canPrintVouchersP && <TabsTrigger value="imprimir" className="text-xs gap-1"><Printer className="h-3 w-3" />Imprimir</TabsTrigger>}
+          {canViewAccounting && <TabsTrigger value="contabilidad" className="text-xs gap-1"><PiggyBank className="h-3 w-3" />Contabilidad</TabsTrigger>}
+          {canViewReports && <TabsTrigger value="reportes" className="text-xs gap-1"><BarChart3 className="h-3 w-3" />Reportes</TabsTrigger>}
         </TabsList>
 
         {/* ═══ USUARIOS TAB ═══ */}
@@ -511,8 +524,8 @@ export function HmonUsers() {
             <div className="relative md:w-64"><Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" /><Input placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-7 h-7 text-xs" /></div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => cleanExpiredMutation.mutate()} disabled={cleanExpiredMutation.isPending}><RefreshCw className={`h-3.5 w-3.5 mr-1 ${cleanExpiredMutation.isPending ? "animate-spin" : ""}`} />Limpiar</Button>
-              <Button size="sm" variant="outline" onClick={() => setShowBatchPin(true)}><Key className="h-3.5 w-3.5 mr-1" />PINs</Button>
-              <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5 mr-1" />Agregar</Button>
+              {canCreateUsers && <Button size="sm" variant="outline" onClick={() => setShowBatchPin(true)}><Key className="h-3.5 w-3.5 mr-1" />PINs</Button>}
+              {canCreateUsers && <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5 mr-1" />Agregar</Button>}
             </div>
           </div>
 
@@ -551,10 +564,10 @@ export function HmonUsers() {
                       <TableCell className="text-[10px] text-muted-foreground max-w-[200px] truncate">{u.comment || "-"}</TableCell>
                       <TableCell><Badge variant={u.disabled === "true" ? "destructive" : "default"} className="text-[9px]">{u.disabled === "true" ? "Deshabilitado" : "Activo"}</Badge></TableCell>
                       <TableCell className="text-right">
-                        <div className="flex gap-0.5 justify-end">
-                          <Button variant="ghost" size="sm" onClick={() => handlePrintUser(u)} title="Imprimir"><Printer className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="sm" onClick={() => setDeleteId(u[".id"])}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                        </div>
+                         <div className="flex gap-0.5 justify-end">
+                          {canPrintVouchersP && <Button variant="ghost" size="sm" onClick={() => handlePrintUser(u)} title="Imprimir"><Printer className="h-3.5 w-3.5" /></Button>}
+                          {canDeleteUsers && <Button variant="ghost" size="sm" onClick={() => setDeleteId(u[".id"])}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
+                         </div>
                       </TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-xs">Sin usuarios</TableCell></TableRow>}
