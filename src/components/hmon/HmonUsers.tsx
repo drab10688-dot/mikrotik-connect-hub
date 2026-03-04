@@ -524,8 +524,8 @@ export function HmonUsers() {
             <div className="relative md:w-64"><Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" /><Input placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-7 h-7 text-xs" /></div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => cleanExpiredMutation.mutate()} disabled={cleanExpiredMutation.isPending}><RefreshCw className={`h-3.5 w-3.5 mr-1 ${cleanExpiredMutation.isPending ? "animate-spin" : ""}`} />Limpiar</Button>
-              <Button size="sm" variant="outline" onClick={() => setShowBatchPin(true)}><Key className="h-3.5 w-3.5 mr-1" />PINs</Button>
-              <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5 mr-1" />Agregar</Button>
+              {canCreateUsers && <Button size="sm" variant="outline" onClick={() => setShowBatchPin(true)}><Key className="h-3.5 w-3.5 mr-1" />PINs</Button>}
+              {canCreateUsers && <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5 mr-1" />Agregar</Button>}
             </div>
           </div>
 
