@@ -230,8 +230,20 @@ export function HmonUsers() {
   const [startDate, setStartDate] = useState<Date>(startOfMonth(new Date()));
   const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
 
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin, isSecretary } = useAuth();
+  const { assignments: secretaryAssignments } = useSecretaryPermissions();
   const qc = useQueryClient();
+
+  // Get hotspot sub-permissions for secretary
+  const currentPerms = secretaryAssignments?.find((a: any) => a.mikrotik_id === deviceId);
+  const canCreateUsers = !isSecretary || currentPerms?.can_create_hotspot_users !== false;
+  const canEditUsers = !isSecretary || currentPerms?.can_edit_hotspot_users !== false;
+  const canDeleteUsers = !isSecretary || currentPerms?.can_delete_hotspot_users !== false;
+  const canManageVouchersP = !isSecretary || currentPerms?.can_manage_vouchers !== false;
+  const canSellVouchersP = !isSecretary || currentPerms?.can_sell_vouchers !== false;
+  const canPrintVouchersP = !isSecretary || currentPerms?.can_print_vouchers !== false;
+  const canViewAccounting = !isSecretary || currentPerms?.can_view_hotspot_accounting !== false;
+  const canViewReports = !isSecretary || currentPerms?.can_view_hotspot_reports !== false;
 
   // Data queries
   const { data: activeData } = useHotspotActiveUsers();
