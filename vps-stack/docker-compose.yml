@@ -51,7 +51,7 @@ services:
       NUXBILL_DB_HOST: mariadb
       NUXBILL_DB_PORT: 3306
       NUXBILL_DB_USER: ${NUXBILL_DB_USER:-nuxbill}
-      NUXBILL_DB_PASS: ${NUXBILL_DB_PASS:-changeme_nuxbill}
+      NUXBILL_DB_PASS: ${NUXBILL_DB_PASSWORD:-changeme_nuxbill}
       NUXBILL_DB_NAME: ${NUXBILL_DB_NAME:-phpnuxbill}
     ports:
       - "3000:3000"

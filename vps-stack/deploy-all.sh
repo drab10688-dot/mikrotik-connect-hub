@@ -25,7 +25,30 @@ fi
 
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
 RADIUS_DB_PASSWORD="${RADIUS_DB_PASSWORD:-changeme_radius}"
-NUXBILL_DB_PASSWORD="${NUXBILL_DB_PASSWORD:-changeme_nuxbill}"
+NUXBILL_DB_PASSWORD="${NUXBILL_DB_PASSWORD:-${NUXBILL_DB_PASS:-changeme_nuxbill}}"
+NUXBILL_DB_PASS="${NUXBILL_DB_PASS:-$NUXBILL_DB_PASSWORD}"
+
+sync_nuxbill_env_file() {
+  local env_file="$APP_DIR/.env"
+  local escaped_pw
+
+  [ -f "$env_file" ] || return 0
+
+  escaped_pw="${NUXBILL_DB_PASSWORD//\\/\\\\}"
+  escaped_pw="${escaped_pw//&/\\&}"
+
+  if grep -q '^NUXBILL_DB_PASSWORD=' "$env_file"; then
+    sed -i "s|^NUXBILL_DB_PASSWORD=.*|NUXBILL_DB_PASSWORD=${escaped_pw}|" "$env_file"
+  else
+    echo "NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}" >> "$env_file"
+  fi
+
+  if grep -q '^NUXBILL_DB_PASS=' "$env_file"; then
+    sed -i "s|^NUXBILL_DB_PASS=.*|NUXBILL_DB_PASS=${escaped_pw}|" "$env_file"
+  else
+    echo "NUXBILL_DB_PASS=${NUXBILL_DB_PASSWORD}" >> "$env_file"
+  fi
+}
 
 ensure_mariadb_accounts() {
   echo "  → Sincronizando usuarios MariaDB (radius/nuxbill)..."
@@ -125,6 +148,7 @@ chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 # ─── Rebuild core containers ───────────────────
 echo "[4/10] Reconstruyendo API + PHPNuxBill..."
 cd "$APP_DIR"
+sync_nuxbill_env_file
 docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."

@@ -107,6 +107,7 @@ handle_existing_installation() {
         # Regenerate radius configs from .env
         cd "$INSTALL_DIR"
         source .env 2>/dev/null || true
+        sync_nuxbill_env_file "$INSTALL_DIR/.env"
         generate_radius_configs
 
         rm -rf "$TEMP_DIR" /tmp/omnisync-env-backup
@@ -200,8 +201,46 @@ client mikrotik {
 CLIENTEOF
 }
 
+resolve_nuxbill_password() {
+  if [ -n "${NUXBILL_DB_PASSWORD:-}" ]; then
+    echo "${NUXBILL_DB_PASSWORD}"
+  elif [ -n "${NUXBILL_DB_PASS:-}" ]; then
+    echo "${NUXBILL_DB_PASS}"
+  else
+    echo "changeme_nuxbill"
+  fi
+}
+
+sync_nuxbill_env_file() {
+  local env_file="${1:-$INSTALL_DIR/.env}"
+  local nuxbill_pw
+  local escaped_pw
+
+  nuxbill_pw="$(resolve_nuxbill_password)"
+  NUXBILL_DB_PASSWORD="$nuxbill_pw"
+  NUXBILL_DB_PASS="$nuxbill_pw"
+
+  [ -f "$env_file" ] || return 0
+
+  escaped_pw="${nuxbill_pw//\\/\\\\}"
+  escaped_pw="${escaped_pw//&/\\&}"
+
+  if grep -q '^NUXBILL_DB_PASSWORD=' "$env_file"; then
+    sed -i "s|^NUXBILL_DB_PASSWORD=.*|NUXBILL_DB_PASSWORD=${escaped_pw}|" "$env_file"
+  else
+    echo "NUXBILL_DB_PASSWORD=${nuxbill_pw}" >> "$env_file"
+  fi
+
+  if grep -q '^NUXBILL_DB_PASS=' "$env_file"; then
+    sed -i "s|^NUXBILL_DB_PASS=.*|NUXBILL_DB_PASS=${escaped_pw}|" "$env_file"
+  else
+    echo "NUXBILL_DB_PASS=${nuxbill_pw}" >> "$env_file"
+  fi
+}
+
 generate_nuxbill_sql() {
-  local nuxbill_pw="${NUXBILL_DB_PASSWORD:-changeme_nuxbill}"
+  local nuxbill_pw
+  nuxbill_pw="$(resolve_nuxbill_password)"
   
   mkdir -p "$INSTALL_DIR/mariadb-init"
   cat > "$INSTALL_DIR/mariadb-init/02-nuxbill.sql" << NUXEOF
@@ -218,7 +257,8 @@ NUXEOF
 ensure_mariadb_accounts() {
   local root_pw="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
   local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
-  local nuxbill_pw="${NUXBILL_DB_PASSWORD:-changeme_nuxbill}"
+  local nuxbill_pw
+  nuxbill_pw="$(resolve_nuxbill_password)"
 
   echo -e "${YELLOW}Sincronizando usuarios MariaDB (radius/nuxbill)...${NC}"
 
@@ -367,6 +407,7 @@ DB_PASSWORD=$(openssl rand -hex 16)
 RADIUS_DB_PASSWORD=$(openssl rand -hex 16)
 MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
+NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
 
 # MikroTik config (optional)
@@ -406,9 +447,12 @@ RADIUS_SECRET=${RADIUS_SECRET}
 RADIUS_DB_PASSWORD=${RADIUS_DB_PASSWORD}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
+NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
 NUXBILL_APP_URL=http://${VPS_IP}:8080
 TZ=America/Bogota
 EOF
+
+sync_nuxbill_env_file ".env"
 
 echo -e "${GREEN}.env generado ✓${NC}"
 
