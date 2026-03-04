@@ -484,11 +484,40 @@ BEGIN
     'users', 'mikrotik_devices', 'billing_config', 'client_billing_settings',
     'client_invoices', 'payment_transactions', 'isp_contracts', 'vouchers',
     'service_options', 'payment_platforms', 'telegram_config', 'whatsapp_config',
-    'cloudflare_config', 'company_info', 'profiles'
+    'cloudflare_config', 'company_info', 'profiles', 'portal_ads'
   ] LOOP
     EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t, t);
   END LOOP;
 END $$;
+
+-- ============================================
+-- Portal Ads (Publicidad en Portal Cautivo)
+-- ============================================
+CREATE TABLE portal_ads (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  description TEXT,
+  image_url TEXT,
+  link_url TEXT,
+  advertiser_name TEXT NOT NULL,
+  advertiser_phone TEXT,
+  advertiser_email TEXT,
+  position TEXT DEFAULT 'banner', -- banner, sidebar, popup, footer
+  is_active BOOLEAN DEFAULT true,
+  priority INTEGER DEFAULT 0,
+  start_date DATE,
+  end_date DATE,
+  impressions INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  monthly_fee NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
+CREATE INDEX idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 
 -- ============================================
 -- Default Super Admin (password: admin123)

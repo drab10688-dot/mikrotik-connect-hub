@@ -1,5 +1,8 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
+import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Server, Megaphone } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
@@ -11,11 +14,30 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Acceso directo a PHPNuxBill y configuración de Cloudflare.
+            Gestión de servicios, portal cautivo y publicidad.
           </p>
         </div>
 
-        <VpsServicesCard mikrotikId={mikrotikId} />
+        <Tabs defaultValue="services" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="services" className="gap-2">
+              <Server className="h-4 w-4" />
+              Servicios
+            </TabsTrigger>
+            <TabsTrigger value="ads" className="gap-2">
+              <Megaphone className="h-4 w-4" />
+              Publicidad Portal
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="services">
+            <VpsServicesCard mikrotikId={mikrotikId} />
+          </TabsContent>
+
+          <TabsContent value="ads">
+            <PortalAdsManager />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

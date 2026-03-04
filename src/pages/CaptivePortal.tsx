@@ -3,7 +3,7 @@ import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Cl
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { hotspotLoginApi } from "@/lib/api-client";
+import { hotspotLoginApi, portalAdsApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import omnisyncLogo from "@/assets/omnisync-sphere.png";
 import { getSelectedTemplate, getCustomLogo, getCustomTitle } from "@/lib/portal-templates";
@@ -28,6 +28,8 @@ export default function CaptivePortal() {
   const scanIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cameraSupported, setCameraSupported] = useState(true);
+  const [portalAds, setPortalAds] = useState<any[]>([]);
+  const impressionTracked = useRef<Set<string>>(new Set());
 
   const template = getSelectedTemplate();
   const s = template.styles;
@@ -37,7 +39,20 @@ export default function CaptivePortal() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id") || params.get("mikrotik");
-    if (id) setMikrotikId(id);
+    if (id) {
+      setMikrotikId(id);
+      // Load portal ads
+      portalAdsApi.publicList(id).then((ads) => {
+        setPortalAds(ads);
+        // Track impressions
+        ads.forEach((ad: any) => {
+          if (!impressionTracked.current.has(ad.id)) {
+            impressionTracked.current.add(ad.id);
+            portalAdsApi.trackImpression(ad.id).catch(() => {});
+          }
+        });
+      }).catch(() => {});
+    }
     const u = params.get("username"); const p = params.get("password");
     if (u) { setUsername(u); setMode("credentials"); }
     if (p) setPassword(p);
@@ -288,6 +303,33 @@ export default function CaptivePortal() {
         </div>
       )}
 
+      {/* Banner Ads (above card) */}
+      {portalAds.filter(a => a.position === 'banner').length > 0 && (
+        <div className="w-full max-w-md relative z-10 mb-3 space-y-2">
+          {portalAds.filter(a => a.position === 'banner').map((ad) => (
+            <a
+              key={ad.id}
+              href={ad.link_url || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => portalAdsApi.trackClick(ad.id).catch(() => {})}
+              className="block rounded-xl overflow-hidden transition-transform hover:scale-[1.02]"
+              style={{ background: s.cardBg, backdropFilter: "blur(12px)", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}
+            >
+              {ad.image_url ? (
+                <img src={ad.image_url} alt={ad.title} className="w-full max-h-24 object-cover" />
+              ) : (
+                <div className="px-4 py-3">
+                  <p className="text-sm font-semibold" style={{ color: s.titleColor }}>{ad.title}</p>
+                  {ad.description && <p className="text-xs mt-0.5" style={{ color: s.subtitleColor }}>{ad.description}</p>}
+                  <p className="text-[10px] mt-1 opacity-50" style={{ color: s.subtitleColor }}>📢 {ad.advertiser_name}</p>
+                </div>
+              )}
+            </a>
+          ))}
+        </div>
+      )}
+
       {/* Card */}
       <Card className="w-full max-w-md relative z-10 border-0 shadow-2xl" style={{ background: s.cardBg, backdropFilter: "blur(20px)", boxShadow: s.cardShadow }}>
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px" style={{ background: s.cardTopLine }} />
@@ -482,6 +524,34 @@ export default function CaptivePortal() {
           </div>
         </div>
       </Card>
+
+      {/* Footer Ads */}
+      {portalAds.filter(a => a.position === 'footer').length > 0 && (
+        <div className="w-full max-w-md relative z-10 mt-3 space-y-2">
+          {portalAds.filter(a => a.position === 'footer').map((ad) => (
+            <a
+              key={ad.id}
+              href={ad.link_url || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => portalAdsApi.trackClick(ad.id).catch(() => {})}
+              className="block rounded-xl px-4 py-3 transition-transform hover:scale-[1.02]"
+              style={{ background: s.cardBg, backdropFilter: "blur(12px)", boxShadow: "0 2px 10px rgba(0,0,0,0.1)" }}
+            >
+              <div className="flex items-center gap-3">
+                {ad.image_url && (
+                  <img src={ad.image_url} alt="" className="h-10 w-10 rounded-lg object-cover flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: s.titleColor }}>{ad.title}</p>
+                  {ad.description && <p className="text-xs truncate" style={{ color: s.subtitleColor }}>{ad.description}</p>}
+                </div>
+                <span className="text-[10px] opacity-40 flex-shrink-0" style={{ color: s.subtitleColor }}>AD</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Scan animation keyframes */}
       <style>{`
