@@ -24,10 +24,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 const hotspotSubItems = [
   { icon: LayoutDashboard, label: "Dashboard", section: "dashboard" },
   { icon: Wifi, label: "Usuarios", section: "usuarios" },
-  { icon: Ticket, label: "Vouchers", section: "vouchers" },
   { icon: Gauge, label: "Perfiles", section: "perfiles" },
   { icon: ScrollText, label: "Log", section: "log" },
-  { icon: PiggyBank, label: "Contabilidad", section: "contabilidad" },
 ];
 
 const menuItems = [
