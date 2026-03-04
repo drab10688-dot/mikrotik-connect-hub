@@ -439,6 +439,32 @@ CREATE TABLE whatsapp_messages (
 );
 
 -- ============================================
+-- Portal Ads (Publicidad en Portal Cautivo)
+-- ============================================
+CREATE TABLE portal_ads (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  description TEXT,
+  image_url TEXT,
+  link_url TEXT,
+  advertiser_name TEXT NOT NULL,
+  advertiser_phone TEXT,
+  advertiser_email TEXT,
+  position TEXT DEFAULT 'banner',
+  is_active BOOLEAN DEFAULT true,
+  priority INTEGER DEFAULT 0,
+  start_date DATE,
+  end_date DATE,
+  impressions INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  monthly_fee NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
 -- Indexes
 -- ============================================
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
@@ -456,6 +482,8 @@ CREATE INDEX idx_vouchers_status ON vouchers(status);
 CREATE INDEX idx_profiles_user_id ON profiles(user_id);
 CREATE INDEX idx_telegram_messages_mikrotik ON telegram_messages(mikrotik_id);
 CREATE INDEX idx_whatsapp_messages_mikrotik ON whatsapp_messages(mikrotik_id);
+CREATE INDEX idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
+CREATE INDEX idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 
 -- ============================================
 -- Helper Functions
@@ -491,35 +519,6 @@ BEGIN
 END $$;
 
 -- ============================================
--- Portal Ads (Publicidad en Portal Cautivo)
--- ============================================
-CREATE TABLE portal_ads (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
-  created_by UUID NOT NULL REFERENCES users(id),
-  title TEXT NOT NULL,
-  description TEXT,
-  image_url TEXT,
-  link_url TEXT,
-  advertiser_name TEXT NOT NULL,
-  advertiser_phone TEXT,
-  advertiser_email TEXT,
-  position TEXT DEFAULT 'banner', -- banner, sidebar, popup, footer
-  is_active BOOLEAN DEFAULT true,
-  priority INTEGER DEFAULT 0,
-  start_date DATE,
-  end_date DATE,
-  impressions INTEGER DEFAULT 0,
-  clicks INTEGER DEFAULT 0,
-  monthly_fee NUMERIC DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
-CREATE INDEX idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
-
--- ============================================
 -- Default Super Admin (password: admin123)
 -- CAMBIAR EN PRODUCCIÓN
 -- ============================================
@@ -534,6 +533,5 @@ VALUES (
 INSERT INTO user_roles (user_id, role)
 SELECT id, 'super_admin'::app_role FROM users WHERE email = 'admin@omnisync.local';
 
--- Create profile for default admin
 INSERT INTO profiles (user_id, email, full_name)
 SELECT id, email, full_name FROM users WHERE email = 'admin@omnisync.local';
