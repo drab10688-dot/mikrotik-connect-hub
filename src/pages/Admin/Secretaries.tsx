@@ -50,6 +50,16 @@ export default function Secretaries() {
   const [canSuspendQueues, setCanSuspendQueues] = useState(true);
   const [canReactivateQueues, setCanReactivateQueues] = useState(true);
 
+  // Hotspot sub-permissions
+  const [canCreateHotspotUsers, setCanCreateHotspotUsers] = useState(true);
+  const [canEditHotspotUsers, setCanEditHotspotUsers] = useState(true);
+  const [canDeleteHotspotUsers, setCanDeleteHotspotUsers] = useState(true);
+  const [canManageVouchers, setCanManageVouchers] = useState(true);
+  const [canSellVouchers, setCanSellVouchers] = useState(true);
+  const [canPrintVouchers, setCanPrintVouchers] = useState(true);
+  const [canViewHotspotAccounting, setCanViewHotspotAccounting] = useState(true);
+  const [canViewHotspotReports, setCanViewHotspotReports] = useState(true);
+
   // Module permissions
   const [modulePerms, setModulePerms] = useState<Record<string, boolean>>(
     Object.fromEntries(MODULE_PERMISSIONS.map(p => [p.key, true]))
