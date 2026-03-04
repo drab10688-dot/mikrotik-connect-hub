@@ -121,6 +121,9 @@ export default function Secretaries() {
     setCanManagePppoe(true); setCanManageQueues(true);
     setCanCreatePppoe(true); setCanEditPppoe(true); setCanDeletePppoe(true); setCanDisconnectPppoe(true); setCanTogglePppoe(true);
     setCanCreateQueues(true); setCanEditQueues(true); setCanDeleteQueues(true); setCanToggleQueues(true); setCanSuspendQueues(true); setCanReactivateQueues(true);
+    setCanCreateHotspotUsers(true); setCanEditHotspotUsers(true); setCanDeleteHotspotUsers(true);
+    setCanManageVouchers(true); setCanSellVouchers(true); setCanPrintVouchers(true);
+    setCanViewHotspotAccounting(true); setCanViewHotspotReports(true);
     setModulePerms(Object.fromEntries(MODULE_PERMISSIONS.map(p => [p.key, true])));
   };
 
