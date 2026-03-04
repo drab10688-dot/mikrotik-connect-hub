@@ -19,6 +19,15 @@ interface AssignSecretaryParams {
   canToggleQueues?: boolean;
   canSuspendQueues?: boolean;
   canReactivateQueues?: boolean;
+  // Module permissions
+  can_manage_clients?: boolean;
+  can_manage_payments?: boolean;
+  can_manage_billing?: boolean;
+  can_manage_reports?: boolean;
+  can_manage_hotspot?: boolean;
+  can_manage_address_list?: boolean;
+  can_manage_backup?: boolean;
+  can_manage_vps_services?: boolean;
 }
 
 export const useSecretaries = (mikrotikId?: string) => {
@@ -51,6 +60,14 @@ export const useSecretaries = (mikrotikId?: string) => {
         can_toggle_queues: params.canToggleQueues ?? true,
         can_suspend_queues: params.canSuspendQueues ?? true,
         can_reactivate_queues: params.canReactivateQueues ?? true,
+        can_manage_clients: params.can_manage_clients ?? true,
+        can_manage_payments: params.can_manage_payments ?? true,
+        can_manage_billing: params.can_manage_billing ?? true,
+        can_manage_reports: params.can_manage_reports ?? true,
+        can_manage_hotspot: params.can_manage_hotspot ?? true,
+        can_manage_address_list: params.can_manage_address_list ?? true,
+        can_manage_backup: params.can_manage_backup ?? true,
+        can_manage_vps_services: params.can_manage_vps_services ?? true,
       });
     },
     onSuccess: () => {

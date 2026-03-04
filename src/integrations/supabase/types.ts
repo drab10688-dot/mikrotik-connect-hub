@@ -650,8 +650,16 @@ export type Database = {
           can_disconnect_pppoe: boolean | null
           can_edit_pppoe: boolean | null
           can_edit_queues: boolean | null
+          can_manage_address_list: boolean | null
+          can_manage_backup: boolean | null
+          can_manage_billing: boolean | null
+          can_manage_clients: boolean | null
+          can_manage_hotspot: boolean | null
+          can_manage_payments: boolean | null
           can_manage_pppoe: boolean | null
           can_manage_queues: boolean | null
+          can_manage_reports: boolean | null
+          can_manage_vps_services: boolean | null
           can_reactivate_queues: boolean | null
           can_suspend_queues: boolean | null
           can_toggle_pppoe: boolean | null
@@ -670,8 +678,16 @@ export type Database = {
           can_disconnect_pppoe?: boolean | null
           can_edit_pppoe?: boolean | null
           can_edit_queues?: boolean | null
+          can_manage_address_list?: boolean | null
+          can_manage_backup?: boolean | null
+          can_manage_billing?: boolean | null
+          can_manage_clients?: boolean | null
+          can_manage_hotspot?: boolean | null
+          can_manage_payments?: boolean | null
           can_manage_pppoe?: boolean | null
           can_manage_queues?: boolean | null
+          can_manage_reports?: boolean | null
+          can_manage_vps_services?: boolean | null
           can_reactivate_queues?: boolean | null
           can_suspend_queues?: boolean | null
           can_toggle_pppoe?: boolean | null
@@ -690,8 +706,16 @@ export type Database = {
           can_disconnect_pppoe?: boolean | null
           can_edit_pppoe?: boolean | null
           can_edit_queues?: boolean | null
+          can_manage_address_list?: boolean | null
+          can_manage_backup?: boolean | null
+          can_manage_billing?: boolean | null
+          can_manage_clients?: boolean | null
+          can_manage_hotspot?: boolean | null
+          can_manage_payments?: boolean | null
           can_manage_pppoe?: boolean | null
           can_manage_queues?: boolean | null
+          can_manage_reports?: boolean | null
+          can_manage_vps_services?: boolean | null
           can_reactivate_queues?: boolean | null
           can_suspend_queues?: boolean | null
           can_toggle_pppoe?: boolean | null

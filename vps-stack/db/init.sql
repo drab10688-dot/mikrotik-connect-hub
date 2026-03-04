@@ -82,6 +82,14 @@ CREATE TABLE secretary_assignments (
   can_toggle_queues BOOLEAN DEFAULT true,
   can_suspend_queues BOOLEAN DEFAULT true,
   can_reactivate_queues BOOLEAN DEFAULT true,
+  can_manage_clients BOOLEAN DEFAULT true,
+  can_manage_payments BOOLEAN DEFAULT true,
+  can_manage_billing BOOLEAN DEFAULT true,
+  can_manage_reports BOOLEAN DEFAULT true,
+  can_manage_hotspot BOOLEAN DEFAULT true,
+  can_manage_address_list BOOLEAN DEFAULT true,
+  can_manage_backup BOOLEAN DEFAULT true,
+  can_manage_vps_services BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(secretary_id, mikrotik_id)
 );

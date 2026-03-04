@@ -15,7 +15,17 @@ import { Plus, Trash2, Settings } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { toast } from 'sonner';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { useNavigate } from 'react-router-dom';
+
+const MODULE_PERMISSIONS = [
+  { key: 'can_manage_clients', label: 'Gestión de Clientes' },
+  { key: 'can_manage_payments', label: 'Pagos y Abonos' },
+  { key: 'can_manage_billing', label: 'Facturación' },
+  { key: 'can_manage_reports', label: 'Reportes' },
+  { key: 'can_manage_hotspot', label: 'Hotspot Monitor' },
+  { key: 'can_manage_address_list', label: 'Address List' },
+  { key: 'can_manage_backup', label: 'Backup/Restore' },
+  { key: 'can_manage_vps_services', label: 'Servicios VPS' },
+];
 
 export default function Secretaries() {
   const [viewMikrotik, setViewMikrotik] = useState<string>('');
@@ -39,6 +49,11 @@ export default function Secretaries() {
   const [canToggleQueues, setCanToggleQueues] = useState(true);
   const [canSuspendQueues, setCanSuspendQueues] = useState(true);
   const [canReactivateQueues, setCanReactivateQueues] = useState(true);
+
+  // Module permissions
+  const [modulePerms, setModulePerms] = useState<Record<string, boolean>>(
+    Object.fromEntries(MODULE_PERMISSIONS.map(p => [p.key, true]))
+  );
 
   const { user } = useAuth();
   
@@ -77,6 +92,7 @@ export default function Secretaries() {
         canManagePppoe, canManageQueues,
         canCreatePppoe, canEditPppoe, canDeletePppoe, canDisconnectPppoe, canTogglePppoe,
         canCreateQueues, canEditQueues, canDeleteQueues, canToggleQueues, canSuspendQueues, canReactivateQueues,
+        ...modulePerms,
       });
 
       setIsDialogOpen(false);
@@ -92,13 +108,12 @@ export default function Secretaries() {
     setCanManagePppoe(true); setCanManageQueues(true);
     setCanCreatePppoe(true); setCanEditPppoe(true); setCanDeletePppoe(true); setCanDisconnectPppoe(true); setCanTogglePppoe(true);
     setCanCreateQueues(true); setCanEditQueues(true); setCanDeleteQueues(true); setCanToggleQueues(true); setCanSuspendQueues(true); setCanReactivateQueues(true);
+    setModulePerms(Object.fromEntries(MODULE_PERMISSIONS.map(p => [p.key, true])));
   };
 
   const handleUpdatePermissions = (assignment: any, updates: any) => {
     updateSecretary({ assignmentId: assignment.id, ...updates });
   };
-
-  const navigate = useNavigate();
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -107,7 +122,7 @@ export default function Secretaries() {
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Gestión de Asistentes</h1>
-          <p className="text-muted-foreground">Asigna asistentes con permisos personalizados para administrar PPPoE y Queues</p>
+          <p className="text-muted-foreground">Asigna asistentes con permisos personalizados para administrar módulos del sistema</p>
         </div>
 
       <Card>
@@ -139,6 +154,17 @@ export default function Secretaries() {
                     <div><Label>Email de la Secretaria</Label><Input type="email" value={secretaryEmail} onChange={(e) => setSecretaryEmail(e.target.value)} placeholder="secretaria@ejemplo.com" required /></div>
                     <div><Label>Contraseña</Label><Input type="password" value={secretaryPassword} onChange={(e) => setSecretaryPassword(e.target.value)} placeholder="••••••••" required minLength={6} /><p className="text-xs text-muted-foreground mt-1">Mínimo 6 caracteres</p></div>
                     <Accordion type="multiple" className="w-full">
+                      <AccordionItem value="modules">
+                        <AccordionTrigger><span className="font-semibold">Módulos del Sistema</span></AccordionTrigger>
+                        <AccordionContent><div className="space-y-3 pl-4">
+                          {MODULE_PERMISSIONS.map(p => (
+                            <div key={p.key} className="flex items-center justify-between">
+                              <Label>{p.label}</Label>
+                              <Switch checked={modulePerms[p.key]} onCheckedChange={(v) => setModulePerms(prev => ({...prev, [p.key]: v}))} />
+                            </div>
+                          ))}
+                        </div></AccordionContent>
+                      </AccordionItem>
                       <AccordionItem value="pppoe">
                         <AccordionTrigger><div className="flex items-center justify-between w-full pr-4"><span>Permisos PPPoE</span><Switch checked={canManagePppoe} onCheckedChange={setCanManagePppoe} onClick={(e) => e.stopPropagation()} /></div></AccordionTrigger>
                         <AccordionContent><div className="space-y-3 pl-4">
@@ -183,44 +209,57 @@ export default function Secretaries() {
           ) : assignments && assignments.length > 0 ? (
             <Table>
               <TableHeader><TableRow>
-                <TableHead>Secretaria</TableHead><TableHead>Acceso PPPoE</TableHead><TableHead>Acceso Queues</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Acciones</TableHead>
+                <TableHead>Secretaria</TableHead><TableHead>PPPoE</TableHead><TableHead>Queues</TableHead><TableHead>Módulos</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {assignments.map((assignment: any) => (
-                  <TableRow key={assignment.id}>
-                    <TableCell><div><p className="font-medium">{assignment.secretary_name || assignment.full_name || 'Sin nombre'}</p><p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.email || assignment.secretary_id}</p></div></TableCell>
-                    <TableCell><Switch checked={assignment.can_manage_pppoe} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_pppoe: checked })} /></TableCell>
-                    <TableCell><Switch checked={assignment.can_manage_queues} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_queues: checked })} /></TableCell>
-                    <TableCell>{new Date(assignment.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 justify-end">
-                        <Dialog>
-                          <DialogTrigger asChild><Button variant="ghost" size="sm" onClick={() => setEditingAssignment(assignment)}><Settings className="h-4 w-4" /></Button></DialogTrigger>
-                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para esta secretaria</DialogDescription></DialogHeader>
-                            {editingAssignment && (
-                              <div className="space-y-4">
-                                <div className="space-y-3">
-                                  <h3 className="font-semibold">Permisos PPPoE</h3>
-                                  {[['can_create_pppoe','Crear usuarios'],['can_edit_pppoe','Editar usuarios'],['can_delete_pppoe','Eliminar usuarios'],['can_disconnect_pppoe','Desconectar sesiones'],['can_toggle_pppoe','Activar/Desactivar']].map(([key, label]) => (
-                                    <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
-                                  ))}
+                {assignments.map((assignment: any) => {
+                  const activeModules = MODULE_PERMISSIONS.filter(p => assignment[p.key] !== false).length;
+                  return (
+                    <TableRow key={assignment.id}>
+                      <TableCell><div><p className="font-medium">{assignment.secretary_name || assignment.full_name || 'Sin nombre'}</p><p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.email || assignment.secretary_id}</p></div></TableCell>
+                      <TableCell><Switch checked={assignment.can_manage_pppoe} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_pppoe: checked })} /></TableCell>
+                      <TableCell><Switch checked={assignment.can_manage_queues} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_queues: checked })} /></TableCell>
+                      <TableCell><span className="text-sm text-muted-foreground">{activeModules}/{MODULE_PERMISSIONS.length}</span></TableCell>
+                      <TableCell>{new Date(assignment.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1 justify-end">
+                          <Dialog>
+                            <DialogTrigger asChild><Button variant="ghost" size="sm" onClick={() => setEditingAssignment(assignment)}><Settings className="h-4 w-4" /></Button></DialogTrigger>
+                            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                              <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para esta secretaria</DialogDescription></DialogHeader>
+                              {editingAssignment && (
+                                <div className="space-y-4">
+                                  <div className="space-y-3">
+                                    <h3 className="font-semibold">Módulos del Sistema</h3>
+                                    {MODULE_PERMISSIONS.map(p => (
+                                      <div key={p.key} className="flex items-center justify-between">
+                                        <Label>{p.label}</Label>
+                                        <Switch checked={editingAssignment[p.key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [p.key]: checked }); setEditingAssignment({...editingAssignment, [p.key]: checked}); }} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="space-y-3">
+                                    <h3 className="font-semibold">Permisos PPPoE</h3>
+                                    {[['can_create_pppoe','Crear usuarios'],['can_edit_pppoe','Editar usuarios'],['can_delete_pppoe','Eliminar usuarios'],['can_disconnect_pppoe','Desconectar sesiones'],['can_toggle_pppoe','Activar/Desactivar']].map(([key, label]) => (
+                                      <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
+                                    ))}
+                                  </div>
+                                  <div className="space-y-3">
+                                    <h3 className="font-semibold">Permisos Queues</h3>
+                                    {[['can_create_queues','Crear colas'],['can_edit_queues','Editar colas'],['can_delete_queues','Eliminar colas'],['can_toggle_queues','Activar/Desactivar'],['can_suspend_queues','Suspender servicios'],['can_reactivate_queues','Reactivar servicios']].map(([key, label]) => (
+                                      <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
+                                    ))}
+                                  </div>
                                 </div>
-                                <div className="space-y-3">
-                                  <h3 className="font-semibold">Permisos Queues</h3>
-                                  {[['can_create_queues','Crear colas'],['can_edit_queues','Editar colas'],['can_delete_queues','Eliminar colas'],['can_toggle_queues','Activar/Desactivar'],['can_suspend_queues','Suspender servicios'],['can_reactivate_queues','Reactivar servicios']].map(([key, label]) => (
-                                    <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
-                        <Button variant="ghost" size="sm" onClick={() => removeSecretary(assignment.id)}><Trash2 className="h-4 w-4" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                              )}
+                            </DialogContent>
+                          </Dialog>
+                          <Button variant="ghost" size="sm" onClick={() => removeSecretary(assignment.id)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (

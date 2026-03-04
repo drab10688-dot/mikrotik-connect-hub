@@ -15,6 +15,7 @@ import { useSystemResources } from "@/hooks/useMikrotikData";
 import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
+import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
@@ -48,6 +49,7 @@ export const Sidebar = () => {
   const location = useLocation();
   const { signOut, isSecretary } = useAuth();
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
+  const { assignments: secretaryAssignments } = useSecretaryPermissions();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,8 +96,32 @@ export const Sidebar = () => {
     toast.info("Logo eliminado");
   };
 
+  // Get current device's secretary permissions
+  const currentDeviceId = localStorage.getItem("mikrotik_device_id") || "";
+  const currentPerms = secretaryAssignments?.find((a: any) => a.mikrotik_id === currentDeviceId);
+
+  const secretaryPermMap: Record<string, string> = {
+    '/clients': 'can_manage_clients',
+    '/payment-manager': 'can_manage_payments',
+    '/payments': 'can_manage_billing',
+    '/reports': 'can_manage_reports',
+    '/address-list': 'can_manage_address_list',
+    '/backup': 'can_manage_backup',
+    '/vps-services': 'can_manage_vps_services',
+  };
+
   const filteredMenuItems = isSecretary
-    ? menuItems.filter(item => item.path === '/dashboard' || item.path === '/vps-services' || item.path === '/ppp' || item.path === '/simple-queues')
+    ? menuItems.filter(item => {
+        // Always show dashboard
+        if (item.path === '/dashboard') return true;
+        // PPPoE and Queues controlled by their own flags
+        if (item.path === '/ppp') return currentPerms?.can_manage_pppoe !== false;
+        if (item.path === '/simple-queues') return currentPerms?.can_manage_queues !== false;
+        // Module permissions
+        const permKey = secretaryPermMap[item.path];
+        if (permKey) return currentPerms?.[permKey] !== false;
+        return false;
+      })
     : menuItems;
 
   const handleLogout = async () => {
@@ -180,7 +206,7 @@ export const Sidebar = () => {
             ))}
 
             {/* Hotspot Monitor collapsible */}
-            {!isSecretary && (
+            {(!isSecretary || currentPerms?.can_manage_hotspot !== false) && (
               <Collapsible open={hotspotOpen} onOpenChange={setHotspotOpen}>
                 <CollapsibleTrigger className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
