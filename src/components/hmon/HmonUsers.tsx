@@ -20,6 +20,7 @@ import { useHotspotActiveUsers, useHotspotUsers } from "@/hooks/useMikrotikData"
 import { useVoucherInventory } from "@/hooks/useVoucherInventory";
 import { useVoucherPresets } from "@/hooks/useVoucherPresets";
 import { useAuth } from "@/hooks/useAuth";
+import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { ResellerManagement } from "@/components/vouchers/ResellerManagement";
 import { VoucherQRDialog } from "@/components/vouchers/VoucherQRDialog";
