@@ -498,6 +498,15 @@ fi
 # ═══════════════════════════════════════════════════
 echo ""
 echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
+
+# Limpiar contenedores huérfanos o en conflicto antes de levantar
+echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
+docker compose down --remove-orphans 2>/dev/null || true
+for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover; do
+  docker rm -f "$cname" 2>/dev/null || true
+done
+echo -e "${GREEN}✓ Contenedores limpios${NC}"
+
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
 docker compose build --no-cache api
