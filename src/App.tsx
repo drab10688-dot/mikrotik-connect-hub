@@ -8,8 +8,8 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import Ppp from "./pages/Ppp";
-import Vouchers from "./pages/Vouchers";
-import VoucherInventory from "./pages/VoucherInventory";
+
+
 import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
