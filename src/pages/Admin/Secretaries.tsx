@@ -102,6 +102,9 @@ export default function Secretaries() {
         canManagePppoe, canManageQueues,
         canCreatePppoe, canEditPppoe, canDeletePppoe, canDisconnectPppoe, canTogglePppoe,
         canCreateQueues, canEditQueues, canDeleteQueues, canToggleQueues, canSuspendQueues, canReactivateQueues,
+        canCreateHotspotUsers, canEditHotspotUsers, canDeleteHotspotUsers,
+        canManageVouchers, canSellVouchers, canPrintVouchers,
+        canViewHotspotAccounting, canViewHotspotReports,
         ...modulePerms,
       });
 
