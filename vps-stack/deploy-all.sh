@@ -150,6 +150,7 @@ chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 echo "[4/10] Reconstruyendo API + PHPNuxBill..."
 cd "$APP_DIR"
 sync_nuxbill_env_file
+docker compose build --no-cache api
 docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."

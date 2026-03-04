@@ -115,6 +115,7 @@ handle_existing_installation() {
         # Regenerate nuxbill init SQL
         generate_nuxbill_sql
 
+        docker compose build --no-cache api
         docker compose up -d --build
         sleep 10
         if ! ensure_mariadb_accounts; then
@@ -499,6 +500,7 @@ echo ""
 echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
+docker compose build --no-cache api
 docker compose up -d --build 2>&1 | tail -5
 
 # Wait for services to stabilize
