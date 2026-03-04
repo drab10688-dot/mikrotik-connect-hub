@@ -643,11 +643,14 @@ export type Database = {
       secretary_assignments: {
         Row: {
           assigned_by: string
+          can_create_hotspot_users: boolean | null
           can_create_pppoe: boolean | null
           can_create_queues: boolean | null
+          can_delete_hotspot_users: boolean | null
           can_delete_pppoe: boolean | null
           can_delete_queues: boolean | null
           can_disconnect_pppoe: boolean | null
+          can_edit_hotspot_users: boolean | null
           can_edit_pppoe: boolean | null
           can_edit_queues: boolean | null
           can_manage_address_list: boolean | null
@@ -659,11 +662,16 @@ export type Database = {
           can_manage_pppoe: boolean | null
           can_manage_queues: boolean | null
           can_manage_reports: boolean | null
+          can_manage_vouchers: boolean | null
           can_manage_vps_services: boolean | null
+          can_print_vouchers: boolean | null
           can_reactivate_queues: boolean | null
+          can_sell_vouchers: boolean | null
           can_suspend_queues: boolean | null
           can_toggle_pppoe: boolean | null
           can_toggle_queues: boolean | null
+          can_view_hotspot_accounting: boolean | null
+          can_view_hotspot_reports: boolean | null
           created_at: string | null
           id: string
           mikrotik_id: string
@@ -671,11 +679,14 @@ export type Database = {
         }
         Insert: {
           assigned_by: string
+          can_create_hotspot_users?: boolean | null
           can_create_pppoe?: boolean | null
           can_create_queues?: boolean | null
+          can_delete_hotspot_users?: boolean | null
           can_delete_pppoe?: boolean | null
           can_delete_queues?: boolean | null
           can_disconnect_pppoe?: boolean | null
+          can_edit_hotspot_users?: boolean | null
           can_edit_pppoe?: boolean | null
           can_edit_queues?: boolean | null
           can_manage_address_list?: boolean | null
@@ -687,11 +698,16 @@ export type Database = {
           can_manage_pppoe?: boolean | null
           can_manage_queues?: boolean | null
           can_manage_reports?: boolean | null
+          can_manage_vouchers?: boolean | null
           can_manage_vps_services?: boolean | null
+          can_print_vouchers?: boolean | null
           can_reactivate_queues?: boolean | null
+          can_sell_vouchers?: boolean | null
           can_suspend_queues?: boolean | null
           can_toggle_pppoe?: boolean | null
           can_toggle_queues?: boolean | null
+          can_view_hotspot_accounting?: boolean | null
+          can_view_hotspot_reports?: boolean | null
           created_at?: string | null
           id?: string
           mikrotik_id: string
@@ -699,11 +715,14 @@ export type Database = {
         }
         Update: {
           assigned_by?: string
+          can_create_hotspot_users?: boolean | null
           can_create_pppoe?: boolean | null
           can_create_queues?: boolean | null
+          can_delete_hotspot_users?: boolean | null
           can_delete_pppoe?: boolean | null
           can_delete_queues?: boolean | null
           can_disconnect_pppoe?: boolean | null
+          can_edit_hotspot_users?: boolean | null
           can_edit_pppoe?: boolean | null
           can_edit_queues?: boolean | null
           can_manage_address_list?: boolean | null
@@ -715,11 +734,16 @@ export type Database = {
           can_manage_pppoe?: boolean | null
           can_manage_queues?: boolean | null
           can_manage_reports?: boolean | null
+          can_manage_vouchers?: boolean | null
           can_manage_vps_services?: boolean | null
+          can_print_vouchers?: boolean | null
           can_reactivate_queues?: boolean | null
+          can_sell_vouchers?: boolean | null
           can_suspend_queues?: boolean | null
           can_toggle_pppoe?: boolean | null
           can_toggle_queues?: boolean | null
+          can_view_hotspot_accounting?: boolean | null
+          can_view_hotspot_reports?: boolean | null
           created_at?: string | null
           id?: string
           mikrotik_id?: string

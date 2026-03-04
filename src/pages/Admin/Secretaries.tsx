@@ -50,6 +50,16 @@ export default function Secretaries() {
   const [canSuspendQueues, setCanSuspendQueues] = useState(true);
   const [canReactivateQueues, setCanReactivateQueues] = useState(true);
 
+  // Hotspot sub-permissions
+  const [canCreateHotspotUsers, setCanCreateHotspotUsers] = useState(true);
+  const [canEditHotspotUsers, setCanEditHotspotUsers] = useState(true);
+  const [canDeleteHotspotUsers, setCanDeleteHotspotUsers] = useState(true);
+  const [canManageVouchers, setCanManageVouchers] = useState(true);
+  const [canSellVouchers, setCanSellVouchers] = useState(true);
+  const [canPrintVouchers, setCanPrintVouchers] = useState(true);
+  const [canViewHotspotAccounting, setCanViewHotspotAccounting] = useState(true);
+  const [canViewHotspotReports, setCanViewHotspotReports] = useState(true);
+
   // Module permissions
   const [modulePerms, setModulePerms] = useState<Record<string, boolean>>(
     Object.fromEntries(MODULE_PERMISSIONS.map(p => [p.key, true]))
@@ -92,6 +102,9 @@ export default function Secretaries() {
         canManagePppoe, canManageQueues,
         canCreatePppoe, canEditPppoe, canDeletePppoe, canDisconnectPppoe, canTogglePppoe,
         canCreateQueues, canEditQueues, canDeleteQueues, canToggleQueues, canSuspendQueues, canReactivateQueues,
+        canCreateHotspotUsers, canEditHotspotUsers, canDeleteHotspotUsers,
+        canManageVouchers, canSellVouchers, canPrintVouchers,
+        canViewHotspotAccounting, canViewHotspotReports,
         ...modulePerms,
       });
 
@@ -108,6 +121,9 @@ export default function Secretaries() {
     setCanManagePppoe(true); setCanManageQueues(true);
     setCanCreatePppoe(true); setCanEditPppoe(true); setCanDeletePppoe(true); setCanDisconnectPppoe(true); setCanTogglePppoe(true);
     setCanCreateQueues(true); setCanEditQueues(true); setCanDeleteQueues(true); setCanToggleQueues(true); setCanSuspendQueues(true); setCanReactivateQueues(true);
+    setCanCreateHotspotUsers(true); setCanEditHotspotUsers(true); setCanDeleteHotspotUsers(true);
+    setCanManageVouchers(true); setCanSellVouchers(true); setCanPrintVouchers(true);
+    setCanViewHotspotAccounting(true); setCanViewHotspotReports(true);
     setModulePerms(Object.fromEntries(MODULE_PERMISSIONS.map(p => [p.key, true])));
   };
 
@@ -186,6 +202,19 @@ export default function Secretaries() {
                           <div className="flex items-center justify-between"><Label>Reactivar servicios</Label><Switch checked={canReactivateQueues} onCheckedChange={setCanReactivateQueues} /></div>
                         </div></AccordionContent>
                       </AccordionItem>
+                      <AccordionItem value="hotspot">
+                        <AccordionTrigger><div className="flex items-center justify-between w-full pr-4"><span>Permisos Hotspot</span><Switch checked={modulePerms.can_manage_hotspot} onCheckedChange={(v) => setModulePerms(prev => ({...prev, can_manage_hotspot: v}))} onClick={(e) => e.stopPropagation()} /></div></AccordionTrigger>
+                        <AccordionContent><div className="space-y-3 pl-4">
+                          <div className="flex items-center justify-between"><Label>Crear usuarios Hotspot</Label><Switch checked={canCreateHotspotUsers} onCheckedChange={setCanCreateHotspotUsers} /></div>
+                          <div className="flex items-center justify-between"><Label>Editar usuarios Hotspot</Label><Switch checked={canEditHotspotUsers} onCheckedChange={setCanEditHotspotUsers} /></div>
+                          <div className="flex items-center justify-between"><Label>Eliminar usuarios Hotspot</Label><Switch checked={canDeleteHotspotUsers} onCheckedChange={setCanDeleteHotspotUsers} /></div>
+                          <div className="flex items-center justify-between"><Label>Gestionar Vouchers</Label><Switch checked={canManageVouchers} onCheckedChange={setCanManageVouchers} /></div>
+                          <div className="flex items-center justify-between"><Label>Vender Vouchers</Label><Switch checked={canSellVouchers} onCheckedChange={setCanSellVouchers} /></div>
+                          <div className="flex items-center justify-between"><Label>Imprimir Vouchers</Label><Switch checked={canPrintVouchers} onCheckedChange={setCanPrintVouchers} /></div>
+                          <div className="flex items-center justify-between"><Label>Ver Contabilidad</Label><Switch checked={canViewHotspotAccounting} onCheckedChange={setCanViewHotspotAccounting} /></div>
+                          <div className="flex items-center justify-between"><Label>Ver Reportes</Label><Switch checked={canViewHotspotReports} onCheckedChange={setCanViewHotspotReports} /></div>
+                        </div></AccordionContent>
+                      </AccordionItem>
                     </Accordion>
                     <Button onClick={handleAssignSecretary} className="w-full">Asignar Secretaria</Button>
                   </div>
@@ -209,7 +238,7 @@ export default function Secretaries() {
           ) : assignments && assignments.length > 0 ? (
             <Table>
               <TableHeader><TableRow>
-                <TableHead>Secretaria</TableHead><TableHead>PPPoE</TableHead><TableHead>Queues</TableHead><TableHead>Módulos</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Acciones</TableHead>
+                <TableHead>Secretaria</TableHead><TableHead>PPPoE</TableHead><TableHead>Queues</TableHead><TableHead>Hotspot</TableHead><TableHead>Módulos</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {assignments.map((assignment: any) => {
@@ -219,6 +248,7 @@ export default function Secretaries() {
                       <TableCell><div><p className="font-medium">{assignment.secretary_name || assignment.full_name || 'Sin nombre'}</p><p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.email || assignment.secretary_id}</p></div></TableCell>
                       <TableCell><Switch checked={assignment.can_manage_pppoe} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_pppoe: checked })} /></TableCell>
                       <TableCell><Switch checked={assignment.can_manage_queues} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_queues: checked })} /></TableCell>
+                      <TableCell><Switch checked={assignment.can_manage_hotspot} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_hotspot: checked })} /></TableCell>
                       <TableCell><span className="text-sm text-muted-foreground">{activeModules}/{MODULE_PERMISSIONS.length}</span></TableCell>
                       <TableCell>{new Date(assignment.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
@@ -247,6 +277,12 @@ export default function Secretaries() {
                                   <div className="space-y-3">
                                     <h3 className="font-semibold">Permisos Queues</h3>
                                     {[['can_create_queues','Crear colas'],['can_edit_queues','Editar colas'],['can_delete_queues','Eliminar colas'],['can_toggle_queues','Activar/Desactivar'],['can_suspend_queues','Suspender servicios'],['can_reactivate_queues','Reactivar servicios']].map(([key, label]) => (
+                                      <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
+                                    ))}
+                                  </div>
+                                  <div className="space-y-3">
+                                    <h3 className="font-semibold">Permisos Hotspot</h3>
+                                    {[['can_create_hotspot_users','Crear usuarios'],['can_edit_hotspot_users','Editar usuarios'],['can_delete_hotspot_users','Eliminar usuarios'],['can_manage_vouchers','Gestionar Vouchers'],['can_sell_vouchers','Vender Vouchers'],['can_print_vouchers','Imprimir Vouchers'],['can_view_hotspot_accounting','Ver Contabilidad'],['can_view_hotspot_reports','Ver Reportes']].map(([key, label]) => (
                                       <div key={key} className="flex items-center justify-between"><Label>{label}</Label><Switch checked={editingAssignment[key] ?? true} onCheckedChange={(checked) => { handleUpdatePermissions(editingAssignment, { [key]: checked }); setEditingAssignment({...editingAssignment, [key]: checked}); }} /></div>
                                     ))}
                                   </div>
