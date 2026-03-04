@@ -33,7 +33,7 @@ import Secretaries from "./pages/Admin/Secretaries";
 import NotFound from "./pages/NotFound";
 import CaptivePortal from "./pages/CaptivePortal";
 import HotspotMonitor from "./pages/HotspotMonitor";
-import Accounting from "./pages/Accounting";
+
 import VpsServices from "./pages/VpsServices";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
