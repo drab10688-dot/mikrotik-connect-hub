@@ -251,41 +251,55 @@ if [ -f "$CUSTOM_LOGIN" ]; then
   log "Portal QR login instalado ✓ → /qr-login.php"
 fi
 
-# 5d) Instalar tema OmniSync nativo en PHPNuxBill
+# 5d) Instalar tema OmniSync opcional (desactivado por defecto para evitar fallos de compatibilidad)
+THEME_NAME="${NUXBILL_THEME:-}"
 THEME_SRC="/opt/omnisync-theme"
-THEME_DST="$NUXROOT/ui/themes/omnisync"
-if [ -d "$THEME_SRC" ]; then
+THEME_DST="$NUXROOT/ui/themes/${THEME_NAME}"
+if [ -n "$THEME_NAME" ] && [ -d "$THEME_SRC" ]; then
   mkdir -p "$THEME_DST/customer"
-  
+
   # Copiar CSS del tema
   if [ -f "$THEME_SRC/omnisync.css" ]; then
     cp "$THEME_SRC/omnisync.css" "$THEME_DST/omnisync.css"
   fi
-  
+
   # Copiar templates del cliente (login, header, etc.)
   if [ -d "$THEME_SRC/customer" ]; then
     cp -r "$THEME_SRC/customer/"* "$THEME_DST/customer/" 2>/dev/null || true
   fi
-  
+
   # Crear index.html de seguridad
   echo "" > "$THEME_DST/index.html"
   echo "" > "$THEME_DST/customer/index.html"
-  
+
   chown -R www-data:www-data "$THEME_DST"
   chmod -R 755 "$THEME_DST"
-  log "Tema OmniSync instalado ✓ → ui/themes/omnisync/"
-  
+  log "Tema ${THEME_NAME} instalado ✓ → ui/themes/${THEME_NAME}/"
+
   # Activar tema en la base de datos
   if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
     php -r "
       \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
       if (!\$c->connect_error) {
-        \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('theme', 'omnisync') ON DUPLICATE KEY UPDATE value='omnisync'\");
-        echo 'Tema OmniSync activado en DB ✓';
+        \$theme = \$c->real_escape_string('${THEME_NAME}');
+        \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('theme', '\$theme') ON DUPLICATE KEY UPDATE value='\$theme'\");
+        echo 'Tema activado en DB ✓';
         \$c->close();
       }
     " 2>/dev/null || true
   fi
+else
+  if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
+    php -r "
+      \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
+      if (!\$c->connect_error) {
+        \$c->query(\"INSERT INTO tbl_appconfig (setting, value) VALUES ('theme', '') ON DUPLICATE KEY UPDATE value=''\");
+        echo 'Tema por defecto activado en DB ✓';
+        \$c->close();
+      }
+    " 2>/dev/null || true
+  fi
+  log "Tema personalizado desactivado (NUXBILL_THEME vacío) ✓"
 fi
 
 # 6) Crear .htaccess si no existe (git clone no copia archivos ocultos)
