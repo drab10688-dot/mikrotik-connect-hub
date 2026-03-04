@@ -77,6 +77,14 @@ export const useSecretaries = (mikrotikId?: string) => {
         can_manage_address_list: params.can_manage_address_list ?? true,
         can_manage_backup: params.can_manage_backup ?? true,
         can_manage_vps_services: params.can_manage_vps_services ?? true,
+        can_create_hotspot_users: params.canCreateHotspotUsers ?? true,
+        can_edit_hotspot_users: params.canEditHotspotUsers ?? true,
+        can_delete_hotspot_users: params.canDeleteHotspotUsers ?? true,
+        can_manage_vouchers: params.canManageVouchers ?? true,
+        can_sell_vouchers: params.canSellVouchers ?? true,
+        can_print_vouchers: params.canPrintVouchers ?? true,
+        can_view_hotspot_accounting: params.canViewHotspotAccounting ?? true,
+        can_view_hotspot_reports: params.canViewHotspotReports ?? true,
       });
     },
     onSuccess: () => {
