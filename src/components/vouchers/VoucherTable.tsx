@@ -306,7 +306,7 @@ export const VoucherTable = ({
                       )}
                     </TableCell>
                     <TableCell>
-                      {voucher.price ? `$${voucher.price.toFixed(2)}` : '-'}
+                      {voucher.price ? `$${Number(voucher.price).toFixed(2)}` : '-'}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

@@ -129,7 +129,7 @@ export function VoucherPresetsManager({ mikrotikId, onSelectPreset }: VoucherPre
                   </div>
                   <div className="flex items-center gap-1 text-xs font-medium text-primary">
                     <DollarSign className="h-3 w-3" />
-                    <span>${preset.price.toFixed(2)}</span>
+                    <span>${Number(preset.price).toFixed(2)}</span>
                   </div>
                 </Button>
                 <Button
