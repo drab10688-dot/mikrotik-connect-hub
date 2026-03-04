@@ -8,8 +8,8 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import Ppp from "./pages/Ppp";
-import Vouchers from "./pages/Vouchers";
-import VoucherInventory from "./pages/VoucherInventory";
+
+
 import Traffic from "./pages/Traffic";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
@@ -33,7 +33,7 @@ import Secretaries from "./pages/Admin/Secretaries";
 import NotFound from "./pages/NotFound";
 import CaptivePortal from "./pages/CaptivePortal";
 import HotspotMonitor from "./pages/HotspotMonitor";
-import Accounting from "./pages/Accounting";
+
 import VpsServices from "./pages/VpsServices";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
@@ -59,8 +59,8 @@ const App = () => (
           <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
           <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
-          <Route path="/vouchers" element={<ProtectedRoute><Vouchers /></ProtectedRoute>} />
-          <Route path="/voucher-inventory" element={<ProtectedRoute><VoucherInventory /></ProtectedRoute>} />
+          <Route path="/vouchers" element={<Navigate to="/hotspot-monitor?section=usuarios" replace />} />
+          <Route path="/voucher-inventory" element={<Navigate to="/hotspot-monitor?section=usuarios" replace />} />
           <Route path="/hotspot-profiles" element={<ProtectedRoute><HotspotProfiles /></ProtectedRoute>} />
           <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
           <Route path="/address-list" element={<ProtectedRoute><AddressList /></ProtectedRoute>} />

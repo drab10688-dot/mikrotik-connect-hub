@@ -23,11 +23,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { getSelectedDeviceId } from "@/lib/mikrotik";
 import { ResellerManagement } from "@/components/vouchers/ResellerManagement";
 import { VoucherQRDialog } from "@/components/vouchers/VoucherQRDialog";
-import { printTicket80mm, printCardsA4, type PrintVoucher, type PrintConfig } from "./HmonPrint";
+import { type PrintVoucher, type PrintConfig } from "./HmonPrint";
 import {
   Plus, Trash2, Wifi, Search, UserPlus, Key, RefreshCw, Printer, FileText,
   DollarSign, ShoppingCart, PiggyBank, CalendarIcon, FileDown, FileSpreadsheet,
-  Upload, QrCode, Palette, Users, LayoutDashboard, Ticket, BarChart3
+  Upload, QrCode, Palette, Users, LayoutDashboard, Ticket, BarChart3, Settings2, Edit
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth, startOfYear, subMonths, eachMonthOfInterval, isSameMonth } from "date-fns";
@@ -141,11 +141,11 @@ async function printCardsDesign(vouchers: PrintVoucher[], config: PrintConfig, d
     }
   }
 
-  const cardColors: Record<TicketDesign, { bg: string; border: string; text: string; accent: string }> = {
-    classic: { bg: "#fff", border: "#333", text: "#000", accent: "#f3f3f3" },
-    modern: { bg: "linear-gradient(135deg,#667eea,#764ba2)", border: "transparent", text: "#fff", accent: "rgba(255,255,255,0.15)" },
-    minimal: { bg: "#fff", border: "#e5e5e5", text: "#111", accent: "#fafafa" },
-    neon: { bg: "#0a0a0a", border: "#0ff", text: "#fff", accent: "#111" },
+  const cardColors: Record<TicketDesign, { bg: string; border: string; text: string }> = {
+    classic: { bg: "#fff", border: "#333", text: "#000" },
+    modern: { bg: "linear-gradient(135deg,#667eea,#764ba2)", border: "transparent", text: "#fff" },
+    minimal: { bg: "#fff", border: "#e5e5e5", text: "#111" },
+    neon: { bg: "#0a0a0a", border: "#0ff", text: "#fff" },
   };
   const c = cardColors[design];
 
@@ -210,6 +210,14 @@ export function HmonUsers() {
   const [selectedVouchers, setSelectedVouchers] = useState<string[]>([]);
   const [qrDialogVoucher, setQrDialogVoucher] = useState<any>(null);
 
+  // Preset management
+  const [showAddPreset, setShowAddPreset] = useState(false);
+  const [editPreset, setEditPreset] = useState<any>(null);
+  const [presetName, setPresetName] = useState("");
+  const [presetValidity, setPresetValidity] = useState("1h");
+  const [presetPrice, setPresetPrice] = useState(0);
+  const [presetDesc, setPresetDesc] = useState("");
+
   // Print config
   const [businessName, setBusinessName] = useState(() => localStorage.getItem("hmon_business_name") || "WiFi Service");
   const [logo, setLogo] = useState(() => localStorage.getItem("hmon_logo") || "");
@@ -220,7 +228,6 @@ export function HmonUsers() {
   // Accounting states
   const [startDate, setStartDate] = useState<Date>(startOfMonth(new Date()));
   const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()));
-  const [accTab, setAccTab] = useState("balance");
 
   const { isAdmin, isSuperAdmin } = useAuth();
   const qc = useQueryClient();
@@ -244,7 +251,7 @@ export function HmonUsers() {
   });
 
   const hotspotUrl = deviceInfo?.hotspot_url || "http://192.168.88.1/login";
-  const { presets } = useVoucherPresets(deviceId);
+  const { presets, createPreset, isCreating: isCreatingPreset, updatePreset, deletePreset } = useVoucherPresets(deviceId);
   const { vouchers, isLoading: vouchersLoading, stats, generateVouchers, isGenerating, deleteVoucher, syncVouchers, isSyncing } = useVoucherInventory(deviceId);
 
   const printConfig: PrintConfig = { businessName, logo: logo || undefined, hotspotUrl };
@@ -354,15 +361,36 @@ export function HmonUsers() {
   const handleToggleQR = (v: boolean) => { setIncludeQR(v); localStorage.setItem("hmon_include_qr", String(v)); };
 
   const handleGenerate = () => {
-    if (!deviceId || !selectedPreset) { toast.error("Selecciona un preset"); return; }
+    if (!deviceId || !selectedPreset) { toast.error("Selecciona un plan"); return; }
     const preset = presets?.find(p => p.id === selectedPreset);
-    if (!preset) { toast.error("Preset no encontrado"); return; }
+    if (!preset) { toast.error("Plan no encontrado"); return; }
     generateVouchers({ count: voucherCount, profile: preset.name, mikrotikId: deviceId, validity: preset.validity, price: preset.price });
+  };
+
+  // Preset handlers
+  const handleSavePreset = () => {
+    if (!presetName.trim()) { toast.error("Nombre requerido"); return; }
+    if (editPreset) {
+      updatePreset({ id: editPreset.id, name: presetName, validity: presetValidity, price: presetPrice, description: presetDesc, mikrotikId: deviceId });
+    } else {
+      createPreset({ name: presetName, validity: presetValidity, price: presetPrice, description: presetDesc, mikrotikId: deviceId });
+    }
+    setShowAddPreset(false); setEditPreset(null); setPresetName(""); setPresetValidity("1h"); setPresetPrice(0); setPresetDesc("");
+  };
+
+  const openEditPreset = (p: any) => {
+    setEditPreset(p); setPresetName(p.name); setPresetValidity(p.validity); setPresetPrice(p.price); setPresetDesc(p.description || ""); setShowAddPreset(true);
   };
 
   // Print handlers
   const handlePrintSingle = (voucher: any) => {
     const pv: PrintVoucher = { code: voucher.code, password: voucher.password, profile: voucher.profile, validity: voucher.validity, price: voucher.price };
+    printTicketDesign(pv, printConfig, ticketDesign, includeQR);
+  };
+
+  // Print hotspot user as ticket
+  const handlePrintUser = (user: any) => {
+    const pv: PrintVoucher = { code: user.name, password: user.password || "****", profile: user.profile || "default" };
     printTicketDesign(pv, printConfig, ticketDesign, includeQR);
   };
 
@@ -470,6 +498,7 @@ export function HmonUsers() {
       <Tabs value={mainTab} onValueChange={setMainTab}>
         <TabsList className="h-9 flex-wrap">
           <TabsTrigger value="usuarios" className="text-xs gap-1"><Wifi className="h-3 w-3" />Usuarios</TabsTrigger>
+          <TabsTrigger value="planes" className="text-xs gap-1"><Settings2 className="h-3 w-3" />Planes</TabsTrigger>
           <TabsTrigger value="vouchers" className="text-xs gap-1"><Ticket className="h-3 w-3" />Vouchers</TabsTrigger>
           <TabsTrigger value="imprimir" className="text-xs gap-1"><Printer className="h-3 w-3" />Imprimir</TabsTrigger>
           <TabsTrigger value="contabilidad" className="text-xs gap-1"><PiggyBank className="h-3 w-3" />Contabilidad</TabsTrigger>
@@ -521,13 +550,67 @@ export function HmonUsers() {
                       <TableCell><Badge variant="outline" className="text-[9px]">{u.profile || "default"}</Badge></TableCell>
                       <TableCell className="text-[10px] text-muted-foreground max-w-[200px] truncate">{u.comment || "-"}</TableCell>
                       <TableCell><Badge variant={u.disabled === "true" ? "destructive" : "default"} className="text-[9px]">{u.disabled === "true" ? "Deshabilitado" : "Activo"}</Badge></TableCell>
-                      <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => setDeleteId(u[".id"])}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-0.5 justify-end">
+                          <Button variant="ghost" size="sm" onClick={() => handlePrintUser(u)} title="Imprimir"><Printer className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => setDeleteId(u[".id"])}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-xs">Sin usuarios</TableCell></TableRow>}
                 </TableBody></Table>
               </div></CardContent></Card>
             </TabsContent>
           </Tabs>
+        </TabsContent>
+
+        {/* ═══ PLANES TAB (Preset Management) ═══ */}
+        <TabsContent value="planes" className="mt-3 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold flex items-center gap-1"><Settings2 className="h-4 w-4 text-primary" />Configurar Planes / Presets</h3>
+            <Button size="sm" onClick={() => { setEditPreset(null); setPresetName(""); setPresetValidity("1h"); setPresetPrice(0); setPresetDesc(""); setShowAddPreset(true); }}>
+              <Plus className="h-3.5 w-3.5 mr-1" />Nuevo Plan
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">Configura los planes antes de generar vouchers o PINs. Cada plan define duración, precio y se sincroniza como perfil en MikroTik.</p>
+
+          {(presets?.length || 0) > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {presets?.map(p => (
+                <Card key={p.id} className="border-l-4 border-l-primary">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm">{p.name}</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">{p.description || "Sin descripción"}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditPreset(p)}><Edit className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`¿Eliminar ${p.name}?`)) deletePreset(p.id); }}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div className="bg-muted/50 rounded p-2">
+                        <p className="text-[10px] text-muted-foreground">Duración</p>
+                        <p className="font-bold text-sm">{p.validity}</p>
+                      </div>
+                      <div className="bg-muted/50 rounded p-2">
+                        <p className="text-[10px] text-muted-foreground">Precio</p>
+                        <p className="font-bold text-sm text-primary">${p.price.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Settings2 className="h-12 w-12 mb-3 opacity-50" />
+              <p className="font-medium">No hay planes configurados</p>
+              <p className="text-xs mt-1">Crea un plan antes de generar vouchers</p>
+            </CardContent></Card>
+          )}
         </TabsContent>
 
         {/* ═══ VOUCHERS TAB ═══ */}
@@ -557,18 +640,27 @@ export function HmonUsers() {
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Generar Vouchers</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-1"><Label className="text-xs">Cantidad</Label><Input type="number" min={1} max={100} value={voucherCount} onChange={(e) => setVoucherCount(parseInt(e.target.value) || 1)} className="h-8 text-xs" /></div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Preset</Label>
-                  <Select value={selectedPreset} onValueChange={(v) => { setSelectedPreset(v); const p = presets?.find(x => x.id === v); if (p) { setValidity(p.validity); setPrice(p.price); } }}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                    <SelectContent>{presets?.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} - {p.validity} - ${p.price.toFixed(2)}</SelectItem>)}</SelectContent>
-                  </Select>
+              {(presets?.length || 0) === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-xs text-muted-foreground mb-2">Primero configura los planes en la pestaña "Planes"</p>
+                  <Button size="sm" variant="outline" onClick={() => setMainTab("planes")}><Settings2 className="h-3.5 w-3.5 mr-1" />Ir a Planes</Button>
                 </div>
-                <div className="space-y-1"><Label className="text-xs">Precio</Label><Input type="number" value={price} readOnly className="h-8 text-xs" /></div>
-              </div>
-              <Button size="sm" onClick={handleGenerate} disabled={isGenerating || !selectedPreset} className="w-full"><Plus className="h-3.5 w-3.5 mr-1" />{isGenerating ? "Generando..." : `Generar ${voucherCount} Voucher(s)`}</Button>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1"><Label className="text-xs">Cantidad</Label><Input type="number" min={1} max={100} value={voucherCount} onChange={(e) => setVoucherCount(parseInt(e.target.value) || 1)} className="h-8 text-xs" /></div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Plan</Label>
+                      <Select value={selectedPreset} onValueChange={(v) => { setSelectedPreset(v); const p = presets?.find(x => x.id === v); if (p) { setValidity(p.validity); setPrice(p.price); } }}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Seleccionar plan" /></SelectTrigger>
+                        <SelectContent>{presets?.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} - {p.validity} - ${p.price.toFixed(2)}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1"><Label className="text-xs">Precio</Label><Input type="number" value={price} readOnly className="h-8 text-xs bg-muted/30" /></div>
+                  </div>
+                  <Button size="sm" onClick={handleGenerate} disabled={isGenerating || !selectedPreset} className="w-full"><Plus className="h-3.5 w-3.5 mr-1" />{isGenerating ? "Generando..." : `Generar ${voucherCount} Voucher(s)`}</Button>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -580,7 +672,7 @@ export function HmonUsers() {
                   <TableHeader><TableRow>
                     <TableHead className="w-8"><Checkbox checked={selectedVouchers.length === (vouchers?.length || 0) && (vouchers?.length || 0) > 0} onCheckedChange={(c) => setSelectedVouchers(c ? vouchers?.map(v => v.id) || [] : [])} /></TableHead>
                     <TableHead className="text-[10px]">Código</TableHead><TableHead className="text-[10px]">Contraseña</TableHead>
-                    <TableHead className="text-[10px]">Perfil</TableHead><TableHead className="text-[10px]">Estado</TableHead>
+                    <TableHead className="text-[10px]">Plan</TableHead><TableHead className="text-[10px]">Estado</TableHead>
                     <TableHead className="text-[10px]">Precio</TableHead><TableHead className="text-[10px] text-right">Acciones</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
@@ -662,6 +754,7 @@ export function HmonUsers() {
                     <p><span className="opacity-60 text-[10px]">USR:</span> <span className="font-bold font-mono">ABC12345</span></p>
                     <p><span className="opacity-60 text-[10px]">PWD:</span> <span className="font-bold font-mono">XY67ZW</span></p>
                     <p><span className="opacity-60 text-[10px]">Plan:</span> <span className="font-bold">1h-5Mbps</span></p>
+                    <p><span className="opacity-60 text-[10px]">Precio:</span> <span className="font-bold">$5.00</span></p>
                   </div>
                 </div>
               </div>
@@ -672,7 +765,7 @@ export function HmonUsers() {
         {/* ═══ CONTABILIDAD TAB ═══ */}
         <TabsContent value="contabilidad" className="mt-3 space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <h3 className="text-sm font-bold flex items-center gap-1"><PiggyBank className="h-4 w-4 text-primary" />Contabilidad</h3>
+            <h3 className="text-sm font-bold flex items-center gap-1"><PiggyBank className="h-4 w-4 text-primary" />Contabilidad de Ventas</h3>
             <div className="flex flex-wrap items-center gap-2">
               <Popover><PopoverTrigger asChild><Button variant="outline" size="sm" className="h-7 text-xs"><CalendarIcon className="mr-1 h-3 w-3" />{format(startDate, "dd/MM/yy")}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={startDate} onSelect={(d) => d && setStartDate(d)} className="p-3 pointer-events-auto" /></PopoverContent></Popover>
               <span className="text-muted-foreground text-xs">a</span>
@@ -713,7 +806,7 @@ export function HmonUsers() {
             <div className="overflow-x-auto">
               <Table><TableHeader><TableRow>
                 <TableHead className="text-[10px]">Fecha</TableHead><TableHead className="text-[10px]">Voucher</TableHead>
-                <TableHead className="text-[10px]">Perfil</TableHead><TableHead className="text-[10px] text-right">Monto</TableHead>
+                <TableHead className="text-[10px]">Plan</TableHead><TableHead className="text-[10px] text-right">Monto</TableHead>
               </TableRow></TableHeader><TableBody>
                 {movements.length > 0 ? movements.map((m, i) => (
                   <TableRow key={i}>
@@ -835,6 +928,45 @@ export function HmonUsers() {
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowBatchPin(false)}>Cancelar</Button>
               <Button size="sm" onClick={() => batchPinMutation.mutate(pinCount)} disabled={batchPinMutation.isPending}>{batchPinMutation.isPending ? "Creando..." : `Crear ${pinCount} PINs`}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preset Dialog */}
+      <Dialog open={showAddPreset} onOpenChange={(o) => { setShowAddPreset(o); if (!o) setEditPreset(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Settings2 className="h-5 w-5" />{editPreset ? "Editar Plan" : "Nuevo Plan"}</DialogTitle><DialogDescription>Define duración, precio y descripción del plan WiFi</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-xs">Nombre *</Label><Input value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="ej: 1h-5Mbps" className="h-8 text-xs" /></div>
+              <div className="space-y-1">
+                <Label className="text-xs">Duración</Label>
+                <Select value={presetValidity} onValueChange={setPresetValidity}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30m">30 minutos</SelectItem>
+                    <SelectItem value="1h">1 hora</SelectItem>
+                    <SelectItem value="2h">2 horas</SelectItem>
+                    <SelectItem value="3h">3 horas</SelectItem>
+                    <SelectItem value="6h">6 horas</SelectItem>
+                    <SelectItem value="12h">12 horas</SelectItem>
+                    <SelectItem value="24h">1 día</SelectItem>
+                    <SelectItem value="3d">3 días</SelectItem>
+                    <SelectItem value="7d">1 semana</SelectItem>
+                    <SelectItem value="15d">15 días</SelectItem>
+                    <SelectItem value="30d">1 mes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label className="text-xs">Precio ($)</Label><Input type="number" min={0} step={0.5} value={presetPrice} onChange={(e) => setPresetPrice(parseFloat(e.target.value) || 0)} className="h-8 text-xs" /></div>
+              <div className="space-y-1"><Label className="text-xs">Descripción / Velocidad</Label><Input value={presetDesc} onChange={(e) => setPresetDesc(e.target.value)} placeholder="ej: 5M/3M" className="h-8 text-xs" /></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowAddPreset(false); setEditPreset(null); }}>Cancelar</Button>
+              <Button size="sm" onClick={handleSavePreset} disabled={isCreatingPreset}>{isCreatingPreset ? "Guardando..." : editPreset ? "Actualizar" : "Crear Plan"}</Button>
             </div>
           </div>
         </DialogContent>
