@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine, X, Camera, ImageIcon } from "lucide-react";
+import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine, X, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -68,27 +68,29 @@ export default function CaptivePortal() {
   }, []);
 
   const startScanner = async () => {
-    // Check if we're in a secure context (HTTPS or localhost)
     const isSecure = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
     if (!isSecure || !navigator.mediaDevices?.getUserMedia) {
-      // No camera access available - offer file upload fallback
       setCameraSupported(false);
-      toast.info("Cámara no disponible (se requiere HTTPS). Usa la opción de subir imagen.");
-      fileInputRef.current?.click();
+      setScanning(true);
       return;
     }
 
     try {
+      setScanning(true);
+      // Small delay to let the video element render
+      await new Promise(r => setTimeout(r, 100));
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('autoplay', 'true');
         await videoRef.current.play();
       }
-      setScanning(true);
 
       scanIntervalRef.current = window.setInterval(async () => {
         if (!videoRef.current || !canvasRef.current) return;
@@ -101,19 +103,14 @@ export default function CaptivePortal() {
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
 
-        // Try native BarcodeDetector
         if ("BarcodeDetector" in window) {
           try {
             const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
             const barcodes = await detector.detect(canvas);
-            if (barcodes.length > 0) {
-              handleQRResult(barcodes[0].rawValue);
-              return;
-            }
+            if (barcodes.length > 0) { handleQRResult(barcodes[0].rawValue); return; }
           } catch {}
         }
 
-        // Fallback: jsQR
         try {
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const { default: jsQR } = await import("jsqr");
@@ -124,14 +121,7 @@ export default function CaptivePortal() {
     } catch (err: any) {
       console.error("Camera error:", err);
       setCameraSupported(false);
-      if (err.name === 'NotAllowedError') {
-        toast.error("Permiso de cámara denegado. Usa la opción de subir imagen.");
-      } else if (err.name === 'NotFoundError') {
-        toast.error("No se encontró cámara. Usa la opción de subir imagen.");
-      } else {
-        toast.error("No se pudo acceder a la cámara. Usa la opción de subir imagen.");
-      }
-      fileInputRef.current?.click();
+      // Keep scanning overlay open so user can use file upload
     }
   };
 
@@ -278,19 +268,45 @@ export default function CaptivePortal() {
 
       {/* QR Scanner Overlay */}
       {scanning && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
-          <div className="relative w-72 h-72 rounded-2xl overflow-hidden border-2 border-white/20">
-            <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-            {/* Scan animation */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
-              <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
-              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
-              <div className="absolute left-0 right-0 h-0.5 bg-indigo-400/80 animate-[scan_2s_ease-in-out_infinite]" />
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4">
+          {cameraSupported && streamRef.current ? (
+            <>
+              <div className="relative w-72 h-72 rounded-2xl overflow-hidden border-2 border-white/20">
+                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
+                  <div className="absolute left-0 right-0 h-0.5 bg-indigo-400/80 animate-[scan_2s_ease-in-out_infinite]" />
+                </div>
+              </div>
+              <p className="text-white/80 text-sm mt-4">Apunta la cámara al código QR del voucher</p>
+            </>
+          ) : (
+            <div className="text-center space-y-4">
+              <div className="w-24 h-24 mx-auto rounded-full bg-white/10 flex items-center justify-center">
+                <Camera className="h-10 w-10 text-white/60" />
+              </div>
+              <p className="text-white/80 text-sm">Cámara no disponible</p>
+              <p className="text-white/50 text-xs max-w-xs">Toma una foto del código QR o selecciona una imagen de tu galería</p>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                Tomar foto / Subir imagen
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileQR}
+                className="hidden"
+              />
             </div>
-          </div>
-          <p className="text-white/80 text-sm mt-4">Apunta la cámara al código QR del voucher</p>
+          )}
           <Button
             variant="ghost"
             onClick={stopScanner}
@@ -300,6 +316,10 @@ export default function CaptivePortal() {
             Cancelar
           </Button>
           <canvas ref={canvasRef} className="hidden" />
+          {/* Hidden video for when camera hasn't started yet */}
+          {cameraSupported && !streamRef.current && (
+            <video ref={videoRef} className="hidden" playsInline muted autoPlay />
+          )}
         </div>
       )}
 
@@ -438,22 +458,10 @@ export default function CaptivePortal() {
                         disabled={status === "loading"}
                         className="h-12 w-12 shrink-0 border-0"
                         style={{ background: s.inputBg }}
-                        title={cameraSupported ? "Escanear QR con cámara" : "Subir imagen con QR"}
+                        title="Escanear QR"
                       >
-                        {cameraSupported ? (
-                          <ScanLine className="h-5 w-5" style={{ color: s.labelColor }} />
-                        ) : (
-                          <ImageIcon className="h-5 w-5" style={{ color: s.labelColor }} />
-                        )}
+                        <ScanLine className="h-5 w-5" style={{ color: s.labelColor }} />
                       </Button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleFileQR}
-                        className="hidden"
-                      />
                     </div>
                   </div>
                 ) : (
