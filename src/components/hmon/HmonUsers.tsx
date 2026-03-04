@@ -122,7 +122,7 @@ ${includeQR && qrDataUrl ? `<div class="qr"><img src="${qrDataUrl}"/></div>` : "
 <div class="cred-item"><div class="lbl">Contraseña</div><div class="val">${voucher.password}</div></div>
 <div class="cred-item"><div class="lbl">Plan</div><div class="val">${voucher.profile}</div></div>
 ${voucher.validity ? `<div class="cred-item"><div class="lbl">Duración</div><div class="val">${voucher.validity}</div></div>` : ""}
-${voucher.price ? `<div class="cred-item"><div class="lbl">Precio</div><div class="val">$${voucher.price.toFixed(2)}</div></div>` : ""}
+${voucher.price ? `<div class="cred-item"><div class="lbl">Precio</div><div class="val">$${Number(voucher.price).toFixed(2)}</div></div>` : ""}
 </div>
 <div class="footer">Escanea el QR para conectarte • ${config.businessName}</div>
 </div>
@@ -159,7 +159,7 @@ async function printCardsDesign(vouchers: PrintVoucher[], config: PrintConfig, d
     <div class="card-row"><span class="card-lbl">PWD:</span><span class="card-val">${v.password}</span></div>
     <div class="card-row"><span class="card-lbl">Plan:</span><span class="card-val">${v.profile}</span></div>
     ${v.validity ? `<div class="card-row"><span class="card-lbl">Dur:</span><span class="card-val">${v.validity}</span></div>` : ""}
-    ${v.price ? `<div class="card-row"><span class="card-lbl">$</span><span class="card-val">${v.price.toFixed(2)}</span></div>` : ""}
+    ${v.price ? `<div class="card-row"><span class="card-lbl">$</span><span class="card-val">${Number(v.price).toFixed(2)}</span></div>` : ""}
   </div>
 </div>`).join("");
 
@@ -610,7 +610,7 @@ export function HmonUsers() {
                       </div>
                       <div className="bg-muted/50 rounded p-2">
                         <p className="text-[10px] text-muted-foreground">Precio</p>
-                        <p className="font-bold text-sm text-primary">${p.price.toFixed(2)}</p>
+                        <p className="font-bold text-sm text-primary">${Number(p.price).toFixed(2)}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -666,7 +666,7 @@ export function HmonUsers() {
                       <Label className="text-xs">Plan</Label>
                       <Select value={selectedPreset} onValueChange={(v) => { setSelectedPreset(v); const p = presets?.find(x => x.id === v); if (p) { setValidity(p.validity); setPrice(p.price); } }}>
                         <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Seleccionar plan" /></SelectTrigger>
-                        <SelectContent>{presets?.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} - {p.validity} - ${p.price.toFixed(2)}</SelectItem>)}</SelectContent>
+                        <SelectContent>{presets?.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} - {p.validity} - ${Number(p.price).toFixed(2)}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1"><Label className="text-xs">Precio</Label><Input type="number" value={price} readOnly className="h-8 text-xs bg-muted/30" /></div>
@@ -696,7 +696,7 @@ export function HmonUsers() {
                         <TableCell className="text-xs font-mono">{v.password}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[9px]">{v.profile}</Badge></TableCell>
                         <TableCell><Badge variant={v.status === "available" ? "default" : v.status === "expired" ? "destructive" : "secondary"} className="text-[9px]">{v.status === "available" ? "Disponible" : v.status === "sold" ? "Vendido" : v.status === "used" ? "En Uso" : "Expirado"}</Badge></TableCell>
-                        <TableCell className="text-xs">{v.price ? `$${v.price.toFixed(2)}` : "-"}</TableCell>
+                        <TableCell className="text-xs">{v.price ? `$${Number(v.price).toFixed(2)}` : "-"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-0.5 justify-end">
                             <Button variant="ghost" size="sm" onClick={() => setQrDialogVoucher(v)}><QrCode className="h-3.5 w-3.5" /></Button>
