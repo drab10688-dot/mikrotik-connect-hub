@@ -13,7 +13,7 @@ export function getNuxbillPool(): mysql.Pool {
       host: process.env.NUXBILL_DB_HOST || 'mariadb',
       port: parseInt(process.env.NUXBILL_DB_PORT || '3306'),
       user: process.env.NUXBILL_DB_USER || 'nuxbill',
-      password: process.env.NUXBILL_DB_PASS || 'changeme_nuxbill',
+      password: process.env.NUXBILL_DB_PASS || process.env.NUXBILL_DB_PASSWORD || 'changeme_nuxbill',
       database: process.env.NUXBILL_DB_NAME || 'phpnuxbill',
       waitForConnections: true,
       connectionLimit: 5,
