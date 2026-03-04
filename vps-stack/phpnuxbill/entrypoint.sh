@@ -242,6 +242,15 @@ if [ "$CONNECTED" = true ] && [ "$SCHEMA_FOUND" = true ]; then
   fi
 fi
 
+# 5c) Instalar portal de login personalizado con escáner QR
+CUSTOM_LOGIN="/opt/custom-login.php"
+if [ -f "$CUSTOM_LOGIN" ]; then
+  cp "$CUSTOM_LOGIN" "$NUXROOT/qr-login.php"
+  chown www-data:www-data "$NUXROOT/qr-login.php"
+  chmod 644 "$NUXROOT/qr-login.php"
+  log "Portal QR login instalado ✓ → /qr-login.php"
+fi
+
 # 6) Permisos
 chown -R www-data:www-data "$NUXROOT"
 chmod -R 755 "$NUXROOT"

@@ -40,6 +40,7 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
 
 COPY entrypoint.sh /entrypoint.sh
+COPY custom-login.php /opt/custom-login.php
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
