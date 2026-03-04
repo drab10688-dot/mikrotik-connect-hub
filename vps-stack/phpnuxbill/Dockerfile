@@ -41,6 +41,7 @@ RUN chown -R www-data:www-data /var/www/html \
 
 COPY entrypoint.sh /entrypoint.sh
 COPY custom-login.php /opt/custom-login.php
+COPY theme/ /opt/omnisync-theme/
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
