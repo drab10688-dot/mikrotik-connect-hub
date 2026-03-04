@@ -9,9 +9,8 @@
                 {Lang::T('Announcement')}
             </div>
             <div class="panel-body">
-                {$Announcement = "{$PAGES_PATH}/Announcement.html"}
-                {if file_exists($Announcement)}
-                    {include file=$Announcement}
+                {if isset($Rone)}
+                    {$Rone}
                 {/if}
             </div>
         </div>
@@ -23,7 +22,7 @@
                 {Lang::T('Log in to Member Panel')}
             </div>
             <div class="panel-body">
-                <form action="{Text::url('login/post')}" method="post">
+                <form action="{$_url}login/post" method="post">
                     <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
                         <label>
@@ -37,14 +36,11 @@
                         </label>
                         <div class="input-group">
                             {if $_c['registration_username'] == 'phone'}
-                                <span class="input-group-addon" id="basic-addon1"><i
-                                        class="glyphicon glyphicon-phone-alt"></i></span>
+                                <span class="input-group-addon"><i class="glyphicon glyphicon-phone-alt"></i></span>
                             {elseif $_c['registration_username'] == 'email'}
-                                <span class="input-group-addon" id="basic-addon1"><i
-                                        class="glyphicon glyphicon-envelope"></i></span>
+                                <span class="input-group-addon"><i class="glyphicon glyphicon-envelope"></i></span>
                             {else}
-                                <span class="input-group-addon" id="basic-addon1"><i
-                                        class="glyphicon glyphicon-user"></i></span>
+                                <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
                             {/if}
                             <input type="text" class="form-control" name="username"
                                 placeholder="{if $_c['country_code_phone']!= '' || $_c['registration_username'] == 'phone'}{$_c['country_code_phone']} {Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
@@ -53,25 +49,16 @@
                     <div class="form-group">
                         <label>{Lang::T('Password')}</label>
                         <div class="input-group">
-                            <span class="input-group-addon" id="basic-addon2"><i
-                                    class="glyphicon glyphicon-lock"></i></span>
+                            <span class="input-group-addon"><i class="glyphicon glyphicon-lock"></i></span>
                             <input type="password" class="form-control" name="password"
                                 placeholder="{Lang::T('Password')}">
                         </div>
                     </div>
 
-                    <div class="clearfix hidden">
-                        <div class="{$app_url}/ui-checkbox ui-checkbox-primary right">
-                            <label>
-                                <input type="checkbox">
-                                <span>Remember me</span>
-                            </label>
-                        </div>
-                    </div>
                     <div class="btn-group btn-group-justified mb15" style="margin-top:8px;">
                         {if $_c['disable_registration'] != 'noreg'}
                             <div class="btn-group">
-                                <a href="{Text::url('register')}" class="btn btn-success">{Lang::T('Register')}</a>
+                                <a href="{$_url}register" class="btn btn-success">{Lang::T('Register')}</a>
                             </div>
                         {/if}
                         <div class="btn-group">
@@ -80,7 +67,7 @@
                     </div>
                     <br>
                     <center>
-                        <a href="{Text::url('forgot')}" class="btn btn-link">{Lang::T('Forgot Password')}</a>
+                        <a href="{$_url}forgot" class="btn btn-link">{Lang::T('Forgot Password')}</a>
                         <br>
                         <a href="javascript:showPrivacy()">Privacy</a>
                         &bull;
@@ -98,20 +85,20 @@
         <div class="panel panel-success">
             <div class="panel-heading">
                 <i class="glyphicon glyphicon-qrcode" style="margin-right:8px;"></i>
-                {Lang::T('Voucher')} - Activación Rápida
+                {Lang::T('Voucher')} - {Lang::T('Activation')}
             </div>
             <div class="panel-body">
-                <form action="{Text::url('voucher/activation-post')}" method="post">
+                <form action="{$_url}voucher/activation" method="post">
                     <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group" style="margin-bottom:10px;">
                         <div class="input-group">
                             <span class="input-group-addon"><i class="glyphicon glyphicon-barcode"></i></span>
-                            <input type="text" class="form-control" name="voucher" placeholder="Código del Voucher" required>
+                            <input type="text" class="form-control" name="code" placeholder="{Lang::T('Voucher Code')}" required>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-success btn-block">
                         <i class="glyphicon glyphicon-ok" style="margin-right:6px;"></i>
-                        Activar Voucher
+                        {Lang::T('Recharge')}
                     </button>
                 </form>
             </div>
