@@ -424,7 +424,7 @@ export default function VoucherInventory() {
                         <SelectContent>
                           {presets?.map((preset) => (
                             <SelectItem key={preset.id} value={preset.id}>
-                              {preset.name} — {preset.validity} — ${Number(preset.price).toFixed(2)}
+                              {preset.name} — {preset.validity} — ${preset.price.toFixed(2)}
                             </SelectItem>
                           ))}
                         </SelectContent>

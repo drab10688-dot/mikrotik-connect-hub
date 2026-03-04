@@ -141,7 +141,7 @@ export function HmonVouchers() {
               <Label className="text-xs">Preset</Label>
               <Select value={selectedPreset} onValueChange={(v) => { setSelectedPreset(v); const p = presets?.find(x => x.id === v); if (p) { setValidity(p.validity); setPrice(p.price); } }}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                <SelectContent>{presets?.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} - {p.validity} - ${Number(p.price).toFixed(2)}</SelectItem>)}</SelectContent>
+                <SelectContent>{presets?.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} - {p.validity} - ${p.price.toFixed(2)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-1"><Label className="text-xs">Precio</Label><Input type="number" value={price} readOnly className="h-8 text-xs" /></div>

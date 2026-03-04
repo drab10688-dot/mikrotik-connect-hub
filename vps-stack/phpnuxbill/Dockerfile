@@ -1,11 +1,11 @@
-FROM php:8.1-apache
+FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y \
     git unzip cron curl libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
     libmariadb-dev libgd-dev libcurl4-openssl-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) gd mysqli pdo pdo_mysql curl \
-    && a2enmod rewrite headers \
+    && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Clone PHPNuxBill
@@ -22,7 +22,7 @@ RUN sed -i 's/80/8080/g' /etc/apache2/sites-available/000-default.conf \
 # Enable .htaccess
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
-# Production PHP settings (suppress deprecation/notice/warning)
+# Production PHP settings
 RUN { \
       echo 'display_errors=Off'; \
       echo 'log_errors=On'; \
@@ -40,8 +40,6 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
 
 COPY entrypoint.sh /entrypoint.sh
-COPY custom-login.php /opt/custom-login.php
-COPY theme/ /opt/omnisync-theme/
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
