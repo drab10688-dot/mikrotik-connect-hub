@@ -62,19 +62,34 @@ log "Levantando MariaDB..."
 docker compose up -d mariadb
 
 log "Esperando MariaDB..."
+ROOT_AUTH_MODE=""
 for i in $(seq 1 30); do
   if docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" >/dev/null 2>&1; then
+    ROOT_AUTH_MODE="password"
     break
   fi
+
+  if docker exec omnisync-mariadb mariadb -uroot -e "SELECT 1;" >/dev/null 2>&1; then
+    ROOT_AUTH_MODE="socket"
+    break
+  fi
+
   if [ "$i" -eq 30 ]; then
-    log "No se pudo conectar con MariaDB usando root"
+    log "No se pudo conectar con MariaDB como root (ni por password ni por socket)"
+    log "Ejecuta recuperación profunda: bash /opt/omnisync/recover-mariadb-root.sh"
     exit 1
   fi
   sleep 2
 done
 
+if [ "$ROOT_AUTH_MODE" = "password" ]; then
+  ROOT_ARGS=(-uroot -p"${MYSQL_ROOT_PASSWORD}")
+else
+  ROOT_ARGS=(-uroot)
+fi
+
 log "Sincronizando usuarios y permisos (radius/nuxbill)..."
-docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" >/dev/null 2>&1 <<SQL
+docker exec -i omnisync-mariadb mariadb "${ROOT_ARGS[@]}" >/dev/null 2>&1 <<SQL
 CREATE DATABASE IF NOT EXISTS radius;
 CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${RADIUS_DB_PASSWORD}';
