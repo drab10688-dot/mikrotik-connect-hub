@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine, X, Camera } from "lucide-react";
+import { Wifi, ArrowRight, Loader2, CheckCircle2, AlertCircle, Globe, Signal, Clock, Ticket, User, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -21,13 +21,7 @@ export default function CaptivePortal() {
   const [mikrotikId, setMikrotikId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [successData, setSuccessData] = useState<any>(null);
-  const [scanning, setScanning] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [cameraSupported, setCameraSupported] = useState(true);
   const [portalAds, setPortalAds] = useState<any[]>([]);
   const impressionTracked = useRef<Set<string>>(new Set());
 
@@ -62,66 +56,11 @@ export default function CaptivePortal() {
 
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
 
-  // Cleanup scanner on unmount
-  useEffect(() => {
-    return () => stopScanner();
-  }, []);
-
-  const startScanner = async () => {
-    const isSecure = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    if (!isSecure || !navigator.mediaDevices?.getUserMedia) {
-      setCameraSupported(false);
-      setScanning(true);
-      return;
-    }
-
-    try {
-      setScanning(true);
-      // Small delay to let the video element render
-      await new Promise(r => setTimeout(r, 100));
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true');
-        videoRef.current.setAttribute('autoplay', 'true');
-        await videoRef.current.play();
-      }
-
-      scanIntervalRef.current = window.setInterval(async () => {
-        if (!videoRef.current || !canvasRef.current) return;
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
-        if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) return;
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-
-        if ("BarcodeDetector" in window) {
-          try {
-            const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
-            const barcodes = await detector.detect(canvas);
-            if (barcodes.length > 0) { handleQRResult(barcodes[0].rawValue); return; }
-          } catch {}
-        }
-
-        try {
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const { default: jsQR } = await import("jsqr");
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (code) handleQRResult(code.data);
-        } catch {}
-      }, 300);
-    } catch (err: any) {
-      console.error("Camera error:", err);
-      setCameraSupported(false);
-      // Keep scanning overlay open so user can use file upload
+  const startScanner = () => {
+    // Abre directamente la cámara trasera del celular via input nativo
+    // Esto es más confiable que getUserMedia en portales cautivos
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
 
@@ -159,20 +98,8 @@ export default function CaptivePortal() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const stopScanner = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    setScanning(false);
-  };
 
   const handleQRResult = (rawValue: string) => {
-    stopScanner();
     try {
       const url = new URL(rawValue);
       const code = url.searchParams.get("code") || url.searchParams.get("voucher");
@@ -266,62 +193,15 @@ export default function CaptivePortal() {
         </div>
       </div>
 
-      {/* QR Scanner Overlay */}
-      {scanning && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4">
-          {cameraSupported && streamRef.current ? (
-            <>
-              <div className="relative w-72 h-72 rounded-2xl overflow-hidden border-2 border-white/20">
-                <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-indigo-400 rounded-tl-lg" />
-                  <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-indigo-400 rounded-tr-lg" />
-                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-indigo-400 rounded-bl-lg" />
-                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-indigo-400 rounded-br-lg" />
-                  <div className="absolute left-0 right-0 h-0.5 bg-indigo-400/80 animate-[scan_2s_ease-in-out_infinite]" />
-                </div>
-              </div>
-              <p className="text-white/80 text-sm mt-4">Apunta la cámara al código QR del voucher</p>
-            </>
-          ) : (
-            <div className="text-center space-y-4">
-              <div className="w-24 h-24 mx-auto rounded-full bg-white/10 flex items-center justify-center">
-                <Camera className="h-10 w-10 text-white/60" />
-              </div>
-              <p className="text-white/80 text-sm">Cámara no disponible</p>
-              <p className="text-white/50 text-xs max-w-xs">Toma una foto del código QR o selecciona una imagen de tu galería</p>
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                <Camera className="h-4 w-4 mr-2" />
-                Tomar foto / Subir imagen
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleFileQR}
-                className="hidden"
-              />
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            onClick={stopScanner}
-            className="mt-4 text-white hover:text-white/80 hover:bg-white/10"
-          >
-            <X className="h-5 w-5 mr-2" />
-            Cancelar
-          </Button>
-          <canvas ref={canvasRef} className="hidden" />
-          {/* Hidden video for when camera hasn't started yet */}
-          {cameraSupported && !streamRef.current && (
-            <video ref={videoRef} className="hidden" playsInline muted autoPlay />
-          )}
-        </div>
-      )}
+      {/* Hidden file input for QR scanning via native camera */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileQR}
+        className="hidden"
+      />
 
       {/* Banner Ads (above card) */}
       {portalAds.filter(a => a.position === 'banner').length > 0 && (
@@ -561,13 +441,6 @@ export default function CaptivePortal() {
         </div>
       )}
 
-      {/* Scan animation keyframes */}
-      <style>{`
-        @keyframes scan {
-          0%, 100% { top: 10%; }
-          50% { top: 85%; }
-        }
-      `}</style>
     </div>
   );
 }
