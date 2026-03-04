@@ -248,6 +248,7 @@ export default function Secretaries() {
                       <TableCell><div><p className="font-medium">{assignment.secretary_name || assignment.full_name || 'Sin nombre'}</p><p className="text-sm text-muted-foreground">{assignment.secretary_email || assignment.email || assignment.secretary_id}</p></div></TableCell>
                       <TableCell><Switch checked={assignment.can_manage_pppoe} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_pppoe: checked })} /></TableCell>
                       <TableCell><Switch checked={assignment.can_manage_queues} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_queues: checked })} /></TableCell>
+                      <TableCell><Switch checked={assignment.can_manage_hotspot} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_hotspot: checked })} /></TableCell>
                       <TableCell><span className="text-sm text-muted-foreground">{activeModules}/{MODULE_PERMISSIONS.length}</span></TableCell>
                       <TableCell>{new Date(assignment.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
