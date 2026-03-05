@@ -387,6 +387,93 @@ export default function TR069Dashboard() {
 
         {/* ═══ MONITORING TAB ═══ */}
         <TabsContent value="monitoring" className="space-y-4">
+          {/* Signal Overview Panel */}
+          {signalOverview.length > 0 && (
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Signal className="w-4 h-4 text-primary" /> Señal Óptica — Vista General
+                  </CardTitle>
+                  <Button size="sm" variant="outline" onClick={refreshAllSignals} disabled={signalLoading}>
+                    <RotateCcw className={`w-3 h-3 mr-1 ${signalLoading ? "animate-spin" : ""}`} />
+                    Leer Señal (GetParameterValues)
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">ONU</TableHead>
+                      <TableHead className="text-xs">Serial</TableHead>
+                      <TableHead className="text-xs text-center">Rx Power</TableHead>
+                      <TableHead className="text-xs text-center">Tx Power</TableHead>
+                      <TableHead className="text-xs text-center">Estado</TableHead>
+                      <TableHead className="text-xs text-right">Última Lectura</TableHead>
+                      <TableHead className="text-xs text-right"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {signalOverview.map((s) => {
+                      const qualityConfig: Record<string, { label: string; color: string; bg: string }> = {
+                        excellent: { label: "Excelente", color: "text-green-600 dark:text-green-400", bg: "bg-green-100 dark:bg-green-900/30" },
+                        good: { label: "Buena", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
+                        fair: { label: "Regular", color: "text-yellow-600 dark:text-yellow-400", bg: "bg-yellow-100 dark:bg-yellow-900/30" },
+                        critical: { label: "Crítica", color: "text-destructive", bg: "bg-destructive/10" },
+                        unknown: { label: "Sin datos", color: "text-muted-foreground", bg: "bg-muted" },
+                      };
+                      const q = qualityConfig[s.quality] || qualityConfig.unknown;
+
+                      return (
+                        <TableRow key={s.deviceId}>
+                          <TableCell className="text-xs">
+                            <span className="font-medium">{s.manufacturer}</span>{" "}
+                            <span className="text-muted-foreground">{s.model}</span>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">{s.serial}</TableCell>
+                          <TableCell className="text-center">
+                            <span className={`text-sm font-bold ${getSignalColor(s.rxPower)}`}>
+                              {s.rxPower !== null ? `${s.rxPower} dBm` : "—"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={`text-sm font-bold ${getSignalColor(s.txPower)}`}>
+                              {s.txPower !== null ? `${s.txPower} dBm` : "—"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className={`text-xs ${q.color} ${q.bg} border-0`}>
+                              {s.quality === "critical" && <AlertTriangle className="w-3 h-3 mr-1" />}
+                              {q.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-right text-muted-foreground">
+                            {s.lastInform ? new Date(s.lastInform).toLocaleString() : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm" variant="ghost"
+                              onClick={(e) => { e.stopPropagation(); refreshDeviceSignal(s.deviceId); }}
+                              disabled={actionLoading === `signal-${s.deviceId}`}
+                              title="Forzar lectura de señal"
+                            >
+                              {actionLoading === `signal-${s.deviceId}` ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Download className="w-3 h-3" />
+                              )}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
           {loading ? (
             <Card><CardContent className="p-8 text-center"><Loader2 className="w-6 h-6 mx-auto animate-spin" /></CardContent></Card>
           ) : devices.length === 0 ? (
