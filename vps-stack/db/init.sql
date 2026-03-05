@@ -552,6 +552,26 @@ RETURNS BOOLEAN AS $$
   );
 $$ LANGUAGE sql STABLE;
 
+-- ============================================
+-- ONU Signal History (Optical Power Monitoring)
+-- ============================================
+CREATE TABLE onu_signal_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  onu_id UUID NOT NULL REFERENCES onu_devices(id) ON DELETE CASCADE,
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  rx_power NUMERIC,
+  tx_power NUMERIC,
+  quality TEXT DEFAULT 'unknown',
+  temperature NUMERIC,
+  cpu_usage NUMERIC,
+  wan_status TEXT,
+  recorded_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_onu_signal_history_onu_id ON onu_signal_history(onu_id);
+CREATE INDEX idx_onu_signal_history_recorded_at ON onu_signal_history(recorded_at);
+CREATE INDEX idx_onu_signal_history_mikrotik ON onu_signal_history(mikrotik_id, recorded_at);
+
 -- Apply updated_at triggers
 DO $$
 DECLARE
