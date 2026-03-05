@@ -662,7 +662,53 @@ install_portal_templates() {
   log "Plantillas portal OmniSync instaladas en $tpl_dst ✓"
 }
 
-# ── 10) Fix permissions ──────────────────────────
+# ── 10) Auto-register MikroTik router in NuxBill ─
+setup_router() {
+  local MT_HOST="${MIKROTIK_HOST:-192.168.88.1}"
+  local MT_PORT="${MIKROTIK_PORT:-8728}"
+  local MT_USER="${MIKROTIK_USER:-admin}"
+  local MT_PASS="${MIKROTIK_PASS:-}"
+  local R_SECRET="${RADIUS_SECRET:-testing123}"
+
+  php -r "
+    \$c = @new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
+    if (\$c->connect_error) { echo 'No DB connection for router setup' . PHP_EOL; exit; }
+
+    // Check if tbl_routers exists
+    \$r = \$c->query(\"SHOW TABLES LIKE 'tbl_routers'\");
+    if (!\$r || \$r->num_rows === 0) {
+      echo 'tbl_routers no existe aún — skip router setup' . PHP_EOL;
+      \$c->close();
+      exit;
+    }
+
+    // Check if router already registered
+    \$host = \$c->real_escape_string('${MT_HOST}');
+    \$r = \$c->query(\"SELECT id FROM tbl_routers WHERE ip='\$host' LIMIT 1\");
+    if (\$r && \$r->num_rows > 0) {
+      // Update existing router credentials
+      \$port = \$c->real_escape_string('${MT_PORT}');
+      \$user = \$c->real_escape_string('${MT_USER}');
+      \$pass = \$c->real_escape_string('${MT_PASS}');
+      \$secret = \$c->real_escape_string('${R_SECRET}');
+      \$c->query(\"UPDATE tbl_routers SET username='\$user', password='\$pass', apiport='\$port', description='OmniSync Router', radius_secret='\$secret' WHERE ip='\$host'\");
+      echo 'Router actualizado en NuxBill ✓' . PHP_EOL;
+    } else {
+      // Insert new router
+      \$port = \$c->real_escape_string('${MT_PORT}');
+      \$user = \$c->real_escape_string('${MT_USER}');
+      \$pass = \$c->real_escape_string('${MT_PASS}');
+      \$secret = \$c->real_escape_string('${R_SECRET}');
+      \$c->query(\"INSERT INTO tbl_routers (name, ip, username, password, description, enabled, apiport, radius_secret)
+        VALUES ('OmniSync-MikroTik', '\$host', '\$user', '\$pass', 'Auto-registrado por OmniSync', '1', '\$port', '\$secret')\");
+      echo 'Router registrado en NuxBill ✓' . PHP_EOL;
+    }
+
+    \$c->close();
+  " 2>/dev/null || log "⚠ Error en setup_router"
+}
+
+# ── 11) Fix permissions ──────────────────────────
 fix_permissions() {
   chown -R www-data:www-data "$NUXROOT"
   chmod -R 755 "$NUXROOT"
@@ -684,6 +730,7 @@ if wait_mariadb; then
   import_schema
   import_radius_schema
   setup_admin
+  setup_router
   setup_cron
 fi
 
