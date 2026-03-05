@@ -35,18 +35,20 @@ export default function CaptivePortal() {
     const id = params.get("id") || params.get("mikrotik");
     if (id) {
       setMikrotikId(id);
-      // Load portal ads
-      portalAdsApi.publicList(id).then((ads) => {
-        setPortalAds(ads);
-        // Track impressions
-        ads.forEach((ad: any) => {
-          if (!impressionTracked.current.has(ad.id)) {
-            impressionTracked.current.add(ad.id);
-            portalAdsApi.trackImpression(ad.id).catch(() => {});
-          }
-        });
-      }).catch(() => {});
     }
+    // Load portal ads (with mikrotikId or fallback to default)
+    const loadAds = id
+      ? portalAdsApi.publicList(id)
+      : portalAdsApi.publicList('default');
+    loadAds.then((ads) => {
+      setPortalAds(ads);
+      ads.forEach((ad: any) => {
+        if (!impressionTracked.current.has(ad.id)) {
+          impressionTracked.current.add(ad.id);
+          portalAdsApi.trackImpression(ad.id).catch(() => {});
+        }
+      });
+    }).catch(() => {});
     const u = params.get("username"); const p = params.get("password");
     if (u) { setUsername(u); setMode("credentials"); }
     if (p) setPassword(p);
