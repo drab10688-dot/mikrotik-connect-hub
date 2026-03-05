@@ -81,7 +81,8 @@ export default function OnuManagement() {
     serial_number: "", mac_address: "", brand: "latic", model: "",
     management_ip: "", olt_port: "", wifi_ssid: "", wifi_password: "",
     pppoe_username: "", pppoe_password: "", pppoe_profile: "",
-    client_id: "", notes: "", auto_create_pppoe: false,
+    client_id: "", notes: "", auto_create_pppoe: false, auto_provision_tr069: false,
+    vlan_id: "", dns1: "", dns2: "",
   });
 
   const [wifiForm, setWifiForm] = useState({ wifi_ssid: "", wifi_password: "" });
@@ -124,12 +125,40 @@ export default function OnuManagement() {
       });
       if (res.warning) toast.warning(res.warning);
       else toast.success("ONU registrada exitosamente");
+
+      // Auto-provision via TR-069 if enabled
+      if (form.auto_provision_tr069 && form.serial_number && (form.wifi_ssid || form.pppoe_username)) {
+        try {
+          const provRes = await api("/genieacs/auto-provision", {
+            method: "POST",
+            body: {
+              serialNumber: form.serial_number,
+              wifiSsid: form.wifi_ssid || undefined,
+              wifiPassword: form.wifi_password || undefined,
+              pppoeUsername: form.pppoe_username || undefined,
+              pppoePassword: form.pppoe_password || undefined,
+              vlanId: form.vlan_id || undefined,
+              dns1: form.dns1 || undefined,
+              dns2: form.dns2 || undefined,
+            },
+          });
+          if (provRes.found) {
+            toast.success(`TR-069: ${provRes.message}`);
+          } else {
+            toast.info(provRes.message);
+          }
+        } catch (provErr: any) {
+          toast.warning(`ONU registrada pero auto-provisioning TR-069 falló: ${provErr.message}`);
+        }
+      }
+
       setShowAddOnu(false);
       setForm({
         serial_number: "", mac_address: "", brand: "latic", model: "",
         management_ip: "", olt_port: "", wifi_ssid: "", wifi_password: "",
         pppoe_username: "", pppoe_password: "", pppoe_profile: "",
-        client_id: "", notes: "", auto_create_pppoe: false,
+        client_id: "", notes: "", auto_create_pppoe: false, auto_provision_tr069: false,
+        vlan_id: "", dns1: "", dns2: "",
       });
       loadData();
     } catch (err: any) {
@@ -332,6 +361,34 @@ export default function OnuManagement() {
                       <Label>Crear secreto PPPoE automáticamente en MikroTik</Label>
                     </div>
 
+                    <div className="col-span-2 flex items-center gap-3">
+                      <Switch
+                        checked={form.auto_provision_tr069}
+                        onCheckedChange={v => setForm(p => ({ ...p, auto_provision_tr069: v }))}
+                      />
+                      <div>
+                        <Label>Auto-aprovisionar via TR-069 (GenieACS)</Label>
+                        <p className="text-xs text-muted-foreground">Envía WiFi, PPPoE y VLAN a la ONU automáticamente vía CWMP</p>
+                      </div>
+                    </div>
+
+                    {form.auto_provision_tr069 && (
+                      <div className="col-span-2 grid grid-cols-3 gap-4 bg-muted/50 p-4 rounded-lg">
+                        <div className="space-y-2">
+                          <Label className="text-xs">VLAN ID</Label>
+                          <Input value={form.vlan_id} onChange={e => setForm(p => ({ ...p, vlan_id: e.target.value }))} placeholder="100" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">DNS Primario</Label>
+                          <Input value={form.dns1} onChange={e => setForm(p => ({ ...p, dns1: e.target.value }))} placeholder="8.8.8.8" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">DNS Secundario</Label>
+                          <Input value={form.dns2} onChange={e => setForm(p => ({ ...p, dns2: e.target.value }))} placeholder="8.8.4.4" />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="col-span-2 space-y-2">
                       <Label>Notas</Label>
                       <Textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Notas adicionales..." />
@@ -424,6 +481,34 @@ export default function OnuManagement() {
                                   }}
                                 >
                                   <Wifi className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="icon" className="h-8 w-8"
+                                  title="Auto-provisionar via TR-069"
+                                  onClick={async () => {
+                                    if (!onu.wifi_ssid && !onu.pppoe_username) {
+                                      toast.error("La ONU no tiene WiFi ni PPPoE configurado para enviar");
+                                      return;
+                                    }
+                                    try {
+                                      const provRes = await api("/genieacs/auto-provision", {
+                                        method: "POST",
+                                        body: {
+                                          serialNumber: onu.serial_number,
+                                          wifiSsid: onu.wifi_ssid || undefined,
+                                          wifiPassword: onu.wifi_password || undefined,
+                                          pppoeUsername: onu.pppoe_username || undefined,
+                                          pppoePassword: onu.pppoe_password || undefined,
+                                        },
+                                      });
+                                      if (provRes.found) toast.success(provRes.message);
+                                      else toast.info(provRes.message);
+                                    } catch (err: any) {
+                                      toast.error("Error TR-069: " + err.message);
+                                    }
+                                  }}
+                                >
+                                  <Signal className="w-4 h-4" />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteOnu(onu.id)}>
                                   <Trash2 className="w-4 h-4" />

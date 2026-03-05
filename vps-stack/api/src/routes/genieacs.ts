@@ -765,6 +765,106 @@ genieacsRouter.post('/bulk/config', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ─── Auto-provision a device by serial number ──────────
+// Finds the device in GenieACS by serial, then pushes WiFi + PPPoE + VLAN config
+genieacsRouter.post('/auto-provision', async (req: AuthRequest, res: Response) => {
+  try {
+    const { serialNumber, wifiSsid, wifiPassword, pppoeUsername, pppoePassword, vlanId, dns1, dns2, mtu } = req.body;
+
+    if (!serialNumber) {
+      return res.status(400).json({ error: 'serialNumber es requerido' });
+    }
+    if (!wifiSsid && !pppoeUsername) {
+      return res.status(400).json({ error: 'Debe enviar al menos WiFi o PPPoE para aprovisionar' });
+    }
+
+    // Find device in GenieACS by serial number
+    const query = JSON.stringify({
+      "$or": [
+        { "InternetGatewayDevice.DeviceInfo.SerialNumber": serialNumber },
+        { "Device.DeviceInfo.SerialNumber": serialNumber }
+      ]
+    });
+    const devices = await genieFetch(`/devices/?query=${encodeURIComponent(query)}&projection=DeviceID`);
+
+    if (!devices || devices.length === 0) {
+      return res.json({
+        success: false,
+        found: false,
+        message: `ONU con serial ${serialNumber} no encontrada en el ACS. La configuración se aplicará cuando la ONU se conecte.`
+      });
+    }
+
+    const deviceId = devices[0]._id;
+    const parameterValues: [string, string, string][] = [];
+
+    // WiFi configuration
+    if (wifiSsid) {
+      parameterValues.push(
+        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', wifiSsid, 'xsd:string']
+      );
+    }
+    if (wifiPassword) {
+      parameterValues.push(
+        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', wifiPassword, 'xsd:string'],
+        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase', wifiPassword, 'xsd:string'],
+      );
+    }
+
+    // PPPoE configuration
+    const wanBase = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+    if (pppoeUsername) {
+      parameterValues.push([`${wanBase}.Username`, pppoeUsername, 'xsd:string']);
+    }
+    if (pppoePassword) {
+      parameterValues.push([`${wanBase}.Password`, pppoePassword, 'xsd:string']);
+    }
+
+    // VLAN
+    if (vlanId !== undefined && vlanId !== null && vlanId !== '') {
+      parameterValues.push([
+        'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.X_VLAN_ID',
+        String(vlanId), 'xsd:unsignedInt'
+      ]);
+    }
+
+    // DNS
+    if (dns1) {
+      parameterValues.push([`${wanBase}.DNSServers`, dns2 ? `${dns1},${dns2}` : dns1, 'xsd:string']);
+    }
+
+    // MTU
+    if (mtu) {
+      parameterValues.push([`${wanBase}.MaxMRUSize`, String(mtu), 'xsd:unsignedInt']);
+    }
+
+    if (parameterValues.length === 0) {
+      return res.status(400).json({ error: 'No hay parámetros para enviar' });
+    }
+
+    const task = { name: 'setParameterValues', parameterValues };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    const configSummary = [];
+    if (wifiSsid) configSummary.push(`WiFi: ${wifiSsid}`);
+    if (pppoeUsername) configSummary.push(`PPPoE: ${pppoeUsername}`);
+    if (vlanId) configSummary.push(`VLAN: ${vlanId}`);
+
+    res.json({
+      success: true,
+      found: true,
+      deviceId,
+      message: `Auto-provisioning enviado: ${configSummary.join(', ')}`,
+      data: result
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Get files (for firmware OTA) ───────────────────────
 genieacsRouter.get('/files', async (req: AuthRequest, res: Response) => {
   try {
