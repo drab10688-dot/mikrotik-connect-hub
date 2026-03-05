@@ -19,7 +19,7 @@ export default function MikrotikDevices() {
   const queryClient = useQueryClient();
   const { user, isSuperAdmin, isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login' });
+  const [formData, setFormData] = useState({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login', latitude: '', longitude: '' });
 
   const { data: devices, isLoading } = useQuery({
     queryKey: ['mikrotik-devices', user?.id],
