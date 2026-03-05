@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown } from "lucide-react";
+import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown, Server } from "lucide-react";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
 import { SystemAlerts } from "@/components/notifications/SystemAlerts";
@@ -139,6 +139,14 @@ const Dashboard = () => {
                   </div>
                 </>
               )}
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate("/vps-services")}
+              >
+                <Server className="w-4 h-4 mr-2" />
+                Servicios VPS / WireGuard
+              </Button>
             </CardContent>
           </Card>
         </div>
