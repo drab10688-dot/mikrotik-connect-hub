@@ -84,9 +84,9 @@ export function VpnManager() {
         apiGet("/vpn/status"),
         apiGet("/devices"),
       ]);
-      setPeers(peersRes);
+      setPeers(Array.isArray(peersRes) ? peersRes : []);
       setStatus(statusRes);
-      setDevices(devicesRes);
+      setDevices(Array.isArray(devicesRes) ? devicesRes : []);
     } catch (err: any) {
       console.error("VPN fetch error:", err);
     } finally {
