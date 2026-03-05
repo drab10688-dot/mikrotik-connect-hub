@@ -329,8 +329,8 @@ PersistentKeepalive = 25`;
 vpnRouter.put('/peers/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).user.id;
-    const userRole = (req as any).user.role;
+    const userId = (req as any).userId;
+    const userRole = (req as any).userRole;
     const { name, description, mikrotik_id, remote_networks, is_active } = req.body;
 
     const sets: string[] = [];
