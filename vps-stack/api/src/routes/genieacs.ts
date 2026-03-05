@@ -26,16 +26,34 @@ async function genieFetch(path: string, options: RequestInit = {}) {
   return res.text();
 }
 
+// Helper: extract parameter value from GenieACS device tree
+function getParam(device: any, path: string): any {
+  const parts = path.split('.');
+  let current = device;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = current[part];
+  }
+  return current?._value ?? current;
+}
+
+// ─── Health check ─────────────────────────────────────────
+genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
+  try {
+    await genieFetch('/devices/?projection=DeviceID&limit=1');
+    res.json({ success: true, status: 'online', message: 'GenieACS está funcionando' });
+  } catch (err: any) {
+    res.json({ success: false, status: 'offline', message: err.message });
+  }
+});
+
 // ─── List all devices (CPEs) ─────────────────────────────
 genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
     const query = req.query.query || '';
-    const projection = req.query.projection || 
-      'DeviceID,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.WANDevice,InternetGatewayDevice.LANDevice';
-    
+    const projection = req.query.projection || '';
     let url = `/devices/?projection=${encodeURIComponent(projection as string)}`;
     if (query) url += `&query=${encodeURIComponent(query as string)}`;
-
     const data = await genieFetch(url);
     res.json({ success: true, data });
   } catch (err: any) {
@@ -43,7 +61,7 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ─── Get single device ──────────────────────────────────
+// ─── Get single device (full tree) ──────────────────────
 genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
@@ -54,41 +72,132 @@ genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response)
   }
 });
 
+// ─── Get device monitoring data (optical signal, CPU, temp, uptime, wan status) ──
+genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+
+    const igd = device?.InternetGatewayDevice || device?.Device || {};
+    const di = igd?.DeviceInfo || {};
+    const wan = igd?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1'] || 
+                igd?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANIPConnection?.['1'] || {};
+    const wlan = igd?.LANDevice?.['1']?.WLANConfiguration || {};
+    const optical = igd?.WANDevice?.['1']?.WANCommonInterfaceConfig || {};
+
+    // Extract optical power from common TR-069 paths
+    const rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower') 
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
+      ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
+      ?? null;
+
+    const txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
+      ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
+      ?? null;
+
+    // CPU and memory
+    const cpuUsage = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_CPU_Usage')
+      ?? getParam(device, 'Device.DeviceInfo.ProcessStatus.CPUUsage')
+      ?? null;
+    const memoryUsage = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_Memory_Usage')
+      ?? getParam(device, 'Device.DeviceInfo.MemoryStatus.Free')
+      ?? null;
+    const temperature = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_Temperature')
+      ?? getParam(device, 'Device.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value')
+      ?? null;
+
+    // WiFi clients
+    const wifiClients: any[] = [];
+    for (const key of Object.keys(wlan)) {
+      const wc = wlan[key];
+      if (wc?.AssociatedDevice) {
+        for (const ck of Object.keys(wc.AssociatedDevice)) {
+          const client = wc.AssociatedDevice[ck];
+          wifiClients.push({
+            mac: client?.MACAddress?._value || '-',
+            signal: client?.SignalStrength?._value || null,
+            active: client?.Active?._value ?? true,
+          });
+        }
+      }
+    }
+
+    const monitor = {
+      uptime: di?.UpTime?._value || null,
+      manufacturer: di?.Manufacturer?._value || 'Desconocido',
+      model: di?.ModelName?._value || di?.ProductClass?._value || '-',
+      serial: di?.SerialNumber?._value || '-',
+      softwareVersion: di?.SoftwareVersion?._value || '-',
+      hardwareVersion: di?.HardwareVersion?._value || '-',
+      rxPower,
+      txPower,
+      cpuUsage,
+      memoryUsage,
+      temperature,
+      wanStatus: wan?.ConnectionStatus?._value || wan?.Status?._value || 'Unknown',
+      wanIP: wan?.ExternalIPAddress?._value || '-',
+      wanUptime: wan?.Uptime?._value || null,
+      wifiClients,
+      wifiSSID: wlan?.['1']?.SSID?._value || '-',
+      wifiEnabled: wlan?.['1']?.Enable?._value ?? null,
+      lastInformTime: device?._lastInform || null,
+    };
+
+    res.json({ success: true, data: monitor });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Set WiFi parameters (SSID + Password) ──────────────
 genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const { ssid, password } = req.body;
+    const { ssid, password, band } = req.body;
 
     if (!ssid && !password) {
       return res.status(400).json({ error: 'Debe enviar ssid o password' });
     }
 
-    // Build parameter list for SetParameterValues
+    const wlanIndex = band === '5g' ? '2' : '1';
+    const basePath = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanIndex}`;
     const parameterValues: [string, string, string][] = [];
 
-    // Common TR-069 WiFi parameter paths
-    const wlanBasePaths = [
-      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1',
-      'Device.WiFi.SSID.1',
-    ];
-
-    if (ssid) {
-      parameterValues.push(
-        [`${wlanBasePaths[0]}.SSID`, ssid, 'xsd:string'],
-      );
-    }
+    if (ssid) parameterValues.push([`${basePath}.SSID`, ssid, 'xsd:string']);
     if (password) {
       parameterValues.push(
-        [`${wlanBasePaths[0]}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'],
-        [`${wlanBasePaths[0]}.KeyPassphrase`, password, 'xsd:string'],
+        [`${basePath}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'],
+        [`${basePath}.KeyPassphrase`, password, 'xsd:string'],
       );
     }
 
-    // Create task in GenieACS
+    const task = { name: 'setParameterValues', parameterValues };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    res.json({ success: true, message: 'Tarea de cambio WiFi enviada', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Enable/disable WiFi interface ──────────────────────
+genieacsRouter.post('/devices/:deviceId/wifi-toggle', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { band, enable } = req.body;
+
+    const wlanIndex = band === '5g' ? '2' : '1';
     const task = {
       name: 'setParameterValues',
-      parameterValues,
+      parameterValues: [
+        [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanIndex}.Enable`, enable, 'xsd:boolean'],
+      ],
     };
 
     const result = await genieFetch(
@@ -96,7 +205,86 @@ genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Res
       { method: 'POST', body: JSON.stringify(task) }
     );
 
-    res.json({ success: true, message: 'Tarea de cambio WiFi enviada a la ONU', data: result });
+    res.json({ success: true, message: `WiFi ${band || '2.4G'} ${enable ? 'habilitado' : 'deshabilitado'}`, data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Set WiFi channel and bandwidth ─────────────────────
+genieacsRouter.post('/devices/:deviceId/wifi-channel', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { band, channel, bandwidth } = req.body;
+
+    const wlanIndex = band === '5g' ? '2' : '1';
+    const basePath = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanIndex}`;
+    const parameterValues: [string, string, string][] = [];
+
+    if (channel !== undefined) parameterValues.push([`${basePath}.Channel`, String(channel), 'xsd:unsignedInt']);
+    if (bandwidth) parameterValues.push([`${basePath}.OperatingChannelBandwidth`, bandwidth, 'xsd:string']);
+
+    const task = { name: 'setParameterValues', parameterValues };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    res.json({ success: true, message: 'Canal WiFi actualizado', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Configure PPPoE ────────────────────────────────────
+genieacsRouter.post('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { username, password } = req.body;
+
+    const basePath = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+    const parameterValues: [string, string, string][] = [];
+
+    if (username) parameterValues.push([`${basePath}.Username`, username, 'xsd:string']);
+    if (password) parameterValues.push([`${basePath}.Password`, password, 'xsd:string']);
+
+    const task = { name: 'setParameterValues', parameterValues };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    res.json({ success: true, message: 'Configuración PPPoE enviada', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Configure DNS, MTU, VLAN ───────────────────────────
+genieacsRouter.post('/devices/:deviceId/network', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { dns1, dns2, mtu, vlanId } = req.body;
+
+    const wanBase = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+    const parameterValues: [string, string, string][] = [];
+
+    if (dns1) parameterValues.push([`${wanBase}.DNSServers`, dns2 ? `${dns1},${dns2}` : dns1, 'xsd:string']);
+    if (mtu) parameterValues.push([`${wanBase}.MaxMRUSize`, String(mtu), 'xsd:unsignedInt']);
+    if (vlanId !== undefined) {
+      parameterValues.push([
+        'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.X_VLAN_ID',
+        String(vlanId), 'xsd:unsignedInt'
+      ]);
+    }
+
+    const task = { name: 'setParameterValues', parameterValues };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    res.json({ success: true, message: 'Configuración de red enviada', data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -106,14 +294,25 @@ genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Res
 genieacsRouter.post('/devices/:deviceId/reboot', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-
-    const task = { name: 'reboot' };
     const result = await genieFetch(
       `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify(task) }
+      { method: 'POST', body: JSON.stringify({ name: 'reboot' }) }
     );
-
     res.json({ success: true, message: 'Comando de reinicio enviado', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Factory reset ──────────────────────────────────────
+genieacsRouter.post('/devices/:deviceId/factory-reset', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify({ name: 'factoryReset' }) }
+    );
+    res.json({ success: true, message: 'Factory reset enviado', data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -124,18 +323,225 @@ genieacsRouter.post('/devices/:deviceId/refresh', async (req: AuthRequest, res: 
   try {
     const { deviceId } = req.params;
     const { parameterPath } = req.body;
-
     const task = {
       name: 'getParameterValues',
       parameterNames: [parameterPath || 'InternetGatewayDevice'],
     };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+    res.json({ success: true, message: 'Solicitud de actualización enviada', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
+// ─── Firmware download (OTA upgrade) ────────────────────
+genieacsRouter.post('/devices/:deviceId/firmware', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { fileName } = req.body;
+
+    const task = {
+      name: 'download',
+      file: fileName,
+      fileType: '1 Firmware Upgrade Image',
+    };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+    res.json({ success: true, message: 'Actualización de firmware enviada', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Bulk firmware upgrade (multiple devices) ───────────
+genieacsRouter.post('/firmware/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceIds, fileName } = req.body;
+    const results: any[] = [];
+
+    for (const deviceId of deviceIds) {
+      try {
+        const task = { name: 'download', file: fileName, fileType: '1 Firmware Upgrade Image' };
+        const result = await genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify(task) }
+        );
+        results.push({ deviceId, success: true, data: result });
+      } catch (err: any) {
+        results.push({ deviceId, success: false, error: err.message });
+      }
+    }
+
+    res.json({ success: true, message: `Firmware enviado a ${results.filter(r => r.success).length}/${deviceIds.length} dispositivos`, data: results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Config backup (download from device) ───────────────
+genieacsRouter.post('/devices/:deviceId/config-backup', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const task = {
+      name: 'upload',
+      fileType: '1 Vendor Configuration File',
+    };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+    res.json({ success: true, message: 'Backup de configuración solicitado', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Config restore (push config to device) ─────────────
+genieacsRouter.post('/devices/:deviceId/config-restore', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { fileName } = req.body;
+    const task = {
+      name: 'download',
+      file: fileName,
+      fileType: '3 Vendor Configuration File',
+    };
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+    res.json({ success: true, message: 'Restauración de config enviada', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Run diagnostics (Ping/Traceroute from device) ──────
+genieacsRouter.post('/devices/:deviceId/diagnostics', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { type, host } = req.body; // type: 'ping' | 'traceroute'
+
+    const parameterValues: [string, string, string][] = [];
+
+    if (type === 'ping') {
+      parameterValues.push(
+        ['InternetGatewayDevice.IPPingDiagnostics.DiagnosticsState', 'Requested', 'xsd:string'],
+        ['InternetGatewayDevice.IPPingDiagnostics.Host', host, 'xsd:string'],
+        ['InternetGatewayDevice.IPPingDiagnostics.NumberOfRepetitions', '4', 'xsd:unsignedInt'],
+        ['InternetGatewayDevice.IPPingDiagnostics.Timeout', '5000', 'xsd:unsignedInt'],
+      );
+    } else if (type === 'traceroute') {
+      parameterValues.push(
+        ['InternetGatewayDevice.TraceRouteDiagnostics.DiagnosticsState', 'Requested', 'xsd:string'],
+        ['InternetGatewayDevice.TraceRouteDiagnostics.Host', host, 'xsd:string'],
+        ['InternetGatewayDevice.TraceRouteDiagnostics.MaxHopCount', '30', 'xsd:unsignedInt'],
+        ['InternetGatewayDevice.TraceRouteDiagnostics.Timeout', '5000', 'xsd:unsignedInt'],
+      );
+    } else {
+      return res.status(400).json({ error: 'Tipo de diagnóstico inválido. Use ping o traceroute' });
+    }
+
+    const task = { name: 'setParameterValues', parameterValues };
     const result = await genieFetch(
       `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
       { method: 'POST', body: JSON.stringify(task) }
     );
 
-    res.json({ success: true, message: 'Solicitud de actualización enviada', data: result });
+    res.json({ success: true, message: `Diagnóstico ${type} iniciado`, data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get diagnostics results ────────────────────────────
+genieacsRouter.get('/devices/:deviceId/diagnostics/:type', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId, type } = req.params;
+    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+
+    const igd = device?.InternetGatewayDevice || device?.Device || {};
+    let result: any = {};
+
+    if (type === 'ping') {
+      const ping = igd?.IPPingDiagnostics || {};
+      result = {
+        state: ping?.DiagnosticsState?._value || 'None',
+        host: ping?.Host?._value || '-',
+        successCount: ping?.SuccessCount?._value || 0,
+        failureCount: ping?.FailureCount?._value || 0,
+        avgResponseTime: ping?.AverageResponseTime?._value || 0,
+        minResponseTime: ping?.MinimumResponseTime?._value || 0,
+        maxResponseTime: ping?.MaximumResponseTime?._value || 0,
+      };
+    } else if (type === 'traceroute') {
+      const tr = igd?.TraceRouteDiagnostics || {};
+      const hops: any[] = [];
+      if (tr?.RouteHops) {
+        for (const key of Object.keys(tr.RouteHops)) {
+          const hop = tr.RouteHops[key];
+          hops.push({
+            hopNumber: parseInt(key),
+            host: hop?.HopHost?._value || '-',
+            address: hop?.HopHostAddress?._value || '-',
+            rtt: hop?.HopRTTimes?._value || 0,
+          });
+        }
+      }
+      result = {
+        state: tr?.DiagnosticsState?._value || 'None',
+        host: tr?.Host?._value || '-',
+        hops,
+      };
+    }
+
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get device traffic stats ───────────────────────────
+genieacsRouter.get('/devices/:deviceId/traffic', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+
+    const igd = device?.InternetGatewayDevice || device?.Device || {};
+    const wanStats = igd?.WANDevice?.['1']?.WANCommonInterfaceConfig || {};
+    const lanStats = igd?.LANDevice?.['1']?.LANEthernetInterfaceConfig || {};
+
+    const interfaces: any[] = [];
+
+    // WAN
+    interfaces.push({
+      name: 'WAN',
+      bytesReceived: wanStats?.TotalBytesReceived?._value || 0,
+      bytesSent: wanStats?.TotalBytesSent?._value || 0,
+      packetsReceived: wanStats?.TotalPacketsReceived?._value || 0,
+      packetsSent: wanStats?.TotalPacketsSent?._value || 0,
+    });
+
+    // LAN ports
+    for (const key of Object.keys(lanStats || {})) {
+      const port = lanStats[key];
+      if (port?.Stats) {
+        interfaces.push({
+          name: `LAN ${key}`,
+          bytesReceived: port.Stats.BytesReceived?._value || 0,
+          bytesSent: port.Stats.BytesSent?._value || 0,
+          packetsReceived: port.Stats.PacketsReceived?._value || 0,
+          packetsSent: port.Stats.PacketsSent?._value || 0,
+        });
+      }
+    }
+
+    res.json({ success: true, data: interfaces });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -174,49 +580,80 @@ genieacsRouter.get('/presets', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ─── GenieACS health check ─────────────────────────────
-genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
+// ─── Create/Update a preset (auto-provisioning) ────────
+genieacsRouter.put('/presets/:presetId', async (req: AuthRequest, res: Response) => {
   try {
-    const data = await genieFetch('/devices/?projection=DeviceID&limit=1');
-    res.json({ success: true, status: 'online', message: 'GenieACS está funcionando' });
-  } catch (err: any) {
-    res.json({ success: false, status: 'offline', message: err.message });
-  }
-});
-
-// ─── Factory reset ──────────────────────────────────────
-genieacsRouter.post('/devices/:deviceId/factory-reset', async (req: AuthRequest, res: Response) => {
-  try {
-    const { deviceId } = req.params;
-    const task = { name: 'factoryReset' };
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify(task) }
-    );
-    res.json({ success: true, message: 'Factory reset enviado', data: result });
+    const { presetId } = req.params;
+    const preset = req.body;
+    await genieFetch(`/presets/${encodeURIComponent(presetId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(preset),
+    });
+    res.json({ success: true, message: 'Preset guardado' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── Download config file to device ─────────────────────
-genieacsRouter.post('/devices/:deviceId/download', async (req: AuthRequest, res: Response) => {
+// ─── Delete a preset ───────────────────────────────────
+genieacsRouter.delete('/presets/:presetId', async (req: AuthRequest, res: Response) => {
   try {
-    const { deviceId } = req.params;
-    const { fileType, fileName } = req.body;
+    const { presetId } = req.params;
+    await genieFetch(`/presets/${encodeURIComponent(presetId)}`, { method: 'DELETE' });
+    res.json({ success: true, message: 'Preset eliminado' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const task = {
-      name: 'download',
-      file: fileName,
-      fileType: fileType || '1 Firmware Upgrade Image',
-    };
+// ─── Bulk apply config to devices by filter ─────────────
+genieacsRouter.post('/bulk/config', async (req: AuthRequest, res: Response) => {
+  try {
+    const { filter, parameterValues } = req.body;
+    // Get matching devices
+    const devices = await genieFetch(`/devices/?query=${encodeURIComponent(JSON.stringify(filter))}&projection=DeviceID`);
+    const results: any[] = [];
 
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify(task) }
-    );
+    for (const device of devices) {
+      const deviceId = device._id;
+      try {
+        const task = { name: 'setParameterValues', parameterValues };
+        const result = await genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify(task) }
+        );
+        results.push({ deviceId, success: true });
+      } catch (err: any) {
+        results.push({ deviceId, success: false, error: err.message });
+      }
+    }
 
-    res.json({ success: true, message: 'Descarga enviada al dispositivo', data: result });
+    res.json({ 
+      success: true, 
+      message: `Configuración aplicada a ${results.filter(r => r.success).length}/${devices.length} dispositivos`,
+      data: results 
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get files (for firmware OTA) ───────────────────────
+genieacsRouter.get('/files', async (req: AuthRequest, res: Response) => {
+  try {
+    const data = await genieFetch('/files/');
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Delete file ────────────────────────────────────────
+genieacsRouter.delete('/files/:fileId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { fileId } = req.params;
+    await genieFetch(`/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' });
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
