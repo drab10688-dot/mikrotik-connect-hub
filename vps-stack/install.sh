@@ -722,15 +722,18 @@ if [ "$HTTP_FAIL" -gt 0 ]; then
   echo -e "${YELLOW}  Endpoints con fallo:${FAILED_ENDPOINTS}${NC}"
 fi
 
-if [ "$TOTAL_FAIL" -gt 0 ]; then
+if [ "$TOTAL_FAIL" -gt 0 ] || [ "$HTTP_FAIL" -gt 0 ]; then
   echo ""
-  echo -e "${YELLOW}╔══════════════════════════════════════════════════════════╗"
-  echo "║  ⚠ Servicios fallidos:${FAILED_SERVICES}"
-  echo "║  El panel web YA está disponible para gestionar backups."
+  echo -e "${RED}╔══════════════════════════════════════════════════════════╗"
+  echo "║  ✗ Instalación incompleta: hay servicios/endpoints caídos"
+  echo "║  Servicios:${FAILED_SERVICES}"
+  echo "║  Endpoints:${FAILED_ENDPOINTS}"
   echo "║                                                          "
-  echo "║  Reintentar: cd $INSTALL_DIR && docker compose up -d     "
-  echo "║  Ver logs:   cd $INSTALL_DIR && docker compose logs      "
-  echo "╚══════════════════════════════════════════════════════════╝${NC}"
+  echo "║  Revisar:   cd $INSTALL_DIR && docker compose ps         "
+  echo "║  Ver logs:  cd $INSTALL_DIR && docker compose logs --tail=100"
+  echo "║  Reintentar:cd $INSTALL_DIR && docker compose up -d --build"
+  echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
+  exit 1
 fi
 
 # ═══════════════════════════════════════════════════
