@@ -163,6 +163,11 @@ services:
       RADIUS_DB_USER: radius
       RADIUS_DB_PASS: ${RADIUS_DB_PASSWORD:-changeme_radius}
       RADIUS_DB_NAME: radius
+      MIKROTIK_HOST: ${MIKROTIK_HOST:-192.168.88.1}
+      MIKROTIK_PORT: ${MIKROTIK_PORT:-8728}
+      MIKROTIK_USER: ${MIKROTIK_USER:-admin}
+      MIKROTIK_PASS: ${MIKROTIK_PASS:-}
+      RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
       TZ: ${TZ:-America/Bogota}
     networks:
       - omnisync-net
