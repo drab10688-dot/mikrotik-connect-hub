@@ -529,6 +529,110 @@ genieacsRouter.get('/devices/:deviceId/diagnostics/:type', async (req: AuthReque
   }
 });
 
+// ─── Force refresh optical signal parameters via GetParameterValues ──
+genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+
+    // Request all known optical parameter paths across vendors
+    const opticalPaths = [
+      'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.',
+      'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.',
+      'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.',
+      'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.',
+      'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.',
+      'InternetGatewayDevice.X_HW_PONInfo.',
+      'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.',
+      'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.',
+      'Device.Optical.Interface.1.',
+    ];
+
+    const task = {
+      name: 'getParameterValues',
+      parameterNames: opticalPaths,
+    };
+
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    res.json({ success: true, message: 'Solicitud de lectura de señal óptica enviada', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Bulk signal overview for all devices ───────────────
+genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
+  try {
+    const devices = await genieFetch('/devices/?projection=InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,_lastInform');
+
+    const overview = (devices || []).map((device: any) => {
+      const igd = device?.InternetGatewayDevice || device?.Device || {};
+      const di = igd?.DeviceInfo || {};
+
+      const rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
+        ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
+        ?? null;
+
+      const txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
+        ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
+        ?? null;
+
+      // Normalize: some ONUs report in mW (positive values), convert to dBm
+      const normalizePower = (val: number | null): number | null => {
+        if (val === null) return null;
+        // If value is positive and > 1, likely in mW * 10000 or similar vendor scale
+        if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
+        return val;
+      };
+
+      const quality = (rx: number | null): string => {
+        if (rx === null) return 'unknown';
+        if (rx > -20) return 'excellent';
+        if (rx > -25) return 'good';
+        if (rx > -28) return 'fair';
+        return 'critical';
+      };
+
+      const rxNorm = normalizePower(rxPower);
+      const txNorm = normalizePower(txPower);
+
+      return {
+        deviceId: device._id,
+        manufacturer: di?.Manufacturer?._value || 'Desconocido',
+        model: di?.ModelName?._value || di?.ProductClass?._value || '-',
+        serial: di?.SerialNumber?._value || '-',
+        rxPower: rxNorm,
+        txPower: txNorm,
+        quality: quality(rxNorm),
+        lastInform: device?._lastInform || null,
+      };
+    });
+
+    res.json({ success: true, data: overview });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Get device traffic stats ───────────────────────────
 genieacsRouter.get('/devices/:deviceId/traffic', async (req: AuthRequest, res: Response) => {
   try {
