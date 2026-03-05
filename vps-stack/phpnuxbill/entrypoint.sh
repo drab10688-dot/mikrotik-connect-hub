@@ -235,7 +235,12 @@ setup_cron() {
     foreach (['cron_last_run'=>date('Y-m-d H:i:s'),'cron_period'=>'1','cron_status'=>'1',
               'cron_active'=>'1','disable_cron_warning'=>'1','cron_enabled'=>'1',
               'cron_enable'=>'1','cron_warning'=>'0'] as \$k=>\$v) {
-      \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$k','\$v') ON DUPLICATE KEY UPDATE value='\$v'\");
+      \$ks = \$c->real_escape_string(\$k);
+      \$vs = \$c->real_escape_string(\$v);
+      \$c->query(\"UPDATE tbl_appconfig SET value='\$vs' WHERE setting='\$ks'\");
+      if (\$c->affected_rows === 0) {
+        \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$ks','\$vs')\");
+      }
     }
     \$c->close();
   " 2>/dev/null || true
