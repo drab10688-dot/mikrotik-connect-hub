@@ -297,6 +297,10 @@ export default function OnuManagement() {
               <FileText className="w-4 h-4 mr-2" />
               Plantillas ({templates.length})
             </TabsTrigger>
+            <TabsTrigger value="tr069" onClick={() => { if (tr069Devices.length === 0) loadTr069Devices(); }}>
+              <Signal className="w-4 h-4 mr-2" />
+              TR-069
+            </TabsTrigger>
           </TabsList>
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
