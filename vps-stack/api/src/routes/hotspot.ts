@@ -302,7 +302,7 @@ hotspotRouter.post('/login', async (req: any, res: Response) => {
 // ─── Public NuxBill Login ────────────────────────────────
 hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
   try {
-    const { mikrotik_id, code, username, password, mode } = req.body;
+    const { mikrotik_id, code, username, password, mode, ip, mac } = req.body;
     
     if (!mikrotik_id) {
       return res.status(400).json({ success: false, error: 'mikrotik_id requerido' });
