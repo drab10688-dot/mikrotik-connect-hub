@@ -227,3 +227,55 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
 
   console.log(`[SIGNAL CRON] MikroTik ${mikrotikId}: ${collected}/${onus.length} ONUs collected`);
 }
+
+/**
+ * Cron job: Limpieza automática del historial de señal óptica
+ * Elimina registros antiguos según la configuración de cada MikroTik
+ * (auto_cleanup_days en onu_signal_config, default 90 días)
+ */
+export async function runSignalCleanupCron(pool: Pool) {
+  console.log('[SIGNAL CLEANUP] Starting old signal history cleanup...');
+
+  try {
+    // Get cleanup config per MikroTik
+    const { rows: configs } = await pool.query(
+      `SELECT mikrotik_id, auto_cleanup_days FROM onu_signal_config WHERE auto_cleanup_days > 0`
+    );
+
+    let totalDeleted = 0;
+
+    // Clean configured MikroTiks with their specific retention
+    for (const { mikrotik_id, auto_cleanup_days } of configs) {
+      const result = await pool.query(
+        `DELETE FROM onu_signal_history WHERE mikrotik_id = $1 AND recorded_at < NOW() - INTERVAL '1 day' * $2`,
+        [mikrotik_id, auto_cleanup_days]
+      );
+      totalDeleted += result.rowCount || 0;
+    }
+
+    // Clean unconfigured MikroTiks with default 90 days
+    const configuredIds = configs.map(c => c.mikrotik_id);
+    if (configuredIds.length > 0) {
+      const result = await pool.query(
+        `DELETE FROM onu_signal_history WHERE mikrotik_id != ALL($1) AND recorded_at < NOW() - INTERVAL '90 days'`,
+        [configuredIds]
+      );
+      totalDeleted += result.rowCount || 0;
+    } else {
+      const result = await pool.query(
+        `DELETE FROM onu_signal_history WHERE recorded_at < NOW() - INTERVAL '90 days'`
+      );
+      totalDeleted += result.rowCount || 0;
+    }
+
+    // Also clean old signal alerts (keep 180 days)
+    const alertResult = await pool.query(
+      `DELETE FROM onu_signal_alerts WHERE created_at < NOW() - INTERVAL '180 days'`
+    );
+    const alertsDeleted = alertResult.rowCount || 0;
+
+    console.log(`[SIGNAL CLEANUP] Done. History: ${totalDeleted} deleted, Alerts: ${alertsDeleted} deleted`);
+  } catch (error) {
+    console.error('[SIGNAL CLEANUP] Error:', error);
+  }
+}

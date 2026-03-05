@@ -25,7 +25,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
-import { runSignalCollectCron } from './cron/signal-collect';
+import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -111,6 +111,12 @@ cron.schedule('0 6 * * *', () => {
 cron.schedule('*/15 * * * *', () => {
   console.log('[CRON] Running optical signal collection...');
   runSignalCollectCron(pool);
+});
+
+// Cron: limpieza de historial de señal óptica cada día a las 3:00 AM
+cron.schedule('0 3 * * *', () => {
+  console.log('[CRON] Running signal history cleanup...');
+  runSignalCleanupCron(pool);
 });
 
 app.listen(PORT, () => {
