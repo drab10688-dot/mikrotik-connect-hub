@@ -248,7 +248,6 @@ vpnRouter.post('/peers', async (req: Request, res: Response) => {
       publicIp = stdout.trim();
     } catch {}
 
-    const peer = result.rows[0];
     const clientConfig = `[Interface]
 PrivateKey = ${keys.privateKey}
 Address = ${peerAddress}
