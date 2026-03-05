@@ -582,7 +582,7 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 # Limpiar contenedores huérfanos o en conflicto antes de levantar
 echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
 docker compose down --remove-orphans 2>/dev/null || true
-for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover; do
+for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-mongodb omnisync-genieacs-cwmp omnisync-genieacs-nbi omnisync-genieacs-fs omnisync-genieacs-ui; do
   docker rm -f "$cname" 2>/dev/null || true
 done
 echo -e "${GREEN}✓ Contenedores limpios${NC}"
