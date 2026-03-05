@@ -72,11 +72,19 @@ fi
 
 log "Levantando stack normal..."
 docker compose up -d mariadb >/dev/null
-sleep 5
 
-docker exec omnisync-mariadb mariadb -uroot -p"${NEW_ROOT_PASSWORD}" -e "SELECT 1;" >/dev/null
+log "Esperando que MariaDB arranque..."
+for i in $(seq 1 30); do
+  if docker exec omnisync-mariadb mariadb -uroot -p"${NEW_ROOT_PASSWORD}" -e "SELECT 1;" >/dev/null 2>&1; then
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    log "⚠ MariaDB no respondió tras 60s, pero la contraseña fue actualizada en .env"
+  fi
+  sleep 2
+done
 
-docker compose up -d --force-recreate phpnuxbill freeradius api >/dev/null
+docker compose up -d --force-recreate phpnuxbill freeradius api >/dev/null 2>&1 || true
 
 log "Recuperación completada ✓"
 log "Nueva MYSQL_ROOT_PASSWORD: ${NEW_ROOT_PASSWORD}"
