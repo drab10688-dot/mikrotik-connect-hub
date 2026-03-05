@@ -62,6 +62,7 @@
     <div class="panel" id="panel-voucher" style="display:none; border-radius:0 0 12px 12px !important; margin-top:0;">
         <div class="panel-body">
             <form method="post" action="{Text::url('voucher/activation-post')}">
+                <input type="hidden" name="csrf_token" value="{$csrf_token}">
                 <div class="form-group">
                     <label><i class="glyphicon glyphicon-tag"></i> {Lang::T('Enter voucher code here')}</label>
                     <input type="text" class="form-control" id="voucherCode" name="code" 
