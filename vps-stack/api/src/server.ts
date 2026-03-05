@@ -83,6 +83,7 @@ app.use('/api/auth/users', authMiddleware, usersRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/onu', authMiddleware, onuRouter);
 app.use('/api/genieacs', authMiddleware, genieacsRouter);
+app.use('/api/vpn', authMiddleware, vpnRouter);
 
 // Aliases for frontend compatibility
 app.use('/api/mikrotik', authMiddleware, (req, res, next) => {
