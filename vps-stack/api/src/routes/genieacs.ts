@@ -85,17 +85,40 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
     const wlan = igd?.LANDevice?.['1']?.WLANConfiguration || {};
     const optical = igd?.WANDevice?.['1']?.WANCommonInterfaceConfig || {};
 
-    // Extract optical power from common TR-069 paths
+    // Extract optical power from common TR-069 paths (multi-vendor)
+    // Latic / Generic GPON
     const rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower') 
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
-      ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
+      // ZTE
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
+      ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
+      // Huawei
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
+      ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
+      // China Telecom / Generic
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
+      // TR-181 (Device:2)
+      ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
+      ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
+      // Zyxel
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
       ?? null;
 
     const txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
-      ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
+      // ZTE
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
+      ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
+      // Huawei
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower')
+      ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.TXPower')
+      // China Telecom / Generic
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
+      // TR-181 (Device:2)
+      ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
+      ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
+      // Zyxel
+      ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
       ?? null;
 
     // CPU and memory
