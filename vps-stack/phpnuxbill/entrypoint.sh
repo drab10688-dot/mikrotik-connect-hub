@@ -14,6 +14,7 @@ DB_PASS="${NUXBILL_DB_PASS:-${NUXBILL_DB_PASSWORD:-changeme_nuxbill}}"
 DB_NAME="${NUXBILL_DB_NAME:-phpnuxbill}"
 APP_URL="${NUXBILL_APP_URL:-http://localhost/nuxbill}"
 TZ_VALUE="${TZ:-America/Bogota}"
+FORCE_SYNC_SETTINGS="${NUXBILL_FORCE_SYNC_SETTINGS:-0}"
 
 RADIUS_DB_HOST="${RADIUS_DB_HOST:-$DB_HOST}"
 RADIUS_DB_PORT="${RADIUS_DB_PORT:-3306}"
@@ -169,6 +170,8 @@ setup_admin() {
     \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
     if (\$c->connect_error) exit;
 
+    \$forceSync = ('${FORCE_SYNC_SETTINGS}' === '1');
+
     // Admin user
     \$r = \$c->query(\"SELECT id FROM tbl_users WHERE username='admin'\");
     if (\$r && \$r->num_rows == 0) {
@@ -177,7 +180,7 @@ setup_admin() {
       echo 'Admin creado (admin/admin) ✓' . PHP_EOL;
     }
 
-    // Force Live mode + RADIUS config
+    // Seed defaults once (or force sync when NUXBILL_FORCE_SYNC_SETTINGS=1)
     \$settings = [
       'app_stage'       => 'Live',
       'radius_enable'   => '1',
@@ -190,14 +193,27 @@ setup_admin() {
       'radius_db_pass'  => '${RADIUS_DB_PASS}',
       'radius_db_name'  => '${RADIUS_DB_NAME}',
     ];
+
     foreach (\$settings as \$k => \$v) {
       \$ks = \$c->real_escape_string(\$k);
       \$vs = \$c->real_escape_string(\$v);
-      \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$ks','\$vs') ON DUPLICATE KEY UPDATE value='\$vs'\");
+
+      if (\$forceSync) {
+        \$c->query(\"UPDATE tbl_appconfig SET value='\$vs' WHERE setting='\$ks'\");
+      }
+
+      \$exists = \$c->query(\"SELECT 1 FROM tbl_appconfig WHERE setting='\$ks' LIMIT 1\");
+      if (!\$exists || \$exists->num_rows === 0) {
+        \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$ks','\$vs')\");
+      }
     }
 
     \$c->close();
-    echo 'Config aplicada ✓' . PHP_EOL;
+    if (\$forceSync) {
+      echo 'Config sincronizada (force) ✓' . PHP_EOL;
+    } else {
+      echo 'Config por defecto aplicada ✓' . PHP_EOL;
+    }
   " 2>/dev/null || true
 
   # Remove install dir to skip installer
@@ -223,7 +239,12 @@ setup_cron() {
     foreach (['cron_last_run'=>date('Y-m-d H:i:s'),'cron_period'=>'1','cron_status'=>'1',
               'cron_active'=>'1','disable_cron_warning'=>'1','cron_enabled'=>'1',
               'cron_enable'=>'1','cron_warning'=>'0'] as \$k=>\$v) {
-      \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$k','\$v') ON DUPLICATE KEY UPDATE value='\$v'\");
+      \$ks = \$c->real_escape_string(\$k);
+      \$vs = \$c->real_escape_string(\$v);
+      \$c->query(\"UPDATE tbl_appconfig SET value='\$vs' WHERE setting='\$ks'\");
+      if (\$c->affected_rows === 0) {
+        \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$ks','\$vs')\");
+      }
     }
     \$c->close();
   " 2>/dev/null || true

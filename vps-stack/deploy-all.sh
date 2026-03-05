@@ -145,6 +145,34 @@ ensure_radius_schema() {
   return 1
 }
 
+verify_nuxbill_config_write() {
+  local test_key="omnisync_write_probe"
+  local test_value
+  local read_back
+
+  test_value="$(date +%s)"
+
+  if ! docker exec omnisync-mariadb mariadb -unuxbill -p"${NUXBILL_DB_PASSWORD}" phpnuxbill -e "
+    UPDATE tbl_appconfig SET value='${test_value}' WHERE setting='${test_key}';
+    INSERT INTO tbl_appconfig (setting,value)
+    SELECT '${test_key}','${test_value}'
+    WHERE NOT EXISTS (SELECT 1 FROM tbl_appconfig WHERE setting='${test_key}');
+  " >/dev/null 2>&1; then
+    echo "  ⚠ NuxBill no pudo escribir en tbl_appconfig"
+    return 1
+  fi
+
+  read_back="$(docker exec omnisync-mariadb mariadb -unuxbill -p"${NUXBILL_DB_PASSWORD}" -Nse "SELECT value FROM phpnuxbill.tbl_appconfig WHERE setting='${test_key}' LIMIT 1;" 2>/dev/null || true)"
+
+  if [ "$read_back" = "$test_value" ]; then
+    echo "  ✓ Escritura/lectura de configuración NuxBill OK"
+    return 0
+  fi
+
+  echo "  ⚠ La prueba de configuración NuxBill devolvió valor inesperado"
+  return 1
+}
+
 echo "╔══════════════════════════════════════════════╗"
 echo "║  OmniSync - Deploy API + Frontend            ║"
 echo "╚══════════════════════════════════════════════╝"
@@ -206,8 +234,11 @@ fi
 echo "[6/10] Verificando schema radius (tabla nas)..."
 ensure_radius_schema || true
 
+echo "[6.5/10] Verificando escritura de configuración en NuxBill..."
+verify_nuxbill_config_write || true
+
 # ─── Migrate PostgreSQL (portal_ads) ──
-echo "[6.5/10] Migrando PostgreSQL..."
+echo "[7/10] Migrando PostgreSQL..."
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
 CREATE TABLE IF NOT EXISTS portal_ads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -223,7 +254,7 @@ CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 " 2>/dev/null && echo "  ✓ portal_ads OK" || echo "  ⚠ portal_ads skip"
 
-echo "[7/10] Reiniciando FreeRADIUS + PHPNuxBill..."
+echo "[7.5/10] Reiniciando FreeRADIUS + PHPNuxBill..."
 docker compose up -d freeradius phpnuxbill
 
 # ─── Build Frontend ───────────────────────────
