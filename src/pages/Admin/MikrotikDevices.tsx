@@ -100,6 +100,10 @@ export default function MikrotikDevices() {
                       <div className="space-y-2"><Label>Versión</Label><Select value={formData.version} onValueChange={(v) => setFormData({ ...formData, version: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="v6">v6 (API)</SelectItem><SelectItem value="v7">v7 (REST)</SelectItem></SelectContent></Select></div>
                     </div>
                     <div className="space-y-2"><Label>URL del Portal Hotspot</Label><Input placeholder="http://192.168.88.1/login" value={formData.hotspot_url} onChange={(e) => setFormData({ ...formData, hotspot_url: e.target.value })} /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2"><Label>Latitud</Label><Input placeholder="4.6097" value={formData.latitude} onChange={(e) => setFormData({ ...formData, latitude: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Longitud</Label><Input placeholder="-74.0817" value={formData.longitude} onChange={(e) => setFormData({ ...formData, longitude: e.target.value })} /></div>
+                    </div>
                   </div>
                   <DialogFooter><Button type="submit" disabled={createDeviceMutation.isPending}>{createDeviceMutation.isPending ? 'Guardando...' : 'Guardar'}</Button></DialogFooter>
                 </form>
