@@ -40,7 +40,7 @@ export default function MikrotikDevices() {
       queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
       toast.success(isSuperAdmin ? 'MikroTik agregado exitosamente' : 'MikroTik enviado para aprobación');
       setOpen(false);
-      setFormData({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login' });
+      setFormData({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login', latitude: '', longitude: '' });
     },
     onError: (error: any) => toast.error(error.message || 'Error al agregar MikroTik'),
   });
