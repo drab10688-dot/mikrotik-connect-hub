@@ -465,7 +465,46 @@ CREATE TABLE portal_ads (
 );
 
 -- ============================================
--- Indexes
+-- ONU Devices
+-- ============================================
+CREATE TABLE onu_devices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  created_by UUID NOT NULL REFERENCES users(id),
+  serial_number TEXT NOT NULL,
+  mac_address TEXT,
+  brand TEXT NOT NULL DEFAULT 'latic',
+  model TEXT,
+  management_ip TEXT,
+  olt_port TEXT,
+  wifi_ssid TEXT,
+  wifi_password TEXT,
+  pppoe_username TEXT,
+  pppoe_password TEXT,
+  pppoe_profile TEXT,
+  status TEXT NOT NULL DEFAULT 'registered',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- ONU Config Templates
+-- ============================================
+CREATE TABLE onu_config_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  brand TEXT NOT NULL DEFAULT 'latic',
+  template_content TEXT NOT NULL,
+  file_format TEXT NOT NULL DEFAULT 'xml',
+  description TEXT,
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 -- ============================================
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
 CREATE INDEX idx_mikrotik_access_user ON user_mikrotik_access(user_id);
@@ -484,6 +523,11 @@ CREATE INDEX idx_telegram_messages_mikrotik ON telegram_messages(mikrotik_id);
 CREATE INDEX idx_whatsapp_messages_mikrotik ON whatsapp_messages(mikrotik_id);
 CREATE INDEX idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
+CREATE INDEX idx_onu_devices_mikrotik ON onu_devices(mikrotik_id);
+CREATE INDEX idx_onu_devices_client ON onu_devices(client_id);
+CREATE INDEX idx_onu_devices_serial ON onu_devices(serial_number);
+CREATE INDEX idx_onu_templates_mikrotik ON onu_config_templates(mikrotik_id);
+CREATE INDEX idx_onu_templates_brand ON onu_config_templates(brand);
 
 -- ============================================
 -- Helper Functions
@@ -512,7 +556,8 @@ BEGIN
     'users', 'mikrotik_devices', 'billing_config', 'client_billing_settings',
     'client_invoices', 'payment_transactions', 'isp_contracts', 'vouchers',
     'service_options', 'payment_platforms', 'telegram_config', 'whatsapp_config',
-    'cloudflare_config', 'company_info', 'profiles', 'portal_ads'
+    'cloudflare_config', 'company_info', 'profiles', 'portal_ads',
+    'onu_devices', 'onu_config_templates'
   ] LOOP
     EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t, t);
   END LOOP;

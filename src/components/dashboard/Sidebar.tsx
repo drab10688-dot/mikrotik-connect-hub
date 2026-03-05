@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
   ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
   UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
-  Server
+  Server, Radio
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +33,7 @@ const menuItems = [
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
   { icon: Monitor, label: "Hotspot Monitor", path: "/hotspot-monitor" },
+  { icon: Radio, label: "Gestión ONUs", path: "/onu-management" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
