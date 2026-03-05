@@ -182,6 +182,7 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
     }
   };
 
+  useEffect(() => { loadOverview(); }, [mikrotikId]);
 
   useEffect(() => {
     if (selectedOnu) loadHistory(selectedOnu);
