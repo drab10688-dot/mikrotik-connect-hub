@@ -210,7 +210,7 @@ vpnRouter.get('/peers', async (req: Request, res: Response) => {
 // ─── POST /peers ──────────────────────────────────
 vpnRouter.post('/peers', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = (req as any).userId;
     const { name, description, mikrotik_id, remote_networks } = req.body;
 
     if (!name) return res.status(400).json({ error: 'Name is required' });
