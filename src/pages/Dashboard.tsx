@@ -139,6 +139,14 @@ const Dashboard = () => {
                   </div>
                 </>
               )}
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate("/vps-services")}
+              >
+                <Server className="w-4 h-4 mr-2" />
+                Servicios VPS / WireGuard
+              </Button>
             </CardContent>
           </Card>
         </div>
