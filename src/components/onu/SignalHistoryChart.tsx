@@ -55,6 +55,21 @@ interface OverviewEntry {
   trend: string;
 }
 
+interface SignalAlert {
+  id: string;
+  onu_id: string;
+  serial_number: string;
+  brand: string;
+  model: string | null;
+  client_name: string | null;
+  rx_power: number;
+  threshold: number;
+  alert_type: string;
+  sent_successfully: boolean;
+  error_message: string | null;
+  created_at: string;
+}
+
 interface SignalHistoryChartProps {
   mikrotikId: string;
 }
