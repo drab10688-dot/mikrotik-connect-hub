@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy } from "lucide-react";
+import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2 } from "lucide-react";
 
 interface OnuDevice {
   id: string;
