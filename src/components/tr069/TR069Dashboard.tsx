@@ -96,6 +96,8 @@ export default function TR069Dashboard() {
   const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState("monitoring");
   const [files, setFiles] = useState<any[]>([]);
+  const [signalOverview, setSignalOverview] = useState<SignalEntry[]>([]);
+  const [signalLoading, setSignalLoading] = useState(false);
 
   // Dialogs
   const [showWifiDialog, setShowWifiDialog] = useState(false);
