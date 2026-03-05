@@ -749,6 +749,11 @@ export default function OnuManagement() {
           <TabsContent value="tr069" className="space-y-4">
             <TR069Dashboard />
           </TabsContent>
+
+          {/* ─── Signal History Tab ───────────────────── */}
+          <TabsContent value="signal">
+            <SignalHistoryChart mikrotikId={mikrotikId} />
+          </TabsContent>
         </Tabs>
 
         {/* ─── WiFi Change Dialog ─────────────────────── */}
