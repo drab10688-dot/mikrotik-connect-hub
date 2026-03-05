@@ -36,7 +36,21 @@ interface OnuDevice {
   client_name?: string;
   client_username?: string;
   plan_or_speed?: string;
+  acs_device_id: string | null;
+  acs_linked_at: string | null;
+  acs_manufacturer: string | null;
+  acs_model: string | null;
+  acs_firmware: string | null;
   created_at: string;
+}
+
+interface UnregisteredDevice {
+  serial: string;
+  deviceId: string;
+  manufacturer: string;
+  model: string | null;
+  firmware: string | null;
+  lastInform: string | null;
 }
 
 interface ConfigTemplate {
