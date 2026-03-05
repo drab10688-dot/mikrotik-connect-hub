@@ -338,7 +338,10 @@ export function VpnManager() {
                           {peer.mikrotik_name ? (
                             <Badge variant="outline">{peer.mikrotik_name}</Badge>
                           ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
+                            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { setLinkPeer(peer); setLinkMikrotikId(""); setLinkOpen(true); }}>
+                              <Monitor className="h-3 w-3 mr-1" />
+                              Asociar
+                            </Button>
                           )}
                         </TableCell>
                         <TableCell>
