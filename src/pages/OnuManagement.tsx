@@ -321,6 +321,10 @@ export default function OnuManagement() {
               <Signal className="w-4 h-4 mr-2" />
               TR-069
             </TabsTrigger>
+            <TabsTrigger value="signal">
+              <Activity className="w-4 h-4 mr-2" />
+              Señal Óptica
+            </TabsTrigger>
           </TabsList>
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
