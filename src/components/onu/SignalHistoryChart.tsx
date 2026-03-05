@@ -2,12 +2,16 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart } from "recharts";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Activity, TrendingDown, TrendingUp, Minus, RefreshCcw, Loader2, Signal, Thermometer, Cpu, ArrowLeft } from "lucide-react";
+import { Activity, TrendingDown, TrendingUp, Minus, RefreshCcw, Loader2, Signal, Thermometer, ArrowLeft, Bell, BellOff, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 
 interface SignalReading {
   rx_power: number | null;
