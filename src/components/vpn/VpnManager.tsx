@@ -113,6 +113,10 @@ export function VpnManager() {
         remote_networks: newPeer.remote_networks || undefined,
       });
       toast.success("Peer VPN creado");
+      if (newPeer.mikrotik_id && newPeer.mikrotik_id !== "none") {
+        const vpnIp = result.peer?.peer_address?.split('/')[0];
+        toast.info(`Host del MikroTik actualizado a ${vpnIp}`, { duration: 6000 });
+      }
       setAddOpen(false);
       setNewPeer({ name: "", description: "", mikrotik_id: "", remote_networks: "" });
       setSelectedConfig(result);
