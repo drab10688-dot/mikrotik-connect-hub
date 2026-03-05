@@ -270,6 +270,30 @@ services:
     networks:
       - omnisync-net
 
+  # ============================================
+  # WireGuard VPN - Acceso remoto a redes MikroTik
+  # ============================================
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: omnisync-wireguard
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ:-America/Bogota}
+    volumes:
+      - wireguard_config:/config
+    ports:
+      - "${WG_PORT:-51820}:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    networks:
+      - omnisync-net
+
 volumes:
   postgres_data:
   mariadb_data:
@@ -280,6 +304,7 @@ volumes:
   nuxbill_ui_cache:
   nuxbill_themes:
   nuxbill_pages:
+  wireguard_config:
 
 networks:
   omnisync-net:

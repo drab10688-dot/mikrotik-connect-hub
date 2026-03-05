@@ -23,6 +23,7 @@ import { messagingRouter } from './routes/messaging';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
+import { vpnRouter } from './routes/vpn';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -82,6 +83,7 @@ app.use('/api/auth/users', authMiddleware, usersRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/onu', authMiddleware, onuRouter);
 app.use('/api/genieacs', authMiddleware, genieacsRouter);
+app.use('/api/vpn', authMiddleware, vpnRouter);
 
 // Aliases for frontend compatibility
 app.use('/api/mikrotik', authMiddleware, (req, res, next) => {

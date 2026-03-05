@@ -536,6 +536,34 @@ CREATE INDEX idx_onu_signal_alerts_onu ON onu_signal_alerts(onu_id);
 CREATE INDEX idx_onu_signal_alerts_mikrotik ON onu_signal_alerts(mikrotik_id, created_at);
 
 -- ============================================
+-- VPN Peers (WireGuard)
+-- ============================================
+CREATE TABLE vpn_peers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  mikrotik_id UUID REFERENCES mikrotik_devices(id) ON DELETE SET NULL,
+  public_key TEXT NOT NULL,
+  private_key TEXT,
+  preshared_key TEXT,
+  allowed_ips TEXT NOT NULL DEFAULT '10.13.13.0/24',
+  endpoint TEXT,
+  persistent_keepalive INTEGER DEFAULT 25,
+  peer_address TEXT NOT NULL,
+  remote_networks TEXT,
+  is_active BOOLEAN DEFAULT true,
+  last_handshake TIMESTAMPTZ,
+  transfer_rx BIGINT DEFAULT 0,
+  transfer_tx BIGINT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_vpn_peers_created_by ON vpn_peers(created_by);
+CREATE INDEX idx_vpn_peers_mikrotik ON vpn_peers(mikrotik_id);
+
+-- ============================================
 -- ONU Config Templates
 -- ============================================
 CREATE TABLE onu_config_templates (
@@ -623,7 +651,7 @@ BEGIN
     'client_invoices', 'payment_transactions', 'isp_contracts', 'vouchers',
     'service_options', 'payment_platforms', 'telegram_config', 'whatsapp_config',
     'cloudflare_config', 'company_info', 'profiles', 'portal_ads',
-    'onu_devices', 'onu_config_templates'
+    'onu_devices', 'onu_config_templates', 'vpn_peers'
   ] LOOP
     EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t, t);
   END LOOP;

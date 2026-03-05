@@ -1,8 +1,9 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
+import { VpnManager } from "@/components/vpn/VpnManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone } from "lucide-react";
+import { Server, Megaphone, Shield } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
@@ -14,7 +15,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, portal cautivo y publicidad.
+            Gestión de servicios, VPN y publicidad.
           </p>
         </div>
 
@@ -24,6 +25,10 @@ export default function VpsServices() {
               <Server className="h-4 w-4" />
               Servicios
             </TabsTrigger>
+            <TabsTrigger value="vpn" className="gap-2">
+              <Shield className="h-4 w-4" />
+              VPN
+            </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
               Publicidad Portal
@@ -32,6 +37,10 @@ export default function VpsServices() {
 
           <TabsContent value="services">
             <VpsServicesCard mikrotikId={mikrotikId} />
+          </TabsContent>
+
+          <TabsContent value="vpn">
+            <VpnManager />
           </TabsContent>
 
           <TabsContent value="ads">
