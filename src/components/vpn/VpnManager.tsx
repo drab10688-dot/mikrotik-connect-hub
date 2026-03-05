@@ -71,8 +71,11 @@ export function VpnManager() {
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkPeer, setLinkPeer] = useState<VpnPeer | null>(null);
+  const [linkMikrotikId, setLinkMikrotikId] = useState("");
   const [selectedConfig, setSelectedConfig] = useState<{ clientConfig: string; mikrotikScript: string; peer: any } | null>(null);
-  const [newPeer, setNewPeer] = useState({ name: "", description: "", mikrotik_id: "", remote_networks: "" });
+  const [newPeer, setNewPeer] = useState({ name: "", description: "", remote_networks: "" });
 
   const fetchData = useCallback(async () => {
     try {
@@ -109,18 +112,28 @@ export function VpnManager() {
       const result = await apiPost("/vpn/peers", {
         name: newPeer.name,
         description: newPeer.description || undefined,
-        mikrotik_id: newPeer.mikrotik_id || undefined,
         remote_networks: newPeer.remote_networks || undefined,
       });
       toast.success("Peer VPN creado");
-      if (newPeer.mikrotik_id && newPeer.mikrotik_id !== "none") {
-        const vpnIp = result.peer?.peer_address?.split('/')[0];
-        toast.info(`Host del MikroTik actualizado a ${vpnIp}`, { duration: 6000 });
-      }
       setAddOpen(false);
-      setNewPeer({ name: "", description: "", mikrotik_id: "", remote_networks: "" });
+      setNewPeer({ name: "", description: "", remote_networks: "" });
       setSelectedConfig(result);
       setConfigOpen(true);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleLinkMikrotik = async () => {
+    if (!linkPeer || !linkMikrotikId) return;
+    try {
+      await apiPut(`/vpn/peers/${linkPeer.id}`, { mikrotik_id: linkMikrotikId });
+      const vpnIp = linkPeer.peer_address?.split('/')[0];
+      toast.success(`MikroTik asociado al peer. Host actualizado a ${vpnIp}`);
+      setLinkOpen(false);
+      setLinkPeer(null);
+      setLinkMikrotikId("");
       fetchData();
     } catch (err: any) {
       toast.error(err.message);
@@ -267,20 +280,6 @@ export function VpnManager() {
                     />
                   </div>
                   <div>
-                    <Label>MikroTik asociado (opcional)</Label>
-                    <Select value={newPeer.mikrotik_id} onValueChange={(v) => setNewPeer({ ...newPeer, mikrotik_id: v })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sin asociar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sin asociar</SelectItem>
-                        {devices.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
                     <Label>Redes remotas (opcional)</Label>
                     <Input
                       placeholder="Ej: 192.168.1.0/24, 10.0.0.0/24"
@@ -339,7 +338,10 @@ export function VpnManager() {
                           {peer.mikrotik_name ? (
                             <Badge variant="outline">{peer.mikrotik_name}</Badge>
                           ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
+                            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { setLinkPeer(peer); setLinkMikrotikId(""); setLinkOpen(true); }}>
+                              <Monitor className="h-3 w-3 mr-1" />
+                              Asociar
+                            </Button>
                           )}
                         </TableCell>
                         <TableCell>
@@ -461,6 +463,45 @@ export function VpnManager() {
               </TabsContent>
             </Tabs>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Link MikroTik Dialog */}
+      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Asociar MikroTik al Peer</DialogTitle>
+            <DialogDescription>
+              {linkPeer && <>El host del MikroTik se actualizará automáticamente a <span className="font-mono font-semibold">{linkPeer.peer_address?.split('/')[0]}</span> (IP del túnel VPN).</>}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Peer VPN</Label>
+              <Input value={linkPeer?.name || ""} disabled />
+            </div>
+            <div>
+              <Label>IP del túnel</Label>
+              <Input value={linkPeer?.peer_address?.split('/')[0] || ""} disabled className="font-mono" />
+            </div>
+            <div>
+              <Label>Seleccionar MikroTik</Label>
+              <Select value={linkMikrotikId} onValueChange={setLinkMikrotikId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar dispositivo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {devices.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
+            <Button onClick={handleLinkMikrotik} disabled={!linkMikrotikId}>Asociar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
