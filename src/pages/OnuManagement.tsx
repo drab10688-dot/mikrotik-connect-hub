@@ -482,6 +482,34 @@ export default function OnuManagement() {
                                 >
                                   <Wifi className="w-4 h-4" />
                                 </Button>
+                                <Button
+                                  variant="ghost" size="icon" className="h-8 w-8"
+                                  title="Auto-provisionar via TR-069"
+                                  onClick={async () => {
+                                    if (!onu.wifi_ssid && !onu.pppoe_username) {
+                                      toast.error("La ONU no tiene WiFi ni PPPoE configurado para enviar");
+                                      return;
+                                    }
+                                    try {
+                                      const provRes = await api("/genieacs/auto-provision", {
+                                        method: "POST",
+                                        body: {
+                                          serialNumber: onu.serial_number,
+                                          wifiSsid: onu.wifi_ssid || undefined,
+                                          wifiPassword: onu.wifi_password || undefined,
+                                          pppoeUsername: onu.pppoe_username || undefined,
+                                          pppoePassword: onu.pppoe_password || undefined,
+                                        },
+                                      });
+                                      if (provRes.found) toast.success(provRes.message);
+                                      else toast.info(provRes.message);
+                                    } catch (err: any) {
+                                      toast.error("Error TR-069: " + err.message);
+                                    }
+                                  }}
+                                >
+                                  <Signal className="w-4 h-4" />
+                                </Button>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteOnu(onu.id)}>
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
