@@ -108,6 +108,11 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
   const [selectedOnu, setSelectedOnu] = useState<string | null>(null);
   const [history, setHistory] = useState<SignalReading[]>([]);
   const [stats, setStats] = useState<SignalStats | null>(null);
+  const [alerts, setAlerts] = useState<SignalAlert[]>([]);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [showAlertConfig, setShowAlertConfig] = useState(false);
+  const [alertConfigOnu, setAlertConfigOnu] = useState<OverviewEntry | null>(null);
+  const [alertForm, setAlertForm] = useState({ enabled: false, threshold: "-30", chatId: "" });
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [hours, setHours] = useState("168");
