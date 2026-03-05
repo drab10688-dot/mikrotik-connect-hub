@@ -465,6 +465,45 @@ export function VpnManager() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Link MikroTik Dialog */}
+      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Asociar MikroTik al Peer</DialogTitle>
+            <DialogDescription>
+              {linkPeer && <>El host del MikroTik se actualizará automáticamente a <span className="font-mono font-semibold">{linkPeer.peer_address?.split('/')[0]}</span> (IP del túnel VPN).</>}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Peer VPN</Label>
+              <Input value={linkPeer?.name || ""} disabled />
+            </div>
+            <div>
+              <Label>IP del túnel</Label>
+              <Input value={linkPeer?.peer_address?.split('/')[0] || ""} disabled className="font-mono" />
+            </div>
+            <div>
+              <Label>Seleccionar MikroTik</Label>
+              <Select value={linkMikrotikId} onValueChange={setLinkMikrotikId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar dispositivo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {devices.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
+            <Button onClick={handleLinkMikrotik} disabled={!linkMikrotikId}>Asociar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
