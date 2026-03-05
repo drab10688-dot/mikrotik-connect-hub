@@ -23,6 +23,7 @@ import { messagingRouter } from './routes/messaging';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
+import { vpnRouter } from './routes/vpn';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
