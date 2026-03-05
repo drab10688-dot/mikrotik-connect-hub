@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/dashboard/Sidebar';
-import { Plus, Trash2, Server, CheckCircle, XCircle, Clock, User } from 'lucide-react';
+import { Plus, Trash2, Server, CheckCircle, XCircle, Clock, User, MapPin } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,7 +19,7 @@ export default function MikrotikDevices() {
   const queryClient = useQueryClient();
   const { user, isSuperAdmin, isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login' });
+  const [formData, setFormData] = useState({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login', latitude: '', longitude: '' });
 
   const { data: devices, isLoading } = useQuery({
     queryKey: ['mikrotik-devices', user?.id],
@@ -40,7 +40,7 @@ export default function MikrotikDevices() {
       queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
       toast.success(isSuperAdmin ? 'MikroTik agregado exitosamente' : 'MikroTik enviado para aprobación');
       setOpen(false);
-      setFormData({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login' });
+      setFormData({ name: '', host: '', username: '', password: '', port: 443, version: 'v7', hotspot_url: 'http://192.168.88.1/login', latitude: '', longitude: '' });
     },
     onError: (error: any) => toast.error(error.message || 'Error al agregar MikroTik'),
   });
@@ -100,6 +100,10 @@ export default function MikrotikDevices() {
                       <div className="space-y-2"><Label>Versión</Label><Select value={formData.version} onValueChange={(v) => setFormData({ ...formData, version: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="v6">v6 (API)</SelectItem><SelectItem value="v7">v7 (REST)</SelectItem></SelectContent></Select></div>
                     </div>
                     <div className="space-y-2"><Label>URL del Portal Hotspot</Label><Input placeholder="http://192.168.88.1/login" value={formData.hotspot_url} onChange={(e) => setFormData({ ...formData, hotspot_url: e.target.value })} /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2"><Label>Latitud</Label><Input placeholder="4.6097" value={formData.latitude} onChange={(e) => setFormData({ ...formData, latitude: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Longitud</Label><Input placeholder="-74.0817" value={formData.longitude} onChange={(e) => setFormData({ ...formData, longitude: e.target.value })} /></div>
+                    </div>
                   </div>
                   <DialogFooter><Button type="submit" disabled={createDeviceMutation.isPending}>{createDeviceMutation.isPending ? 'Guardando...' : 'Guardar'}</Button></DialogFooter>
                 </form>
@@ -132,10 +136,15 @@ export default function MikrotikDevices() {
               : activeDevices.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground"><Server className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>No hay dispositivos MikroTik activos</p></div>
               ) : (
-                <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Host</TableHead><TableHead>Puerto</TableHead><TableHead>Versión</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
+                <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Host</TableHead><TableHead>Puerto</TableHead><TableHead>Versión</TableHead><TableHead>Ubicación</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
                   <TableBody>{activeDevices.map((device: any) => (
                     <TableRow key={device.id}>
                       <TableCell className="font-medium">{device.name}</TableCell><TableCell>{device.host}</TableCell><TableCell>{device.port}</TableCell><TableCell>{device.version}</TableCell>
+                      <TableCell>{device.latitude && device.longitude ? (
+                        <a href={`https://www.google.com/maps?q=${device.latitude},${device.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-xs">
+                          <MapPin className="h-3 w-3" />{Number(device.latitude).toFixed(4)}, {Number(device.longitude).toFixed(4)}
+                        </a>
+                      ) : <span className="text-xs text-muted-foreground">Sin ubicación</span>}</TableCell>
                       <TableCell>{new Date(device.created_at).toLocaleDateString('es-ES')}</TableCell>
                       <TableCell><Button variant="ghost" size="sm" onClick={() => handleDelete(device.id, device.name)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                     </TableRow>

@@ -439,6 +439,8 @@ export type Database = {
           host: string
           hotspot_url: string | null
           id: string
+          latitude: string | null
+          longitude: string | null
           name: string
           password: string
           port: number
@@ -453,6 +455,8 @@ export type Database = {
           host: string
           hotspot_url?: string | null
           id?: string
+          latitude?: string | null
+          longitude?: string | null
           name: string
           password: string
           port?: number
@@ -467,6 +471,8 @@ export type Database = {
           host?: string
           hotspot_url?: string | null
           id?: string
+          latitude?: string | null
+          longitude?: string | null
           name?: string
           password?: string
           port?: number
