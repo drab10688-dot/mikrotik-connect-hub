@@ -156,9 +156,15 @@ export default function CaptivePortal() {
     setStatus("loading"); setErrorMsg("");
 
     try {
+      const baseParams = {
+        mikrotik_id: mikrotikId,
+        ...(clientIp ? { ip: clientIp } : {}),
+        ...(clientMac ? { mac: clientMac } : {}),
+      };
+
       const params = mode === "voucher"
-        ? { mikrotik_id: mikrotikId, code: voucherCode.trim(), mode: 'voucher' as const }
-        : { mikrotik_id: mikrotikId, username: username.trim(), password: password.trim(), mode: 'customer' as const };
+        ? { ...baseParams, code: voucherCode.trim(), mode: 'voucher' as const }
+        : { ...baseParams, username: username.trim(), password: password.trim(), mode: 'customer' as const };
 
       const data = await hotspotLoginApi.nuxbillLogin(params);
 
@@ -171,13 +177,29 @@ export default function CaptivePortal() {
       setStatus("success");
       setSuccessData(data.data);
 
-      const hotspotUrl = data.data.hotspotUrl;
-      const loginUser = data.data.username;
-      const loginPass = data.data.password || password;
-      const loginUrl = `${hotspotUrl}?username=${encodeURIComponent(loginUser)}&password=${encodeURIComponent(loginPass)}`;
-
-      toast.success("¡Autenticación exitosa! Conectando...");
-      setTimeout(() => { window.location.href = loginUrl; }, 2000);
+      // If client was authorized directly (IP/MAC present), redirect to original URL or show success
+      if (data.data?.authorized && linkOrig) {
+        toast.success("¡Conectado! Redirigiendo...");
+        setTimeout(() => { window.location.href = linkOrig; }, 2000);
+      } else if (data.data?.authorized) {
+        toast.success("¡Conectado exitosamente!");
+      } else {
+        // Fallback: redirect to MikroTik login page with credentials
+        const hotspotUrl = data.data.hotspotUrl;
+        const loginUser = data.data.username;
+        const loginPass = data.data.password || password;
+        if (linkLogin) {
+          const loginUrl = `${linkLogin}?username=${encodeURIComponent(loginUser)}&password=${encodeURIComponent(loginPass)}`;
+          toast.success("¡Autenticación exitosa! Conectando...");
+          setTimeout(() => { window.location.href = loginUrl; }, 2000);
+        } else if (hotspotUrl) {
+          const loginUrl = `${hotspotUrl}?username=${encodeURIComponent(loginUser)}&password=${encodeURIComponent(loginPass)}`;
+          toast.success("¡Autenticación exitosa! Conectando...");
+          setTimeout(() => { window.location.href = loginUrl; }, 2000);
+        } else {
+          toast.success("¡Conectado exitosamente!");
+        }
+      }
     } catch (err: any) {
       setStatus("error");
       setErrorMsg(err.message || "Error de conexión");

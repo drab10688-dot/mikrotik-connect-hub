@@ -533,7 +533,7 @@ export const diagnosticsApi = {
 export const hotspotLoginApi = {
   login: (mikrotikId: string, username: string, password: string) =>
     apiPost<any>('/hotspot/login', { mikrotik_id: mikrotikId, username, password }, { noAuth: true }),
-  nuxbillLogin: (params: { mikrotik_id: string; code?: string; username?: string; password?: string; mode?: 'voucher' | 'customer' }) =>
+  nuxbillLogin: (params: { mikrotik_id: string; code?: string; username?: string; password?: string; mode?: 'voucher' | 'customer'; ip?: string; mac?: string }) =>
     apiPost<any>('/hotspot/nuxbill-login', params, { noAuth: true }),
 };
 
