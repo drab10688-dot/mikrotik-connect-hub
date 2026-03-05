@@ -406,12 +406,12 @@ export function VpnManager() {
                     {selectedConfig.mikrotikScript}
                   </pre>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 p-3 rounded-md">
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">📋 Instrucciones:</p>
-                  <ol className="text-xs text-blue-700 dark:text-blue-400 mt-2 space-y-1 list-decimal list-inside">
+                <div className="bg-accent/50 border border-border p-3 rounded-md">
+                  <p className="text-sm font-medium text-foreground">📋 Instrucciones:</p>
+                  <ol className="text-xs text-muted-foreground mt-2 space-y-1 list-decimal list-inside">
                     <li>Abre el terminal de tu MikroTik (Winbox → New Terminal)</li>
                     <li>Pega el script completo y presiona Enter</li>
-                    <li>Verifica la conexión: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/interface wireguard peers print</code></li>
+                    <li>Verifica la conexión: <code className="bg-muted px-1 rounded">/interface wireguard peers print</code></li>
                     <li>Para acceder a equipos detrás de la MikroTik, agrega rutas estáticas en el VPS</li>
                   </ol>
                 </div>
