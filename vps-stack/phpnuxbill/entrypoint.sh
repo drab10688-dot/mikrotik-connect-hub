@@ -628,23 +628,38 @@ CSSEOF
 # ── 9) Install OmniSync portal templates ─────────
 install_portal_templates() {
   local tpl_src="/opt/omnisync-templates"
-  local tpl_dst="$NUXROOT/ui/ui/customer"
+  local tpl_dst_primary="$NUXROOT/ui/ui/customer"
+  local tpl_dst_alt="$NUXROOT/ui/customer"
+  local tpl_dst=""
 
-  if [ -d "$tpl_src" ]; then
-    # Backup originals only once
-    for f in header-public.tpl login.tpl; do
-      if [ -f "$tpl_dst/$f" ] && [ ! -f "$tpl_dst/${f}.orig" ]; then
-        cp "$tpl_dst/$f" "$tpl_dst/${f}.orig"
-      fi
-      if [ -f "$tpl_src/$f" ]; then
-        cp "$tpl_src/$f" "$tpl_dst/$f"
-      fi
-    done
-    chown -R www-data:www-data "$tpl_dst"
-    log "Plantillas portal OmniSync instaladas ✓"
+  if [ -d "$tpl_dst_primary" ]; then
+    tpl_dst="$tpl_dst_primary"
+  elif [ -d "$tpl_dst_alt" ]; then
+    tpl_dst="$tpl_dst_alt"
   else
-    log "⚠ No se encontraron plantillas OmniSync en $tpl_src"
+    tpl_dst="$tpl_dst_primary"
+    mkdir -p "$tpl_dst" 2>/dev/null || true
   fi
+
+  if [ ! -d "$tpl_src" ]; then
+    log "⚠ No se encontraron plantillas OmniSync en $tpl_src"
+    return 0
+  fi
+
+  # Backup originals only once + copy without tumbar el contenedor si falla algo
+  for f in header-public.tpl login.tpl; do
+    if [ -f "$tpl_dst/$f" ] && [ ! -f "$tpl_dst/${f}.orig" ]; then
+      cp "$tpl_dst/$f" "$tpl_dst/${f}.orig" 2>/dev/null || true
+    fi
+
+    if [ -f "$tpl_src/$f" ]; then
+      cp "$tpl_src/$f" "$tpl_dst/$f" 2>/dev/null || log "⚠ No se pudo copiar $f a $tpl_dst"
+    fi
+  done
+
+  chown -R www-data:www-data "$tpl_dst" 2>/dev/null || true
+  chmod -R 775 "$tpl_dst" 2>/dev/null || true
+  log "Plantillas portal OmniSync instaladas en $tpl_dst ✓"
 }
 
 # ── 10) Fix permissions ──────────────────────────
