@@ -106,7 +106,7 @@ export function VpnManager() {
   const handleAddPeer = async () => {
     if (!newPeer.name.trim()) return toast.error("Nombre requerido");
     try {
-      const result = await apiClient.post("/api/vpn/peers", {
+      const result = await apiPost("/vpn/peers", {
         name: newPeer.name,
         description: newPeer.description || undefined,
         mikrotik_id: newPeer.mikrotik_id || undefined,
