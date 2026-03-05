@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { devicesApi } from '@/lib/api-client';
+import { devicesApi, apiGet } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -8,13 +8,22 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { Plus, AlertCircle } from 'lucide-react';
+import { Plus, AlertCircle, Shield } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+
+interface VpnPeer {
+  id: string;
+  name: string;
+  peer_address: string;
+  mikrotik_id: string | null;
+  is_active: boolean;
+}
 
 export const AddDeviceDialog = () => {
   const queryClient = useQueryClient();
   const { user, isSuperAdmin } = useAuth();
   const [open, setOpen] = useState(false);
+  const [vpnPeers, setVpnPeers] = useState<VpnPeer[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     host: '',
@@ -24,6 +33,29 @@ export const AddDeviceDialog = () => {
     version: 'v7',
     hotspot_url: 'http://192.168.88.1/login',
   });
+
+  useEffect(() => {
+    if (open) {
+      apiGet<VpnPeer[]>('/vpn/peers')
+        .then((peers) => {
+          setVpnPeers(peers.filter((p: VpnPeer) => p.is_active && !p.mikrotik_id));
+        })
+        .catch(() => setVpnPeers([]));
+    }
+  }, [open]);
+
+  const handleVpnPeerSelect = (peerId: string) => {
+    if (peerId === 'none') {
+      setFormData({ ...formData, host: '' });
+      return;
+    }
+    const peer = vpnPeers.find((p) => p.id === peerId);
+    if (peer) {
+      const vpnIp = peer.peer_address.split('/')[0];
+      setFormData({ ...formData, host: vpnIp });
+      toast.info(`Host configurado con IP VPN: ${vpnIp}`);
+    }
+  };
 
   const createDeviceMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -104,6 +136,32 @@ export const AddDeviceDialog = () => {
                 required
               />
             </div>
+
+            {vpnPeers.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" />
+                  Conectar vía VPN (opcional)
+                </Label>
+                <Select onValueChange={handleVpnPeerSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar peer VPN..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin VPN — IP directa</SelectItem>
+                    {vpnPeers.map((peer) => (
+                      <SelectItem key={peer.id} value={peer.id}>
+                        {peer.name} ({peer.peer_address.split('/')[0]})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Usa un túnel WireGuard existente para acceder a MikroTiks sin IP pública
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="host">Host/IP</Label>
               <Input
