@@ -254,7 +254,7 @@ CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 " 2>/dev/null && echo "  ✓ portal_ads OK" || echo "  ⚠ portal_ads skip"
 
-echo "[7/10] Reiniciando FreeRADIUS + PHPNuxBill..."
+echo "[7.5/10] Reiniciando FreeRADIUS + PHPNuxBill..."
 docker compose up -d freeradius phpnuxbill
 
 # ─── Build Frontend ───────────────────────────
