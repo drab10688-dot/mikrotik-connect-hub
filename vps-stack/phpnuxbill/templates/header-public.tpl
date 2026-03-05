@@ -190,6 +190,13 @@
 
         .text-center { text-align: center; }
 
+        /* ── Company Logo ── */
+        .os-company-logo {
+            max-height: 70px;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 0 8px rgba(6,182,212,0.3));
+        }
+
         /* ── Responsive ── */
         @media (max-width: 767px) {
             .container { padding: 10px; }
@@ -206,9 +213,20 @@
 <body id="app" class="app off-canvas body-full">
     <div class="container">
         <div class="form-head mb20">
+            {* ── Logo: try CompanyLogo, fallback to default logo.png ── *}
             {if $_c['CompanyLogo']}
-                <img src="{$_c['CompanyLogo']}" alt="{$_c['CompanyName']}" 
-                     style="max-height:60px; margin-bottom:8px; filter: drop-shadow(0 0 8px rgba(6,182,212,0.3));">
+                {* PHPNuxBill stores logo as relative or absolute path. 
+                   If it starts with http, use as-is. Otherwise prefix with app_url *}
+                {if $_c['CompanyLogo']|strpos:'http' === 0}
+                    <img src="{$_c['CompanyLogo']}" alt="{$_c['CompanyName']}" class="os-company-logo">
+                {else}
+                    <img src="{$app_url}/{$_c['CompanyLogo']}" alt="{$_c['CompanyName']}" class="os-company-logo"
+                         onerror="this.onerror=null; this.src='{$app_url}/ui/ui/images/logo.png';">
+                {/if}
+                <br>
+            {else}
+                <img src="{$app_url}/ui/ui/images/logo.png" alt="{$_c['CompanyName']}" class="os-company-logo"
+                     onerror="this.style.display='none';">
                 <br>
             {/if}
             <h1 class="site-logo h2 mb5 mt5 text-center text-uppercase text-bold">{$_c['CompanyName']}</h1>
