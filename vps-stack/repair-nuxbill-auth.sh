@@ -91,30 +91,74 @@ log "Levantando MariaDB..."
 docker compose up -d mariadb
 
 log "Esperando MariaDB..."
-ROOT_AUTH_MODE=""
-for i in $(seq 1 30); do
-  if docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" >/dev/null 2>&1; then
-    ROOT_AUTH_MODE="password"
-    break
-  fi
 
-  if docker exec omnisync-mariadb mariadb -uroot -e "SELECT 1;" >/dev/null 2>&1; then
-    ROOT_AUTH_MODE="socket"
-    break
-  fi
+get_container_mysql_root_password() {
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' omnisync-mariadb 2>/dev/null \
+    | awk -F= '/^MYSQL_ROOT_PASSWORD=/{sub(/^MYSQL_ROOT_PASSWORD=/, ""); print; exit}'
+}
 
-  if [ "$i" -eq 30 ]; then
-    log "No se pudo conectar con MariaDB como root (ni por password ni por socket)"
-    log "Ejecuta recuperación profunda: bash /opt/omnisync/recover-mariadb-root.sh"
+resolve_root_auth() {
+  local env_root_pw="${MYSQL_ROOT_PASSWORD:-}"
+  local container_root_pw=""
+
+  ROOT_AUTH_MODE=""
+
+  for _ in $(seq 1 25); do
+    if [ -n "$env_root_pw" ] && docker exec omnisync-mariadb mariadb -uroot -p"${env_root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
+      ROOT_AUTH_MODE="password"
+      ROOT_ARGS=(-uroot -p"${env_root_pw}")
+      return 0
+    fi
+
+    if [ -z "$container_root_pw" ]; then
+      container_root_pw="$(get_container_mysql_root_password || true)"
+    fi
+
+    if [ -n "$container_root_pw" ] && [ "$container_root_pw" != "$env_root_pw" ] \
+      && docker exec omnisync-mariadb mariadb -uroot -p"${container_root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
+      ROOT_AUTH_MODE="password(container)"
+      ROOT_ARGS=(-uroot -p"${container_root_pw}")
+      MYSQL_ROOT_PASSWORD="$container_root_pw"
+      if [ -f "$ENV_FILE" ]; then
+        sync_env_key "MYSQL_ROOT_PASSWORD" "$container_root_pw"
+      fi
+      return 0
+    fi
+
+    if docker exec omnisync-mariadb mariadb -uroot -e "SELECT 1;" >/dev/null 2>&1; then
+      ROOT_AUTH_MODE="socket"
+      ROOT_ARGS=(-uroot)
+      return 0
+    fi
+
+    sleep 2
+  done
+
+  return 1
+}
+
+if ! resolve_root_auth; then
+  log "Root MariaDB inaccesible. Ejecutando recuperación profunda automática..."
+  if [ -x "$APP_DIR/recover-mariadb-root.sh" ] && bash "$APP_DIR/recover-mariadb-root.sh" >/dev/null 2>&1; then
+    if [ -f "$ENV_FILE" ]; then
+      set -a
+      # shellcheck disable=SC1090
+      . "$ENV_FILE"
+      set +a
+    fi
+
+    MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
+
+    if ! resolve_root_auth; then
+      log "No se pudo conectar con MariaDB como root (ni por password ni por socket)"
+      log "Ejecuta recuperación profunda manual: bash /opt/omnisync/recover-mariadb-root.sh"
+      exit 1
+    fi
+  else
+    log "No se pudo ejecutar recuperación profunda automática"
+    log "Ejecuta recuperación profunda manual: bash /opt/omnisync/recover-mariadb-root.sh"
     exit 1
   fi
-  sleep 2
-done
-
-if [ "$ROOT_AUTH_MODE" = "password" ]; then
-  ROOT_ARGS=(-uroot -p"${MYSQL_ROOT_PASSWORD}")
-else
-  ROOT_ARGS=(-uroot)
 fi
 
 log "Sincronizando usuarios y permisos (radius/nuxbill)..."
