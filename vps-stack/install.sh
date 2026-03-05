@@ -589,12 +589,19 @@ echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
-docker compose build --no-cache api
+docker compose build --no-cache api phpnuxbill
 docker compose up -d --build 2>&1 | tail -5
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
 sleep 20
+
+# Auto-recuperación rápida si PHPNuxBill quedó caído (evita 502 en /nuxbill)
+if ! docker ps --format '{{.Names}}' | grep -q '^omnisync-phpnuxbill$'; then
+  echo -e "${YELLOW}PHPNuxBill no está arriba, reintentando arranque...${NC}"
+  docker compose up -d --build phpnuxbill
+  sleep 12
+fi
 
 if ! ensure_mariadb_accounts; then
   echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
