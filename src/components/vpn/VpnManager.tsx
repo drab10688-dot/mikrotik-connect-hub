@@ -112,18 +112,28 @@ export function VpnManager() {
       const result = await apiPost("/vpn/peers", {
         name: newPeer.name,
         description: newPeer.description || undefined,
-        mikrotik_id: newPeer.mikrotik_id || undefined,
         remote_networks: newPeer.remote_networks || undefined,
       });
       toast.success("Peer VPN creado");
-      if (newPeer.mikrotik_id && newPeer.mikrotik_id !== "none") {
-        const vpnIp = result.peer?.peer_address?.split('/')[0];
-        toast.info(`Host del MikroTik actualizado a ${vpnIp}`, { duration: 6000 });
-      }
       setAddOpen(false);
-      setNewPeer({ name: "", description: "", mikrotik_id: "", remote_networks: "" });
+      setNewPeer({ name: "", description: "", remote_networks: "" });
       setSelectedConfig(result);
       setConfigOpen(true);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleLinkMikrotik = async () => {
+    if (!linkPeer || !linkMikrotikId) return;
+    try {
+      await apiPut(`/vpn/peers/${linkPeer.id}`, { mikrotik_id: linkMikrotikId });
+      const vpnIp = linkPeer.peer_address?.split('/')[0];
+      toast.success(`MikroTik asociado al peer. Host actualizado a ${vpnIp}`);
+      setLinkOpen(false);
+      setLinkPeer(null);
+      setLinkMikrotikId("");
       fetchData();
     } catch (err: any) {
       toast.error(err.message);
