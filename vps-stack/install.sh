@@ -301,13 +301,55 @@ ensure_mariadb_accounts() {
   local root_pw="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
   local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
   local nuxbill_pw
+  local root_args=()
+  local auth_mode=""
+  local container_root_pw=""
   nuxbill_pw="$(resolve_nuxbill_password)"
 
   echo -e "${YELLOW}Sincronizando usuarios MariaDB (radius/nuxbill)...${NC}"
 
-  for i in $(seq 1 15); do
-    if docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
-      docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" >/dev/null 2>&1 << SQL
+  for _ in $(seq 1 25); do
+    if [ -n "$root_pw" ] && docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
+      root_args=(-uroot -p"${root_pw}")
+      auth_mode="password"
+      break
+    fi
+
+    if [ -z "$container_root_pw" ]; then
+      container_root_pw="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' omnisync-mariadb 2>/dev/null | awk -F= '/^MYSQL_ROOT_PASSWORD=/{sub(/^MYSQL_ROOT_PASSWORD=/, ""); print; exit}')"
+    fi
+
+    if [ -n "$container_root_pw" ] && [ "$container_root_pw" != "$root_pw" ] \
+      && docker exec omnisync-mariadb mariadb -uroot -p"${container_root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
+      root_pw="$container_root_pw"
+      root_args=(-uroot -p"${root_pw}")
+      auth_mode="password(container)"
+      MYSQL_ROOT_PASSWORD="$root_pw"
+      if [ -f "$INSTALL_DIR/.env" ]; then
+        if grep -q '^MYSQL_ROOT_PASSWORD=' "$INSTALL_DIR/.env"; then
+          sed -i "s|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=${root_pw}|" "$INSTALL_DIR/.env"
+        else
+          echo "MYSQL_ROOT_PASSWORD=${root_pw}" >> "$INSTALL_DIR/.env"
+        fi
+      fi
+      break
+    fi
+
+    if docker exec omnisync-mariadb mariadb -uroot -e "SELECT 1;" >/dev/null 2>&1; then
+      root_args=(-uroot)
+      auth_mode="socket"
+      break
+    fi
+
+    sleep 2
+  done
+
+  if [ -z "$auth_mode" ]; then
+    echo -e "${YELLOW}⚠ No se pudo autenticar root en MariaDB (password/socket)${NC}"
+    return 1
+  fi
+
+  docker exec omnisync-mariadb mariadb "${root_args[@]}" >/dev/null 2>&1 << SQL
 CREATE DATABASE IF NOT EXISTS radius;
 CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${radius_pw}';
@@ -319,13 +361,13 @@ GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
 GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
 FLUSH PRIVILEGES;
 SQL
-      echo -e "${GREEN}Usuarios MariaDB sincronizados ✓${NC}"
-      return 0
-    fi
-    sleep 2
-  done
 
-  echo -e "${YELLOW}⚠ No se pudo sincronizar usuarios MariaDB automáticamente${NC}"
+  if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Usuarios MariaDB sincronizados (root via ${auth_mode}) ✓${NC}"
+    return 0
+  fi
+
+  echo -e "${YELLOW}⚠ Falló la sincronización SQL de usuarios MariaDB${NC}"
   return 1
 }
 
