@@ -95,7 +95,7 @@ export function VpnManager() {
 
   const handleInitServer = async () => {
     try {
-      await apiClient.post("/api/vpn/init", {});
+      await apiPost("/vpn/init", {});
       toast.success("WireGuard inicializado");
       fetchData();
     } catch (err: any) {
