@@ -589,12 +589,19 @@ echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
-docker compose build --no-cache api
+docker compose build --no-cache api phpnuxbill
 docker compose up -d --build 2>&1 | tail -5
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
 sleep 20
+
+# Auto-recuperación rápida si PHPNuxBill quedó caído (evita 502 en /nuxbill)
+if ! docker ps --format '{{.Names}}' | grep -q '^omnisync-phpnuxbill$'; then
+  echo -e "${YELLOW}PHPNuxBill no está arriba, reintentando arranque...${NC}"
+  docker compose up -d --build phpnuxbill
+  sleep 12
+fi
 
 if ! ensure_mariadb_accounts; then
   echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
@@ -715,15 +722,18 @@ if [ "$HTTP_FAIL" -gt 0 ]; then
   echo -e "${YELLOW}  Endpoints con fallo:${FAILED_ENDPOINTS}${NC}"
 fi
 
-if [ "$TOTAL_FAIL" -gt 0 ]; then
+if [ "$TOTAL_FAIL" -gt 0 ] || [ "$HTTP_FAIL" -gt 0 ]; then
   echo ""
-  echo -e "${YELLOW}╔══════════════════════════════════════════════════════════╗"
-  echo "║  ⚠ Servicios fallidos:${FAILED_SERVICES}"
-  echo "║  El panel web YA está disponible para gestionar backups."
+  echo -e "${RED}╔══════════════════════════════════════════════════════════╗"
+  echo "║  ✗ Instalación incompleta: hay servicios/endpoints caídos"
+  echo "║  Servicios:${FAILED_SERVICES}"
+  echo "║  Endpoints:${FAILED_ENDPOINTS}"
   echo "║                                                          "
-  echo "║  Reintentar: cd $INSTALL_DIR && docker compose up -d     "
-  echo "║  Ver logs:   cd $INSTALL_DIR && docker compose logs      "
-  echo "╚══════════════════════════════════════════════════════════╝${NC}"
+  echo "║  Revisar:   cd $INSTALL_DIR && docker compose ps         "
+  echo "║  Ver logs:  cd $INSTALL_DIR && docker compose logs --tail=100"
+  echo "║  Reintentar:cd $INSTALL_DIR && docker compose up -d --build"
+  echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
+  exit 1
 fi
 
 # ═══════════════════════════════════════════════════
