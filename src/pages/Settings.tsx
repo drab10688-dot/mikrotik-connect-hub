@@ -154,7 +154,7 @@ export default function Settings() {
         <div className="max-w-2xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <div><h1 className="text-3xl font-bold">Configuración</h1><p className="text-muted-foreground">Selecciona el dispositivo MikroTik</p></div>
-            {!isAdmin && !isSecretary && <AddDeviceDialog />}
+            {!isSecretary && <AddDeviceDialog />}
           </div>
           <Card>
             <CardHeader>
