@@ -373,11 +373,71 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
             Monitoreo de potencia Rx/Tx para detectar degradación de fibra
           </p>
         </div>
-        <Button onClick={handleCollect} disabled={collecting}>
-          {collecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
-          Recolectar Señal
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => { loadAlerts(); setShowAlerts(!showAlerts); }}>
+            <Bell className="w-4 h-4 mr-2" />
+            Alertas
+          </Button>
+          <Button onClick={handleCollect} disabled={collecting}>
+            {collecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
+            Recolectar Señal
+          </Button>
+        </div>
       </div>
+
+      {/* Alert History */}
+      {showAlerts && (
+        <Card className="border-dashed border-primary/50">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive" />
+              Historial de Alertas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {alerts.length === 0 ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">No hay alertas registradas</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">ONU</TableHead>
+                    <TableHead className="text-xs">Cliente</TableHead>
+                    <TableHead className="text-xs text-center">Rx (dBm)</TableHead>
+                    <TableHead className="text-xs text-center">Umbral</TableHead>
+                    <TableHead className="text-xs text-center">Estado</TableHead>
+                    <TableHead className="text-xs">Fecha</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {alerts.map((alert) => (
+                    <TableRow key={alert.id}>
+                      <TableCell className="font-mono text-xs">{alert.serial_number}</TableCell>
+                      <TableCell className="text-xs">{alert.client_name || "—"}</TableCell>
+                      <TableCell className="text-center font-mono text-xs font-semibold text-destructive">
+                        {alert.rx_power.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-xs">{alert.threshold}</TableCell>
+                      <TableCell className="text-center">
+                        {alert.sent_successfully ? (
+                          <Badge className="bg-chart-2/20 text-chart-2 text-xs"><CheckCircle className="w-3 h-3 mr-1" />Enviada</Badge>
+                        ) : (
+                          <Badge className="bg-destructive/20 text-destructive text-xs" title={alert.error_message || ""}>
+                            <XCircle className="w-3 h-3 mr-1" />Falló
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(alert.created_at).toLocaleString("es")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">Cargando...</CardContent></Card>
@@ -401,7 +461,7 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
                   <TableHead className="text-center">Tx (dBm)</TableHead>
                   <TableHead className="text-center">Calidad</TableHead>
                   <TableHead className="text-center">Tendencia</TableHead>
-                  <TableHead className="text-center">Temp</TableHead>
+                  <TableHead className="text-center">Alerta</TableHead>
                   <TableHead className="text-xs">Última Lectura</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -435,15 +495,32 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
                         <span className="text-xs">{trendLabels[entry.trend] || entry.trend}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center text-xs">
-                      {entry.temperature !== null ? `${entry.temperature}°C` : "—"}
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Configurar alertas"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAlertConfigOnu(entry);
+                          setAlertForm({
+                            enabled: false,
+                            threshold: "-30",
+                            chatId: "",
+                          });
+                          setShowAlertConfig(true);
+                        }}
+                      >
+                        <Bell className="w-4 h-4" />
+                      </Button>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {new Date(entry.recorded_at).toLocaleString("es")}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedOnu(entry.onu_id); }}>
-                        <Activity className="w-4 h-4 mr-1" /> Ver historial
+                        <Activity className="w-4 h-4 mr-1" /> Ver
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -453,6 +530,74 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           </CardContent>
         </Card>
       )}
+
+      {/* Alert Config Dialog */}
+      <Dialog open={showAlertConfig} onOpenChange={setShowAlertConfig}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              Configurar Alertas — {alertConfigOnu?.serial_number}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-3 rounded text-sm">
+              <p><span className="font-medium">ONU:</span> {alertConfigOnu?.serial_number}</p>
+              <p><span className="font-medium">Cliente:</span> {alertConfigOnu?.client_name || "Sin vincular"}</p>
+              <p><span className="font-medium">Rx Actual:</span> {alertConfigOnu?.rx_power !== null ? `${alertConfigOnu?.rx_power?.toFixed(2)} dBm` : "—"}</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={alertForm.enabled}
+                onCheckedChange={(v) => setAlertForm(p => ({ ...p, enabled: v }))}
+              />
+              <div>
+                <Label>Alertas habilitadas</Label>
+                <p className="text-xs text-muted-foreground">Recibir notificaciones cuando Rx baje del umbral</p>
+              </div>
+            </div>
+
+            {alertForm.enabled && (
+              <>
+                <div className="space-y-2">
+                  <Label>Umbral Rx (dBm)</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    value={alertForm.threshold}
+                    onChange={(e) => setAlertForm(p => ({ ...p, threshold: e.target.value }))}
+                    placeholder="-30"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se enviará alerta cuando Rx Power sea menor a este valor. Recomendado: -25 a -28 dBm
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Chat ID de Telegram</Label>
+                  <Input
+                    value={alertForm.chatId}
+                    onChange={(e) => setAlertForm(p => ({ ...p, chatId: e.target.value }))}
+                    placeholder="Ej: -1001234567890"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    ID del chat o grupo donde enviar las alertas. Use @userinfobot en Telegram para obtenerlo.
+                  </p>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowAlertConfig(false)}>Cancelar</Button>
+              <Button onClick={handleSaveAlertConfig}>
+                {alertForm.enabled ? <Bell className="w-4 h-4 mr-2" /> : <BellOff className="w-4 h-4 mr-2" />}
+                Guardar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
