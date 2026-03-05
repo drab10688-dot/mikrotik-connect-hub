@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2 } from "lucide-react";
+import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 
 interface OnuDevice {
   id: string;
