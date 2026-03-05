@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2 } from "lucide-react";
+import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download } from "lucide-react";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 
 interface OnuDevice {
@@ -36,7 +36,21 @@ interface OnuDevice {
   client_name?: string;
   client_username?: string;
   plan_or_speed?: string;
+  acs_device_id: string | null;
+  acs_linked_at: string | null;
+  acs_manufacturer: string | null;
+  acs_model: string | null;
+  acs_firmware: string | null;
   created_at: string;
+}
+
+interface UnregisteredDevice {
+  serial: string;
+  deviceId: string;
+  manufacturer: string;
+  model: string | null;
+  firmware: string | null;
+  lastInform: string | null;
 }
 
 interface ConfigTemplate {
@@ -75,6 +89,9 @@ export default function OnuManagement() {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [clients, setClients] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [unregistered, setUnregistered] = useState<UnregisteredDevice[]>([]);
+  const [syncStats, setSyncStats] = useState<{ linked: number; updated: number; newDevices: number } | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -116,6 +133,45 @@ export default function OnuManagement() {
   };
 
   useEffect(() => { loadData(); }, [mikrotikId]);
+
+  const handleSyncACS = async () => {
+    setSyncLoading(true);
+    try {
+      const res = await api(`/genieacs/auto-sync/${mikrotikId}`, { method: "POST" });
+      setSyncStats({ linked: res.linked, updated: res.updated, newDevices: res.newDevices });
+      setUnregistered(res.unregistered || []);
+      if (res.linked > 0) {
+        toast.success(`${res.linked} ONUs vinculadas automáticamente`);
+        loadData();
+      } else if (res.newDevices > 0) {
+        toast.info(`${res.newDevices} ONUs detectadas en ACS sin registrar`);
+      } else {
+        toast.info(res.message);
+      }
+    } catch (err: any) {
+      toast.error("Error sincronizando: " + err.message);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleAutoRegister = async (devices: UnregisteredDevice[]) => {
+    setSyncLoading(true);
+    try {
+      const res = await api(`/genieacs/auto-register/${mikrotikId}`, {
+        method: "POST",
+        body: { devices },
+      });
+      toast.success(res.message);
+      setUnregistered([]);
+      setSyncStats(null);
+      loadData();
+    } catch (err: any) {
+      toast.error("Error registrando: " + err.message);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const handleAddOnu = async () => {
     try {
@@ -268,7 +324,11 @@ export default function OnuManagement() {
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
           <TabsContent value="devices" className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-between gap-2">
+              <Button variant="outline" onClick={handleSyncACS} disabled={syncLoading}>
+                {syncLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
+                Sincronizar con ACS
+              </Button>
               <Dialog open={showAddOnu} onOpenChange={setShowAddOnu}>
                 <DialogTrigger asChild>
                   <Button><Plus className="w-4 h-4 mr-2" /> Registrar ONU</Button>
@@ -404,6 +464,54 @@ export default function OnuManagement() {
               </Dialog>
             </div>
 
+            {/* Unregistered ACS devices */}
+            {unregistered.length > 0 && (
+              <Card className="border-dashed border-primary/50">
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Download className="w-4 h-4 text-primary" />
+                      {unregistered.length} ONUs detectadas en ACS sin registrar
+                    </CardTitle>
+                    <Button size="sm" onClick={() => handleAutoRegister(unregistered)} disabled={syncLoading}>
+                      {syncLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                      Registrar Todas
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Serial</TableHead>
+                        <TableHead className="text-xs">Fabricante</TableHead>
+                        <TableHead className="text-xs">Modelo</TableHead>
+                        <TableHead className="text-xs">Firmware</TableHead>
+                        <TableHead className="text-xs">Último INFORM</TableHead>
+                        <TableHead className="text-xs text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {unregistered.map((d) => (
+                        <TableRow key={d.deviceId}>
+                          <TableCell className="font-mono text-xs">{d.serial}</TableCell>
+                          <TableCell className="text-xs">{d.manufacturer}</TableCell>
+                          <TableCell className="text-xs">{d.model || "-"}</TableCell>
+                          <TableCell className="text-xs">{d.firmware || "-"}</TableCell>
+                          <TableCell className="text-xs">{d.lastInform ? new Date(d.lastInform).toLocaleString() : "-"}</TableCell>
+                          <TableCell className="text-right">
+                            <Button size="sm" variant="outline" onClick={() => handleAutoRegister([d])}>
+                              <Plus className="w-3 h-3 mr-1" /> Registrar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
             {loading ? (
               <Card><CardContent className="p-8 text-center text-muted-foreground">Cargando...</CardContent></Card>
             ) : onus.length === 0 ? (
@@ -420,7 +528,7 @@ export default function OnuManagement() {
                           <TableHead>Cliente</TableHead>
                           <TableHead>WiFi</TableHead>
                           <TableHead>PPPoE</TableHead>
-                          <TableHead>IP Gestión</TableHead>
+                          <TableHead>ACS</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead className="text-right">Acciones</TableHead>
                         </TableRow>
@@ -465,7 +573,19 @@ export default function OnuManagement() {
                                 </div>
                               ) : <span className="text-muted-foreground text-xs">-</span>}
                             </TableCell>
-                            <TableCell className="font-mono text-xs">{onu.management_ip || "-"}</TableCell>
+                            <TableCell>
+                              {onu.acs_device_id ? (
+                                <div className="flex items-center gap-1" title={`ACS: ${onu.acs_manufacturer || ''} ${onu.acs_model || ''}\nFirmware: ${onu.acs_firmware || '-'}\nVinculado: ${onu.acs_linked_at ? new Date(onu.acs_linked_at).toLocaleDateString() : '-'}`}>
+                                  <LinkIcon className="w-3 h-3 text-green-500" />
+                                  <span className="text-xs text-green-600 dark:text-green-400">Vinculada</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <Unlink className="w-3 h-3 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">No</span>
+                                </div>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge className={statusColors[onu.status] || ""}>{onu.status}</Badge>
                             </TableCell>

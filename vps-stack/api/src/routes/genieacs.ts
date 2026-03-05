@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
+import { pool } from '../server';
 
 export const genieacsRouter = Router();
 genieacsRouter.use(authMiddleware);
@@ -859,6 +860,162 @@ genieacsRouter.post('/auto-provision', async (req: AuthRequest, res: Response) =
       deviceId,
       message: `Auto-provisioning enviado: ${configSummary.join(', ')}`,
       data: result
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Auto-sync: match GenieACS devices with registered ONUs by serial ──
+genieacsRouter.post('/auto-sync/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+
+    // 1. Get all ACS devices with DeviceInfo
+    const acsDevices = await genieFetch(
+      '/devices/?projection=InternetGatewayDevice.DeviceInfo,Device.DeviceInfo,_lastInform'
+    );
+
+    if (!acsDevices || acsDevices.length === 0) {
+      return res.json({ success: true, linked: 0, newDevices: 0, message: 'No hay dispositivos en el ACS' });
+    }
+
+    // 2. Build serial → ACS device map
+    const acsMap = new Map<string, any>();
+    for (const device of acsDevices) {
+      const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
+      const serial = di?.SerialNumber?._value;
+      if (serial) {
+        acsMap.set(serial.toUpperCase(), {
+          deviceId: device._id,
+          manufacturer: di?.Manufacturer?._value || 'Desconocido',
+          model: di?.ModelName?._value || di?.ProductClass?._value || null,
+          firmware: di?.SoftwareVersion?._value || null,
+          lastInform: device?._lastInform || null,
+        });
+      }
+    }
+
+    // 3. Get registered ONUs for this mikrotik
+    const onuResult = await pool.query(
+      `SELECT id, serial_number, acs_device_id, status, client_id FROM onu_devices WHERE mikrotik_id = $1`,
+      [mikrotikId]
+    );
+
+    let linked = 0;
+    let updated = 0;
+    const newAcsDevices: any[] = [];
+
+    // 4. Match and update
+    for (const onu of onuResult.rows) {
+      const serialKey = onu.serial_number.toUpperCase();
+      const acsDevice = acsMap.get(serialKey);
+
+      if (acsDevice) {
+        // Found match - link or update
+        if (onu.acs_device_id !== acsDevice.deviceId) {
+          // New link
+          await pool.query(
+            `UPDATE onu_devices SET 
+              acs_device_id = $1, acs_linked_at = NOW(), 
+              acs_manufacturer = $2, acs_model = $3, acs_firmware = $4,
+              status = CASE WHEN status = 'registered' THEN 'active' ELSE status END
+            WHERE id = $5`,
+            [acsDevice.deviceId, acsDevice.manufacturer, acsDevice.model, acsDevice.firmware, onu.id]
+          );
+          linked++;
+        } else {
+          // Already linked - update metadata
+          await pool.query(
+            `UPDATE onu_devices SET acs_manufacturer = $1, acs_model = $2, acs_firmware = $3 WHERE id = $4`,
+            [acsDevice.manufacturer, acsDevice.model, acsDevice.firmware, onu.id]
+          );
+          updated++;
+        }
+        // Remove from map so we know which ACS devices are unregistered
+        acsMap.delete(serialKey);
+      }
+    }
+
+    // 5. Remaining ACS devices are unregistered ONUs
+    for (const [serial, device] of acsMap) {
+      newAcsDevices.push({
+        serial,
+        deviceId: device.deviceId,
+        manufacturer: device.manufacturer,
+        model: device.model,
+        firmware: device.firmware,
+        lastInform: device.lastInform,
+      });
+    }
+
+    res.json({
+      success: true,
+      linked,
+      updated,
+      newDevices: newAcsDevices.length,
+      unregistered: newAcsDevices,
+      message: `${linked} ONUs vinculadas, ${updated} actualizadas, ${newAcsDevices.length} sin registrar`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Auto-register: create ONU records from unregistered ACS devices ──
+genieacsRouter.post('/auto-register/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const { devices } = req.body; // Array of { serial, deviceId, manufacturer, model, firmware }
+
+    if (!devices || !Array.isArray(devices) || devices.length === 0) {
+      return res.status(400).json({ error: 'No hay dispositivos para registrar' });
+    }
+
+    let registered = 0;
+    const results: any[] = [];
+
+    for (const device of devices) {
+      try {
+        // Check if already exists
+        const existing = await pool.query(
+          'SELECT id FROM onu_devices WHERE serial_number = $1 AND mikrotik_id = $2',
+          [device.serial, mikrotikId]
+        );
+        if (existing.rows.length > 0) {
+          results.push({ serial: device.serial, status: 'already_exists' });
+          continue;
+        }
+
+        // Map manufacturer to brand
+        const mfr = (device.manufacturer || '').toLowerCase();
+        let brand = 'latic';
+        if (mfr.includes('zte')) brand = 'zte';
+        else if (mfr.includes('huawei')) brand = 'huawei';
+        else if (mfr.includes('zyxel')) brand = 'zyxel';
+
+        await pool.query(
+          `INSERT INTO onu_devices (
+            mikrotik_id, created_by, serial_number, brand, model, status,
+            acs_device_id, acs_linked_at, acs_manufacturer, acs_model, acs_firmware
+          ) VALUES ($1, $2, $3, $4, $5, 'active', $6, NOW(), $7, $8, $9)`,
+          [
+            mikrotikId, req.userId, device.serial, brand, device.model || null,
+            device.deviceId, device.manufacturer, device.model, device.firmware
+          ]
+        );
+        registered++;
+        results.push({ serial: device.serial, status: 'registered', brand });
+      } catch (err: any) {
+        results.push({ serial: device.serial, status: 'error', error: err.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      registered,
+      message: `${registered} ONUs registradas automáticamente desde el ACS`,
+      data: results,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -485,6 +485,11 @@ CREATE TABLE onu_devices (
   pppoe_profile TEXT,
   status TEXT NOT NULL DEFAULT 'registered',
   notes TEXT,
+  acs_device_id TEXT,
+  acs_linked_at TIMESTAMPTZ,
+  acs_manufacturer TEXT,
+  acs_model TEXT,
+  acs_firmware TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
