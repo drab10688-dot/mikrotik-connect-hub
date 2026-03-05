@@ -5,7 +5,7 @@ import { VpnManager } from "@/components/vpn/VpnManager";
 import { UbiquitiManager } from "@/components/ubiquiti/UbiquitiManager";
 import { MikrotikAntennaManager } from "@/components/mikrotik/MikrotikAntennaManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Antenna } from "lucide-react";
+import { Server, Megaphone, Shield, Radio } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
