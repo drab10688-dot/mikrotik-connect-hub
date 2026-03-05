@@ -687,8 +687,8 @@ export default function OnuManagement() {
                             <TableCell>
                               {onu.acs_device_id ? (
                                 <div className="flex items-center gap-1" title={`ACS: ${onu.acs_manufacturer || ''} ${onu.acs_model || ''}\nFirmware: ${onu.acs_firmware || '-'}\nVinculado: ${onu.acs_linked_at ? new Date(onu.acs_linked_at).toLocaleDateString() : '-'}`}>
-                                  <LinkIcon className="w-3 h-3 text-green-500" />
-                                  <span className="text-xs text-green-600 dark:text-green-400">Vinculada</span>
+                                  <LinkIcon className="w-3 h-3 text-chart-2" />
+                                  <span className="text-xs text-chart-2">Vinculada</span>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1">
