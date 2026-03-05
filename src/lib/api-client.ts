@@ -254,6 +254,14 @@ export const hotspotApi = {
   profiles: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/profiles`)),
   addProfile: (mikrotikId: string, profileData: any) => apiPost(`/hotspot/${mikrotikId}/profiles`, profileData),
   deleteProfile: (mikrotikId: string, profileId: string) => apiDelete(`/hotspot/${mikrotikId}/profiles/${profileId}`),
+  hosts: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/hosts`)),
+  ipBindings: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/ip-bindings`)),
+  addIpBinding: (mikrotikId: string, data: any) => apiPost(`/hotspot/${mikrotikId}/ip-bindings`, data),
+  deleteIpBinding: (mikrotikId: string, id: string) => apiDelete(`/hotspot/${mikrotikId}/ip-bindings/${id}`),
+  cookies: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/cookies`)),
+  deleteCookie: (mikrotikId: string, id: string) => apiDelete(`/hotspot/${mikrotikId}/cookies/${id}`),
+  dhcpLeases: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/dhcp-leases`)),
+  servers: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/servers`)),
 };
 
 // ─── Vouchers API ─────────────────────────────────────────
