@@ -3,9 +3,10 @@ set -Eeuo pipefail
 
 # ══════════════════════════════════════════════
 #  PHPNuxBill Entrypoint — OmniSync Stack
+#  App served at /nuxbill/ via Apache Alias
 # ══════════════════════════════════════════════
 
-NUXROOT="/var/www/html"
+NUXROOT="/var/www/nuxbill"
 CONFIG_FILE="$NUXROOT/config.php"
 
 DB_HOST="${NUXBILL_DB_HOST:-mariadb}"
@@ -14,7 +15,6 @@ DB_PASS="${NUXBILL_DB_PASS:-${NUXBILL_DB_PASSWORD:-changeme_nuxbill}}"
 DB_NAME="${NUXBILL_DB_NAME:-phpnuxbill}"
 APP_URL="${NUXBILL_APP_URL:-http://localhost/nuxbill}"
 TZ_VALUE="${TZ:-America/Bogota}"
-FORCE_SYNC_SETTINGS="${NUXBILL_FORCE_SYNC_SETTINGS:-0}"
 
 RADIUS_DB_HOST="${RADIUS_DB_HOST:-$DB_HOST}"
 RADIUS_DB_PORT="${RADIUS_DB_PORT:-3306}"
@@ -28,6 +28,9 @@ log() { echo "[nuxbill] $1"; }
 generate_config() {
   local app_key
   app_key=$(echo -n "${DB_PASS}${DB_HOST}" | md5sum | cut -d' ' -f1)
+
+  # Ensure APP_URL doesn't have trailing slash
+  APP_URL="${APP_URL%/}"
 
   cat > "$CONFIG_FILE" <<PHP
 <?php
@@ -58,7 +61,7 @@ PHP
 
   chown www-data:www-data "$CONFIG_FILE"
   chmod 644 "$CONFIG_FILE"
-  log "config.php generado ✓"
+  log "config.php generado ✓ (APP_URL=${APP_URL})"
 }
 
 # ── 2) Wait for MariaDB ─────────────────────────
@@ -164,15 +167,13 @@ import_radius_schema() {
   " 2>/dev/null && log "Schema RADIUS importado (PHP) ✓" || log "⚠ Error importando schema RADIUS"
 }
 
-# ── 5) Create admin + configure app ─────────────
+# ── 5) Create admin + seed defaults (only missing keys) ─
 setup_admin() {
   php -r "
     \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
     if (\$c->connect_error) exit;
 
-    \$forceSync = ('${FORCE_SYNC_SETTINGS}' === '1');
-
-    // Admin user
+    // Admin user — only create if missing
     \$r = \$c->query(\"SELECT id FROM tbl_users WHERE username='admin'\");
     if (\$r && \$r->num_rows == 0) {
       \$h = sha1('admin');
@@ -180,8 +181,8 @@ setup_admin() {
       echo 'Admin creado (admin/admin) ✓' . PHP_EOL;
     }
 
-    // Seed defaults once (or force sync when NUXBILL_FORCE_SYNC_SETTINGS=1)
-    \$settings = [
+    // Seed ONLY missing keys — never overwrite existing settings
+    \$defaults = [
       'app_stage'       => 'Live',
       'radius_enable'   => '1',
       'radius_host'     => '${RADIUS_DB_HOST}',
@@ -194,14 +195,9 @@ setup_admin() {
       'radius_db_name'  => '${RADIUS_DB_NAME}',
     ];
 
-    foreach (\$settings as \$k => \$v) {
+    foreach (\$defaults as \$k => \$v) {
       \$ks = \$c->real_escape_string(\$k);
       \$vs = \$c->real_escape_string(\$v);
-
-      if (\$forceSync) {
-        \$c->query(\"UPDATE tbl_appconfig SET value='\$vs' WHERE setting='\$ks'\");
-      }
-
       \$exists = \$c->query(\"SELECT 1 FROM tbl_appconfig WHERE setting='\$ks' LIMIT 1\");
       if (!\$exists || \$exists->num_rows === 0) {
         \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$ks','\$vs')\");
@@ -209,11 +205,7 @@ setup_admin() {
     }
 
     \$c->close();
-    if (\$forceSync) {
-      echo 'Config sincronizada (force) ✓' . PHP_EOL;
-    } else {
-      echo 'Config por defecto aplicada ✓' . PHP_EOL;
-    }
+    echo 'Config defaults seeded ✓' . PHP_EOL;
   " 2>/dev/null || true
 
   # Remove install dir to skip installer
@@ -223,26 +215,27 @@ setup_admin() {
   fi
 }
 
-# ── 6) Setup cron (bulletproof) ──────────────────
+# ── 6) Setup cron ────────────────────────────────
 setup_cron() {
-  local cron_url="http://127.0.0.1:8080/index.php?_route=cron/run"
+  local cron_url="http://127.0.0.1:8080/nuxbill/index.php?_route=cron/run"
   local ts_file="$NUXROOT/system/uploads/cron_last_run.txt"
 
   mkdir -p "$(dirname "$ts_file")"
   date +%s > "$ts_file"
   chown www-data:www-data "$ts_file" 2>/dev/null || true
 
-  # Suppress cron warnings in DB
+  # Seed cron keys ONLY if missing (don't overwrite user changes)
   php -r "
     \$c = @new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
     if (\$c->connect_error) exit;
-    foreach (['cron_last_run'=>date('Y-m-d H:i:s'),'cron_period'=>'1','cron_status'=>'1',
+    \$keys = ['cron_last_run'=>date('Y-m-d H:i:s'),'cron_period'=>'1','cron_status'=>'1',
               'cron_active'=>'1','disable_cron_warning'=>'1','cron_enabled'=>'1',
-              'cron_enable'=>'1','cron_warning'=>'0'] as \$k=>\$v) {
+              'cron_enable'=>'1','cron_warning'=>'0'];
+    foreach (\$keys as \$k=>\$v) {
       \$ks = \$c->real_escape_string(\$k);
       \$vs = \$c->real_escape_string(\$v);
-      \$c->query(\"UPDATE tbl_appconfig SET value='\$vs' WHERE setting='\$ks'\");
-      if (\$c->affected_rows === 0) {
+      \$exists = \$c->query(\"SELECT 1 FROM tbl_appconfig WHERE setting='\$ks' LIMIT 1\");
+      if (!\$exists || \$exists->num_rows === 0) {
         \$c->query(\"INSERT INTO tbl_appconfig (setting,value) VALUES ('\$ks','\$vs')\");
       }
     }
@@ -263,9 +256,9 @@ CRON
     crond && log "Cron daemon iniciado ✓"
   fi
 
-  # Background heartbeat: keeps DB timestamp fresh every 60s
+  # Background heartbeat: keeps cron timestamp fresh (ONLY cron_last_run)
   (
-    sleep 20
+    sleep 30
     while true; do
       curl -sf "$cron_url" > /dev/null 2>&1 \
         || /usr/local/bin/php "$NUXROOT/system/cron.php" > /dev/null 2>&1 \
@@ -275,8 +268,6 @@ CRON
         \$c = @new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
         if (!\$c->connect_error) {
           \$c->query(\"UPDATE tbl_appconfig SET value=NOW() WHERE setting='cron_last_run'\");
-          \$c->query(\"UPDATE tbl_appconfig SET value='1' WHERE setting IN ('cron_active','cron_status','cron_enabled','cron_enable','disable_cron_warning')\");
-          \$c->query(\"UPDATE tbl_appconfig SET value='0' WHERE setting='cron_warning'\");
           \$c->close();
         }
       " > /dev/null 2>&1 || true
@@ -311,5 +302,5 @@ fi
 
 fix_permissions
 
-log "=== PHPNuxBill listo ==="
+log "=== PHPNuxBill listo (${APP_URL}) ==="
 exec "$@"
