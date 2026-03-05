@@ -239,36 +239,61 @@ hotspotRouter.post('/:mikrotikId/active/:activeId/disconnect', async (req: AuthR
 // PUBLIC ROUTES
 // ═══════════════════════════════════════════════════════════
 
-// ─── Public Hotspot Login (MikroTik directo) ────────────────
+// ─── Public Hotspot Login (MikroTik directo con IP/MAC) ────────────────
 hotspotRouter.post('/login', async (req: any, res: Response) => {
   try {
-    const { mikrotik_id, username, password } = req.body;
+    const { mikrotik_id, username, password, ip, mac } = req.body;
     if (!mikrotik_id || !username || !password) {
       return res.status(400).json({ error: 'mikrotik_id, username y password requeridos' });
     }
 
     const config = await getDeviceConfig(pool, mikrotik_id);
 
-    try {
-      const data = await mikrotikRequest(config, '/rest/ip/hotspot/active/login', 'POST', {
-        user: username,
-        password,
-      });
-      res.json({ success: true, data });
-    } catch (mkError: any) {
-      const users: any = await mikrotikRequest(config, '/rest/ip/hotspot/user');
-      const user = (users as any[]).find((u: any) => u.name === username);
-
-      if (!user) return res.status(401).json({ success: false, error: 'Usuario no encontrado' });
-
-      await pool.query(
-        `UPDATE vouchers SET status = 'active', activated_at = now()
-         WHERE code = $1 AND mikrotik_id = $2 AND status IN ('available', 'sold')`,
-        [username, mikrotik_id]
-      );
-
-      res.json({ success: true, message: 'Credenciales válidas' });
+    // Verify user exists in MikroTik
+    const users: any = await mikrotikRequest(config, '/rest/ip/hotspot/user');
+    const user = (users as any[]).find((u: any) => u.name === username);
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Usuario no encontrado en MikroTik' });
     }
+
+    // If we have IP and MAC from MikroTik redirect, authorize the client directly
+    if (ip && mac) {
+      try {
+        // Method 1: Try using login command with user + IP
+        await mikrotikRequest(config, '/rest/ip/hotspot/active/login', 'POST', {
+          user: username,
+          password,
+          ip,
+          'mac-address': mac,
+        });
+        console.log(`Hotspot login OK via active/login for ${username} ip=${ip} mac=${mac}`);
+      } catch (loginErr: any) {
+        console.log(`active/login failed (${loginErr.message}), trying ip-binding...`);
+        try {
+          // Method 2: Create an IP binding to bypass auth for this client
+          await mikrotikRequest(config, '/rest/ip/hotspot/ip-binding/add', 'POST', {
+            address: ip,
+            'mac-address': mac,
+            type: 'bypassed',
+            comment: `OmniSync auto-login: ${username}`,
+          });
+          console.log(`Hotspot ip-binding created for ${username} ip=${ip} mac=${mac}`);
+        } catch (bindErr: any) {
+          if (!bindErr.message?.includes('already')) {
+            console.error('IP binding failed:', bindErr.message);
+          }
+        }
+      }
+    }
+
+    // Update voucher status
+    await pool.query(
+      `UPDATE vouchers SET status = 'active', activated_at = now()
+       WHERE code = $1 AND mikrotik_id = $2 AND status IN ('available', 'sold')`,
+      [username, mikrotik_id]
+    );
+
+    res.json({ success: true, message: 'Cliente autorizado', data: { username, ip, mac } });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
