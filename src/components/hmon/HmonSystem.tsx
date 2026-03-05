@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useSystemResources } from "@/hooks/useMikrotikData";
-import { callMikroTikFunction } from "@/lib/mikrotik";
-import { Power, PowerOff, Timer, Zap, HardDrive, Clock, Server } from "lucide-react";
+import { hotspotApi } from "@/lib/api-client";
+import { getSelectedDeviceId } from "@/lib/mikrotik";
+import { Power, PowerOff, Timer, Zap, HardDrive, Clock, Server, Calendar } from "lucide-react";
 import { toast } from "sonner";
 
 export function HmonSystem({ section }: { section: string }) {
+  const deviceId = getSelectedDeviceId() || "";
   const { data: systemInfo, isLoading } = useSystemResources();
   const sys = (systemInfo as any[])?.[0];
   const [confirmAction, setConfirmAction] = useState<"reboot" | "shutdown" | null>(null);
@@ -21,16 +24,25 @@ export function HmonSystem({ section }: { section: string }) {
   const memPct = totalMem > 0 ? Math.round(((totalMem - freeMem) / totalMem) * 100) : 0;
 
   const rebootMutation = useMutation({
-    mutationFn: () => callMikroTikFunction("/system/reboot", {}),
+    mutationFn: () => hotspotApi.reboot(deviceId),
     onSuccess: () => { toast.success("Router reiniciando..."); setConfirmAction(null); },
     onError: (e: any) => toast.error(e.message || "Error"),
   });
 
   const shutdownMutation = useMutation({
-    mutationFn: () => callMikroTikFunction("/system/shutdown", {}),
+    mutationFn: () => hotspotApi.shutdown(deviceId),
     onSuccess: () => { toast.success("Router apagándose..."); setConfirmAction(null); },
     onError: (e: any) => toast.error(e.message || "Error"),
   });
+
+  const { data: schedulerData = [], isLoading: schedulerLoading } = useQuery({
+    queryKey: ["hmon-scheduler", deviceId],
+    queryFn: () => deviceId ? hotspotApi.scheduler(deviceId) : [],
+    enabled: !!deviceId && section === "scheduler",
+    refetchInterval: 30000,
+  });
+
+  if (!deviceId) return <div className="text-center py-12 text-muted-foreground text-sm">No hay dispositivo conectado</div>;
 
   if (section === "reboot") {
     return (
@@ -47,7 +59,7 @@ export function HmonSystem({ section }: { section: string }) {
         </Card>
         <AlertDialog open={confirmAction === "reboot"} onOpenChange={() => setConfirmAction(null)}>
           <AlertDialogContent>
-            <AlertDialogHeader><AlertDialogTitle>¿Reiniciar Router?</AlertDialogTitle><AlertDialogDescription>Todos los usuarios activos serán desconectados. El router tardará unos segundos en volver a estar disponible.</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogHeader><AlertDialogTitle>¿Reiniciar Router?</AlertDialogTitle><AlertDialogDescription>Todos los usuarios activos serán desconectados.</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => rebootMutation.mutate()} className="bg-destructive hover:bg-destructive/90">Reiniciar</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -70,7 +82,7 @@ export function HmonSystem({ section }: { section: string }) {
         </Card>
         <AlertDialog open={confirmAction === "shutdown"} onOpenChange={() => setConfirmAction(null)}>
           <AlertDialogContent>
-            <AlertDialogHeader><AlertDialogTitle>¿Apagar Router?</AlertDialogTitle><AlertDialogDescription>El router se apagará completamente. Necesitarás acceso físico para encenderlo de nuevo.</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogHeader><AlertDialogTitle>¿Apagar Router?</AlertDialogTitle><AlertDialogDescription>Necesitarás acceso físico para encenderlo de nuevo.</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => shutdownMutation.mutate()} className="bg-destructive hover:bg-destructive/90">Apagar</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -78,7 +90,46 @@ export function HmonSystem({ section }: { section: string }) {
     );
   }
 
-  // Default: scheduler / system info
+  // Scheduler section
+  if (section === "scheduler") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2"><Calendar className="h-5 w-5 text-primary" /><h2 className="text-lg font-bold">Programador</h2></div>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="text-[10px]">Nombre</TableHead>
+                  <TableHead className="text-[10px]">Inicio</TableHead>
+                  <TableHead className="text-[10px]">Intervalo</TableHead>
+                  <TableHead className="text-[10px]">Próximo</TableHead>
+                  <TableHead className="text-[10px]">Estado</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {schedulerLoading ? (
+                    <TableRow><TableCell colSpan={5} className="text-center py-8 text-xs text-muted-foreground">Cargando...</TableCell></TableRow>
+                  ) : schedulerData.length > 0 ? schedulerData.map((s: any, i: number) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs font-medium">{s.name || "-"}</TableCell>
+                      <TableCell className="text-[10px]">{s["start-date"] || "-"} {s["start-time"] || ""}</TableCell>
+                      <TableCell className="text-[10px]">{s.interval || "none"}</TableCell>
+                      <TableCell className="text-[10px]">{s["next-run"] || "-"}</TableCell>
+                      <TableCell><Badge variant={s.disabled === "true" ? "secondary" : "default"} className="text-[9px]">{s.disabled === "true" ? "Inactivo" : "Activo"}</Badge></TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-xs">Sin tareas programadas</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Default: system info
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2"><Timer className="h-5 w-5 text-primary" /><h2 className="text-lg font-bold">Sistema</h2></div>
