@@ -1239,6 +1239,58 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
   }
 });
 
+// ─── Configure signal alerts for an ONU ─────────────────
+genieacsRouter.put('/signal-alerts/:onuId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { onuId } = req.params;
+    const { enabled, threshold, chatId } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (enabled !== undefined) { updates.push(`signal_alerts_enabled = $${idx++}`); values.push(enabled); }
+    if (threshold !== undefined) { updates.push(`signal_alert_threshold = $${idx++}`); values.push(threshold); }
+    if (chatId !== undefined) { updates.push(`signal_alert_chat_id = $${idx++}`); values.push(chatId || null); }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'No hay campos para actualizar' });
+
+    values.push(onuId);
+    const result = await pool.query(
+      `UPDATE onu_devices SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, signal_alerts_enabled, signal_alert_threshold, signal_alert_chat_id`,
+      values
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: 'ONU no encontrada' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get signal alerts history ──────────────────────────
+genieacsRouter.get('/signal-alerts/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const { limit = '50' } = req.query;
+
+    const result = await pool.query(
+      `SELECT a.*, o.serial_number, o.brand, o.model, c.client_name
+       FROM onu_signal_alerts a
+       JOIN onu_devices o ON o.id = a.onu_id
+       LEFT JOIN isp_clients c ON c.id = o.client_id
+       WHERE a.mikrotik_id = $1
+       ORDER BY a.created_at DESC
+       LIMIT $2`,
+      [mikrotikId, parseInt(limit as string)]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Get signal history for an ONU ─────────────────────
 genieacsRouter.get('/signal-history/:onuId', async (req: AuthRequest, res: Response) => {
   try {
