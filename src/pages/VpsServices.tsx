@@ -48,6 +48,10 @@ export default function VpsServices() {
             <VpnManager />
           </TabsContent>
 
+          <TabsContent value="ubiquiti">
+            <UbiquitiManager />
+          </TabsContent>
+
           <TabsContent value="ads">
             <PortalAdsManager />
           </TabsContent>
