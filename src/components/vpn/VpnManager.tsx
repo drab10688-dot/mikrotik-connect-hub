@@ -113,6 +113,10 @@ export function VpnManager() {
         remote_networks: newPeer.remote_networks || undefined,
       });
       toast.success("Peer VPN creado");
+      if (newPeer.mikrotik_id && newPeer.mikrotik_id !== "none") {
+        const vpnIp = result.peer?.peer_address?.split('/')[0];
+        toast.info(`Host del MikroTik actualizado a ${vpnIp}`, { duration: 6000 });
+      }
       setAddOpen(false);
       setNewPeer({ name: "", description: "", mikrotik_id: "", remote_networks: "" });
       setSelectedConfig(result);
@@ -136,8 +140,11 @@ export function VpnManager() {
   const handleDeletePeer = async (peer: VpnPeer) => {
     if (!confirm(`¿Eliminar peer "${peer.name}"?`)) return;
     try {
-      await apiDelete(`/vpn/peers/${peer.id}`);
+      const result = await apiDelete<{ success: boolean; warning?: string }>(`/vpn/peers/${peer.id}`);
       toast.success("Peer eliminado");
+      if (result?.warning) {
+        toast.warning(result.warning, { duration: 8000 });
+      }
       fetchData();
     } catch (err: any) {
       toast.error(err.message);
