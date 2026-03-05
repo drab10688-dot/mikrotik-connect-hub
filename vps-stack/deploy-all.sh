@@ -275,7 +275,6 @@ git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TMP_DIR/app"
 
 # ─── Update API source ────────────────────────
 echo "[3/10] Actualizando código del API..."
-# Preserve .env and docker volumes, only update source code
 rsync -a --delete \
   --exclude='node_modules' \
   "$TMP_DIR/app/vps-stack/api/" "$APP_DIR/api/"
@@ -303,7 +302,7 @@ cd "$APP_DIR"
 sync_nuxbill_env_file
 normalize_nuxbill_app_url
 docker compose build --no-cache api
-docker compose up -d --build api phpnuxbill mariadb mongodb genieacs-cwmp genieacs-nbi genieacs-fs genieacs-ui
+docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."
 if ! ensure_mariadb_accounts; then

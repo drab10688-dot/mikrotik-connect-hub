@@ -78,7 +78,7 @@ handle_existing_installation() {
     case "$OPTION" in
       1)
         echo -e "${YELLOW}Deteniendo servicios...${NC}"
-        cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
+        cd "$INSTALL_DIR" && docker compose --profile tr069 --profile vpn down -v 2>/dev/null || true
         cd /root
         rm -rf "$INSTALL_DIR"
         echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
@@ -132,7 +132,7 @@ handle_existing_installation() {
         echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
         read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
         if [ "$CONFIRM" = "ELIMINAR" ]; then
-          cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
+          cd "$INSTALL_DIR" && docker compose --profile tr069 --profile vpn down -v 2>/dev/null || true
           rm -rf "$INSTALL_DIR"
           echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
         fi
@@ -153,7 +153,6 @@ generate_radius_configs() {
   local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
   local radius_secret="${RADIUS_SECRET:-testing123}"
   
-  # Generate FreeRADIUS SQL module config with actual password
   cat > "$INSTALL_DIR/radius/mods-enabled/sql" << SQLEOF
 sql {
     dialect = "mysql"
@@ -195,7 +194,6 @@ sql {
 }
 SQLEOF
 
-  # Generate clients.conf with actual secret
   cat > "$INSTALL_DIR/radius/clients.conf" << CLIENTEOF
 client mikrotik {
     ipaddr = 0.0.0.0/0
@@ -571,7 +569,8 @@ if command -v ufw &> /dev/null; then
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
   ufw allow 7547/tcp >/dev/null 2>&1   # TR-069 CWMP (ONUs → ACS)
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547) ✓${NC}"
+  ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
+  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547, 51820/udp) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
@@ -582,16 +581,19 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 
 # Limpiar contenedores huérfanos o en conflicto antes de levantar
 echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
-docker compose down --remove-orphans 2>/dev/null || true
-for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-mongodb omnisync-genieacs-cwmp omnisync-genieacs-nbi omnisync-genieacs-fs omnisync-genieacs-ui; do
+docker compose --profile tr069 --profile vpn down --remove-orphans 2>/dev/null || true
+for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-mongodb omnisync-genieacs omnisync-genieacs-cwmp omnisync-genieacs-nbi omnisync-genieacs-fs omnisync-genieacs-ui omnisync-wireguard; do
   docker rm -f "$cname" 2>/dev/null || true
 done
 echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
+# Build only custom images (api + phpnuxbill)
 docker compose build --no-cache api phpnuxbill
-docker compose up -d --build 2>&1 | tail -5
+
+# Start core services (without tr069/vpn profiles)
+docker compose up -d 2>&1 | tail -5
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
@@ -660,7 +662,6 @@ check_service() {
   fi
   
   echo -e "  ${RED}✗ $name — FALLO${NC}"
-  # Show last 5 lines of logs for failed service
   local svc_name=$(echo "$container" | sed 's/omnisync-//')
   echo -e "    ${YELLOW}Últimas líneas de log:${NC}"
   docker compose logs "$svc_name" --tail 5 2>/dev/null | sed 's/^/    /'
@@ -675,14 +676,15 @@ check_service "Nginx"       "omnisync-nginx"
 check_service "MariaDB"     "omnisync-mariadb"
 check_service "FreeRADIUS"  "omnisync-freeradius"
 check_service "PHPNuxBill"  "omnisync-phpnuxbill"
-check_service "MongoDB"     "omnisync-mongodb"
-check_service "GenieACS CWMP" "omnisync-genieacs-cwmp"
-check_service "GenieACS NBI"  "omnisync-genieacs-nbi"
-check_service "GenieACS FS"    "omnisync-genieacs-fs"
-check_service "GenieACS UI"   "omnisync-genieacs-ui"
 
 echo ""
 echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC}"
+
+# Check optional services (informational only)
+echo ""
+echo -e "${CYAN}Servicios opcionales:${NC}"
+echo -e "  ${YELLOW}ℹ GenieACS (TR-069): iniciar con 'docker compose --profile tr069 up -d'${NC}"
+echo -e "  ${YELLOW}ℹ WireGuard (VPN):   iniciar con 'docker compose --profile vpn up -d'${NC}"
 
 # Test HTTP endpoints
 echo ""
@@ -717,7 +719,6 @@ test_endpoint() {
 
 test_endpoint "Panel Web"        "http://localhost" "nginx"
 test_endpoint "API Health"       "http://localhost/api/health" "api"
-
 test_endpoint "PHPNuxBill Admin" "http://localhost/nuxbill/admin" "phpnuxbill"
 
 echo ""
@@ -753,11 +754,18 @@ echo "║  🌐 ACCESOS                                               ║"
 echo "║  ─────────────────────────────────────────────           ║"
 echo "║  Panel Web:      http://$VPS_IP                            "
 echo "║  API Health:     http://$VPS_IP/api/health                 "
-
 echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/admin             "
-echo "║  GenieACS UI:    http://$VPS_IP:3078                      "
-echo "║  ACS URL (ONUs): http://$VPS_IP:7547                      "
 echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
+echo "║                                                          ║"
+echo "║  📡 SERVICIOS OPCIONALES                                  ║"
+echo "║  ─────────────────────────────────────────────           ║"
+echo "║  GenieACS (TR-069):                                      ║"
+echo "║    cd $INSTALL_DIR && docker compose --profile tr069 up -d"
+echo "║    UI: http://$VPS_IP:3078                                "
+echo "║    ACS URL: http://$VPS_IP:7547                           "
+echo "║                                                          ║"
+echo "║  WireGuard (VPN):                                        ║"
+echo "║    cd $INSTALL_DIR && docker compose --profile vpn up -d  "
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
 echo "║  ─────────────────────────────────────────────           ║"
@@ -773,7 +781,6 @@ echo "║  ───────────────────────
 echo "║  OmniSync Panel:                                         ║"
 echo "║    Email:    admin@omnisync.local                         ║"
 echo "║    Pass:     admin123                                     ║"
-echo "║                                                          ║"
 echo "║                                                          ║"
 echo "║  PHPNuxBill:                                             ║"
 echo "║    Usuario:  admin                                       ║"
@@ -809,6 +816,8 @@ echo "  Estado:          cd $INSTALL_DIR && docker compose ps"
 echo "  Logs:            cd $INSTALL_DIR && docker compose logs -f"
 echo "  Reiniciar:       cd $INSTALL_DIR && docker compose restart"
 echo "  Reconstruir:     cd $INSTALL_DIR && docker compose up -d --build"
+echo "  GenieACS:        cd $INSTALL_DIR && docker compose --profile tr069 up -d"
+echo "  WireGuard:       cd $INSTALL_DIR && docker compose --profile vpn up -d"
 echo ""
 echo -e "${CYAN}Reinstalar:${NC}"
 echo "  curl -fsSL https://raw.githubusercontent.com/drab10688-dot/mikrotik-connect-hub/main/vps-stack/install.sh | sudo bash"
