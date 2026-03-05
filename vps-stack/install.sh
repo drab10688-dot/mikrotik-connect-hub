@@ -753,6 +753,8 @@ echo "║  Panel Web:      http://$VPS_IP                            "
 echo "║  API Health:     http://$VPS_IP/api/health                 "
 
 echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/admin             "
+echo "║  GenieACS UI:    http://$VPS_IP:3078                      "
+echo "║  ACS URL (ONUs): http://$VPS_IP:7547                      "
 echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
