@@ -71,8 +71,11 @@ export function VpnManager() {
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkPeer, setLinkPeer] = useState<VpnPeer | null>(null);
+  const [linkMikrotikId, setLinkMikrotikId] = useState("");
   const [selectedConfig, setSelectedConfig] = useState<{ clientConfig: string; mikrotikScript: string; peer: any } | null>(null);
-  const [newPeer, setNewPeer] = useState({ name: "", description: "", mikrotik_id: "", remote_networks: "" });
+  const [newPeer, setNewPeer] = useState({ name: "", description: "", remote_networks: "" });
 
   const fetchData = useCallback(async () => {
     try {
