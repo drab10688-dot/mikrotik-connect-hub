@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/dashboard/Sidebar';
-import { Plus, Trash2, Server, CheckCircle, XCircle, Clock, User } from 'lucide-react';
+import { Plus, Trash2, Server, CheckCircle, XCircle, Clock, User, MapPin } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
