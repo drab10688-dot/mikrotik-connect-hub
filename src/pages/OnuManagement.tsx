@@ -64,6 +64,14 @@ interface ConfigTemplate {
   is_default: boolean;
 }
 
+interface GenieACSFile {
+  id: string;
+  filename: string;
+  metadata: Record<string, any>;
+  length: number;
+  uploadDate: string;
+}
+
 const brandOptions = [
   { value: "latic", label: "Latic" },
   { value: "zte", label: "ZTE" },
