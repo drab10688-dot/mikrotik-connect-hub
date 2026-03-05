@@ -324,7 +324,11 @@ export default function OnuManagement() {
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
           <TabsContent value="devices" className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-between gap-2">
+              <Button variant="outline" onClick={handleSyncACS} disabled={syncLoading}>
+                {syncLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
+                Sincronizar con ACS
+              </Button>
               <Dialog open={showAddOnu} onOpenChange={setShowAddOnu}>
                 <DialogTrigger asChild>
                   <Button><Plus className="w-4 h-4 mr-2" /> Registrar ONU</Button>
