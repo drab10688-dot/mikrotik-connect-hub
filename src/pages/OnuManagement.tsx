@@ -52,6 +52,7 @@ const brandOptions = [
   { value: "latic", label: "Latic" },
   { value: "zte", label: "ZTE" },
   { value: "huawei", label: "Huawei" },
+  { value: "zyxel", label: "Zyxel" },
 ];
 
 const statusColors: Record<string, string> = {
