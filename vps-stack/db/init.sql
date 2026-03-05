@@ -465,7 +465,46 @@ CREATE TABLE portal_ads (
 );
 
 -- ============================================
--- Indexes
+-- ONU Devices
+-- ============================================
+CREATE TABLE onu_devices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  created_by UUID NOT NULL REFERENCES users(id),
+  serial_number TEXT NOT NULL,
+  mac_address TEXT,
+  brand TEXT NOT NULL DEFAULT 'latic',
+  model TEXT,
+  management_ip TEXT,
+  olt_port TEXT,
+  wifi_ssid TEXT,
+  wifi_password TEXT,
+  pppoe_username TEXT,
+  pppoe_password TEXT,
+  pppoe_profile TEXT,
+  status TEXT NOT NULL DEFAULT 'registered',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
+-- ONU Config Templates
+-- ============================================
+CREATE TABLE onu_config_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  brand TEXT NOT NULL DEFAULT 'latic',
+  template_content TEXT NOT NULL,
+  file_format TEXT NOT NULL DEFAULT 'xml',
+  description TEXT,
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 -- ============================================
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
 CREATE INDEX idx_mikrotik_access_user ON user_mikrotik_access(user_id);
