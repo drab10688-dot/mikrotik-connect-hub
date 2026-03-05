@@ -136,10 +136,15 @@ export default function MikrotikDevices() {
               : activeDevices.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground"><Server className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>No hay dispositivos MikroTik activos</p></div>
               ) : (
-                <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Host</TableHead><TableHead>Puerto</TableHead><TableHead>Versión</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
+                <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Host</TableHead><TableHead>Puerto</TableHead><TableHead>Versión</TableHead><TableHead>Ubicación</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
                   <TableBody>{activeDevices.map((device: any) => (
                     <TableRow key={device.id}>
                       <TableCell className="font-medium">{device.name}</TableCell><TableCell>{device.host}</TableCell><TableCell>{device.port}</TableCell><TableCell>{device.version}</TableCell>
+                      <TableCell>{device.latitude && device.longitude ? (
+                        <a href={`https://www.google.com/maps?q=${device.latitude},${device.longitude}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline text-xs">
+                          <MapPin className="h-3 w-3" />{Number(device.latitude).toFixed(4)}, {Number(device.longitude).toFixed(4)}
+                        </a>
+                      ) : <span className="text-xs text-muted-foreground">Sin ubicación</span>}</TableCell>
                       <TableCell>{new Date(device.created_at).toLocaleDateString('es-ES')}</TableCell>
                       <TableCell><Button variant="ghost" size="sm" onClick={() => handleDelete(device.id, device.name)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                     </TableRow>
