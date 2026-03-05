@@ -209,7 +209,11 @@ setup_admin() {
     }
 
     \$c->close();
-    echo \$forceSync ? 'Config sincronizada (force) ✓' . PHP_EOL : 'Config por defecto aplicada ✓' . PHP_EOL;
+    if (\$forceSync) {
+      echo 'Config sincronizada (force) ✓' . PHP_EOL;
+    } else {
+      echo 'Config por defecto aplicada ✓' . PHP_EOL;
+    }
   " 2>/dev/null || true
 
   # Remove install dir to skip installer

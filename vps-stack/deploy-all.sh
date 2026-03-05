@@ -162,7 +162,7 @@ verify_nuxbill_config_write() {
     return 1
   fi
 
-  read_back="$(docker exec omnisync-mariadb mariadb -unuxbill -p"${NUXBILL_DB_PASSWORD}" -Nse "SELECT value FROM phpnuxbill.tbl_appconfig WHERE setting='${test_key}' ORDER BY id DESC LIMIT 1;" 2>/dev/null || true)"
+  read_back="$(docker exec omnisync-mariadb mariadb -unuxbill -p"${NUXBILL_DB_PASSWORD}" -Nse "SELECT value FROM phpnuxbill.tbl_appconfig WHERE setting='${test_key}' LIMIT 1;" 2>/dev/null || true)"
 
   if [ "$read_back" = "$test_value" ]; then
     echo "  ✓ Escritura/lectura de configuración NuxBill OK"
