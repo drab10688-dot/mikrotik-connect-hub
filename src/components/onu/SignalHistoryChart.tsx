@@ -156,7 +156,32 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
     }
   };
 
-  useEffect(() => { loadOverview(); }, [mikrotikId]);
+  const loadAlerts = async () => {
+    try {
+      const res = await api(`/genieacs/signal-alerts/${mikrotikId}`);
+      setAlerts(res.data || []);
+    } catch { /* ignore */ }
+  };
+
+  const handleSaveAlertConfig = async () => {
+    if (!alertConfigOnu) return;
+    try {
+      await api(`/genieacs/signal-alerts/${alertConfigOnu.onu_id}`, {
+        method: "PUT",
+        body: {
+          enabled: alertForm.enabled,
+          threshold: parseFloat(alertForm.threshold),
+          chatId: alertForm.chatId,
+        },
+      });
+      toast.success("Configuración de alertas guardada");
+      setShowAlertConfig(false);
+      loadOverview();
+    } catch (err: any) {
+      toast.error("Error: " + err.message);
+    }
+  };
+
 
   useEffect(() => {
     if (selectedOnu) loadHistory(selectedOnu);
