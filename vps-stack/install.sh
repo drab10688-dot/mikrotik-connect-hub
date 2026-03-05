@@ -686,9 +686,9 @@ echo -e "${CYAN}Servicios opcionales:${NC}"
 echo -e "  ${YELLOW}ℹ GenieACS (TR-069): iniciar con 'docker compose --profile tr069 up -d'${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN):   iniciar con 'docker compose --profile vpn up -d'${NC}"
 
-# Test HTTP endpoints
+# Test HTTP endpoints — wait for nginx to be ready
 echo ""
-echo -e "${CYAN}Probando endpoints HTTP...${NC}"
+echo -e "${CYAN}Probando endpoints HTTP (esperando que estén listos)...${NC}"
 
 HTTP_OK=0
 HTTP_FAIL=0
@@ -698,11 +698,23 @@ test_endpoint() {
   local name=$1
   local url=$2
   local service=${3:-}
-  local status
+  local status="000"
+  local attempt
 
-  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "$url" 2>/dev/null || echo "000")
+  # Retry up to 5 times with 3s delay
+  for attempt in 1 2 3 4 5; do
+    status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null) || true
+    # If we got a real HTTP status, break
+    if [ "$status" != "000" ] && [ -n "$status" ]; then
+      break
+    fi
+    sleep 3
+  done
 
-  if [ "$status" -ge 200 ] && [ "$status" -lt 400 ]; then
+  # Default to 000 if empty
+  [ -z "$status" ] && status="000"
+
+  if [ "$status" -ge 200 ] 2>/dev/null && [ "$status" -lt 400 ] 2>/dev/null; then
     echo -e "  ${GREEN}✓ $name — HTTP $status${NC}"
     HTTP_OK=$((HTTP_OK + 1))
   else
