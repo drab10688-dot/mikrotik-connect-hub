@@ -300,8 +300,78 @@ function hideQrError() {
 })();
 </script>
 
-{* ── jsQR Library (inline for offline compatibility) ── *}
+{* ── jsQR Library ── *}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+{* ── OmniSync Ads Loader ── *}
+<script>
+(function() {
+    // Determine API base - use same origin
+    var apiBase = window.location.protocol + '//' + window.location.host + '/api/portal-ads/public/default';
+
+    function renderAd(ad, container) {
+        var html = '<a href="' + (ad.link_url || '#') + '" target="_blank" rel="noopener" '
+            + 'onclick="trackAdClick(\'' + ad.id + '\')" '
+            + 'style="display:block; text-decoration:none; color:inherit;">';
+        if (ad.image_url) {
+            html += '<img src="' + ad.image_url + '" alt="' + ad.title + '" '
+                + 'style="width:100%; border-radius:12px; margin-bottom:8px;" onerror="this.style.display=\'none\'">';
+        }
+        html += '<div style="padding:8px 4px;">';
+        html += '<div style="font-weight:600; color:#f1f5f9; font-size:14px;">' + ad.title + '</div>';
+        if (ad.description) {
+            html += '<div style="color:#94a3b8; font-size:12px; margin-top:4px;">' + ad.description + '</div>';
+        }
+        html += '<div style="color:rgba(6,182,212,0.6); font-size:11px; margin-top:4px;">' + ad.advertiser_name + '</div>';
+        html += '</div></a>';
+        container.innerHTML = html;
+        container.style.display = 'block';
+        // Track impression
+        trackAdImpression(ad.id);
+    }
+
+    function trackAdImpression(adId) {
+        try { navigator.sendBeacon(window.location.protocol + '//' + window.location.host + '/api/portal-ads/public/' + adId + '/impression'); } catch(e) {}
+    }
+
+    window.trackAdClick = function(adId) {
+        try { navigator.sendBeacon(window.location.protocol + '//' + window.location.host + '/api/portal-ads/public/' + adId + '/click'); } catch(e) {}
+    };
+
+    // Fetch ads
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', apiBase);
+    xhr.onload = function() {
+        if (xhr.status !== 200) return;
+        try {
+            var resp = JSON.parse(xhr.responseText);
+            if (!resp.success || !resp.data || !resp.data.length) return;
+            var ads = resp.data;
+            var banners = [], footers = [], popups = [];
+            ads.forEach(function(ad) {
+                if (ad.position === 'banner') banners.push(ad);
+                else if (ad.position === 'footer') footers.push(ad);
+                else if (ad.position === 'popup') popups.push(ad);
+            });
+            // Render first of each type
+            if (banners.length) {
+                renderAd(banners[0], document.getElementById('os-ad-banner'));
+            }
+            if (footers.length) {
+                renderAd(footers[0], document.getElementById('os-ad-footer'));
+            }
+            if (popups.length) {
+                var popup = popups[0];
+                renderAd(popup, document.getElementById('os-ad-popup-content'));
+                setTimeout(function() {
+                    document.getElementById('os-ad-popup-overlay').style.display = 'flex';
+                }, 3000);
+            }
+        } catch(e) {}
+    };
+    xhr.send();
+})();
+</script>
 
 </body>
 </html>
