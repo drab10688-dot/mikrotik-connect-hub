@@ -741,6 +741,19 @@ export default function OnuManagement() {
                                 >
                                   <Signal className="w-4 h-4" />
                                 </Button>
+                                {onu.acs_device_id && acsFiles.length > 0 && (
+                                  <Button
+                                    variant="ghost" size="icon" className="h-8 w-8"
+                                    title="Enviar archivo de configuración via TR-069"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPushTargetOnu(onu);
+                                      setShowPushConfig(true);
+                                    }}
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                  </Button>
+                                )}
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteOnu(onu.id)}>
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
