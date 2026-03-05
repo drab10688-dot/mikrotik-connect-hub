@@ -974,6 +974,138 @@ export default function OnuManagement() {
           </DialogContent>
         </Dialog>
 
+        {/* ─── Upload File to ACS Dialog ─────────────── */}
+        <Dialog open={showUploadFile} onOpenChange={setShowUploadFile}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Subir Archivo a GenieACS
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-muted/50 p-3 rounded text-sm text-muted-foreground">
+                Suba un archivo de configuración (.xml, .json, .cfg) que podrá enviar a las ONUs via TR-069.
+              </div>
+
+              <div className="space-y-2">
+                <Label>Seleccionar archivo</Label>
+                <Input type="file" accept=".xml,.json,.cfg,.txt,.conf" onChange={handleFileInput} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nombre del archivo en ACS *</Label>
+                <Input
+                  value={uploadForm.fileName}
+                  onChange={e => setUploadForm(p => ({ ...p, fileName: e.target.value }))}
+                  placeholder="zyxel-config-hotspot.json"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-xs">OUI (opcional)</Label>
+                  <Input
+                    value={uploadForm.oui}
+                    onChange={e => setUploadForm(p => ({ ...p, oui: e.target.value }))}
+                    placeholder="00259E"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Product Class</Label>
+                  <Input
+                    value={uploadForm.productClass}
+                    onChange={e => setUploadForm(p => ({ ...p, productClass: e.target.value }))}
+                    placeholder="PMG5317"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Versión</Label>
+                  <Input
+                    value={uploadForm.version}
+                    onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))}
+                    placeholder="1.0"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {uploadForm.content && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Vista previa ({(uploadForm.content.length / 1024).toFixed(1)} KB)</Label>
+                  <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-32 font-mono">
+                    {uploadForm.content.substring(0, 500)}{uploadForm.content.length > 500 ? "\n..." : ""}
+                  </pre>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowUploadFile(false)}>Cancelar</Button>
+                <Button onClick={handleUploadToACS} disabled={!uploadForm.fileName || !uploadForm.content || uploadingFile}>
+                  {uploadingFile ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                  Subir a GenieACS
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Push Config to ONU Dialog ──────────────── */}
+        <Dialog open={showPushConfig} onOpenChange={(v) => { setShowPushConfig(v); if (!v) setPushTargetOnu(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="w-5 h-5" />
+                Enviar Configuración a ONU
+              </DialogTitle>
+            </DialogHeader>
+            {pushTargetOnu && (
+              <div className="space-y-4">
+                <div className="bg-muted/50 p-3 rounded text-sm">
+                  <p><span className="font-medium">ONU:</span> {pushTargetOnu.serial_number}</p>
+                  <p><span className="font-medium">Marca:</span> <span className="capitalize">{pushTargetOnu.brand}</span> {pushTargetOnu.model || ""}</p>
+                  {pushTargetOnu.client_name && <p><span className="font-medium">Cliente:</span> {pushTargetOnu.client_name}</p>}
+                  <p><span className="font-medium">ACS ID:</span> <span className="font-mono text-xs">{pushTargetOnu.acs_device_id}</span></p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Seleccionar archivo de configuración</Label>
+                  {acsFiles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay archivos en GenieACS. Suba uno primero en la pestaña Plantillas.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {acsFiles.map(f => (
+                        <div key={f.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                          <div>
+                            <p className="text-sm font-medium font-mono">{f.filename || f.id}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {f.metadata?.fileType || "Config"} · {f.length ? `${(f.length / 1024).toFixed(1)} KB` : "—"}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            disabled={pushingConfig}
+                            onClick={() => handlePushConfig(pushTargetOnu.acs_device_id!, f.filename || f.id)}
+                          >
+                            {pushingConfig ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+                            Enviar
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-destructive/10 border border-destructive/20 p-3 rounded text-xs text-destructive">
+                  ⚠️ La ONU aplicará la configuración y puede reiniciarse automáticamente. Esto sobreescribirá la configuración actual del equipo.
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
       </div>
     </div>
   );
