@@ -37,9 +37,17 @@ export default function CaptivePortal() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id") || params.get("mikrotik");
-    if (id) {
-      setMikrotikId(id);
-    }
+    if (id) setMikrotikId(id);
+
+    // MikroTik hotspot passes these params when redirecting to external portal
+    const ip = params.get("ip");
+    const mac = params.get("mac");
+    const ll = params.get("link-login") || params.get("link-login-only");
+    const lo = params.get("link-orig") || params.get("link-orig-esc");
+    if (ip) setClientIp(ip);
+    if (mac) setClientMac(mac);
+    if (ll) setLinkLogin(ll);
+    if (lo) setLinkOrig(lo);
     // Load portal ads (with mikrotikId or fallback to default)
     const loadAds = id
       ? portalAdsApi.publicList(id)
