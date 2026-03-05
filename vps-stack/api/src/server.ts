@@ -25,6 +25,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
+import { runSignalCollectCron } from './cron/signal-collect';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
