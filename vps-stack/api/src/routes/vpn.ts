@@ -166,8 +166,8 @@ vpnRouter.get('/status', async (req: Request, res: Response) => {
 // ─── GET /peers ───────────────────────────────────
 vpnRouter.get('/peers', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user.id;
-    const userRole = (req as any).user.role;
+    const userId = (req as any).userId;
+    const userRole = (req as any).userRole;
 
     let query = `SELECT vp.*, md.name as mikrotik_name FROM vpn_peers vp
                  LEFT JOIN mikrotik_devices md ON vp.mikrotik_id = md.id`;
