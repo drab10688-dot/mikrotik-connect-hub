@@ -123,6 +123,21 @@
         </div>
     </div>
 
+    {* ── Ad Banner (top) ── *}
+    <div id="os-ad-banner" style="display:none; margin-bottom:15px;"></div>
+
+    {* ── Ad Footer ── *}
+    <div id="os-ad-footer" style="display:none; margin-top:10px;"></div>
+
+    {* ── Ad Popup ── *}
+    <div id="os-ad-popup-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center;">
+        <div id="os-ad-popup" style="background:var(--os-bg-card); border:1px solid var(--os-border); border-radius:16px; max-width:380px; width:90%; padding:20px; position:relative; backdrop-filter:blur(16px);">
+            <button onclick="document.getElementById('os-ad-popup-overlay').style.display='none'" 
+                style="position:absolute; top:8px; right:12px; background:none; border:none; color:var(--os-text-muted); font-size:20px; cursor:pointer;">&times;</button>
+            <div id="os-ad-popup-content"></div>
+        </div>
+    </div>
+
     {* ── Powered By ── *}
     <div style="text-align:center; padding:15px 0 30px; color:rgba(148,163,184,0.4); font-size:11px;">
         Powered by <span style="color:rgba(6,182,212,0.5);">OmniSync</span>
@@ -285,8 +300,78 @@ function hideQrError() {
 })();
 </script>
 
-{* ── jsQR Library (inline for offline compatibility) ── *}
+{* ── jsQR Library ── *}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+{* ── OmniSync Ads Loader ── *}
+<script>
+(function() {
+    // Determine API base - use same origin
+    var apiBase = window.location.protocol + '//' + window.location.host + '/api/portal-ads/public/default';
+
+    function renderAd(ad, container) {
+        var html = '<a href="' + (ad.link_url || '#') + '" target="_blank" rel="noopener" '
+            + 'onclick="trackAdClick(\'' + ad.id + '\')" '
+            + 'style="display:block; text-decoration:none; color:inherit;">';
+        if (ad.image_url) {
+            html += '<img src="' + ad.image_url + '" alt="' + ad.title + '" '
+                + 'style="width:100%; border-radius:12px; margin-bottom:8px;" onerror="this.style.display=\'none\'">';
+        }
+        html += '<div style="padding:8px 4px;">';
+        html += '<div style="font-weight:600; color:#f1f5f9; font-size:14px;">' + ad.title + '</div>';
+        if (ad.description) {
+            html += '<div style="color:#94a3b8; font-size:12px; margin-top:4px;">' + ad.description + '</div>';
+        }
+        html += '<div style="color:rgba(6,182,212,0.6); font-size:11px; margin-top:4px;">' + ad.advertiser_name + '</div>';
+        html += '</div></a>';
+        container.innerHTML = html;
+        container.style.display = 'block';
+        // Track impression
+        trackAdImpression(ad.id);
+    }
+
+    function trackAdImpression(adId) {
+        try { navigator.sendBeacon(window.location.protocol + '//' + window.location.host + '/api/portal-ads/public/' + adId + '/impression'); } catch(e) {}
+    }
+
+    window.trackAdClick = function(adId) {
+        try { navigator.sendBeacon(window.location.protocol + '//' + window.location.host + '/api/portal-ads/public/' + adId + '/click'); } catch(e) {}
+    };
+
+    // Fetch ads
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', apiBase);
+    xhr.onload = function() {
+        if (xhr.status !== 200) return;
+        try {
+            var resp = JSON.parse(xhr.responseText);
+            if (!resp.success || !resp.data || !resp.data.length) return;
+            var ads = resp.data;
+            var banners = [], footers = [], popups = [];
+            ads.forEach(function(ad) {
+                if (ad.position === 'banner') banners.push(ad);
+                else if (ad.position === 'footer') footers.push(ad);
+                else if (ad.position === 'popup') popups.push(ad);
+            });
+            // Render first of each type
+            if (banners.length) {
+                renderAd(banners[0], document.getElementById('os-ad-banner'));
+            }
+            if (footers.length) {
+                renderAd(footers[0], document.getElementById('os-ad-footer'));
+            }
+            if (popups.length) {
+                var popup = popups[0];
+                renderAd(popup, document.getElementById('os-ad-popup-content'));
+                setTimeout(function() {
+                    document.getElementById('os-ad-popup-overlay').style.display = 'flex';
+                }, 3000);
+            }
+        } catch(e) {}
+    };
+    xhr.send();
+})();
+</script>
 
 </body>
 </html>

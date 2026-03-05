@@ -4,6 +4,36 @@ import { pool } from '../server';
 
 export const portalAdsRouter = Router();
 
+// ─── Public: Get active ads for default/first device (no auth needed) ────
+portalAdsRouter.get('/public/default', async (req: any, res: Response) => {
+  try {
+    const position = req.query.position as string;
+    // Get first mikrotik device
+    const { rows: devices } = await pool.query('SELECT id FROM mikrotik_devices LIMIT 1');
+    if (!devices.length) return res.json({ success: true, data: [] });
+    const mikrotikId = devices[0].id;
+
+    let query = `
+      SELECT id, title, description, image_url, link_url, advertiser_name, position, priority
+      FROM portal_ads
+      WHERE mikrotik_id = $1
+        AND is_active = true
+        AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+        AND (end_date IS NULL OR end_date >= CURRENT_DATE)
+    `;
+    const params: any[] = [mikrotikId];
+    if (position) {
+      query += ` AND position = $2`;
+      params.push(position);
+    }
+    query += ` ORDER BY priority DESC, created_at DESC`;
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ─── Public: Get active ads for a mikrotik (no auth needed) ────
 portalAdsRouter.get('/public/:mikrotikId', async (req: any, res: Response) => {
   try {
