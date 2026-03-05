@@ -67,6 +67,8 @@ app.use('/api/service-options', authMiddleware, serviceOptionsRouter);
 app.use('/api/clients', authMiddleware, clientsRouter);
 app.use('/api/pppoe', authMiddleware, pppoeRouter);
 app.use('/api/queues', authMiddleware, queuesRouter);
+// IMPORTANT: register /api/vouchers/presets BEFORE /api/vouchers to avoid route collision
+app.use('/api/vouchers/presets', authMiddleware, voucherPresetsRouter);
 app.use('/api/vouchers', authMiddleware, vouchersRouter);
 app.use('/api/billing', authMiddleware, billingRouter);
 app.use('/api/invoices', authMiddleware, invoicesRouter);
@@ -75,7 +77,6 @@ app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/backups', authMiddleware, backupRouter);
 app.use('/api/auth/users', authMiddleware, usersRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
-app.use('/api/vouchers/presets', authMiddleware, voucherPresetsRouter);
 
 // Aliases for frontend compatibility
 app.use('/api/mikrotik', authMiddleware, (req, res, next) => {
