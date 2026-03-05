@@ -25,6 +25,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
+import { runSignalCollectCron } from './cron/signal-collect';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -104,6 +105,12 @@ app.use('/api/accounting', authMiddleware, (req, res, next) => {
 cron.schedule('0 6 * * *', () => {
   console.log('[CRON] Running daily billing tasks...');
   runBillingCron(pool);
+});
+
+// Cron: recolección de señal óptica cada 15 minutos
+cron.schedule('*/15 * * * *', () => {
+  console.log('[CRON] Running optical signal collection...');
+  runSignalCollectCron(pool);
 });
 
 app.listen(PORT, () => {
