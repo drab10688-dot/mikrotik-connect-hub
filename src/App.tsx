@@ -35,6 +35,7 @@ import CaptivePortal from "./pages/CaptivePortal";
 import HotspotMonitor from "./pages/HotspotMonitor";
 
 import VpsServices from "./pages/VpsServices";
+import OnuManagement from "./pages/OnuManagement";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
 const queryClient = new QueryClient();
