@@ -51,9 +51,38 @@ sync_env_key() {
   fi
 }
 
+normalize_nuxbill_app_url() {
+  local vps_ip current normalized
+
+  vps_ip="$(hostname -I | awk '{print $1}')"
+  current="${NUXBILL_APP_URL:-}"
+
+  if [ -z "$current" ]; then
+    normalized="http://${vps_ip}/nuxbill"
+  else
+    current="${current%/}"
+    current="${current%/admin}"
+    current="${current%/index.php}"
+
+    if [[ "$current" == *"localhost:8080"* || "$current" == *"127.0.0.1:8080"* ]]; then
+      normalized="http://${vps_ip}/nuxbill"
+    elif [[ "$current" == *"/nuxbill"* ]]; then
+      normalized="${current%%/nuxbill*}/nuxbill"
+    elif [[ "$current" == *":8080" ]]; then
+      normalized="${current%:8080}/nuxbill"
+    else
+      normalized="${current}/nuxbill"
+    fi
+  fi
+
+  NUXBILL_APP_URL="$normalized"
+}
+
 if [ -f "$ENV_FILE" ]; then
+  normalize_nuxbill_app_url
   sync_env_key "NUXBILL_DB_PASSWORD" "$NUXBILL_DB_PASSWORD"
   sync_env_key "NUXBILL_DB_PASS" "$NUXBILL_DB_PASS"
+  sync_env_key "NUXBILL_APP_URL" "$NUXBILL_APP_URL"
 fi
 
 cd "$APP_DIR"

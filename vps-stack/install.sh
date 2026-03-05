@@ -220,6 +220,7 @@ sync_nuxbill_env_file() {
   local env_file="${1:-$INSTALL_DIR/.env}"
   local nuxbill_pw
   local escaped_pw
+  local current_app_url normalized_app_url escaped_app_url vps_ip
 
   nuxbill_pw="$(resolve_nuxbill_password)"
   NUXBILL_DB_PASSWORD="$nuxbill_pw"
@@ -240,6 +241,43 @@ sync_nuxbill_env_file() {
     sed -i "s|^NUXBILL_DB_PASS=.*|NUXBILL_DB_PASS=${escaped_pw}|" "$env_file"
   else
     echo "NUXBILL_DB_PASS=${nuxbill_pw}" >> "$env_file"
+  fi
+
+  vps_ip="$(hostname -I | awk '{print $1}')"
+  current_app_url="${NUXBILL_APP_URL:-}"
+
+  if [ -z "$current_app_url" ] && [ -f "$env_file" ]; then
+    current_app_url="$(grep '^NUXBILL_APP_URL=' "$env_file" | cut -d'=' -f2- || true)"
+  fi
+
+  if [ -z "$current_app_url" ]; then
+    normalized_app_url="http://${vps_ip}/nuxbill"
+  else
+    current_app_url="${current_app_url%/}"
+    current_app_url="${current_app_url%/admin}"
+    current_app_url="${current_app_url%/index.php}"
+
+    if [[ "$current_app_url" == *"localhost:8080"* || "$current_app_url" == *"127.0.0.1:8080"* ]]; then
+      normalized_app_url="http://${vps_ip}/nuxbill"
+    elif [[ "$current_app_url" == *"/nuxbill"* ]]; then
+      normalized_app_url="${current_app_url%%/nuxbill*}/nuxbill"
+    elif [[ "$current_app_url" == *":8080" ]]; then
+      normalized_app_url="${current_app_url%:8080}/nuxbill"
+    else
+      normalized_app_url="${current_app_url}/nuxbill"
+    fi
+  fi
+
+  NUXBILL_APP_URL="$normalized_app_url"
+  export NUXBILL_APP_URL
+
+  escaped_app_url="${normalized_app_url//\\/\\\\}"
+  escaped_app_url="${escaped_app_url//&/\\&}"
+
+  if grep -q '^NUXBILL_APP_URL=' "$env_file"; then
+    sed -i "s|^NUXBILL_APP_URL=.*|NUXBILL_APP_URL=${escaped_app_url}|" "$env_file"
+  else
+    echo "NUXBILL_APP_URL=${normalized_app_url}" >> "$env_file"
   fi
 }
 
@@ -453,7 +491,7 @@ RADIUS_DB_PASSWORD=${RADIUS_DB_PASSWORD}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
 NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
-NUXBILL_APP_URL=http://${VPS_IP}:8080
+NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
 TZ=America/Bogota
 EOF
 
