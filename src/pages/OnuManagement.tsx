@@ -89,6 +89,9 @@ export default function OnuManagement() {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [clients, setClients] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [unregistered, setUnregistered] = useState<UnregisteredDevice[]>([]);
+  const [syncStats, setSyncStats] = useState<{ linked: number; updated: number; newDevices: number } | null>(null);
 
   // Form state
   const [form, setForm] = useState({
