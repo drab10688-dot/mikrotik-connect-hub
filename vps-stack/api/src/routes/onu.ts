@@ -222,6 +222,13 @@ onuRouter.post('/:mikrotikId/:onuId/wifi', async (req: AuthRequest, res: Respons
       // Huawei HG8xxx typical WiFi config
       fetchUrl = `http://${onu.management_ip}/api/system/deviceinfo`;
       fetchData = JSON.stringify({ ssid: wifi_ssid || onu.wifi_ssid, password: wifi_password || onu.wifi_password });
+    } else if (brand === 'zyxel') {
+      // Zyxel PMG/VMG series WiFi config endpoint
+      fetchUrl = `http://${onu.management_ip}/cgi-bin/DAL?oid=wlan`;
+      fetchData = JSON.stringify({
+        SSID: wifi_ssid || onu.wifi_ssid,
+        PreSharedKey: wifi_password || onu.wifi_password
+      });
     } else {
       // Latic / Generic - store config for manual application
       // Update DB and return tech sheet
