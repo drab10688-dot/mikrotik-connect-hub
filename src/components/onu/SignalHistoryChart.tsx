@@ -72,7 +72,7 @@ const qualityLabels: Record<string, string> = {
 };
 
 const trendIcons: Record<string, React.ReactNode> = {
-  improving: <TrendingUp className="w-4 h-4 text-green-500" />,
+  improving: <TrendingUp className="w-4 h-4 text-chart-2" />,
   stable: <Minus className="w-4 h-4 text-muted-foreground" />,
   degrading: <TrendingDown className="w-4 h-4 text-destructive" />,
 };
