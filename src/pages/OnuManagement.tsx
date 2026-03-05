@@ -528,7 +528,7 @@ export default function OnuManagement() {
                           <TableHead>Cliente</TableHead>
                           <TableHead>WiFi</TableHead>
                           <TableHead>PPPoE</TableHead>
-                          <TableHead>IP Gestión</TableHead>
+                          <TableHead>ACS</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead className="text-right">Acciones</TableHead>
                         </TableRow>
