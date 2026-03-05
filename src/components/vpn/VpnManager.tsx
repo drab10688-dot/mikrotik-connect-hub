@@ -77,9 +77,9 @@ export function VpnManager() {
   const fetchData = useCallback(async () => {
     try {
       const [peersRes, statusRes, devicesRes] = await Promise.all([
-        apiClient.get("/api/vpn/peers"),
-        apiClient.get("/api/vpn/status"),
-        apiClient.get("/api/devices"),
+        apiGet("/vpn/peers"),
+        apiGet("/vpn/status"),
+        apiGet("/devices"),
       ]);
       setPeers(peersRes);
       setStatus(statusRes);
