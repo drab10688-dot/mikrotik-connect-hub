@@ -64,7 +64,32 @@ PHP
   log "config.php generado ✓ (APP_URL=${APP_URL})"
 }
 
-# ── 2) Wait for MariaDB ─────────────────────────
+# ── 2) Fix .htaccess for /nuxbill/ sub-path ─────
+fix_htaccess() {
+  local htfile="$NUXROOT/.htaccess"
+
+  if [ -f "$htfile" ]; then
+    # Fix RewriteBase to /nuxbill/
+    sed -i 's|RewriteBase /\s*$|RewriteBase /nuxbill/|' "$htfile"
+    sed -i 's|RewriteBase /$|RewriteBase /nuxbill/|' "$htfile"
+    log ".htaccess RewriteBase → /nuxbill/ ✓"
+  else
+    # Create .htaccess if missing
+    cat > "$htfile" <<'HTACCESS'
+RewriteEngine On
+RewriteBase /nuxbill/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?_route=$1 [QSA,L]
+HTACCESS
+    log ".htaccess creado ✓"
+  fi
+
+  chown www-data:www-data "$htfile"
+  chmod 644 "$htfile"
+}
+
+# ── 3) Wait for MariaDB ─────────────────────────
 wait_mariadb() {
   log "Esperando MariaDB ($DB_HOST)..."
   for i in $(seq 1 40); do
@@ -81,7 +106,7 @@ wait_mariadb() {
   return 1
 }
 
-# ── 3) Import schema if needed ───────────────────
+# ── 4) Import schema if needed ───────────────────
 import_schema() {
   local has_tables
   has_tables=$(php -r "
@@ -132,7 +157,7 @@ import_schema() {
   " 2>/dev/null && log "Schema importado ✓" || { log "⚠ Error importando schema"; return 1; }
 }
 
-# ── 4) Import RADIUS schema ─────────────────────
+# ── 5) Import RADIUS schema ─────────────────────
 import_radius_schema() {
   local schema_file="/docker-entrypoint-initdb.d/radius-schema.sql"
   [ -f "$schema_file" ] || return 0
@@ -167,7 +192,7 @@ import_radius_schema() {
   " 2>/dev/null && log "Schema RADIUS importado (PHP) ✓" || log "⚠ Error importando schema RADIUS"
 }
 
-# ── 5) Create admin + seed defaults (only missing keys) ─
+# ── 6) Create admin + seed defaults (only missing keys) ─
 setup_admin() {
   php -r "
     \$c = new mysqli('${DB_HOST}', '${DB_USER}', '${DB_PASS}', '${DB_NAME}');
@@ -193,6 +218,7 @@ setup_admin() {
       'radius_db_user'  => '${RADIUS_DB_USER}',
       'radius_db_pass'  => '${RADIUS_DB_PASS}',
       'radius_db_name'  => '${RADIUS_DB_NAME}',
+      'theme'           => 'flavor:flavor',
     ];
 
     foreach (\$defaults as \$k => \$v) {
@@ -215,7 +241,7 @@ setup_admin() {
   fi
 }
 
-# ── 6) Setup cron ────────────────────────────────
+# ── 7) Setup cron ────────────────────────────────
 setup_cron() {
   local cron_url="http://127.0.0.1:8080/nuxbill/index.php?_route=cron/run"
   local ts_file="$NUXROOT/system/uploads/cron_last_run.txt"
@@ -256,7 +282,7 @@ CRON
     crond && log "Cron daemon iniciado ✓"
   fi
 
-  # Background heartbeat: keeps cron timestamp fresh (ONLY cron_last_run)
+  # Background heartbeat: ONLY updates cron_last_run
   (
     sleep 30
     while true; do
@@ -278,11 +304,332 @@ CRON
   log "Cron configurado ✓"
 }
 
-# ── 7) Fix permissions ───────────────────────────
+# ── 8) Install OmniSync theme ───────────────────
+install_omnisync_theme() {
+  local theme_dir="$NUXROOT/ui/themes/flavor"
+  mkdir -p "$theme_dir"
+
+  # ── app.css — Main theme stylesheet ──
+  cat > "$theme_dir/app.css" <<'CSSEOF'
+/* ═══════════════════════════════════════════════
+   OmniSync Theme for PHPNuxBill — Flavor
+   Editable from PHPNuxBill > Settings > Appearance
+   ═══════════════════════════════════════════════ */
+
+:root {
+  --os-primary: #06b6d4;
+  --os-primary-dark: #0891b2;
+  --os-accent: #8b5cf6;
+  --os-bg: #0f172a;
+  --os-bg-card: #1e293b;
+  --os-bg-card-hover: #334155;
+  --os-text: #f1f5f9;
+  --os-text-muted: #94a3b8;
+  --os-border: #334155;
+  --os-success: #22c55e;
+  --os-warning: #f59e0b;
+  --os-danger: #ef4444;
+  --os-radius: 12px;
+  --os-shadow: 0 4px 24px rgba(6, 182, 212, 0.08);
+}
+
+/* ─── Base ─── */
+body {
+  background: var(--os-bg) !important;
+  color: var(--os-text) !important;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+}
+
+a { color: var(--os-primary); }
+a:hover { color: var(--os-primary-dark); }
+
+/* ─── Navbar ─── */
+.navbar, .navbar-default, .navbar-inverse, nav.navbar {
+  background: linear-gradient(135deg, var(--os-bg-card), var(--os-bg)) !important;
+  border-bottom: 1px solid var(--os-border) !important;
+  box-shadow: var(--os-shadow) !important;
+}
+.navbar a, .navbar .navbar-brand, .navbar-nav > li > a {
+  color: var(--os-text) !important;
+}
+.navbar-nav > li > a:hover, .navbar-nav > .active > a {
+  color: var(--os-primary) !important;
+  background: rgba(6, 182, 212, 0.1) !important;
+}
+.navbar-brand img { max-height: 36px; }
+
+/* ─── Sidebar ─── */
+.sidebar, .nav-sidebar, #sidebar, .left-sidebar {
+  background: var(--os-bg-card) !important;
+  border-right: 1px solid var(--os-border) !important;
+}
+.sidebar a, .nav-sidebar a, .nav-sidebar li a {
+  color: var(--os-text-muted) !important;
+  border-radius: 8px;
+  margin: 2px 8px;
+  padding: 8px 14px !important;
+  transition: all 0.2s;
+}
+.sidebar a:hover, .nav-sidebar a:hover, .nav-sidebar li.active > a {
+  color: var(--os-primary) !important;
+  background: rgba(6, 182, 212, 0.12) !important;
+}
+
+/* ─── Cards & Panels ─── */
+.panel, .card, .well, .box {
+  background: var(--os-bg-card) !important;
+  border: 1px solid var(--os-border) !important;
+  border-radius: var(--os-radius) !important;
+  box-shadow: var(--os-shadow) !important;
+  color: var(--os-text) !important;
+}
+.panel-heading, .card-header, .box-header {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.06)) !important;
+  border-bottom: 1px solid var(--os-border) !important;
+  border-radius: var(--os-radius) var(--os-radius) 0 0 !important;
+  color: var(--os-text) !important;
+}
+.panel-title, .card-title { color: var(--os-text) !important; }
+.panel-body, .card-body { color: var(--os-text) !important; }
+
+/* ─── Tables ─── */
+.table, table {
+  color: var(--os-text) !important;
+}
+.table > thead > tr > th, .table-bordered > thead > tr > th {
+  background: var(--os-bg-card) !important;
+  border-color: var(--os-border) !important;
+  color: var(--os-text-muted) !important;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+}
+.table > tbody > tr > td, .table-bordered > tbody > tr > td {
+  border-color: var(--os-border) !important;
+  color: var(--os-text) !important;
+}
+.table-striped > tbody > tr:nth-of-type(odd) {
+  background: rgba(15, 23, 42, 0.5) !important;
+}
+.table > tbody > tr:hover, .table-hover > tbody > tr:hover {
+  background: rgba(6, 182, 212, 0.06) !important;
+}
+
+/* ─── Buttons ─── */
+.btn-primary, .btn-info {
+  background: linear-gradient(135deg, var(--os-primary), var(--os-primary-dark)) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  font-weight: 500;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+}
+.btn-primary:hover, .btn-info:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.4);
+  transform: translateY(-1px);
+}
+.btn-success {
+  background: var(--os-success) !important;
+  border: none !important;
+  border-radius: 8px !important;
+}
+.btn-warning {
+  background: var(--os-warning) !important;
+  border: none !important;
+  border-radius: 8px !important;
+}
+.btn-danger {
+  background: var(--os-danger) !important;
+  border: none !important;
+  border-radius: 8px !important;
+}
+.btn-default, .btn-secondary {
+  background: var(--os-bg-card-hover) !important;
+  border: 1px solid var(--os-border) !important;
+  border-radius: 8px !important;
+  color: var(--os-text) !important;
+}
+
+/* ─── Forms ─── */
+.form-control, input[type="text"], input[type="password"],
+input[type="email"], input[type="number"], input[type="url"],
+input[type="search"], select, textarea {
+  background: var(--os-bg) !important;
+  border: 1px solid var(--os-border) !important;
+  border-radius: 8px !important;
+  color: var(--os-text) !important;
+  padding: 8px 12px;
+  transition: border-color 0.2s;
+}
+.form-control:focus, input:focus, select:focus, textarea:focus {
+  border-color: var(--os-primary) !important;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15) !important;
+  outline: none !important;
+}
+label, .control-label {
+  color: var(--os-text-muted) !important;
+  font-weight: 500;
+}
+
+/* ─── Badges & Labels ─── */
+.badge, .label {
+  border-radius: 20px;
+  font-weight: 500;
+  padding: 4px 10px;
+}
+.badge-primary, .label-primary { background: var(--os-primary) !important; }
+.badge-success, .label-success { background: var(--os-success) !important; }
+.badge-warning, .label-warning { background: var(--os-warning) !important; color: #000 !important; }
+.badge-danger, .label-danger { background: var(--os-danger) !important; }
+
+/* ─── Alerts ─── */
+.alert {
+  border-radius: var(--os-radius) !important;
+  border: none !important;
+}
+.alert-info {
+  background: rgba(6, 182, 212, 0.12) !important;
+  color: var(--os-primary) !important;
+}
+.alert-success {
+  background: rgba(34, 197, 94, 0.12) !important;
+  color: var(--os-success) !important;
+}
+.alert-warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: var(--os-warning) !important;
+}
+.alert-danger {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: var(--os-danger) !important;
+}
+
+/* ─── Pagination ─── */
+.pagination > li > a, .pagination > li > span {
+  background: var(--os-bg-card) !important;
+  border-color: var(--os-border) !important;
+  color: var(--os-text) !important;
+}
+.pagination > .active > a, .pagination > .active > span {
+  background: var(--os-primary) !important;
+  border-color: var(--os-primary) !important;
+  color: #fff !important;
+}
+
+/* ─── Dropdowns ─── */
+.dropdown-menu {
+  background: var(--os-bg-card) !important;
+  border: 1px solid var(--os-border) !important;
+  border-radius: var(--os-radius) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
+}
+.dropdown-menu > li > a {
+  color: var(--os-text) !important;
+}
+.dropdown-menu > li > a:hover {
+  background: rgba(6, 182, 212, 0.1) !important;
+  color: var(--os-primary) !important;
+}
+
+/* ─── Modals ─── */
+.modal-content {
+  background: var(--os-bg-card) !important;
+  border: 1px solid var(--os-border) !important;
+  border-radius: var(--os-radius) !important;
+  color: var(--os-text) !important;
+}
+.modal-header {
+  border-bottom-color: var(--os-border) !important;
+}
+.modal-footer {
+  border-top-color: var(--os-border) !important;
+}
+
+/* ─── Login Page ─── */
+.login-page, body.login-page {
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%) !important;
+}
+.login-box, .login-box-body, .register-box, .register-box-body {
+  background: rgba(30, 41, 59, 0.8) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--os-border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 40px rgba(6, 182, 212, 0.12) !important;
+}
+
+/* ─── Footer ─── */
+.main-footer, footer {
+  background: var(--os-bg-card) !important;
+  border-top: 1px solid var(--os-border) !important;
+  color: var(--os-text-muted) !important;
+}
+
+/* ─── Breadcrumb ─── */
+.breadcrumb {
+  background: transparent !important;
+  color: var(--os-text-muted) !important;
+}
+.breadcrumb > .active { color: var(--os-text) !important; }
+
+/* ─── Content wrapper ─── */
+.content-wrapper, .right-side, .main-content, #content-wrapper {
+  background: var(--os-bg) !important;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--os-bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--os-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--os-primary); }
+
+/* ─── Select2 ─── */
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+  background: var(--os-bg) !important;
+  border-color: var(--os-border) !important;
+  color: var(--os-text) !important;
+}
+.select2-container--default .select2-results__option--highlighted {
+  background: var(--os-primary) !important;
+}
+.select2-dropdown {
+  background: var(--os-bg-card) !important;
+  border-color: var(--os-border) !important;
+}
+
+/* ─── DataTables ─── */
+.dataTables_wrapper .dataTables_length label,
+.dataTables_wrapper .dataTables_filter label,
+.dataTables_wrapper .dataTables_info {
+  color: var(--os-text-muted) !important;
+}
+
+/* ─── OmniSync Branding watermark ─── */
+.main-footer::after {
+  content: 'Powered by OmniSync';
+  float: right;
+  color: var(--os-text-muted);
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+CSSEOF
+
+  chown -R www-data:www-data "$theme_dir"
+  chmod -R 755 "$theme_dir"
+  log "Tema OmniSync (flavor) instalado ✓"
+}
+
+# ── 9) Fix permissions ───────────────────────────
 fix_permissions() {
   chown -R www-data:www-data "$NUXROOT"
   chmod -R 755 "$NUXROOT"
-  chmod -R 775 "$NUXROOT/system/uploads" "$NUXROOT/system/cache" "$NUXROOT/ui/cache" 2>/dev/null || true
+  chmod -R 775 "$NUXROOT/system/uploads" "$NUXROOT/system/cache" "$NUXROOT/ui/cache" "$NUXROOT/ui/themes" 2>/dev/null || true
   log "Permisos corregidos ✓"
 }
 
@@ -292,6 +639,8 @@ fix_permissions() {
 log "=== Iniciando PHPNuxBill ==="
 
 generate_config
+fix_htaccess
+install_omnisync_theme
 
 if wait_mariadb; then
   import_schema
