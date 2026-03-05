@@ -113,6 +113,12 @@ cron.schedule('*/15 * * * *', () => {
   runSignalCollectCron(pool);
 });
 
+// Cron: limpieza de historial de señal óptica cada día a las 3:00 AM
+cron.schedule('0 3 * * *', () => {
+  console.log('[CRON] Running signal history cleanup...');
+  runSignalCleanupCron(pool);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
 });
