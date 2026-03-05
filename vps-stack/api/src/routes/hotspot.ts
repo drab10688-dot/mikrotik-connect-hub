@@ -407,12 +407,32 @@ hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
       console.error('MikroTik user sync warning:', mkErr.message);
     }
 
+    // Authorize client on MikroTik using IP/MAC
+    if (ip && mac) {
+      try {
+        await mikrotikRequest(config, '/rest/ip/hotspot/active/login', 'POST', {
+          user: username, password, ip, 'mac-address': mac,
+        });
+        console.log(`NuxBill customer: authorized ${username} ip=${ip} mac=${mac}`);
+      } catch (authErr: any) {
+        console.log(`active/login failed for customer (${authErr.message}), trying ip-binding`);
+        try {
+          await mikrotikRequest(config, '/rest/ip/hotspot/ip-binding/add', 'POST', {
+            address: ip, 'mac-address': mac, type: 'bypassed',
+            comment: `OmniSync customer: ${username}`,
+          });
+        } catch (bErr: any) {
+          if (!bErr.message?.includes('already')) console.error('IP binding failed:', bErr.message);
+        }
+      }
+    }
+
     return res.json({
       success: true,
       data: {
         username, profile: activePlan.name_plan || 'default',
         plan: activePlan.name_plan, expiration: activePlan.expiration,
-        hotspotUrl, type: 'customer', fullname: customer.fullname,
+        hotspotUrl, type: 'customer', fullname: customer.fullname, authorized: !!(ip && mac),
       }
     });
 
