@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity } from "lucide-react";
+import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity, Upload, Send, Settings2 } from "lucide-react";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import SignalHistoryChart from "@/components/onu/SignalHistoryChart";
 
@@ -64,6 +64,14 @@ interface ConfigTemplate {
   is_default: boolean;
 }
 
+interface GenieACSFile {
+  id: string;
+  filename: string;
+  metadata: Record<string, any>;
+  length: number;
+  uploadDate: string;
+}
+
 const brandOptions = [
   { value: "latic", label: "Latic" },
   { value: "zte", label: "ZTE" },
@@ -93,6 +101,13 @@ export default function OnuManagement() {
   const [syncLoading, setSyncLoading] = useState(false);
   const [unregistered, setUnregistered] = useState<UnregisteredDevice[]>([]);
   const [syncStats, setSyncStats] = useState<{ linked: number; updated: number; newDevices: number } | null>(null);
+  const [acsFiles, setAcsFiles] = useState<GenieACSFile[]>([]);
+  const [showUploadFile, setShowUploadFile] = useState(false);
+  const [showPushConfig, setShowPushConfig] = useState(false);
+  const [pushTargetOnu, setPushTargetOnu] = useState<OnuDevice | null>(null);
+  const [uploadForm, setUploadForm] = useState({ fileName: "", oui: "", productClass: "", version: "", content: "" });
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [pushingConfig, setPushingConfig] = useState(false);
 
   // Form state
   const [form, setForm] = useState({
@@ -126,6 +141,12 @@ export default function OnuManagement() {
         const profilesRes = await api(`/pppoe/${mikrotikId}/profiles`);
         setProfiles((profilesRes.data || []).map((p: any) => p.name));
       } catch { setProfiles([]); }
+
+      // Load GenieACS files
+      try {
+        const filesRes = await api('/genieacs/files');
+        setAcsFiles(filesRes.data || []);
+      } catch { setAcsFiles([]); }
     } catch (err: any) {
       toast.error("Error cargando ONUs: " + err.message);
     } finally {
@@ -273,6 +294,91 @@ export default function OnuManagement() {
     } catch (err: any) {
       toast.error(err.message);
     }
+  };
+
+  const handleUploadToACS = async () => {
+    if (!uploadForm.fileName || !uploadForm.content) return;
+    setUploadingFile(true);
+    try {
+      await api('/genieacs/files/upload', {
+        method: 'POST',
+        body: {
+          fileName: uploadForm.fileName,
+          fileType: '3 Vendor Configuration File',
+          oui: uploadForm.oui || undefined,
+          productClass: uploadForm.productClass || undefined,
+          version: uploadForm.version || undefined,
+          content: uploadForm.content,
+        },
+      });
+      toast.success(`Archivo "${uploadForm.fileName}" subido a GenieACS`);
+      setShowUploadFile(false);
+      setUploadForm({ fileName: "", oui: "", productClass: "", version: "", content: "" });
+      loadData();
+    } catch (err: any) {
+      toast.error("Error subiendo archivo: " + err.message);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleUploadTemplateToACS = async (template: ConfigTemplate) => {
+    try {
+      await api('/genieacs/files/upload', {
+        method: 'POST',
+        body: {
+          fileName: `${template.brand}-${template.name.replace(/\s+/g, '-').toLowerCase()}.${template.file_format}`,
+          fileType: '3 Vendor Configuration File',
+          content: template.template_content,
+        },
+      });
+      toast.success(`Plantilla "${template.name}" subida a GenieACS`);
+      loadData();
+    } catch (err: any) {
+      toast.error("Error: " + err.message);
+    }
+  };
+
+  const handleDeleteACSFile = async (fileId: string) => {
+    if (!confirm("¿Eliminar este archivo de GenieACS?")) return;
+    try {
+      await api(`/genieacs/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+      toast.success("Archivo eliminado");
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handlePushConfig = async (deviceId: string, fileName: string) => {
+    setPushingConfig(true);
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/push-config`, {
+        method: "POST",
+        body: { fileName },
+      });
+      toast.success(res.message);
+      setShowPushConfig(false);
+      setPushTargetOnu(null);
+    } catch (err: any) {
+      toast.error("Error enviando config: " + err.message);
+    } finally {
+      setPushingConfig(false);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUploadForm(p => ({
+        ...p,
+        fileName: p.fileName || file.name,
+        content: reader.result as string,
+      }));
+    };
+    reader.readAsText(file);
   };
 
   const copyToClipboard = (text: string) => {
@@ -581,8 +687,8 @@ export default function OnuManagement() {
                             <TableCell>
                               {onu.acs_device_id ? (
                                 <div className="flex items-center gap-1" title={`ACS: ${onu.acs_manufacturer || ''} ${onu.acs_model || ''}\nFirmware: ${onu.acs_firmware || '-'}\nVinculado: ${onu.acs_linked_at ? new Date(onu.acs_linked_at).toLocaleDateString() : '-'}`}>
-                                  <LinkIcon className="w-3 h-3 text-green-500" />
-                                  <span className="text-xs text-green-600 dark:text-green-400">Vinculada</span>
+                                  <LinkIcon className="w-3 h-3 text-chart-2" />
+                                  <span className="text-xs text-chart-2">Vinculada</span>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1">
@@ -635,6 +741,19 @@ export default function OnuManagement() {
                                 >
                                   <Signal className="w-4 h-4" />
                                 </Button>
+                                {onu.acs_device_id && acsFiles.length > 0 && (
+                                  <Button
+                                    variant="ghost" size="icon" className="h-8 w-8"
+                                    title="Enviar archivo de configuración via TR-069"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPushTargetOnu(onu);
+                                      setShowPushConfig(true);
+                                    }}
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                  </Button>
+                                )}
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteOnu(onu.id)}>
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -735,14 +854,75 @@ export default function OnuManagement() {
                       <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-24 font-mono">
                         {t.template_content.substring(0, 200)}{t.template_content.length > 200 ? "..." : ""}
                       </pre>
-                      <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => copyToClipboard(t.template_content)}>
-                        <Copy className="w-3 h-3 mr-2" /> Copiar Contenido
-                      </Button>
+                      <div className="flex gap-2 mt-2">
+                        <Button variant="outline" size="sm" className="flex-1" onClick={() => copyToClipboard(t.template_content)}>
+                          <Copy className="w-3 h-3 mr-1" /> Copiar
+                        </Button>
+                        <Button variant="default" size="sm" className="flex-1" onClick={() => handleUploadTemplateToACS(t)}>
+                          <Upload className="w-3 h-3 mr-1" /> Subir a ACS
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
+
+            {/* ─── GenieACS Files ─────────────────────── */}
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Settings2 className="w-4 h-4" />
+                    Archivos en GenieACS ({acsFiles.length})
+                  </CardTitle>
+                  <Button size="sm" onClick={() => setShowUploadFile(true)}>
+                    <Upload className="w-4 h-4 mr-2" /> Subir Archivo
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Archivos de configuración disponibles para enviar a ONUs via TR-069
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                {acsFiles.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No hay archivos en GenieACS. Suba una plantilla o un archivo de configuración.
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Nombre</TableHead>
+                        <TableHead className="text-xs">Tipo</TableHead>
+                        <TableHead className="text-xs">OUI</TableHead>
+                        <TableHead className="text-xs">Tamaño</TableHead>
+                        <TableHead className="text-xs text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {acsFiles.map(f => (
+                        <TableRow key={f.id}>
+                          <TableCell className="font-mono text-xs">{f.filename || f.id}</TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant="outline">{f.metadata?.fileType || "Config"}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{f.metadata?.oui || "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {f.length ? `${(f.length / 1024).toFixed(1)} KB` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteACSFile(f.id)}>
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ─── TR-069 Tab ───────────────────────────── */}
@@ -788,6 +968,138 @@ export default function OnuManagement() {
                   <Button onClick={handleChangeWifi} disabled={!wifiForm.wifi_ssid && !wifiForm.wifi_password}>
                     <Wifi className="w-4 h-4 mr-2" /> Aplicar Cambio
                   </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Upload File to ACS Dialog ─────────────── */}
+        <Dialog open={showUploadFile} onOpenChange={setShowUploadFile}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Subir Archivo a GenieACS
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-muted/50 p-3 rounded text-sm text-muted-foreground">
+                Suba un archivo de configuración (.xml, .json, .cfg) que podrá enviar a las ONUs via TR-069.
+              </div>
+
+              <div className="space-y-2">
+                <Label>Seleccionar archivo</Label>
+                <Input type="file" accept=".xml,.json,.cfg,.txt,.conf" onChange={handleFileInput} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nombre del archivo en ACS *</Label>
+                <Input
+                  value={uploadForm.fileName}
+                  onChange={e => setUploadForm(p => ({ ...p, fileName: e.target.value }))}
+                  placeholder="zyxel-config-hotspot.json"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-xs">OUI (opcional)</Label>
+                  <Input
+                    value={uploadForm.oui}
+                    onChange={e => setUploadForm(p => ({ ...p, oui: e.target.value }))}
+                    placeholder="00259E"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Product Class</Label>
+                  <Input
+                    value={uploadForm.productClass}
+                    onChange={e => setUploadForm(p => ({ ...p, productClass: e.target.value }))}
+                    placeholder="PMG5317"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Versión</Label>
+                  <Input
+                    value={uploadForm.version}
+                    onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))}
+                    placeholder="1.0"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {uploadForm.content && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Vista previa ({(uploadForm.content.length / 1024).toFixed(1)} KB)</Label>
+                  <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-32 font-mono">
+                    {uploadForm.content.substring(0, 500)}{uploadForm.content.length > 500 ? "\n..." : ""}
+                  </pre>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowUploadFile(false)}>Cancelar</Button>
+                <Button onClick={handleUploadToACS} disabled={!uploadForm.fileName || !uploadForm.content || uploadingFile}>
+                  {uploadingFile ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                  Subir a GenieACS
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Push Config to ONU Dialog ──────────────── */}
+        <Dialog open={showPushConfig} onOpenChange={(v) => { setShowPushConfig(v); if (!v) setPushTargetOnu(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="w-5 h-5" />
+                Enviar Configuración a ONU
+              </DialogTitle>
+            </DialogHeader>
+            {pushTargetOnu && (
+              <div className="space-y-4">
+                <div className="bg-muted/50 p-3 rounded text-sm">
+                  <p><span className="font-medium">ONU:</span> {pushTargetOnu.serial_number}</p>
+                  <p><span className="font-medium">Marca:</span> <span className="capitalize">{pushTargetOnu.brand}</span> {pushTargetOnu.model || ""}</p>
+                  {pushTargetOnu.client_name && <p><span className="font-medium">Cliente:</span> {pushTargetOnu.client_name}</p>}
+                  <p><span className="font-medium">ACS ID:</span> <span className="font-mono text-xs">{pushTargetOnu.acs_device_id}</span></p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Seleccionar archivo de configuración</Label>
+                  {acsFiles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay archivos en GenieACS. Suba uno primero en la pestaña Plantillas.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {acsFiles.map(f => (
+                        <div key={f.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                          <div>
+                            <p className="text-sm font-medium font-mono">{f.filename || f.id}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {f.metadata?.fileType || "Config"} · {f.length ? `${(f.length / 1024).toFixed(1)} KB` : "—"}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            disabled={pushingConfig}
+                            onClick={() => handlePushConfig(pushTargetOnu.acs_device_id!, f.filename || f.id)}
+                          >
+                            {pushingConfig ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+                            Enviar
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-destructive/10 border border-destructive/20 p-3 rounded text-xs text-destructive">
+                  ⚠️ La ONU aplicará la configuración y puede reiniciarse automáticamente. Esto sobreescribirá la configuración actual del equipo.
                 </div>
               </div>
             )}
