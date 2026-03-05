@@ -19,6 +19,10 @@ export default function CaptivePortal() {
   const [status, setStatus] = useState<PortalStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [mikrotikId, setMikrotikId] = useState<string | null>(null);
+  const [clientIp, setClientIp] = useState<string | null>(null);
+  const [clientMac, setClientMac] = useState<string | null>(null);
+  const [linkLogin, setLinkLogin] = useState<string | null>(null);
+  const [linkOrig, setLinkOrig] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [successData, setSuccessData] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
