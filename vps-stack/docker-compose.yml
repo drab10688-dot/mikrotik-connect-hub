@@ -145,6 +145,11 @@ services:
     ports:
       - "8080:8080"
     volumes:
+      - nuxbill_uploads:/var/www/html/system/uploads
+      - nuxbill_cache:/var/www/html/system/cache
+      - nuxbill_ui_cache:/var/www/html/ui/cache
+      - nuxbill_themes:/var/www/html/ui/themes
+      - nuxbill_pages:/var/www/html/pages
       - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/radius-schema.sql:ro
     environment:
       NUXBILL_DB_HOST: mariadb
@@ -166,6 +171,11 @@ volumes:
   postgres_data:
   mariadb_data:
   backup_data:
+  nuxbill_uploads:
+  nuxbill_cache:
+  nuxbill_ui_cache:
+  nuxbill_themes:
+  nuxbill_pages:
 
 networks:
   omnisync-net:
