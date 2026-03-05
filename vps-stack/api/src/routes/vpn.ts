@@ -227,6 +227,19 @@ vpnRouter.post('/peers', async (req: Request, res: Response) => {
     // Sync WireGuard config
     await syncWireguardConfig();
 
+    // Auto-update MikroTik host with VPN IP if associated
+    const peer = result.rows[0];
+    if (mikrotik_id) {
+      const vpnIp = peerAddress.split('/')[0]; // e.g. 10.13.13.2
+      const prevDevice = await pool.query(`SELECT host FROM mikrotik_devices WHERE id = $1`, [mikrotik_id]);
+      const previousHost = prevDevice.rows[0]?.host;
+      await pool.query(
+        `UPDATE mikrotik_devices SET host = $1, updated_at = now() WHERE id = $2`,
+        [vpnIp, mikrotik_id]
+      );
+      console.log(`[VPN] Auto-updated MikroTik ${mikrotik_id} host: ${previousHost} → ${vpnIp}`);
+    }
+
     // Generate client config
     const serverPubKey = await getServerPublicKey();
     let publicIp = '';
