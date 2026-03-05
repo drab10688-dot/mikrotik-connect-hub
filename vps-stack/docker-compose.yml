@@ -47,7 +47,7 @@ services:
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
-      GENIEACS_NBI_URL: http://genieacs-nbi:7557
+      GENIEACS_NBI_URL: http://genieacs:7557
       BACKUP_DIR: /opt/omnisync/backups
       NUXBILL_DB_HOST: mariadb
       NUXBILL_DB_PORT: 3306
@@ -174,12 +174,38 @@ services:
       - omnisync-net
 
   # ============================================
+  # GenieACS - TR-069 (All-in-One)
+  # Perfil: tr069 - iniciar con:
+  #   docker compose --profile tr069 up -d
+  # ============================================
+  genieacs:
+    image: drumsergio/genieacs:latest
+    container_name: omnisync-genieacs
+    restart: unless-stopped
+    profiles:
+      - tr069
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
+    ports:
+      - "7547:7547"   # CWMP
+      - "7557:7557"   # NBI (REST API)
+      - "7567:7567"   # FS (File Server)
+      - "3078:3000"   # UI (Web Interface)
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - omnisync-net
+
+  # ============================================
   # MongoDB - Base de datos para GenieACS
   # ============================================
   mongodb:
     image: mongo:6
     container_name: omnisync-mongodb
     restart: unless-stopped
+    profiles:
+      - tr069
     volumes:
       - mongodb_data:/data/db
     networks:
@@ -191,92 +217,16 @@ services:
       retries: 5
 
   # ============================================
-  # GenieACS - CWMP (TR-069 CPE listener)
-  # ============================================
-  genieacs-cwmp:
-    image: genieacs/genieacs:latest
-    container_name: omnisync-genieacs-cwmp
-    restart: unless-stopped
-    command: genieacs-cwmp
-    environment:
-      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
-      GENIEACS_CWMP_ACCESS_LOG_FILE: /dev/stdout
-      GENIEACS_CWMP_PORT: "7547"
-    ports:
-      - "7547:7547"
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # GenieACS - NBI (REST API)
-  # ============================================
-  genieacs-nbi:
-    image: genieacs/genieacs:latest
-    container_name: omnisync-genieacs-nbi
-    restart: unless-stopped
-    command: genieacs-nbi
-    environment:
-      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
-      GENIEACS_NBI_ACCESS_LOG_FILE: /dev/stdout
-      GENIEACS_NBI_PORT: "7557"
-    ports:
-      - "7557:7557"
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # GenieACS - FS (File Server)
-  # ============================================
-  genieacs-fs:
-    image: genieacs/genieacs:latest
-    container_name: omnisync-genieacs-fs
-    restart: unless-stopped
-    command: genieacs-fs
-    environment:
-      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
-      GENIEACS_FS_ACCESS_LOG_FILE: /dev/stdout
-      GENIEACS_FS_PORT: "7567"
-    ports:
-      - "7567:7567"
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # GenieACS - UI (Web Interface)
-  # ============================================
-  genieacs-ui:
-    image: genieacs/genieacs:latest
-    container_name: omnisync-genieacs-ui
-    restart: unless-stopped
-    command: genieacs-ui
-    environment:
-      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
-      GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
-      GENIEACS_UI_PORT: "3078"
-    ports:
-      - "3078:3078"
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
-
-  # ============================================
   # WireGuard VPN - Acceso remoto a redes MikroTik
+  # Perfil: vpn - iniciar con:
+  #   docker compose --profile vpn up -d
   # ============================================
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest
     container_name: omnisync-wireguard
     restart: unless-stopped
+    profiles:
+      - vpn
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
