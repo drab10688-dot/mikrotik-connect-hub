@@ -22,6 +22,7 @@ import { serviceOptionsRouter } from './routes/service-options';
 import { messagingRouter } from './routes/messaging';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
+import { genieacsRouter } from './routes/genieacs';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 
