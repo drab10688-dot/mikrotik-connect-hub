@@ -101,6 +101,13 @@ export default function OnuManagement() {
   const [syncLoading, setSyncLoading] = useState(false);
   const [unregistered, setUnregistered] = useState<UnregisteredDevice[]>([]);
   const [syncStats, setSyncStats] = useState<{ linked: number; updated: number; newDevices: number } | null>(null);
+  const [acsFiles, setAcsFiles] = useState<GenieACSFile[]>([]);
+  const [showUploadFile, setShowUploadFile] = useState(false);
+  const [showPushConfig, setShowPushConfig] = useState(false);
+  const [pushTargetOnu, setPushTargetOnu] = useState<OnuDevice | null>(null);
+  const [uploadForm, setUploadForm] = useState({ fileName: "", oui: "", productClass: "", version: "", content: "" });
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [pushingConfig, setPushingConfig] = useState(false);
 
   // Form state
   const [form, setForm] = useState({

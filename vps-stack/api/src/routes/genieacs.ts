@@ -445,6 +445,135 @@ genieacsRouter.post('/devices/:deviceId/config-restore', async (req: AuthRequest
   }
 });
 
+// ─── List files in GenieACS ─────────────────────────────
+genieacsRouter.get('/files', async (req: AuthRequest, res: Response) => {
+  try {
+    const data = await genieFetch('/files/');
+    const files = Array.isArray(data) ? data.map((f: any) => ({
+      id: f._id,
+      metadata: f.metadata || {},
+      length: f.length || 0,
+      uploadDate: f.uploadDate,
+      filename: f.filename || f._id,
+    })) : [];
+    res.json({ success: true, data: files });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Upload config file to GenieACS ─────────────────────
+genieacsRouter.post('/files/upload', async (req: AuthRequest, res: Response) => {
+  try {
+    const { fileName, fileType, oui, productClass, version, content } = req.body;
+
+    if (!fileName || !content) {
+      return res.status(400).json({ error: 'fileName y content son requeridos' });
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      'fileType': fileType || '3 Vendor Configuration File',
+    };
+    if (oui) headers['oui'] = oui;
+    if (productClass) headers['productClass'] = productClass;
+    if (version) headers['version'] = version || '1.0';
+
+    const resp = await fetch(`${GENIEACS_NBI}/files/${encodeURIComponent(fileName)}`, {
+      method: 'PUT',
+      headers,
+      body: content,
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`GenieACS upload error (${resp.status}): ${text}`);
+    }
+
+    res.json({ success: true, message: `Archivo "${fileName}" subido a GenieACS` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Delete file from GenieACS ──────────────────────────
+genieacsRouter.delete('/files/:fileId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { fileId } = req.params;
+    const resp = await fetch(`${GENIEACS_NBI}/files/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+    });
+    if (!resp.ok) throw new Error(`Error eliminando archivo: ${resp.status}`);
+    res.json({ success: true, message: 'Archivo eliminado de GenieACS' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Push config file to ONU via TR-069 download task ───
+genieacsRouter.post('/devices/:deviceId/push-config', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { fileName } = req.body;
+
+    if (!fileName) {
+      return res.status(400).json({ error: 'fileName es requerido' });
+    }
+
+    const task = {
+      name: 'download',
+      file: fileName,
+      fileType: '3 Vendor Configuration File',
+    };
+
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify(task) }
+    );
+
+    res.json({
+      success: true,
+      message: `Configuración "${fileName}" enviada a la ONU. El dispositivo aplicará la config en su próxima conexión.`,
+      data: result,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Bulk push config to multiple ONUs ──────────────────
+genieacsRouter.post('/push-config/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceIds, fileName } = req.body;
+    if (!fileName || !deviceIds?.length) {
+      return res.status(400).json({ error: 'fileName y deviceIds son requeridos' });
+    }
+
+    const results: any[] = [];
+    for (const deviceId of deviceIds) {
+      try {
+        const task = { name: 'download', file: fileName, fileType: '3 Vendor Configuration File' };
+        const result = await genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify(task) }
+        );
+        results.push({ deviceId, success: true, data: result });
+      } catch (err: any) {
+        results.push({ deviceId, success: false, error: err.message });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    res.json({
+      success: true,
+      message: `Config enviada a ${successCount}/${deviceIds.length} ONUs`,
+      data: results,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Run diagnostics (Ping/Traceroute from device) ──────
 genieacsRouter.post('/devices/:deviceId/diagnostics', async (req: AuthRequest, res: Response) => {
   try {
