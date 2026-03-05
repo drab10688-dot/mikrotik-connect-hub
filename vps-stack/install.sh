@@ -582,7 +582,7 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 # Limpiar contenedores huérfanos o en conflicto antes de levantar
 echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
 docker compose down --remove-orphans 2>/dev/null || true
-for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover; do
+for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-mongodb omnisync-genieacs-cwmp omnisync-genieacs-nbi omnisync-genieacs-fs omnisync-genieacs-ui; do
   docker rm -f "$cname" 2>/dev/null || true
 done
 echo -e "${GREEN}✓ Contenedores limpios${NC}"
@@ -673,8 +673,11 @@ check_service "API Backend" "omnisync-api"
 check_service "Nginx"       "omnisync-nginx"
 check_service "MariaDB"     "omnisync-mariadb"
 check_service "FreeRADIUS"  "omnisync-freeradius"
-
 check_service "PHPNuxBill"  "omnisync-phpnuxbill"
+check_service "MongoDB"     "omnisync-mongodb"
+check_service "GenieACS CWMP" "omnisync-genieacs-cwmp"
+check_service "GenieACS NBI"  "omnisync-genieacs-nbi"
+check_service "GenieACS UI"   "omnisync-genieacs-ui"
 
 echo ""
 echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC}"
@@ -750,6 +753,8 @@ echo "║  Panel Web:      http://$VPS_IP                            "
 echo "║  API Health:     http://$VPS_IP/api/health                 "
 
 echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/admin             "
+echo "║  GenieACS UI:    http://$VPS_IP:3078                      "
+echo "║  ACS URL (ONUs): http://$VPS_IP:7547                      "
 echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"

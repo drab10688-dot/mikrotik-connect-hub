@@ -303,7 +303,7 @@ cd "$APP_DIR"
 sync_nuxbill_env_file
 normalize_nuxbill_app_url
 docker compose build --no-cache api
-docker compose up -d --build api phpnuxbill mariadb
+docker compose up -d --build api phpnuxbill mariadb mongodb genieacs-cwmp genieacs-nbi genieacs-fs genieacs-ui
 
 echo "[5/10] Sincronizando cuentas MariaDB..."
 if ! ensure_mariadb_accounts; then
