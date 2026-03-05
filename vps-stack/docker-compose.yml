@@ -47,6 +47,7 @@ services:
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
+      GENIEACS_NBI_URL: http://genieacs-nbi:7557
       BACKUP_DIR: /opt/omnisync/backups
       NUXBILL_DB_HOST: mariadb
       NUXBILL_DB_PORT: 3306
