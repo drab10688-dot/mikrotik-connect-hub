@@ -39,6 +39,10 @@ export default function VpsServices() {
               <Megaphone className="h-4 w-4" />
               Publicidad
             </TabsTrigger>
+            <TabsTrigger value="map" className="gap-2">
+              <Map className="h-4 w-4" />
+              Mapa
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="services">
@@ -55,6 +59,10 @@ export default function VpsServices() {
 
           <TabsContent value="ads">
             <PortalAdsManager />
+          </TabsContent>
+
+          <TabsContent value="map">
+            <MikrotikMapView />
           </TabsContent>
         </Tabs>
       </div>
