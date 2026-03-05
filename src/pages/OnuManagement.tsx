@@ -13,8 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download } from "lucide-react";
+import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity } from "lucide-react";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
+import SignalHistoryChart from "@/components/onu/SignalHistoryChart";
 
 interface OnuDevice {
   id: string;
@@ -319,6 +320,10 @@ export default function OnuManagement() {
             <TabsTrigger value="tr069">
               <Signal className="w-4 h-4 mr-2" />
               TR-069
+            </TabsTrigger>
+            <TabsTrigger value="signal">
+              <Activity className="w-4 h-4 mr-2" />
+              Señal Óptica
             </TabsTrigger>
           </TabsList>
 
@@ -743,6 +748,11 @@ export default function OnuManagement() {
           {/* ─── TR-069 Tab ───────────────────────────── */}
           <TabsContent value="tr069" className="space-y-4">
             <TR069Dashboard />
+          </TabsContent>
+
+          {/* ─── Signal History Tab ───────────────────── */}
+          <TabsContent value="signal">
+            <SignalHistoryChart mikrotikId={mikrotikId} />
           </TabsContent>
         </Tabs>
 

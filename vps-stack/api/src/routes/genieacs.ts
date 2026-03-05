@@ -1042,3 +1042,219 @@ genieacsRouter.delete('/files/:fileId', async (req: AuthRequest, res: Response) 
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Collect signal readings for all linked ONUs ────────
+genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+
+    // Get all ONUs with ACS link
+    const onuResult = await pool.query(
+      `SELECT id, acs_device_id, serial_number FROM onu_devices WHERE mikrotik_id = $1 AND acs_device_id IS NOT NULL`,
+      [mikrotikId]
+    );
+
+    if (onuResult.rows.length === 0) {
+      return res.json({ success: true, collected: 0, message: 'No hay ONUs vinculadas al ACS' });
+    }
+
+    let collected = 0;
+    const errors: string[] = [];
+
+    for (const onu of onuResult.rows) {
+      try {
+        const device = await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`);
+        const igd = device?.InternetGatewayDevice || device?.Device || {};
+        const di = igd?.DeviceInfo || {};
+
+        // Extract optical power (multi-vendor paths)
+        let rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
+          ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
+          ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
+          ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
+          ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
+          ?? null;
+
+        let txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
+          ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower')
+          ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.TXPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
+          ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
+          ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
+          ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
+          ?? null;
+
+        // Normalize mW to dBm
+        const normalizePower = (val: number | null): number | null => {
+          if (val === null) return null;
+          if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
+          return val;
+        };
+
+        rxPower = normalizePower(rxPower);
+        txPower = normalizePower(txPower);
+
+        const quality = (rx: number | null): string => {
+          if (rx === null) return 'unknown';
+          if (rx > -20) return 'excellent';
+          if (rx > -25) return 'good';
+          if (rx > -28) return 'fair';
+          return 'critical';
+        };
+
+        const temperature = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_Temperature')
+          ?? getParam(device, 'Device.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value')
+          ?? null;
+
+        const cpuUsage = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_CPU_Usage')
+          ?? getParam(device, 'Device.DeviceInfo.ProcessStatus.CPUUsage')
+          ?? null;
+
+        const wan = igd?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1'] ||
+                    igd?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANIPConnection?.['1'] || {};
+        const wanStatus = wan?.ConnectionStatus?._value || wan?.Status?._value || null;
+
+        // Only store if we have at least one signal value
+        if (rxPower !== null || txPower !== null) {
+          await pool.query(
+            `INSERT INTO onu_signal_history (onu_id, mikrotik_id, rx_power, tx_power, quality, temperature, cpu_usage, wan_status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [onu.id, mikrotikId, rxPower, txPower, quality(rxPower), temperature, cpuUsage, wanStatus]
+          );
+          collected++;
+        }
+      } catch (err: any) {
+        errors.push(`${onu.serial_number}: ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      collected,
+      total: onuResult.rows.length,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `Señal recolectada de ${collected}/${onuResult.rows.length} ONUs`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get signal history for an ONU ─────────────────────
+genieacsRouter.get('/signal-history/:onuId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { onuId } = req.params;
+    const { hours = '168' } = req.query; // Default: 7 days
+
+    const result = await pool.query(
+      `SELECT rx_power, tx_power, quality, temperature, cpu_usage, wan_status, recorded_at
+       FROM onu_signal_history
+       WHERE onu_id = $1 AND recorded_at >= NOW() - INTERVAL '1 hour' * $2
+       ORDER BY recorded_at ASC`,
+      [onuId, parseInt(hours as string)]
+    );
+
+    // Calculate stats
+    const readings = result.rows;
+    let stats = null;
+    if (readings.length > 0) {
+      const rxValues = readings.filter(r => r.rx_power !== null).map(r => parseFloat(r.rx_power));
+      const txValues = readings.filter(r => r.tx_power !== null).map(r => parseFloat(r.tx_power));
+
+      stats = {
+        totalReadings: readings.length,
+        rxPower: rxValues.length > 0 ? {
+          min: Math.min(...rxValues),
+          max: Math.max(...rxValues),
+          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(2)),
+          current: rxValues[rxValues.length - 1],
+          trend: rxValues.length >= 2 ? (rxValues[rxValues.length - 1] - rxValues[0] > 0 ? 'improving' : rxValues[rxValues.length - 1] - rxValues[0] < -1 ? 'degrading' : 'stable') : 'insufficient',
+        } : null,
+        txPower: txValues.length > 0 ? {
+          min: Math.min(...txValues),
+          max: Math.max(...txValues),
+          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(2)),
+          current: txValues[txValues.length - 1],
+        } : null,
+      };
+    }
+
+    res.json({ success: true, data: readings, stats });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get signal history for all ONUs of a mikrotik (overview) ──
+genieacsRouter.get('/signal-overview-history/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+
+    // Get latest reading per ONU
+    const result = await pool.query(
+      `SELECT DISTINCT ON (h.onu_id)
+        h.onu_id, h.rx_power, h.tx_power, h.quality, h.temperature, h.wan_status, h.recorded_at,
+        o.serial_number, o.brand, o.model, o.client_id,
+        c.client_name
+       FROM onu_signal_history h
+       JOIN onu_devices o ON o.id = h.onu_id
+       LEFT JOIN isp_clients c ON c.id = o.client_id
+       WHERE h.mikrotik_id = $1
+       ORDER BY h.onu_id, h.recorded_at DESC`,
+      [mikrotikId]
+    );
+
+    // Get trend for each ONU (compare latest vs 24h ago)
+    const overview = [];
+    for (const row of result.rows) {
+      const trendResult = await pool.query(
+        `SELECT rx_power FROM onu_signal_history 
+         WHERE onu_id = $1 AND recorded_at >= NOW() - INTERVAL '24 hours'
+         ORDER BY recorded_at ASC LIMIT 1`,
+        [row.onu_id]
+      );
+      const oldRx = trendResult.rows.length > 0 ? parseFloat(trendResult.rows[0].rx_power) : null;
+      const currentRx = row.rx_power !== null ? parseFloat(row.rx_power) : null;
+
+      let trend = 'stable';
+      if (oldRx !== null && currentRx !== null) {
+        const diff = currentRx - oldRx;
+        if (diff < -1) trend = 'degrading';
+        else if (diff > 1) trend = 'improving';
+      }
+
+      overview.push({
+        ...row,
+        trend,
+        rx_power: currentRx,
+        tx_power: row.tx_power !== null ? parseFloat(row.tx_power) : null,
+      });
+    }
+
+    res.json({ success: true, data: overview });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Cleanup old signal history ────────────────────────
+genieacsRouter.delete('/signal-history/cleanup', async (req: AuthRequest, res: Response) => {
+  try {
+    const { days = '90' } = req.query;
+    const result = await pool.query(
+      `DELETE FROM onu_signal_history WHERE recorded_at < NOW() - INTERVAL '1 day' * $1`,
+      [parseInt(days as string)]
+    );
+    res.json({ success: true, deleted: result.rowCount, message: `${result.rowCount} registros eliminados` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
