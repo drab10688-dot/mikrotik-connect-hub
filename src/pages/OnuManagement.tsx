@@ -854,14 +854,75 @@ export default function OnuManagement() {
                       <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-24 font-mono">
                         {t.template_content.substring(0, 200)}{t.template_content.length > 200 ? "..." : ""}
                       </pre>
-                      <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => copyToClipboard(t.template_content)}>
-                        <Copy className="w-3 h-3 mr-2" /> Copiar Contenido
-                      </Button>
+                      <div className="flex gap-2 mt-2">
+                        <Button variant="outline" size="sm" className="flex-1" onClick={() => copyToClipboard(t.template_content)}>
+                          <Copy className="w-3 h-3 mr-1" /> Copiar
+                        </Button>
+                        <Button variant="default" size="sm" className="flex-1" onClick={() => handleUploadTemplateToACS(t)}>
+                          <Upload className="w-3 h-3 mr-1" /> Subir a ACS
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
+
+            {/* ─── GenieACS Files ─────────────────────── */}
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Settings2 className="w-4 h-4" />
+                    Archivos en GenieACS ({acsFiles.length})
+                  </CardTitle>
+                  <Button size="sm" onClick={() => setShowUploadFile(true)}>
+                    <Upload className="w-4 h-4 mr-2" /> Subir Archivo
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Archivos de configuración disponibles para enviar a ONUs via TR-069
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                {acsFiles.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No hay archivos en GenieACS. Suba una plantilla o un archivo de configuración.
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Nombre</TableHead>
+                        <TableHead className="text-xs">Tipo</TableHead>
+                        <TableHead className="text-xs">OUI</TableHead>
+                        <TableHead className="text-xs">Tamaño</TableHead>
+                        <TableHead className="text-xs text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {acsFiles.map(f => (
+                        <TableRow key={f.id}>
+                          <TableCell className="font-mono text-xs">{f.filename || f.id}</TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant="outline">{f.metadata?.fileType || "Config"}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{f.metadata?.oui || "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {f.length ? `${(f.length / 1024).toFixed(1)} KB` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteACSFile(f.id)}>
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ─── TR-069 Tab ───────────────────────────── */}
