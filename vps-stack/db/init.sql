@@ -499,6 +499,23 @@ CREATE TABLE onu_devices (
 );
 
 -- ============================================
+-- ONU Global Signal Config (per MikroTik)
+-- ============================================
+CREATE TABLE onu_signal_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES users(id),
+  alerts_enabled BOOLEAN DEFAULT true,
+  default_threshold NUMERIC DEFAULT -30,
+  default_chat_id TEXT,
+  cooldown_minutes INTEGER DEFAULT 60,
+  auto_cleanup_days INTEGER DEFAULT 90,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id)
+);
+
+-- ============================================
 -- ONU Signal Alerts Log
 -- ============================================
 CREATE TABLE onu_signal_alerts (

@@ -4,12 +4,16 @@ import { Pool } from 'pg';
  * Cron job: Recolecta señal óptica de todas las ONUs vinculadas al ACS
  * Se ejecuta cada 15 minutos para mantener el historial actualizado
  * y disparar alertas de Telegram cuando la señal baja del umbral.
+ * 
+ * Lógica de cascada:
+ * 1. Si la ONU tiene configuración individual → usar esa
+ * 2. Si no → usar la configuración global del MikroTik (onu_signal_config)
+ * 3. Si no hay ninguna → no enviar alertas
  */
 export async function runSignalCollectCron(pool: Pool) {
   console.log('[SIGNAL CRON] Starting optical signal collection...');
 
   try {
-    // Get all mikrotik devices that have ONUs linked to ACS
     const { rows: mikrotiks } = await pool.query(
       `SELECT DISTINCT mikrotik_id FROM onu_devices WHERE acs_device_id IS NOT NULL`
     );
@@ -19,26 +23,10 @@ export async function runSignalCollectCron(pool: Pool) {
       return;
     }
 
-    const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
-    let totalCollected = 0;
-    let totalAlerts = 0;
     let totalErrors = 0;
 
     for (const { mikrotik_id } of mikrotiks) {
       try {
-        // Call the existing signal-collect endpoint internally
-        // We need to get a valid admin user for the auth header
-        const { rows: adminUsers } = await pool.query(
-          `SELECT id FROM users WHERE role = 'admin' LIMIT 1`
-        );
-
-        if (adminUsers.length === 0) {
-          console.warn('[SIGNAL CRON] No admin user found, skipping auth-dependent collection');
-          // Perform collection directly without HTTP call
-          await collectSignalsDirect(pool, mikrotik_id);
-          continue;
-        }
-
         await collectSignalsDirect(pool, mikrotik_id);
       } catch (error: any) {
         totalErrors++;
@@ -52,7 +40,6 @@ export async function runSignalCollectCron(pool: Pool) {
   }
 }
 
-// Direct signal collection (reuses the same logic as the API endpoint)
 async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
   const GENIEACS_NBI_URL = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
 
@@ -89,6 +76,13 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
     if (rx > -28) return 'fair';
     return 'critical';
   };
+
+  // Load global config for this MikroTik
+  const { rows: globalConfigs } = await pool.query(
+    'SELECT * FROM onu_signal_config WHERE mikrotik_id = $1',
+    [mikrotikId]
+  );
+  const globalConfig = globalConfigs[0] || null;
 
   // Get ONUs with ACS link
   const { rows: onus } = await pool.query(
@@ -146,32 +140,54 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
         );
         collected++;
 
-        // Check alert threshold
-        if (onu.signal_alerts_enabled && rxPower !== null && rxPower < parseFloat(onu.signal_alert_threshold)) {
-          const lastAlert = onu.last_alert_sent_at ? new Date(onu.last_alert_sent_at) : null;
-          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        // ── CASCADE ALERT LOGIC ──
+        // Priority: individual ONU config > global MikroTik config
+        const hasIndividualConfig = onu.signal_alerts_enabled !== null && onu.signal_alerts_enabled === true;
+        
+        let alertsEnabled = false;
+        let threshold = -30;
+        let chatId: string | null = null;
+        let cooldownMinutes = 60;
 
-          if (!lastAlert || lastAlert < oneHourAgo) {
+        if (hasIndividualConfig) {
+          // Use individual ONU config
+          alertsEnabled = true;
+          threshold = parseFloat(onu.signal_alert_threshold || '-30');
+          chatId = onu.signal_alert_chat_id;
+          cooldownMinutes = globalConfig?.cooldown_minutes || 60;
+        } else if (globalConfig && globalConfig.alerts_enabled) {
+          // Fallback to global config
+          alertsEnabled = true;
+          threshold = parseFloat(globalConfig.default_threshold || '-30');
+          chatId = globalConfig.default_chat_id;
+          cooldownMinutes = globalConfig.cooldown_minutes || 60;
+        }
+
+        if (alertsEnabled && rxPower !== null && rxPower < threshold) {
+          const lastAlert = onu.last_alert_sent_at ? new Date(onu.last_alert_sent_at) : null;
+          const cooldownAgo = new Date(Date.now() - cooldownMinutes * 60 * 1000);
+
+          if (!lastAlert || lastAlert < cooldownAgo) {
             let clientName = 'Sin cliente';
             if (onu.client_id) {
               const cr = await pool.query('SELECT client_name FROM isp_clients WHERE id = $1', [onu.client_id]);
               if (cr.rows[0]) clientName = cr.rows[0].client_name;
             }
 
+            const configSource = hasIndividualConfig ? 'Individual' : 'Global';
             const alertMessage = `🔴 <b>ALERTA: Señal Óptica Baja</b>\n\n` +
               `📡 <b>ONU:</b> ${onu.serial_number}\n` +
               `🏷️ <b>Marca:</b> ${onu.brand} ${onu.model || ''}\n` +
               `👤 <b>Cliente:</b> ${clientName}\n` +
               `📉 <b>Rx Power:</b> ${rxPower} dBm\n` +
-              `⚠️ <b>Umbral:</b> ${onu.signal_alert_threshold} dBm\n` +
+              `⚠️ <b>Umbral:</b> ${threshold} dBm\n` +
               `${txPower !== null ? `📤 <b>Tx Power:</b> ${txPower} dBm\n` : ''}` +
               `${temperature !== null ? `🌡️ <b>Temperatura:</b> ${temperature}°C\n` : ''}` +
+              `⚙️ <b>Config:</b> ${configSource}\n` +
               `\n⏰ ${new Date().toLocaleString('es')}\n🤖 <i>Recolección automática</i>`;
 
-            const chatId = onu.signal_alert_chat_id;
             if (chatId) {
               try {
-                // Get telegram bot token
                 const { rows: tg } = await pool.query(
                   'SELECT bot_token FROM telegram_config WHERE mikrotik_id = $1 AND is_active = true',
                   [mikrotikId]
@@ -185,9 +201,9 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
                   const sent = tgResp.ok;
 
                   await pool.query(
-                    `INSERT INTO onu_signal_alerts (onu_id, mikrotik_id, rx_power, threshold, alert_message, sent_via, status)
-                     VALUES ($1, $2, $3, $4, $5, 'telegram', $6)`,
-                    [onu.id, mikrotikId, rxPower, onu.signal_alert_threshold, alertMessage, sent ? 'sent' : 'failed']
+                    `INSERT INTO onu_signal_alerts (onu_id, mikrotik_id, rx_power, threshold, message, sent_successfully, error_message)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [onu.id, mikrotikId, rxPower, threshold, alertMessage, sent, sent ? null : 'Telegram API error']
                   );
 
                   await pool.query(
@@ -195,7 +211,7 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
                     [onu.id]
                   );
 
-                  console.log(`[SIGNAL CRON] Alert ${sent ? 'sent' : 'FAILED'} for ONU ${onu.serial_number} (${rxPower} dBm)`);
+                  console.log(`[SIGNAL CRON] Alert ${sent ? 'sent' : 'FAILED'} for ONU ${onu.serial_number} (${rxPower} dBm, config: ${configSource})`);
                 }
               } catch (tgErr: any) {
                 console.error(`[SIGNAL CRON] Telegram error for ${onu.serial_number}:`, tgErr.message);

@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart } from "recharts";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Activity, TrendingDown, TrendingUp, Minus, RefreshCcw, Loader2, Signal, Thermometer, ArrowLeft, Bell, BellOff, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { Activity, TrendingDown, TrendingUp, Minus, RefreshCcw, Loader2, Signal, Thermometer, ArrowLeft, Bell, BellOff, AlertTriangle, CheckCircle, XCircle, Settings2, Globe } from "lucide-react";
 
 interface SignalReading {
   rx_power: number | null;
@@ -70,6 +70,16 @@ interface SignalAlert {
   created_at: string;
 }
 
+interface GlobalSignalConfig {
+  id?: string;
+  mikrotik_id: string;
+  alerts_enabled: boolean;
+  default_threshold: number;
+  default_chat_id: string | null;
+  cooldown_minutes: number;
+  auto_cleanup_days: number;
+}
+
 interface SignalHistoryChartProps {
   mikrotikId: string;
 }
@@ -111,8 +121,18 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
   const [alerts, setAlerts] = useState<SignalAlert[]>([]);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showAlertConfig, setShowAlertConfig] = useState(false);
+  const [showGlobalConfig, setShowGlobalConfig] = useState(false);
   const [alertConfigOnu, setAlertConfigOnu] = useState<OverviewEntry | null>(null);
   const [alertForm, setAlertForm] = useState({ enabled: false, threshold: "-30", chatId: "" });
+  const [globalConfig, setGlobalConfig] = useState<GlobalSignalConfig>({
+    mikrotik_id: mikrotikId,
+    alerts_enabled: false,
+    default_threshold: -30,
+    default_chat_id: null,
+    cooldown_minutes: 60,
+    auto_cleanup_days: 90,
+  });
+  const [savingGlobal, setSavingGlobal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [hours, setHours] = useState("168");
@@ -163,6 +183,32 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
     } catch { /* ignore */ }
   };
 
+  const loadGlobalConfig = async () => {
+    try {
+      const res = await api(`/genieacs/signal-config/${mikrotikId}`);
+      if (res.data) {
+        setGlobalConfig(res.data);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleSaveGlobalConfig = async () => {
+    setSavingGlobal(true);
+    try {
+      const res = await api(`/genieacs/signal-config/${mikrotikId}`, {
+        method: "PUT",
+        body: globalConfig,
+      });
+      setGlobalConfig(res.data);
+      toast.success("Configuración global de alertas guardada");
+      setShowGlobalConfig(false);
+    } catch (err: any) {
+      toast.error("Error: " + err.message);
+    } finally {
+      setSavingGlobal(false);
+    }
+  };
+
   const handleSaveAlertConfig = async () => {
     if (!alertConfigOnu) return;
     try {
@@ -182,7 +228,7 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
     }
   };
 
-  useEffect(() => { loadOverview(); }, [mikrotikId]);
+  useEffect(() => { loadOverview(); loadGlobalConfig(); }, [mikrotikId]);
 
   useEffect(() => {
     if (selectedOnu) loadHistory(selectedOnu);
@@ -374,16 +420,46 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { loadAlerts(); setShowAlerts(!showAlerts); }}>
+          <Button variant="outline" size="sm" onClick={() => { loadGlobalConfig(); setShowGlobalConfig(true); }}>
+            <Globe className="w-4 h-4 mr-2" />
+            Config Global
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => { loadAlerts(); setShowAlerts(!showAlerts); }}>
             <Bell className="w-4 h-4 mr-2" />
             Alertas
           </Button>
-          <Button onClick={handleCollect} disabled={collecting}>
+          <Button size="sm" onClick={handleCollect} disabled={collecting}>
             {collecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
-            Recolectar Señal
+            Recolectar
           </Button>
         </div>
       </div>
+
+      {/* Global Config Status Banner */}
+      {globalConfig.alerts_enabled && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Alertas globales activas</span>
+              <Badge className="bg-primary/20 text-primary text-xs">
+                Umbral: {globalConfig.default_threshold} dBm
+              </Badge>
+              {globalConfig.default_chat_id && (
+                <Badge variant="outline" className="text-xs">
+                  Chat: {globalConfig.default_chat_id}
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs">
+                Cooldown: {globalConfig.cooldown_minutes}min
+              </Badge>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => { loadGlobalConfig(); setShowGlobalConfig(true); }}>
+              <Settings2 className="w-4 h-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Alert History */}
       {showAlerts && (
@@ -446,7 +522,7 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           <CardContent className="p-8 text-center text-muted-foreground">
             <Signal className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p>No hay datos de señal registrados.</p>
-            <p className="text-xs mt-1">Haga clic en "Recolectar Señal" para obtener la primera lectura de las ONUs vinculadas al ACS.</p>
+            <p className="text-xs mt-1">Haga clic en "Recolectar" para obtener la primera lectura de las ONUs vinculadas al ACS.</p>
           </CardContent>
         </Card>
       ) : (
@@ -500,7 +576,7 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        title="Configurar alertas"
+                        title="Configurar alertas individuales"
                         onClick={(e) => {
                           e.stopPropagation();
                           setAlertConfigOnu(entry);
@@ -531,13 +607,13 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
         </Card>
       )}
 
-      {/* Alert Config Dialog */}
+      {/* Individual Alert Config Dialog */}
       <Dialog open={showAlertConfig} onOpenChange={setShowAlertConfig}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bell className="w-5 h-5" />
-              Configurar Alertas — {alertConfigOnu?.serial_number}
+              Alertas Individuales — {alertConfigOnu?.serial_number}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -547,14 +623,26 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
               <p><span className="font-medium">Rx Actual:</span> {alertConfigOnu?.rx_power !== null ? `${alertConfigOnu?.rx_power?.toFixed(2)} dBm` : "—"}</p>
             </div>
 
+            {globalConfig.alerts_enabled && !alertForm.enabled && (
+              <div className="bg-primary/10 border border-primary/20 p-3 rounded text-sm flex items-center gap-2">
+                <Globe className="w-4 h-4 text-primary flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-foreground">Usando configuración global</p>
+                  <p className="text-xs text-muted-foreground">
+                    Umbral: {globalConfig.default_threshold} dBm · Chat: {globalConfig.default_chat_id || "No configurado"}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-3">
               <Switch
                 checked={alertForm.enabled}
                 onCheckedChange={(v) => setAlertForm(p => ({ ...p, enabled: v }))}
               />
               <div>
-                <Label>Alertas habilitadas</Label>
-                <p className="text-xs text-muted-foreground">Recibir notificaciones cuando Rx baje del umbral</p>
+                <Label>Configuración individual</Label>
+                <p className="text-xs text-muted-foreground">Sobreescribir la configuración global para esta ONU</p>
               </div>
             </div>
 
@@ -592,6 +680,100 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
               <Button variant="outline" onClick={() => setShowAlertConfig(false)}>Cancelar</Button>
               <Button onClick={handleSaveAlertConfig}>
                 {alertForm.enabled ? <Bell className="w-4 h-4 mr-2" /> : <BellOff className="w-4 h-4 mr-2" />}
+                Guardar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Global Config Dialog */}
+      <Dialog open={showGlobalConfig} onOpenChange={setShowGlobalConfig}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5 text-primary" />
+              Configuración Global de Alertas
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-3 rounded text-sm text-muted-foreground">
+              Esta configuración aplica como <strong>valor por defecto</strong> a todas las ONUs que no tengan configuración individual.
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={globalConfig.alerts_enabled}
+                onCheckedChange={(v) => setGlobalConfig(p => ({ ...p, alerts_enabled: v }))}
+              />
+              <div>
+                <Label>Alertas habilitadas</Label>
+                <p className="text-xs text-muted-foreground">Activar alertas automáticas para todas las ONUs</p>
+              </div>
+            </div>
+
+            {globalConfig.alerts_enabled && (
+              <>
+                <div className="space-y-2">
+                  <Label>Umbral Rx por defecto (dBm)</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    value={globalConfig.default_threshold}
+                    onChange={(e) => setGlobalConfig(p => ({ ...p, default_threshold: parseFloat(e.target.value) || -30 }))}
+                    placeholder="-30"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Recomendado: -25 a -28 dBm para fibra GPON
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Chat ID de Telegram</Label>
+                  <Input
+                    value={globalConfig.default_chat_id || ""}
+                    onChange={(e) => setGlobalConfig(p => ({ ...p, default_chat_id: e.target.value || null }))}
+                    placeholder="Ej: -1001234567890"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Chat o grupo de Telegram para todas las alertas
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Cooldown entre alertas (minutos)</Label>
+                  <Input
+                    type="number"
+                    min={5}
+                    value={globalConfig.cooldown_minutes}
+                    onChange={(e) => setGlobalConfig(p => ({ ...p, cooldown_minutes: parseInt(e.target.value) || 60 }))}
+                    placeholder="60"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Tiempo mínimo entre alertas para la misma ONU (evita spam)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Auto-limpieza de historial (días)</Label>
+                  <Input
+                    type="number"
+                    min={7}
+                    value={globalConfig.auto_cleanup_days}
+                    onChange={(e) => setGlobalConfig(p => ({ ...p, auto_cleanup_days: parseInt(e.target.value) || 90 }))}
+                    placeholder="90"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Eliminar registros de señal más antiguos que este valor
+                  </p>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowGlobalConfig(false)}>Cancelar</Button>
+              <Button onClick={handleSaveGlobalConfig} disabled={savingGlobal}>
+                {savingGlobal ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Globe className="w-4 h-4 mr-2" />}
                 Guardar
               </Button>
             </div>
