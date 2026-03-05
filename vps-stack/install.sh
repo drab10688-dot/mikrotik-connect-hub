@@ -633,6 +633,12 @@ CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 " 2>/dev/null && echo -e "${GREEN}✓ Migraciones PostgreSQL OK${NC}" || echo -e "${YELLOW}⚠ Migraciones PostgreSQL skip (tabla ya existe)${NC}"
 
+# Add missing columns to mikrotik_devices for existing installations
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS latitude TEXT;
+ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS longitude TEXT;
+" 2>/dev/null && echo -e "${GREEN}✓ Columnas mikrotik_devices actualizadas${NC}" || true
+
 # Reiniciar PHPNuxBill y FreeRADIUS para que tomen las tablas recién creadas
 echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius

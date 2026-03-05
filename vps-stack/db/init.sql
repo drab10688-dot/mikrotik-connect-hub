@@ -50,6 +50,8 @@ CREATE TABLE mikrotik_devices (
   version TEXT DEFAULT 'v7',
   status device_status DEFAULT 'active',
   hotspot_url TEXT DEFAULT 'http://192.168.88.1/login',
+  latitude TEXT,
+  longitude TEXT,
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
