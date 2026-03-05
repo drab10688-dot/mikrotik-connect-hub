@@ -669,7 +669,41 @@ VALUES (
   'Super Admin'
 );
 
-INSERT INTO user_roles (user_id, role)
+-- ============================================
+-- Ubiquiti airOS Devices
+-- ============================================
+CREATE TABLE ubiquiti_global_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by UUID NOT NULL REFERENCES users(id),
+  default_username TEXT NOT NULL DEFAULT 'ubnt',
+  default_password TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(created_by)
+);
+
+CREATE TABLE ubiquiti_devices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  ip_address TEXT NOT NULL,
+  username TEXT,
+  password TEXT,
+  model TEXT,
+  mac_address TEXT,
+  client_id UUID REFERENCES isp_clients(id) ON DELETE SET NULL,
+  created_by UUID NOT NULL REFERENCES users(id),
+  notes TEXT,
+  last_signal INTEGER,
+  last_noise INTEGER,
+  last_ccq INTEGER,
+  last_seen TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_ubiquiti_devices_created_by ON ubiquiti_devices(created_by);
+CREATE INDEX idx_ubiquiti_devices_client ON ubiquiti_devices(client_id);
+
 SELECT id, 'super_admin'::app_role FROM users WHERE email = 'admin@omnisync.local';
 
 INSERT INTO profiles (user_id, email, full_name)
