@@ -146,7 +146,7 @@ export function VpnManager() {
 
   const handleShowConfig = async (peer: VpnPeer) => {
     try {
-      const result = await apiClient.get(`/api/vpn/peers/${peer.id}/config`);
+      const result = await apiGet(`/vpn/peers/${peer.id}/config`);
       setSelectedConfig(result);
       setConfigOpen(true);
     } catch (err: any) {
