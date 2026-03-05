@@ -335,6 +335,27 @@ CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 " 2>/dev/null && echo "  ✓ portal_ads OK" || echo "  ⚠ portal_ads skip"
 
+# Migrate VPN peers table
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+CREATE TABLE IF NOT EXISTS vpn_peers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL, description TEXT,
+  mikrotik_id UUID REFERENCES mikrotik_devices(id) ON DELETE SET NULL,
+  public_key TEXT NOT NULL, private_key TEXT, preshared_key TEXT,
+  allowed_ips TEXT NOT NULL DEFAULT '10.13.13.0/24',
+  endpoint TEXT, persistent_keepalive INTEGER DEFAULT 25,
+  peer_address TEXT NOT NULL, remote_networks TEXT,
+  is_active BOOLEAN DEFAULT true,
+  last_handshake TIMESTAMPTZ, transfer_rx BIGINT DEFAULT 0, transfer_tx BIGINT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_vpn_peers_created_by ON vpn_peers(created_by);
+CREATE INDEX IF NOT EXISTS idx_vpn_peers_mikrotik ON vpn_peers(mikrotik_id);
+DROP TRIGGER IF EXISTS update_vpn_peers_updated_at ON vpn_peers;
+CREATE TRIGGER update_vpn_peers_updated_at BEFORE UPDATE ON vpn_peers FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+" 2>/dev/null && echo "  ✓ vpn_peers OK" || echo "  ⚠ vpn_peers skip"
+
 echo "[7.5/10] Reiniciando FreeRADIUS + PHPNuxBill..."
 docker compose up -d freeradius phpnuxbill
 
