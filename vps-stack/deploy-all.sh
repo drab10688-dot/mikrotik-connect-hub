@@ -234,8 +234,11 @@ fi
 echo "[6/10] Verificando schema radius (tabla nas)..."
 ensure_radius_schema || true
 
+echo "[6.5/10] Verificando escritura de configuración en NuxBill..."
+verify_nuxbill_config_write || true
+
 # ─── Migrate PostgreSQL (portal_ads) ──
-echo "[6.5/10] Migrando PostgreSQL..."
+echo "[7/10] Migrando PostgreSQL..."
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
 CREATE TABLE IF NOT EXISTS portal_ads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
