@@ -1388,6 +1388,47 @@ genieacsRouter.get('/signal-overview-history/:mikrotikId([0-9a-fA-F-]{36})', asy
   }
 });
 
+// ─── Get global signal config for a MikroTik ───────────
+genieacsRouter.get('/signal-config/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM onu_signal_config WHERE mikrotik_id = $1',
+      [mikrotikId]
+    );
+    res.json({ success: true, data: result.rows[0] || null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Create/Update global signal config ─────────────────
+genieacsRouter.put('/signal-config/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const { alerts_enabled, default_threshold, default_chat_id, cooldown_minutes, auto_cleanup_days } = req.body;
+    const userId = req.user!.id;
+
+    const result = await pool.query(
+      `INSERT INTO onu_signal_config (mikrotik_id, created_by, alerts_enabled, default_threshold, default_chat_id, cooldown_minutes, auto_cleanup_days)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (mikrotik_id) DO UPDATE SET
+         alerts_enabled = COALESCE($3, onu_signal_config.alerts_enabled),
+         default_threshold = COALESCE($4, onu_signal_config.default_threshold),
+         default_chat_id = COALESCE($5, onu_signal_config.default_chat_id),
+         cooldown_minutes = COALESCE($6, onu_signal_config.cooldown_minutes),
+         auto_cleanup_days = COALESCE($7, onu_signal_config.auto_cleanup_days),
+         updated_at = NOW()
+       RETURNING *`,
+      [mikrotikId, userId, alerts_enabled, default_threshold, default_chat_id || null, cooldown_minutes || 60, auto_cleanup_days || 90]
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Cleanup old signal history ────────────────────────
 genieacsRouter.delete('/signal-history/cleanup', async (req: AuthRequest, res: Response) => {
   try {
