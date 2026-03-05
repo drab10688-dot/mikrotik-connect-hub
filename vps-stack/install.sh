@@ -570,7 +570,8 @@ if command -v ufw &> /dev/null; then
   ufw allow 443/tcp >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
-  echo -e "${GREEN}Puertos abiertos ✓${NC}"
+  ufw allow 7547/tcp >/dev/null 2>&1   # TR-069 CWMP (ONUs → ACS)
+  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
@@ -677,6 +678,7 @@ check_service "PHPNuxBill"  "omnisync-phpnuxbill"
 check_service "MongoDB"     "omnisync-mongodb"
 check_service "GenieACS CWMP" "omnisync-genieacs-cwmp"
 check_service "GenieACS NBI"  "omnisync-genieacs-nbi"
+check_service "GenieACS FS"    "omnisync-genieacs-fs"
 check_service "GenieACS UI"   "omnisync-genieacs-ui"
 
 echo ""
