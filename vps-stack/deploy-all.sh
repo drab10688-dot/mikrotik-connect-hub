@@ -50,6 +50,48 @@ sync_nuxbill_env_file() {
   fi
 }
 
+normalize_nuxbill_app_url() {
+  local env_file="$APP_DIR/.env"
+  local vps_ip current normalized escaped
+
+  [ -f "$env_file" ] || return 0
+
+  vps_ip="$(hostname -I | awk '{print $1}')"
+  current="${NUXBILL_APP_URL:-}"
+
+  if [ -z "$current" ]; then
+    normalized="http://${vps_ip}/nuxbill"
+  else
+    current="${current%/}"
+    current="${current%/admin}"
+    current="${current%/index.php}"
+
+    if [[ "$current" == *"localhost:8080"* || "$current" == *"127.0.0.1:8080"* ]]; then
+      normalized="http://${vps_ip}/nuxbill"
+    elif [[ "$current" == *"/nuxbill"* ]]; then
+      normalized="${current%%/nuxbill*}/nuxbill"
+    elif [[ "$current" == *":8080" ]]; then
+      normalized="${current%:8080}/nuxbill"
+    else
+      normalized="${current}/nuxbill"
+    fi
+  fi
+
+  NUXBILL_APP_URL="$normalized"
+  export NUXBILL_APP_URL
+
+  escaped="${normalized//\\/\\\\}"
+  escaped="${escaped//&/\\&}"
+
+  if grep -q '^NUXBILL_APP_URL=' "$env_file"; then
+    sed -i "s|^NUXBILL_APP_URL=.*|NUXBILL_APP_URL=${escaped}|" "$env_file"
+  else
+    echo "NUXBILL_APP_URL=${normalized}" >> "$env_file"
+  fi
+
+  echo "  ✓ NUXBILL_APP_URL: ${NUXBILL_APP_URL}"
+}
+
 ensure_mariadb_accounts() {
   echo "  → Sincronizando usuarios MariaDB (radius/nuxbill)..."
   for i in $(seq 1 20); do
@@ -150,6 +192,7 @@ chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 echo "[4/10] Reconstruyendo API + PHPNuxBill..."
 cd "$APP_DIR"
 sync_nuxbill_env_file
+normalize_nuxbill_app_url
 docker compose build --no-cache api
 docker compose up -d --build api phpnuxbill mariadb
 
