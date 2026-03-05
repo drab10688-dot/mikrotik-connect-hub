@@ -673,8 +673,11 @@ check_service "API Backend" "omnisync-api"
 check_service "Nginx"       "omnisync-nginx"
 check_service "MariaDB"     "omnisync-mariadb"
 check_service "FreeRADIUS"  "omnisync-freeradius"
-
 check_service "PHPNuxBill"  "omnisync-phpnuxbill"
+check_service "MongoDB"     "omnisync-mongodb"
+check_service "GenieACS CWMP" "omnisync-genieacs-cwmp"
+check_service "GenieACS NBI"  "omnisync-genieacs-nbi"
+check_service "GenieACS UI"   "omnisync-genieacs-ui"
 
 echo ""
 echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC}"
