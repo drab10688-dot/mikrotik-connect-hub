@@ -141,6 +141,12 @@ export default function OnuManagement() {
         const profilesRes = await api(`/pppoe/${mikrotikId}/profiles`);
         setProfiles((profilesRes.data || []).map((p: any) => p.name));
       } catch { setProfiles([]); }
+
+      // Load GenieACS files
+      try {
+        const filesRes = await api('/genieacs/files');
+        setAcsFiles(filesRes.data || []);
+      } catch { setAcsFiles([]); }
     } catch (err: any) {
       toast.error("Error cargando ONUs: " + err.message);
     } finally {
