@@ -281,8 +281,8 @@ PersistentKeepalive = 25`;
 vpnRouter.get('/peers/:id/config', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).user.id;
-    const userRole = (req as any).user.role;
+    const userId = (req as any).userId;
+    const userRole = (req as any).userRole;
 
     let query = `SELECT * FROM vpn_peers WHERE id = $1`;
     const params: any[] = [id];
