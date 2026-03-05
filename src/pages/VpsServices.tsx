@@ -3,8 +3,9 @@ import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
+import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
