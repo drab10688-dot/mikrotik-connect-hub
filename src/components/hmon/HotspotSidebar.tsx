@@ -29,59 +29,59 @@ type MenuEntry = MenuItem | MenuGroup;
 const isGroup = (entry: MenuEntry): entry is MenuGroup => "children" in entry;
 
 const menuStructure: MenuEntry[] = [
-  { icon: LayoutDashboard, label: "Tablero", section: "dashboard" },
+  { icon: LayoutDashboard, label: "Panel General", section: "dashboard" },
   {
-    icon: Users, label: "Usuarios", defaultOpen: true,
+    icon: Users, label: "Clientes WiFi", defaultOpen: true,
     children: [
-      { icon: Users, label: "Lista de Usuarios", section: "users" },
-      { icon: UserPlus, label: "Añadir Usuario", section: "add-user" },
-      { icon: Ticket, label: "Generar Voucher", section: "generate-voucher" },
-      { icon: UserCircle, label: "Perfil del Usuario", section: "user-profile" },
+      { icon: Users, label: "Directorio", section: "users" },
+      { icon: UserPlus, label: "Nuevo Cliente", section: "add-user" },
+      { icon: Ticket, label: "Crear Voucher", section: "generate-voucher" },
+      { icon: UserCircle, label: "Ficha de Cliente", section: "user-profile" },
     ],
   },
   {
-    icon: Layers, label: "Perfiles",
+    icon: Layers, label: "Planes de Acceso",
     children: [
-      { icon: Layers, label: "Lista de Perfiles", section: "profiles" },
-      { icon: Plus, label: "Añadir Perfil", section: "add-profile" },
+      { icon: Layers, label: "Planes Activos", section: "profiles" },
+      { icon: Plus, label: "Nuevo Plan", section: "add-profile" },
     ],
   },
-  { icon: MonitorSmartphone, label: "Usuarios en Línea", section: "online" },
-  { icon: Globe, label: "Hosts", section: "hosts" },
-  { icon: Link2, label: "IP Bindings", section: "ip-bindings" },
-  { icon: Cookie, label: "Cookies", section: "cookies" },
+  { icon: MonitorSmartphone, label: "Conectados", section: "online" },
+  { icon: Globe, label: "Dispositivos Red", section: "hosts" },
+  { icon: Link2, label: "Asignaciones IP", section: "ip-bindings" },
+  { icon: Cookie, label: "Sesiones Activas", section: "cookies" },
   { icon: Ticket, label: "Vouchers", section: "vouchers" },
-  { icon: Printer, label: "Impresión rápida", section: "quick-print" },
+  { icon: Printer, label: "Impresión Rápida", section: "quick-print" },
   {
-    icon: ScrollText, label: "Log",
+    icon: ScrollText, label: "Registros",
     children: [
-      { icon: ScrollText, label: "Hotspot Log", section: "hotspot-log" },
-      { icon: FileText, label: "Usuarios Log", section: "users-log" },
-      { icon: Terminal, label: "Sistema Log", section: "system-log" },
+      { icon: ScrollText, label: "Eventos Hotspot", section: "hotspot-log" },
+      { icon: FileText, label: "Actividad Usuarios", section: "users-log" },
+      { icon: Terminal, label: "Registro Sistema", section: "system-log" },
     ],
   },
   {
-    icon: Settings, label: "Sistema",
+    icon: Settings, label: "Control del Equipo",
     children: [
-      { icon: Timer, label: "Programador", section: "scheduler" },
+      { icon: Timer, label: "Tareas Prog.", section: "scheduler" },
       { icon: Power, label: "Reiniciar", section: "reboot" },
       { icon: PowerOff, label: "Apagar", section: "shutdown" },
     ],
   },
-  { icon: Network, label: "Arrendamientos DHCP", section: "dhcp-leases" },
-  { icon: Activity, label: "Tráfico Monitor", section: "traffic" },
-  { icon: BarChart3, label: "Reporte", section: "report" },
-  { icon: Settings, label: "Ajustes", section: "settings" },
-  { icon: Lock, label: "Config. de Sesión", section: "session-config" },
-  { icon: Shield, label: "Config. de Admin", section: "admin-config" },
-  { icon: Upload, label: "Cargar Logo", section: "upload-logo" },
+  { icon: Network, label: "Concesiones DHCP", section: "dhcp-leases" },
+  { icon: Activity, label: "Monitor de Tráfico", section: "traffic" },
+  { icon: BarChart3, label: "Informes", section: "report" },
+  { icon: Settings, label: "Preferencias", section: "settings" },
+  { icon: Lock, label: "Sesiones", section: "session-config" },
+  { icon: Shield, label: "Administración", section: "admin-config" },
+  { icon: Upload, label: "Subir Logo", section: "upload-logo" },
 ];
 
 export function HotspotSidebar() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const currentSection = searchParams.get("section") || "dashboard";
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["Usuarios"]));
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["Clientes WiFi"]));
 
   const goTo = (section: string) => setSearchParams({ section });
 

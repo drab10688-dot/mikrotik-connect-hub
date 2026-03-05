@@ -19,38 +19,38 @@ import { HmonSystem } from "@/components/hmon/HmonSystem";
 import { HmonSettings } from "@/components/hmon/HmonSettings";
 
 const sectionLabels: Record<string, string> = {
-  dashboard: "Tablero",
-  users: "Lista de Usuarios",
-  "add-user": "Añadir Usuario",
-  "generate-voucher": "Generar Voucher",
-  "user-profile": "Perfil del Usuario",
-  profiles: "Lista de Perfiles",
-  "add-profile": "Añadir Perfil",
-  online: "Usuarios en Línea",
-  hosts: "Hosts",
-  "ip-bindings": "IP Bindings",
-  cookies: "Cookies",
+  dashboard: "Panel General",
+  users: "Directorio de Clientes",
+  "add-user": "Nuevo Cliente",
+  "generate-voucher": "Crear Voucher",
+  "user-profile": "Ficha de Cliente",
+  profiles: "Planes Activos",
+  "add-profile": "Nuevo Plan",
+  online: "Conectados",
+  hosts: "Dispositivos Red",
+  "ip-bindings": "Asignaciones IP",
+  cookies: "Sesiones Activas",
   vouchers: "Vouchers",
   "quick-print": "Impresión Rápida",
-  "hotspot-log": "Hotspot Log",
-  "users-log": "Usuarios Log",
-  "system-log": "Sistema Log",
-  scheduler: "Programador",
+  "hotspot-log": "Eventos Hotspot",
+  "users-log": "Actividad Usuarios",
+  "system-log": "Registro Sistema",
+  scheduler: "Tareas Programadas",
   reboot: "Reiniciar",
   shutdown: "Apagar",
-  "dhcp-leases": "Arrendamientos DHCP",
-  traffic: "Tráfico Monitor",
-  report: "Reporte",
-  settings: "Ajustes",
-  "session-config": "Config. de Sesión",
-  "admin-config": "Config. de Admin",
-  "upload-logo": "Cargar Logo",
+  "dhcp-leases": "Concesiones DHCP",
+  traffic: "Monitor de Tráfico",
+  report: "Informes",
+  settings: "Preferencias",
+  "session-config": "Sesiones",
+  "admin-config": "Administración",
+  "upload-logo": "Subir Logo",
 };
 
 export default function HotspotMonitor() {
   const [searchParams] = useSearchParams();
   const section = searchParams.get("section") || "dashboard";
-  const label = sectionLabels[section] || "Tablero";
+  const label = sectionLabels[section] || "Panel General";
 
   const renderContent = () => {
     switch (section) {
