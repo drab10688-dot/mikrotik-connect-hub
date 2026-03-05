@@ -3,9 +3,9 @@ import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { UbiquitiManager } from "@/components/ubiquiti/UbiquitiManager";
-import { MikrotikAntennaManager } from "@/components/mikrotik/MikrotikAntennaManager";
+import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Settings2 } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
@@ -33,11 +33,11 @@ export default function VpsServices() {
             </TabsTrigger>
             <TabsTrigger value="antennas" className="gap-2">
               <Radio className="h-4 w-4" />
-              Antenas MikroTik
+              Antenas
             </TabsTrigger>
-            <TabsTrigger value="ubiquiti" className="gap-2">
-              <Radio className="h-4 w-4" />
-              Ubiquiti
+            <TabsTrigger value="ubiquiti-config" className="gap-2">
+              <Settings2 className="h-4 w-4" />
+              Config Ubiquiti
             </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
@@ -54,10 +54,10 @@ export default function VpsServices() {
           </TabsContent>
 
           <TabsContent value="antennas">
-            <MikrotikAntennaManager />
+            <AntennasDashboard />
           </TabsContent>
 
-          <TabsContent value="ubiquiti">
+          <TabsContent value="ubiquiti-config">
             <UbiquitiManager />
           </TabsContent>
 
