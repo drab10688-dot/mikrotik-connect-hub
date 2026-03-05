@@ -107,6 +107,12 @@ cron.schedule('0 6 * * *', () => {
   runBillingCron(pool);
 });
 
+// Cron: recolección de señal óptica cada 15 minutos
+cron.schedule('*/15 * * * *', () => {
+  console.log('[CRON] Running optical signal collection...');
+  runSignalCollectCron(pool);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
 });
