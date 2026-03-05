@@ -371,19 +371,29 @@ vpnRouter.delete('/peers/:id', async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const userRole = (req as any).user.role;
 
-    let query = `DELETE FROM vpn_peers WHERE id = $1`;
-    const params: any[] = [id];
-    if (userRole !== 'super_admin') {
-      query += ` AND created_by = $2`;
-      params.push(userId);
-    }
-    query += ` RETURNING id`;
+    // First fetch the peer to check mikrotik association
+    const peerResult = await pool.query(`SELECT * FROM vpn_peers WHERE id = $1`, [id]);
+    if (peerResult.rows.length === 0) return res.status(404).json({ error: 'Peer not found' });
+    const peer = peerResult.rows[0];
 
-    const result = await pool.query(query, params);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Peer not found' });
+    if (userRole !== 'super_admin' && peer.created_by !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await pool.query(`DELETE FROM vpn_peers WHERE id = $1`, [id]);
+
+    // Warn if MikroTik host was using this VPN IP
+    let hostWarning: string | null = null;
+    if (peer.mikrotik_id) {
+      const vpnIp = peer.peer_address.split('/')[0];
+      const device = await pool.query(`SELECT host, name FROM mikrotik_devices WHERE id = $1`, [peer.mikrotik_id]);
+      if (device.rows[0]?.host === vpnIp) {
+        hostWarning = `El dispositivo "${device.rows[0].name}" aún usa la IP VPN ${vpnIp} como host. Actualízalo manualmente.`;
+      }
+    }
 
     await syncWireguardConfig();
-    res.json({ success: true });
+    res.json({ success: true, warning: hostWarning });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
