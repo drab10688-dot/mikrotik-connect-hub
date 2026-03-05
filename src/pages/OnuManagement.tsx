@@ -74,6 +74,13 @@ export default function OnuManagement() {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [clients, setClients] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
+  const [tr069Devices, setTr069Devices] = useState<any[]>([]);
+  const [tr069Loading, setTr069Loading] = useState(false);
+  const [tr069Health, setTr069Health] = useState<string>("unknown");
+  const [tr069WifiForm, setTr069WifiForm] = useState({ ssid: "", password: "" });
+  const [selectedTr069Device, setSelectedTr069Device] = useState<any>(null);
+  const [showTr069WifiDialog, setShowTr069WifiDialog] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
