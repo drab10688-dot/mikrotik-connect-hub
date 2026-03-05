@@ -63,7 +63,12 @@ RUN chown -R www-data:www-data /var/www/nuxbill \
   && chmod -R 755 /var/www/nuxbill \
   && chmod -R 775 /var/www/nuxbill/system/uploads \
                    /var/www/nuxbill/system/cache \
-                   /var/www/nuxbill/ui/cache
+                   /var/www/nuxbill/ui/cache \
+                   /var/www/nuxbill/ui/themes \
+                   /var/www/nuxbill/pages
+
+# ── Copy OmniSync portal templates ──
+COPY templates/ /opt/omnisync-templates/
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

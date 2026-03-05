@@ -625,11 +625,33 @@ CSSEOF
   log "Tema OmniSync (flavor) instalado ✓"
 }
 
-# ── 9) Fix permissions ───────────────────────────
+# ── 9) Install OmniSync portal templates ─────────
+install_portal_templates() {
+  local tpl_src="/opt/omnisync-templates"
+  local tpl_dst="$NUXROOT/ui/ui/customer"
+
+  if [ -d "$tpl_src" ]; then
+    # Backup originals only once
+    for f in header-public.tpl login.tpl; do
+      if [ -f "$tpl_dst/$f" ] && [ ! -f "$tpl_dst/${f}.orig" ]; then
+        cp "$tpl_dst/$f" "$tpl_dst/${f}.orig"
+      fi
+      if [ -f "$tpl_src/$f" ]; then
+        cp "$tpl_src/$f" "$tpl_dst/$f"
+      fi
+    done
+    chown -R www-data:www-data "$tpl_dst"
+    log "Plantillas portal OmniSync instaladas ✓"
+  else
+    log "⚠ No se encontraron plantillas OmniSync en $tpl_src"
+  fi
+}
+
+# ── 10) Fix permissions ──────────────────────────
 fix_permissions() {
   chown -R www-data:www-data "$NUXROOT"
   chmod -R 755 "$NUXROOT"
-  chmod -R 775 "$NUXROOT/system/uploads" "$NUXROOT/system/cache" "$NUXROOT/ui/cache" "$NUXROOT/ui/themes" 2>/dev/null || true
+  chmod -R 775 "$NUXROOT/system/uploads" "$NUXROOT/system/cache" "$NUXROOT/ui/cache" "$NUXROOT/ui/themes" "$NUXROOT/pages" 2>/dev/null || true
   log "Permisos corregidos ✓"
 }
 
@@ -641,6 +663,7 @@ log "=== Iniciando PHPNuxBill ==="
 generate_config
 fix_htaccess
 install_omnisync_theme
+install_portal_templates
 
 if wait_mariadb; then
   import_schema
