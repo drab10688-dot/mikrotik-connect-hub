@@ -136,6 +136,53 @@ export default function TR069Dashboard() {
 
   useEffect(() => { loadDevices(); }, [loadDevices]);
 
+  const loadSignalOverview = useCallback(async () => {
+    setSignalLoading(true);
+    try {
+      const res = await api("/genieacs/signal-overview");
+      setSignalOverview(res.data || []);
+    } catch {
+      // silently fail
+    } finally {
+      setSignalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (health === "online") loadSignalOverview();
+  }, [health, loadSignalOverview]);
+
+  const refreshDeviceSignal = async (deviceId: string) => {
+    setActionLoading(`signal-${deviceId}`);
+    try {
+      await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-signal`, { method: "POST" });
+      toast.success("Lectura de señal óptica solicitada. Espere ~10s y refresque.");
+      setTimeout(() => loadSignalOverview(), 10000);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const refreshAllSignals = async () => {
+    setSignalLoading(true);
+    try {
+      // Request refresh for all devices in parallel
+      await Promise.allSettled(
+        devices.map((d: any) =>
+          api(`/genieacs/devices/${encodeURIComponent(d._id)}/refresh-signal`, { method: "POST" }).catch(() => {})
+        )
+      );
+      toast.success(`Lectura de señal solicitada a ${devices.length} ONUs. Esperando datos...`);
+      setTimeout(() => loadSignalOverview(), 12000);
+    } catch {
+      toast.error("Error al solicitar lectura masiva");
+    } finally {
+      setSignalLoading(false);
+    }
+  };
+
   const loadMonitor = async (deviceId: string) => {
     setMonitorLoading(true);
     try {
