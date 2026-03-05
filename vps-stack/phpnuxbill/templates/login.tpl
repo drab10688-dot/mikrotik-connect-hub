@@ -123,6 +123,21 @@
         </div>
     </div>
 
+    {* ── Ad Banner (top) ── *}
+    <div id="os-ad-banner" style="display:none; margin-bottom:15px;"></div>
+
+    {* ── Ad Footer ── *}
+    <div id="os-ad-footer" style="display:none; margin-top:10px;"></div>
+
+    {* ── Ad Popup ── *}
+    <div id="os-ad-popup-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center;">
+        <div id="os-ad-popup" style="background:var(--os-bg-card); border:1px solid var(--os-border); border-radius:16px; max-width:380px; width:90%; padding:20px; position:relative; backdrop-filter:blur(16px);">
+            <button onclick="document.getElementById('os-ad-popup-overlay').style.display='none'" 
+                style="position:absolute; top:8px; right:12px; background:none; border:none; color:var(--os-text-muted); font-size:20px; cursor:pointer;">&times;</button>
+            <div id="os-ad-popup-content"></div>
+        </div>
+    </div>
+
     {* ── Powered By ── *}
     <div style="text-align:center; padding:15px 0 30px; color:rgba(148,163,184,0.4); font-size:11px;">
         Powered by <span style="color:rgba(6,182,212,0.5);">OmniSync</span>
