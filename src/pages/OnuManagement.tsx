@@ -573,7 +573,19 @@ export default function OnuManagement() {
                                 </div>
                               ) : <span className="text-muted-foreground text-xs">-</span>}
                             </TableCell>
-                            <TableCell className="font-mono text-xs">{onu.management_ip || "-"}</TableCell>
+                            <TableCell>
+                              {onu.acs_device_id ? (
+                                <div className="flex items-center gap-1" title={`ACS: ${onu.acs_manufacturer || ''} ${onu.acs_model || ''}\nFirmware: ${onu.acs_firmware || '-'}\nVinculado: ${onu.acs_linked_at ? new Date(onu.acs_linked_at).toLocaleDateString() : '-'}`}>
+                                  <LinkIcon className="w-3 h-3 text-green-500" />
+                                  <span className="text-xs text-green-600 dark:text-green-400">Vinculada</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <Unlink className="w-3 h-3 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">No</span>
+                                </div>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge className={statusColors[onu.status] || ""}>{onu.status}</Badge>
                             </TableCell>
