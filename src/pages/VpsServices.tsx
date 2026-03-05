@@ -3,8 +3,9 @@ import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
+import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
@@ -38,6 +39,10 @@ export default function VpsServices() {
               <Megaphone className="h-4 w-4" />
               Publicidad
             </TabsTrigger>
+            <TabsTrigger value="map" className="gap-2">
+              <Map className="h-4 w-4" />
+              Mapa
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="services">
@@ -54,6 +59,10 @@ export default function VpsServices() {
 
           <TabsContent value="ads">
             <PortalAdsManager />
+          </TabsContent>
+
+          <TabsContent value="map">
+            <MikrotikMapView />
           </TabsContent>
         </Tabs>
       </div>
