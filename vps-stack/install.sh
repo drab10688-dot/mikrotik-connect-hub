@@ -678,6 +678,7 @@ check_service "PHPNuxBill"  "omnisync-phpnuxbill"
 check_service "MongoDB"     "omnisync-mongodb"
 check_service "GenieACS CWMP" "omnisync-genieacs-cwmp"
 check_service "GenieACS NBI"  "omnisync-genieacs-nbi"
+check_service "GenieACS FS"    "omnisync-genieacs-fs"
 check_service "GenieACS UI"   "omnisync-genieacs-ui"
 
 echo ""
