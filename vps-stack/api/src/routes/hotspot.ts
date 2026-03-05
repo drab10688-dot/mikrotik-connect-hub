@@ -347,12 +347,32 @@ hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
         }
       }
 
+      // Authorize client on MikroTik using IP/MAC from portal redirect
+      if (ip && mac) {
+        try {
+          await mikrotikRequest(config, '/rest/ip/hotspot/active/login', 'POST', {
+            user: vUser, password: vPass, ip, 'mac-address': mac,
+          });
+          console.log(`NuxBill voucher: authorized ${vUser} ip=${ip} mac=${mac}`);
+        } catch (authErr: any) {
+          console.log(`active/login failed for voucher (${authErr.message}), trying ip-binding`);
+          try {
+            await mikrotikRequest(config, '/rest/ip/hotspot/ip-binding/add', 'POST', {
+              address: ip, 'mac-address': mac, type: 'bypassed',
+              comment: `OmniSync voucher: ${vUser}`,
+            });
+          } catch (bErr: any) {
+            if (!bErr.message?.includes('already')) console.error('IP binding failed:', bErr.message);
+          }
+        }
+      }
+
       return res.json({
         success: true,
         data: {
           username: vUser, password: vPass, profile: profileName,
           plan: plan.name_plan, validity: `${plan.validity} ${plan.validity_unit}`,
-          hotspotUrl, type: 'voucher',
+          hotspotUrl, type: 'voucher', authorized: !!(ip && mac),
         }
       });
     }
