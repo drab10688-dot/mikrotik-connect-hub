@@ -22,6 +22,7 @@ import { serviceOptionsRouter } from './routes/service-options';
 import { messagingRouter } from './routes/messaging';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
+import { genieacsRouter } from './routes/genieacs';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 
@@ -79,6 +80,7 @@ app.use('/api/backups', authMiddleware, backupRouter);
 app.use('/api/auth/users', authMiddleware, usersRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/onu', authMiddleware, onuRouter);
+app.use('/api/genieacs', authMiddleware, genieacsRouter);
 
 // Aliases for frontend compatibility
 app.use('/api/mikrotik', authMiddleware, (req, res, next) => {

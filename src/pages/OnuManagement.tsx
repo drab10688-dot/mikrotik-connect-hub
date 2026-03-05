@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy } from "lucide-react";
+import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2 } from "lucide-react";
 
 interface OnuDevice {
   id: string;
@@ -74,6 +74,13 @@ export default function OnuManagement() {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [clients, setClients] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
+  const [tr069Devices, setTr069Devices] = useState<any[]>([]);
+  const [tr069Loading, setTr069Loading] = useState(false);
+  const [tr069Health, setTr069Health] = useState<string>("unknown");
+  const [tr069WifiForm, setTr069WifiForm] = useState({ ssid: "", password: "" });
+  const [selectedTr069Device, setSelectedTr069Device] = useState<any>(null);
+  const [showTr069WifiDialog, setShowTr069WifiDialog] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -197,6 +204,67 @@ export default function OnuManagement() {
     setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // ─── TR-069 Functions ───────────────────────────────
+  const loadTr069Devices = async () => {
+    setTr069Loading(true);
+    try {
+      const [healthRes, devicesRes] = await Promise.all([
+        api("/genieacs/health").catch(() => ({ success: false, status: "offline" })),
+        api("/genieacs/devices").catch(() => ({ data: [] })),
+      ]);
+      setTr069Health(healthRes.success ? "online" : "offline");
+      setTr069Devices(devicesRes.data || []);
+    } catch {
+      setTr069Health("offline");
+    } finally {
+      setTr069Loading(false);
+    }
+  };
+
+  const handleTr069Wifi = async () => {
+    if (!selectedTr069Device) return;
+    setActionLoading("wifi");
+    try {
+      const deviceId = selectedTr069Device._id || selectedTr069Device.DeviceID?.ID?._value;
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/wifi`, {
+        method: "POST",
+        body: tr069WifiForm,
+      });
+      toast.success(res.message || "Tarea WiFi enviada");
+      setShowTr069WifiDialog(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleTr069Action = async (deviceId: string, action: string) => {
+    setActionLoading(`${action}-${deviceId}`);
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/${action}`, {
+        method: "POST",
+        body: action === "refresh" ? { parameterPath: "InternetGatewayDevice" } : {},
+      });
+      toast.success(res.message || `Acción ${action} enviada`);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const getTr069DeviceInfo = (device: any) => {
+    const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
+    return {
+      manufacturer: di?.Manufacturer?._value || "Desconocido",
+      model: di?.ModelName?._value || di?.ProductClass?._value || "-",
+      serial: di?.SerialNumber?._value || "-",
+      softwareVersion: di?.SoftwareVersion?._value || "-",
+      uptime: di?.UpTime?._value ? `${Math.floor(di.UpTime._value / 3600)}h` : "-",
+    };
+  };
+
   if (!mikrotikId) {
     return (
       <div className="flex h-screen bg-background">
@@ -228,6 +296,10 @@ export default function OnuManagement() {
             <TabsTrigger value="templates">
               <FileText className="w-4 h-4 mr-2" />
               Plantillas ({templates.length})
+            </TabsTrigger>
+            <TabsTrigger value="tr069" onClick={() => { if (tr069Devices.length === 0) loadTr069Devices(); }}>
+              <Signal className="w-4 h-4 mr-2" />
+              TR-069
             </TabsTrigger>
           </TabsList>
 
@@ -528,6 +600,123 @@ export default function OnuManagement() {
               </div>
             )}
           </TabsContent>
+
+          {/* ─── TR-069 Tab ───────────────────────────── */}
+          <TabsContent value="tr069" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge variant={tr069Health === "online" ? "default" : "destructive"}>
+                  {tr069Health === "online" ? "ACS Online" : "ACS Offline"}
+                </Badge>
+                <span className="text-sm text-muted-foreground">{tr069Devices.length} dispositivos registrados</span>
+              </div>
+              <Button onClick={loadTr069Devices} disabled={tr069Loading} variant="outline">
+                <RotateCcw className={`w-4 h-4 mr-2 ${tr069Loading ? "animate-spin" : ""}`} />
+                Actualizar
+              </Button>
+            </div>
+
+            {tr069Health === "offline" ? (
+              <Card>
+                <CardContent className="p-8 text-center space-y-3">
+                  <Signal className="w-12 h-12 mx-auto text-muted-foreground" />
+                  <p className="font-medium">GenieACS no está disponible</p>
+                  <p className="text-sm text-muted-foreground">
+                    Configure las ONUs para conectarse al ACS en el puerto 7547.
+                    <br />URL del ACS: <code className="bg-muted px-1 rounded">http://[IP_DEL_VPS]:7547</code>
+                  </p>
+                </CardContent>
+              </Card>
+            ) : tr069Loading ? (
+              <Card><CardContent className="p-8 text-center text-muted-foreground">
+                <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" /> Cargando dispositivos...
+              </CardContent></Card>
+            ) : tr069Devices.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center space-y-3">
+                  <Router className="w-12 h-12 mx-auto text-muted-foreground" />
+                  <p className="font-medium">No hay ONUs conectadas al ACS</p>
+                  <p className="text-sm text-muted-foreground">
+                    Configure la URL del ACS en sus ONUs: <code className="bg-muted px-1 rounded">http://[IP_DEL_VPS]:7547</code>
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fabricante</TableHead>
+                          <TableHead>Modelo</TableHead>
+                          <TableHead>Serial</TableHead>
+                          <TableHead>Firmware</TableHead>
+                          <TableHead>Uptime</TableHead>
+                          <TableHead className="text-right">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {tr069Devices.map((device: any) => {
+                          const info = getTr069DeviceInfo(device);
+                          const deviceId = device._id;
+                          return (
+                            <TableRow key={deviceId}>
+                              <TableCell className="font-medium">{info.manufacturer}</TableCell>
+                              <TableCell>{info.model}</TableCell>
+                              <TableCell className="font-mono text-xs">{info.serial}</TableCell>
+                              <TableCell className="text-xs">{info.softwareVersion}</TableCell>
+                              <TableCell>{info.uptime}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    variant="ghost" size="icon" className="h-8 w-8"
+                                    title="Cambiar WiFi"
+                                    disabled={actionLoading !== null}
+                                    onClick={() => {
+                                      setSelectedTr069Device(device);
+                                      setTr069WifiForm({ ssid: "", password: "" });
+                                      setShowTr069WifiDialog(true);
+                                    }}
+                                  >
+                                    <Wifi className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost" size="icon" className="h-8 w-8"
+                                    title="Refrescar parámetros"
+                                    disabled={actionLoading === `refresh-${deviceId}`}
+                                    onClick={() => handleTr069Action(deviceId, "refresh")}
+                                  >
+                                    {actionLoading === `refresh-${deviceId}` 
+                                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                                      : <RotateCcw className="w-4 h-4" />}
+                                  </Button>
+                                  <Button
+                                    variant="ghost" size="icon" className="h-8 w-8"
+                                    title="Reiniciar ONU"
+                                    disabled={actionLoading === `reboot-${deviceId}`}
+                                    onClick={() => {
+                                      if (confirm("¿Reiniciar esta ONU remotamente?")) {
+                                        handleTr069Action(deviceId, "reboot");
+                                      }
+                                    }}
+                                  >
+                                    {actionLoading === `reboot-${deviceId}`
+                                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                                      : <Power className="w-4 h-4" />}
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
         </Tabs>
 
         {/* ─── WiFi Change Dialog ─────────────────────── */}
@@ -561,6 +750,42 @@ export default function OnuManagement() {
                   <Button variant="outline" onClick={() => setShowWifiDialog(false)}>Cancelar</Button>
                   <Button onClick={handleChangeWifi} disabled={!wifiForm.wifi_ssid && !wifiForm.wifi_password}>
                     <Wifi className="w-4 h-4 mr-2" /> Aplicar Cambio
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── TR-069 WiFi Change Dialog ──────────────── */}
+        <Dialog open={showTr069WifiDialog} onOpenChange={setShowTr069WifiDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                <Signal className="w-5 h-5 inline mr-2" />
+                Cambiar WiFi via TR-069
+              </DialogTitle>
+            </DialogHeader>
+            {selectedTr069Device && (
+              <div className="space-y-4">
+                <div className="bg-muted/50 p-3 rounded text-sm">
+                  <p><span className="font-medium">Fabricante:</span> {getTr069DeviceInfo(selectedTr069Device).manufacturer}</p>
+                  <p><span className="font-medium">Modelo:</span> {getTr069DeviceInfo(selectedTr069Device).model}</p>
+                  <p><span className="font-medium">Serial:</span> {getTr069DeviceInfo(selectedTr069Device).serial}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nuevo SSID (Nombre WiFi)</Label>
+                  <Input value={tr069WifiForm.ssid} onChange={e => setTr069WifiForm(p => ({ ...p, ssid: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nueva Contraseña WiFi</Label>
+                  <Input value={tr069WifiForm.password} onChange={e => setTr069WifiForm(p => ({ ...p, password: e.target.value }))} />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowTr069WifiDialog(false)}>Cancelar</Button>
+                  <Button onClick={handleTr069Wifi} disabled={(!tr069WifiForm.ssid && !tr069WifiForm.password) || actionLoading === "wifi"}>
+                    {actionLoading === "wifi" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />}
+                    Aplicar via TR-069
                   </Button>
                 </div>
               </div>
