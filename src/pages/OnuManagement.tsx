@@ -57,7 +57,7 @@ const brandOptions = [
 const statusColors: Record<string, string> = {
   registered: "bg-muted text-muted-foreground",
   provisioned: "bg-primary/20 text-primary",
-  active: "bg-green-500/20 text-green-700",
+  active: "bg-accent/20 text-accent-foreground",
   inactive: "bg-destructive/20 text-destructive",
 };
 
