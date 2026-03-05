@@ -523,6 +523,11 @@ CREATE INDEX idx_telegram_messages_mikrotik ON telegram_messages(mikrotik_id);
 CREATE INDEX idx_whatsapp_messages_mikrotik ON whatsapp_messages(mikrotik_id);
 CREATE INDEX idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
+CREATE INDEX idx_onu_devices_mikrotik ON onu_devices(mikrotik_id);
+CREATE INDEX idx_onu_devices_client ON onu_devices(client_id);
+CREATE INDEX idx_onu_devices_serial ON onu_devices(serial_number);
+CREATE INDEX idx_onu_templates_mikrotik ON onu_config_templates(mikrotik_id);
+CREATE INDEX idx_onu_templates_brand ON onu_config_templates(brand);
 
 -- ============================================
 -- Helper Functions
