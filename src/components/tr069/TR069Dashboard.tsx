@@ -48,6 +48,17 @@ interface TrafficInterface {
   packetsSent: number;
 }
 
+interface SignalEntry {
+  deviceId: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
+  rxPower: number | null;
+  txPower: number | null;
+  quality: 'excellent' | 'good' | 'fair' | 'critical' | 'unknown';
+  lastInform: string | null;
+}
+
 function formatUptime(seconds: number | null): string {
   if (!seconds) return "-";
   const d = Math.floor(seconds / 86400);
