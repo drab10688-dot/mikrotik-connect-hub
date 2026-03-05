@@ -579,41 +579,6 @@ export default function OnuManagement() {
           </DialogContent>
         </Dialog>
 
-        {/* ─── TR-069 WiFi Change Dialog ──────────────── */}
-        <Dialog open={showTr069WifiDialog} onOpenChange={setShowTr069WifiDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                <Signal className="w-5 h-5 inline mr-2" />
-                Cambiar WiFi via TR-069
-              </DialogTitle>
-            </DialogHeader>
-            {selectedTr069Device && (
-              <div className="space-y-4">
-                <div className="bg-muted/50 p-3 rounded text-sm">
-                  <p><span className="font-medium">Fabricante:</span> {getTr069DeviceInfo(selectedTr069Device).manufacturer}</p>
-                  <p><span className="font-medium">Modelo:</span> {getTr069DeviceInfo(selectedTr069Device).model}</p>
-                  <p><span className="font-medium">Serial:</span> {getTr069DeviceInfo(selectedTr069Device).serial}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Nuevo SSID (Nombre WiFi)</Label>
-                  <Input value={tr069WifiForm.ssid} onChange={e => setTr069WifiForm(p => ({ ...p, ssid: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nueva Contraseña WiFi</Label>
-                  <Input value={tr069WifiForm.password} onChange={e => setTr069WifiForm(p => ({ ...p, password: e.target.value }))} />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowTr069WifiDialog(false)}>Cancelar</Button>
-                  <Button onClick={handleTr069Wifi} disabled={(!tr069WifiForm.ssid && !tr069WifiForm.password) || actionLoading === "wifi"}>
-                    {actionLoading === "wifi" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />}
-                    Aplicar via TR-069
-                  </Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
       </div>
     </div>
   );
