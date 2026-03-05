@@ -361,6 +361,34 @@ export default function OnuManagement() {
                       <Label>Crear secreto PPPoE automáticamente en MikroTik</Label>
                     </div>
 
+                    <div className="col-span-2 flex items-center gap-3">
+                      <Switch
+                        checked={form.auto_provision_tr069}
+                        onCheckedChange={v => setForm(p => ({ ...p, auto_provision_tr069: v }))}
+                      />
+                      <div>
+                        <Label>Auto-aprovisionar via TR-069 (GenieACS)</Label>
+                        <p className="text-xs text-muted-foreground">Envía WiFi, PPPoE y VLAN a la ONU automáticamente vía CWMP</p>
+                      </div>
+                    </div>
+
+                    {form.auto_provision_tr069 && (
+                      <div className="col-span-2 grid grid-cols-3 gap-4 bg-muted/50 p-4 rounded-lg">
+                        <div className="space-y-2">
+                          <Label className="text-xs">VLAN ID</Label>
+                          <Input value={form.vlan_id} onChange={e => setForm(p => ({ ...p, vlan_id: e.target.value }))} placeholder="100" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">DNS Primario</Label>
+                          <Input value={form.dns1} onChange={e => setForm(p => ({ ...p, dns1: e.target.value }))} placeholder="8.8.8.8" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">DNS Secundario</Label>
+                          <Input value={form.dns2} onChange={e => setForm(p => ({ ...p, dns2: e.target.value }))} placeholder="8.8.4.4" />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="col-span-2 space-y-2">
                       <Label>Notas</Label>
                       <Textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Notas adicionales..." />
