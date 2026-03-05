@@ -9,10 +9,10 @@ export async function runBillingCron(pool: Pool) {
 
   try {
     // 1. Generate invoices for clients with billing_type = 'due'
-    await generateDueInvoices(pool, dayOfMonth);
+    await generateDueInvoices(pool, today, dayOfMonth);
 
     // 2. Check overdue invoices and suspend clients
-    await checkOverdueInvoices(pool);
+    await checkOverdueInvoices(pool, today);
 
     console.log('[BILLING CRON] Completed successfully');
   } catch (error) {
@@ -20,8 +20,7 @@ export async function runBillingCron(pool: Pool) {
   }
 }
 
-async function generateDueInvoices(pool: Pool, dayOfMonth: number) {
-  // Find clients whose billing day matches today
+async function generateDueInvoices(pool: Pool, today: Date, dayOfMonth: number) {
   const { rows: clients } = await pool.query(
     `SELECT c.id, c.client_name, c.username, c.mikrotik_id,
             bs.monthly_amount, bs.billing_day
@@ -29,14 +28,13 @@ async function generateDueInvoices(pool: Pool, dayOfMonth: number) {
      JOIN client_billing_settings bs ON bs.client_id = c.id
      JOIN billing_config bc ON bc.mikrotik_id = c.mikrotik_id
      WHERE bs.billing_day = $1
-       AND bc.billing_type = 'due'::billing_type
+       AND bc.billing_type = 'due'
        AND c.is_potential_client = false
        AND bs.is_suspended = false`,
     [dayOfMonth]
   );
 
   for (const client of clients) {
-    // Check if invoice already exists for this period
     const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
@@ -49,7 +47,6 @@ async function generateDueInvoices(pool: Pool, dayOfMonth: number) {
     if (existing.length === 0) {
       const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-      // Get billing config for maturity days
       const { rows: config } = await pool.query(
         'SELECT invoice_maturity_days FROM billing_config WHERE mikrotik_id = $1',
         [client.mikrotik_id]
@@ -71,9 +68,7 @@ async function generateDueInvoices(pool: Pool, dayOfMonth: number) {
   }
 }
 
-const today = new Date();
-
-async function checkOverdueInvoices(pool: Pool) {
+async function checkOverdueInvoices(pool: Pool, today: Date) {
   // Find overdue invoices
   const { rows: overdue } = await pool.query(
     `SELECT i.id, i.client_id, i.mikrotik_id, c.assigned_ip, c.username,
@@ -81,14 +76,14 @@ async function checkOverdueInvoices(pool: Pool) {
      FROM client_invoices i
      JOIN isp_clients c ON c.id = i.client_id
      JOIN billing_config bc ON bc.mikrotik_id = i.mikrotik_id
-     WHERE i.status = 'pending'::invoice_status
+     WHERE i.status = 'pending'
        AND i.due_date + (bc.grace_period_days || ' days')::interval < $1`,
     [today]
   );
 
   for (const invoice of overdue) {
     // Mark invoice as overdue
-    await pool.query("UPDATE client_invoices SET status = 'overdue'::invoice_status WHERE id = $1", [invoice.id]);
+    await pool.query("UPDATE client_invoices SET status = 'overdue' WHERE id = $1", [invoice.id]);
 
     // Suspend client
     await pool.query(
