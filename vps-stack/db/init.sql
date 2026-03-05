@@ -556,7 +556,8 @@ BEGIN
     'users', 'mikrotik_devices', 'billing_config', 'client_billing_settings',
     'client_invoices', 'payment_transactions', 'isp_contracts', 'vouchers',
     'service_options', 'payment_platforms', 'telegram_config', 'whatsapp_config',
-    'cloudflare_config', 'company_info', 'profiles', 'portal_ads'
+    'cloudflare_config', 'company_info', 'profiles', 'portal_ads',
+    'onu_devices', 'onu_config_templates'
   ] LOOP
     EXECUTE format('CREATE TRIGGER update_%s_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', t, t);
   END LOOP;
