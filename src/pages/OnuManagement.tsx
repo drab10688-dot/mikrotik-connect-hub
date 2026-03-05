@@ -554,7 +554,7 @@ export default function OnuManagement() {
                   <Input value={wifiForm.wifi_password} onChange={e => setWifiForm(p => ({ ...p, wifi_password: e.target.value }))} />
                 </div>
                 {!selectedOnu.management_ip && (
-                  <p className="text-xs text-amber-600">⚠️ Sin IP de gestión. La configuración se guardará para aplicar manualmente.</p>
+                  <p className="text-xs text-destructive">⚠️ Sin IP de gestión. La configuración se guardará para aplicar manualmente.</p>
                 )}
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setShowWifiDialog(false)}>Cancelar</Button>
