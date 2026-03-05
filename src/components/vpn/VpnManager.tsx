@@ -280,20 +280,6 @@ export function VpnManager() {
                     />
                   </div>
                   <div>
-                    <Label>MikroTik asociado (opcional)</Label>
-                    <Select value={newPeer.mikrotik_id} onValueChange={(v) => setNewPeer({ ...newPeer, mikrotik_id: v })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sin asociar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sin asociar</SelectItem>
-                        {devices.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
                     <Label>Redes remotas (opcional)</Label>
                     <Input
                       placeholder="Ej: 192.168.1.0/24, 10.0.0.0/24"
