@@ -136,8 +136,11 @@ export function VpnManager() {
   const handleDeletePeer = async (peer: VpnPeer) => {
     if (!confirm(`¿Eliminar peer "${peer.name}"?`)) return;
     try {
-      await apiDelete(`/vpn/peers/${peer.id}`);
+      const result = await apiDelete<{ success: boolean; warning?: string }>(`/vpn/peers/${peer.id}`);
       toast.success("Peer eliminado");
+      if (result?.warning) {
+        toast.warning(result.warning, { duration: 8000 });
+      }
       fetchData();
     } catch (err: any) {
       toast.error(err.message);
