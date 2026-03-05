@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
   ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
   UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
-  ChevronDown, Server
+  Server
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -19,14 +19,7 @@ import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-const hotspotSubItems = [
-  { icon: LayoutDashboard, label: "Dashboard", section: "dashboard" },
-  { icon: Wifi, label: "Usuarios", section: "usuarios" },
-  { icon: Gauge, label: "Perfiles", section: "perfiles" },
-  { icon: ScrollText, label: "Log", section: "log" },
-];
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -39,6 +32,7 @@ const menuItems = [
   { icon: Receipt, label: "Facturación", path: "/payments" },
   { icon: BarChart3, label: "Reportes", path: "/reports" },
   { icon: Database, label: "Backup/Restore", path: "/backup" },
+  { icon: Monitor, label: "Hotspot Monitor", path: "/hotspot-monitor" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
@@ -56,16 +50,8 @@ export const Sidebar = () => {
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("Omnisync");
 
-  const isHotspotActive = location.pathname === "/hotspot-monitor";
-  const currentSection = new URLSearchParams(location.search).get("section") || "dashboard";
-  const [hotspotOpen, setHotspotOpen] = useState(isHotspotActive);
-
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
-
-  useEffect(() => {
-    if (isHotspotActive) setHotspotOpen(true);
-  }, [isHotspotActive]);
 
   useEffect(() => {
     const savedLogo = localStorage.getItem("sidebar_logo");
@@ -204,38 +190,8 @@ export const Sidebar = () => {
               </NavLink>
             ))}
 
-            {/* Hotspot Monitor collapsible */}
-            {(!isSecretary || currentPerms?.can_manage_hotspot !== false) && (
-              <Collapsible open={hotspotOpen} onOpenChange={setHotspotOpen}>
-                <CollapsibleTrigger className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
-                  isHotspotActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                )}>
-                  <Monitor className="w-5 h-5" />
-                  <span className="flex-1 text-left">Hotspot</span>
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", hotspotOpen && "rotate-180")} />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pl-4 space-y-0.5 mt-0.5">
-                  {hotspotSubItems.map((sub) => (
-                    <NavLink
-                      key={sub.section}
-                      to={`/hotspot-monitor?section=${sub.section}`}
-                      className={cn(
-                        "flex items-center gap-2.5 px-4 py-2 rounded-lg transition-colors text-sm",
-                        isHotspotActive && currentSection === sub.section
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
-                      )}
-                    >
-                      <sub.icon className="w-4 h-4" />
-                      <span>{sub.label}</span>
-                    </NavLink>
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
+
+
 
             {!isSecretary && (
               <div className="pt-4 mt-4 border-t border-sidebar-border">
