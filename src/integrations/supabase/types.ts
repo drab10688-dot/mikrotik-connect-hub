@@ -477,6 +477,137 @@ export type Database = {
         }
         Relationships: []
       }
+      onu_config_templates: {
+        Row: {
+          brand: string
+          created_at: string
+          created_by: string
+          description: string | null
+          file_format: string
+          id: string
+          is_default: boolean | null
+          mikrotik_id: string | null
+          name: string
+          template_content: string
+          updated_at: string
+        }
+        Insert: {
+          brand?: string
+          created_at?: string
+          created_by: string
+          description?: string | null
+          file_format?: string
+          id?: string
+          is_default?: boolean | null
+          mikrotik_id?: string | null
+          name: string
+          template_content: string
+          updated_at?: string
+        }
+        Update: {
+          brand?: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          file_format?: string
+          id?: string
+          is_default?: boolean | null
+          mikrotik_id?: string | null
+          name?: string
+          template_content?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onu_config_templates_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onu_devices: {
+        Row: {
+          brand: string
+          client_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          mac_address: string | null
+          management_ip: string | null
+          mikrotik_id: string
+          model: string | null
+          notes: string | null
+          olt_port: string | null
+          pppoe_password: string | null
+          pppoe_profile: string | null
+          pppoe_username: string | null
+          serial_number: string
+          status: string
+          updated_at: string
+          wifi_password: string | null
+          wifi_ssid: string | null
+        }
+        Insert: {
+          brand?: string
+          client_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          mac_address?: string | null
+          management_ip?: string | null
+          mikrotik_id: string
+          model?: string | null
+          notes?: string | null
+          olt_port?: string | null
+          pppoe_password?: string | null
+          pppoe_profile?: string | null
+          pppoe_username?: string | null
+          serial_number: string
+          status?: string
+          updated_at?: string
+          wifi_password?: string | null
+          wifi_ssid?: string | null
+        }
+        Update: {
+          brand?: string
+          client_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          mac_address?: string | null
+          management_ip?: string | null
+          mikrotik_id?: string
+          model?: string | null
+          notes?: string | null
+          olt_port?: string | null
+          pppoe_password?: string | null
+          pppoe_profile?: string | null
+          pppoe_username?: string | null
+          serial_number?: string
+          status?: string
+          updated_at?: string
+          wifi_password?: string | null
+          wifi_ssid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onu_devices_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "isp_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onu_devices_mikrotik_id_fkey"
+            columns: ["mikrotik_id"]
+            isOneToOne: false
+            referencedRelation: "mikrotik_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_platforms: {
         Row: {
           created_at: string
