@@ -56,9 +56,9 @@ interface SignalHistoryChartProps {
 }
 
 const qualityColors: Record<string, string> = {
-  excellent: "bg-green-500/20 text-green-700 dark:text-green-400",
+  excellent: "bg-chart-2/20 text-chart-2",
   good: "bg-primary/20 text-primary",
-  fair: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
+  fair: "bg-chart-4/20 text-chart-4",
   critical: "bg-destructive/20 text-destructive",
   unknown: "bg-muted text-muted-foreground",
 };
