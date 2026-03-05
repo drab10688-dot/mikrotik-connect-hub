@@ -94,9 +94,32 @@ normalize_nuxbill_app_url() {
 
 ensure_mariadb_accounts() {
   echo "  → Sincronizando usuarios MariaDB (radius/nuxbill)..."
+
+  local root_args=()
+  local auth_mode=""
+
   for i in $(seq 1 20); do
     if docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" >/dev/null 2>&1; then
-      docker exec omnisync-mariadb mariadb -uroot -p"${MYSQL_ROOT_PASSWORD}" >/dev/null 2>&1 <<SQL
+      root_args=(-uroot -p"${MYSQL_ROOT_PASSWORD}")
+      auth_mode="password"
+      break
+    fi
+
+    if docker exec omnisync-mariadb mariadb -uroot -e "SELECT 1;" >/dev/null 2>&1; then
+      root_args=(-uroot)
+      auth_mode="socket"
+      break
+    fi
+
+    sleep 2
+  done
+
+  if [ -z "$auth_mode" ]; then
+    echo "  ⚠ No se pudo autenticar root en MariaDB (password/socket)"
+    return 1
+  fi
+
+  if docker exec omnisync-mariadb mariadb "${root_args[@]}" >/dev/null 2>&1 <<SQL
 CREATE DATABASE IF NOT EXISTS radius;
 CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${RADIUS_DB_PASSWORD}';
@@ -108,12 +131,12 @@ GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
 GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
 FLUSH PRIVILEGES;
 SQL
-      echo "  ✓ Usuarios MariaDB sincronizados"
-      return 0
-    fi
-    sleep 2
-  done
-  echo "  ⚠ No se pudo sincronizar usuarios MariaDB automáticamente"
+  then
+    echo "  ✓ Usuarios MariaDB sincronizados (root via ${auth_mode})"
+    return 0
+  fi
+
+  echo "  ⚠ Falló la sincronización SQL de usuarios MariaDB"
   return 1
 }
 
