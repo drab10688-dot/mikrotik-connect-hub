@@ -313,8 +313,8 @@ PersistentKeepalive = 25`;
   }
 });
 
-// ─── PATCH /peers/:id ─────────────────────────────
-vpnRouter.patch('/peers/:id', async (req: Request, res: Response) => {
+// ─── PUT /peers/:id ───────────────────────────────
+vpnRouter.put('/peers/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user.id;
