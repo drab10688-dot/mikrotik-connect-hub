@@ -250,7 +250,9 @@ export const hotspotApi = {
   users: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/users`)),
   activeUsers: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/active`)),
   addUser: async (mikrotikId: string, userData: any) => unwrapData(await apiPost(`/hotspot/${mikrotikId}/users`, userData)),
+  updateUser: (mikrotikId: string, userId: string, data: any) => apiPut(`/hotspot/${mikrotikId}/users/${userId}`, data),
   removeUser: (mikrotikId: string, userId: string) => apiDelete(`/hotspot/${mikrotikId}/users/${userId}`),
+  disconnectActive: (mikrotikId: string, activeId: string) => apiPost(`/hotspot/${mikrotikId}/active/${activeId}/disconnect`),
   profiles: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/profiles`)),
   addProfile: (mikrotikId: string, profileData: any) => apiPost(`/hotspot/${mikrotikId}/profiles`, profileData),
   deleteProfile: (mikrotikId: string, profileId: string) => apiDelete(`/hotspot/${mikrotikId}/profiles/${profileId}`),
@@ -262,6 +264,12 @@ export const hotspotApi = {
   deleteCookie: (mikrotikId: string, id: string) => apiDelete(`/hotspot/${mikrotikId}/cookies/${id}`),
   dhcpLeases: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/dhcp-leases`)),
   servers: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/servers`)),
+  // System
+  reboot: (mikrotikId: string) => apiPost(`/hotspot/${mikrotikId}/system/reboot`),
+  shutdown: (mikrotikId: string) => apiPost(`/hotspot/${mikrotikId}/system/shutdown`),
+  scheduler: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/scheduler`)),
+  log: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/log`)),
+  traffic: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/traffic`)),
 };
 
 // ─── Vouchers API ─────────────────────────────────────────
