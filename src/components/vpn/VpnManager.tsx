@@ -125,7 +125,7 @@ export function VpnManager() {
 
   const handleTogglePeer = async (peer: VpnPeer) => {
     try {
-      await apiClient.patch(`/api/vpn/peers/${peer.id}`, { is_active: !peer.is_active });
+      await apiPut(`/vpn/peers/${peer.id}`, { is_active: !peer.is_active });
       toast.success(peer.is_active ? "Peer desactivado" : "Peer activado");
       fetchData();
     } catch (err: any) {
