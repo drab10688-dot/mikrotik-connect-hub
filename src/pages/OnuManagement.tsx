@@ -296,6 +296,91 @@ export default function OnuManagement() {
     }
   };
 
+  const handleUploadToACS = async () => {
+    if (!uploadForm.fileName || !uploadForm.content) return;
+    setUploadingFile(true);
+    try {
+      await api('/genieacs/files/upload', {
+        method: 'POST',
+        body: {
+          fileName: uploadForm.fileName,
+          fileType: '3 Vendor Configuration File',
+          oui: uploadForm.oui || undefined,
+          productClass: uploadForm.productClass || undefined,
+          version: uploadForm.version || undefined,
+          content: uploadForm.content,
+        },
+      });
+      toast.success(`Archivo "${uploadForm.fileName}" subido a GenieACS`);
+      setShowUploadFile(false);
+      setUploadForm({ fileName: "", oui: "", productClass: "", version: "", content: "" });
+      loadData();
+    } catch (err: any) {
+      toast.error("Error subiendo archivo: " + err.message);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleUploadTemplateToACS = async (template: ConfigTemplate) => {
+    try {
+      await api('/genieacs/files/upload', {
+        method: 'POST',
+        body: {
+          fileName: `${template.brand}-${template.name.replace(/\s+/g, '-').toLowerCase()}.${template.file_format}`,
+          fileType: '3 Vendor Configuration File',
+          content: template.template_content,
+        },
+      });
+      toast.success(`Plantilla "${template.name}" subida a GenieACS`);
+      loadData();
+    } catch (err: any) {
+      toast.error("Error: " + err.message);
+    }
+  };
+
+  const handleDeleteACSFile = async (fileId: string) => {
+    if (!confirm("¿Eliminar este archivo de GenieACS?")) return;
+    try {
+      await api(`/genieacs/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+      toast.success("Archivo eliminado");
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handlePushConfig = async (deviceId: string, fileName: string) => {
+    setPushingConfig(true);
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/push-config`, {
+        method: "POST",
+        body: { fileName },
+      });
+      toast.success(res.message);
+      setShowPushConfig(false);
+      setPushTargetOnu(null);
+    } catch (err: any) {
+      toast.error("Error enviando config: " + err.message);
+    } finally {
+      setPushingConfig(false);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUploadForm(p => ({
+        ...p,
+        fileName: p.fileName || file.name,
+        content: reader.result as string,
+      }));
+    };
+    reader.readAsText(file);
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copiado al portapapeles");
