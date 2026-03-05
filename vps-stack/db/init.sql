@@ -490,9 +490,33 @@ CREATE TABLE onu_devices (
   acs_manufacturer TEXT,
   acs_model TEXT,
   acs_firmware TEXT,
+  signal_alert_threshold NUMERIC DEFAULT -30,
+  signal_alerts_enabled BOOLEAN DEFAULT false,
+  signal_alert_chat_id TEXT,
+  last_alert_sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ============================================
+-- ONU Signal Alerts Log
+-- ============================================
+CREATE TABLE onu_signal_alerts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  onu_id UUID NOT NULL REFERENCES onu_devices(id) ON DELETE CASCADE,
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  rx_power NUMERIC NOT NULL,
+  threshold NUMERIC NOT NULL,
+  alert_type TEXT NOT NULL DEFAULT 'low_signal',
+  message TEXT NOT NULL,
+  sent_via TEXT NOT NULL DEFAULT 'telegram',
+  sent_successfully BOOLEAN DEFAULT false,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_onu_signal_alerts_onu ON onu_signal_alerts(onu_id);
+CREATE INDEX idx_onu_signal_alerts_mikrotik ON onu_signal_alerts(mikrotik_id, created_at);
 
 -- ============================================
 -- ONU Config Templates

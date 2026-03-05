@@ -1043,14 +1043,41 @@ genieacsRouter.delete('/files/:fileId', async (req: AuthRequest, res: Response) 
   }
 });
 
+// ─── Helper: Send Telegram alert ────────────────────────
+async function sendTelegramAlert(
+  mikrotikId: string,
+  chatId: string,
+  message: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { rows: configRows } = await pool.query(
+      'SELECT bot_token FROM telegram_config WHERE mikrotik_id = $1 AND is_active = true',
+      [mikrotikId]
+    );
+    if (!configRows[0]) return { ok: false, error: 'Telegram no configurado' };
+
+    const response = await fetch(`https://api.telegram.org/bot${configRows[0].bot_token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
+    });
+    const result = await response.json() as any;
+    return { ok: result.ok, error: result.ok ? undefined : result.description };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+}
+
 // ─── Collect signal readings for all linked ONUs ────────
 genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotikId } = req.params;
 
-    // Get all ONUs with ACS link
+    // Get all ONUs with ACS link, including alert config
     const onuResult = await pool.query(
-      `SELECT id, acs_device_id, serial_number FROM onu_devices WHERE mikrotik_id = $1 AND acs_device_id IS NOT NULL`,
+      `SELECT id, acs_device_id, serial_number, brand, model, client_id,
+              signal_alert_threshold, signal_alerts_enabled, signal_alert_chat_id, last_alert_sent_at
+       FROM onu_devices WHERE mikrotik_id = $1 AND acs_device_id IS NOT NULL`,
       [mikrotikId]
     );
 
@@ -1058,14 +1085,24 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
       return res.json({ success: true, collected: 0, message: 'No hay ONUs vinculadas al ACS' });
     }
 
+    // Get global admin chat_id from telegram_config if individual not set
+    const { rows: tgConfig } = await pool.query(
+      `SELECT tc.bot_token, u.id as admin_id
+       FROM telegram_config tc
+       JOIN mikrotik_devices md ON md.id = tc.mikrotik_id
+       JOIN users u ON u.id = md.created_by
+       WHERE tc.mikrotik_id = $1 AND tc.is_active = true`,
+      [mikrotikId]
+    );
+
     let collected = 0;
+    let alertsSent = 0;
     const errors: string[] = [];
 
     for (const onu of onuResult.rows) {
       try {
         const device = await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`);
         const igd = device?.InternetGatewayDevice || device?.Device || {};
-        const di = igd?.DeviceInfo || {};
 
         // Extract optical power (multi-vendor paths)
         let rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
@@ -1130,6 +1167,59 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
             [onu.id, mikrotikId, rxPower, txPower, quality(rxPower), temperature, cpuUsage, wanStatus]
           );
           collected++;
+
+          // ─── Check signal alert threshold ───────────
+          if (onu.signal_alerts_enabled && rxPower !== null && rxPower < parseFloat(onu.signal_alert_threshold)) {
+            // Throttle: don't send more than 1 alert per hour per ONU
+            const lastAlert = onu.last_alert_sent_at ? new Date(onu.last_alert_sent_at) : null;
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+            if (!lastAlert || lastAlert < oneHourAgo) {
+              // Get client name
+              let clientName = 'Sin cliente';
+              if (onu.client_id) {
+                const clientRes = await pool.query('SELECT client_name FROM isp_clients WHERE id = $1', [onu.client_id]);
+                if (clientRes.rows[0]) clientName = clientRes.rows[0].client_name;
+              }
+
+              const alertMessage = `🔴 <b>ALERTA: Señal Óptica Baja</b>\n\n` +
+                `📡 <b>ONU:</b> ${onu.serial_number}\n` +
+                `🏷️ <b>Marca:</b> ${onu.brand} ${onu.model || ''}\n` +
+                `👤 <b>Cliente:</b> ${clientName}\n` +
+                `📉 <b>Rx Power:</b> ${rxPower} dBm\n` +
+                `⚠️ <b>Umbral:</b> ${onu.signal_alert_threshold} dBm\n` +
+                `${txPower !== null ? `📤 <b>Tx Power:</b> ${txPower} dBm\n` : ''}` +
+                `${temperature !== null ? `🌡️ <b>Temperatura:</b> ${temperature}°C\n` : ''}` +
+                `\n⏰ ${new Date().toLocaleString('es')}`;
+
+              const chatId = onu.signal_alert_chat_id || null;
+              let sent = false;
+              let errorMsg: string | undefined;
+
+              if (chatId) {
+                const result = await sendTelegramAlert(mikrotikId, chatId, alertMessage);
+                sent = result.ok;
+                errorMsg = result.error;
+              } else {
+                errorMsg = 'No hay chat_id configurado para alertas';
+              }
+
+              // Log alert
+              await pool.query(
+                `INSERT INTO onu_signal_alerts (onu_id, mikrotik_id, rx_power, threshold, message, sent_successfully, error_message)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [onu.id, mikrotikId, rxPower, onu.signal_alert_threshold, alertMessage, sent, errorMsg || null]
+              );
+
+              // Update last alert timestamp
+              await pool.query(
+                'UPDATE onu_devices SET last_alert_sent_at = NOW() WHERE id = $1',
+                [onu.id]
+              );
+
+              if (sent) alertsSent++;
+            }
+          }
         }
       } catch (err: any) {
         errors.push(`${onu.serial_number}: ${err.message}`);
@@ -1139,10 +1229,63 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
     res.json({
       success: true,
       collected,
+      alertsSent,
       total: onuResult.rows.length,
       errors: errors.length > 0 ? errors : undefined,
-      message: `Señal recolectada de ${collected}/${onuResult.rows.length} ONUs`,
+      message: `Señal recolectada de ${collected}/${onuResult.rows.length} ONUs. ${alertsSent > 0 ? `${alertsSent} alertas enviadas.` : ''}`,
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Configure signal alerts for an ONU ─────────────────
+genieacsRouter.put('/signal-alerts/:onuId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { onuId } = req.params;
+    const { enabled, threshold, chatId } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (enabled !== undefined) { updates.push(`signal_alerts_enabled = $${idx++}`); values.push(enabled); }
+    if (threshold !== undefined) { updates.push(`signal_alert_threshold = $${idx++}`); values.push(threshold); }
+    if (chatId !== undefined) { updates.push(`signal_alert_chat_id = $${idx++}`); values.push(chatId || null); }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'No hay campos para actualizar' });
+
+    values.push(onuId);
+    const result = await pool.query(
+      `UPDATE onu_devices SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, signal_alerts_enabled, signal_alert_threshold, signal_alert_chat_id`,
+      values
+    );
+
+    if (result.rows.length === 0) return res.status(404).json({ error: 'ONU no encontrada' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get signal alerts history ──────────────────────────
+genieacsRouter.get('/signal-alerts/:mikrotikId([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const { limit = '50' } = req.query;
+
+    const result = await pool.query(
+      `SELECT a.*, o.serial_number, o.brand, o.model, c.client_name
+       FROM onu_signal_alerts a
+       JOIN onu_devices o ON o.id = a.onu_id
+       LEFT JOIN isp_clients c ON c.id = o.client_id
+       WHERE a.mikrotik_id = $1
+       ORDER BY a.created_at DESC
+       LIMIT $2`,
+      [mikrotikId, parseInt(limit as string)]
+    );
+
+    res.json({ success: true, data: result.rows });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
