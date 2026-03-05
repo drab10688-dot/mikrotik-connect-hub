@@ -204,6 +204,67 @@ export default function OnuManagement() {
     setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // ─── TR-069 Functions ───────────────────────────────
+  const loadTr069Devices = async () => {
+    setTr069Loading(true);
+    try {
+      const [healthRes, devicesRes] = await Promise.all([
+        api("/genieacs/health").catch(() => ({ success: false, status: "offline" })),
+        api("/genieacs/devices").catch(() => ({ data: [] })),
+      ]);
+      setTr069Health(healthRes.success ? "online" : "offline");
+      setTr069Devices(devicesRes.data || []);
+    } catch {
+      setTr069Health("offline");
+    } finally {
+      setTr069Loading(false);
+    }
+  };
+
+  const handleTr069Wifi = async () => {
+    if (!selectedTr069Device) return;
+    setActionLoading("wifi");
+    try {
+      const deviceId = selectedTr069Device._id || selectedTr069Device.DeviceID?.ID?._value;
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/wifi`, {
+        method: "POST",
+        body: tr069WifiForm,
+      });
+      toast.success(res.message || "Tarea WiFi enviada");
+      setShowTr069WifiDialog(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleTr069Action = async (deviceId: string, action: string) => {
+    setActionLoading(`${action}-${deviceId}`);
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/${action}`, {
+        method: "POST",
+        body: action === "refresh" ? { parameterPath: "InternetGatewayDevice" } : {},
+      });
+      toast.success(res.message || `Acción ${action} enviada`);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const getTr069DeviceInfo = (device: any) => {
+    const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
+    return {
+      manufacturer: di?.Manufacturer?._value || "Desconocido",
+      model: di?.ModelName?._value || di?.ProductClass?._value || "-",
+      serial: di?.SerialNumber?._value || "-",
+      softwareVersion: di?.SoftwareVersion?._value || "-",
+      uptime: di?.UpTime?._value ? `${Math.floor(di.UpTime._value / 3600)}h` : "-",
+    };
+  };
+
   if (!mikrotikId) {
     return (
       <div className="flex h-screen bg-background">
