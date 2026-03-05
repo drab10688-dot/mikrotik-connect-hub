@@ -3,6 +3,7 @@ import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { UbiquitiManager } from "@/components/ubiquiti/UbiquitiManager";
+import { MikrotikAntennaManager } from "@/components/mikrotik/MikrotikAntennaManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Server, Megaphone, Shield, Radio } from "lucide-react";
 
@@ -16,12 +17,12 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, VPN y publicidad.
+            Gestión de servicios, VPN, antenas y publicidad.
           </p>
         </div>
 
         <Tabs defaultValue="services" className="space-y-4">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="services" className="gap-2">
               <Server className="h-4 w-4" />
               Servicios
@@ -30,13 +31,17 @@ export default function VpsServices() {
               <Shield className="h-4 w-4" />
               VPN
             </TabsTrigger>
+            <TabsTrigger value="antennas" className="gap-2">
+              <Radio className="h-4 w-4" />
+              Antenas MikroTik
+            </TabsTrigger>
             <TabsTrigger value="ubiquiti" className="gap-2">
               <Radio className="h-4 w-4" />
               Ubiquiti
             </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
-              Publicidad Portal
+              Publicidad
             </TabsTrigger>
           </TabsList>
 
@@ -46,6 +51,10 @@ export default function VpsServices() {
 
           <TabsContent value="vpn">
             <VpnManager />
+          </TabsContent>
+
+          <TabsContent value="antennas">
+            <MikrotikAntennaManager />
           </TabsContent>
 
           <TabsContent value="ubiquiti">
