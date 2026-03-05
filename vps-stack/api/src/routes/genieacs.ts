@@ -1536,7 +1536,7 @@ genieacsRouter.put('/signal-config/:mikrotikId([0-9a-fA-F-]{36})', async (req: A
   try {
     const { mikrotikId } = req.params;
     const { alerts_enabled, default_threshold, default_chat_id, cooldown_minutes, auto_cleanup_days } = req.body;
-    const userId = req.user!.id;
+    const userId = req.userId;
 
     const result = await pool.query(
       `INSERT INTO onu_signal_config (mikrotik_id, created_by, alerts_enabled, default_threshold, default_chat_id, cooldown_minutes, auto_cleanup_days)
