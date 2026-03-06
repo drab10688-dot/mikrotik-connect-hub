@@ -4,16 +4,9 @@ import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
+import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Server, Megaphone, Shield, Radio, Map, Monitor } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
-import { ExternalLink, Maximize2, Minimize2, AlertTriangle, Loader2, Play } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { vpsApi } from "@/lib/api-client";
-import { toast } from "sonner";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
