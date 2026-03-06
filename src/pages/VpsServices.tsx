@@ -14,6 +14,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+function FactoryCredentials({ user, pass, label }: { user: string; pass: string; label?: string }) {
+  return (
+    <Alert className="mt-3">
+      <Info className="h-4 w-4" />
+      <AlertDescription className="text-xs">
+        <strong>Credenciales de fábrica{label ? ` (${label})` : ""}:</strong> Usuario: <code className="bg-muted px-1 rounded">{user}</code> — Contraseña: <code className="bg-muted px-1 rounded">{pass}</code>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function MikhmonPanel() {
   const [vpsHost, setVpsHost] = useState("");
   const [mikhmonAvailable, setMikhmonAvailable] = useState<boolean | null>(null);
@@ -21,7 +32,6 @@ function MikhmonPanel() {
   useEffect(() => {
     const host = window.location.hostname;
     setVpsHost(host);
-    // Check if mikhmon is reachable
     const url = `${window.location.protocol}//${host}/mikhmon/`;
     fetch(url, { mode: "no-cors" })
       .then(() => setMikhmonAvailable(true))
@@ -41,6 +51,7 @@ function MikhmonPanel() {
           <p className="text-sm text-muted-foreground mt-1">
             Gestión avanzada de Hotspot MikroTik: vouchers, reportes, impresión térmica y más.
           </p>
+          <FactoryCredentials user="mikhmon" pass="1234" />
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={mikhmonAvailable ? "default" : "secondary"}>
@@ -84,6 +95,28 @@ function MikhmonPanel() {
   );
 }
 
+function OnuManagementTab() {
+  const navigate = useNavigate();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Radio className="h-5 w-5" />
+          Gestión de ONUs
+        </CardTitle>
+        <CardDescription>
+          Administración multi-marca de ONUs (ZTE, Huawei, Zyxel, Latic), monitoreo de señal óptica y configuración remota.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button onClick={() => navigate("/onu-management")} className="gap-2">
+          <Radio className="h-4 w-4" />
+          Abrir Gestión de ONUs
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
 
