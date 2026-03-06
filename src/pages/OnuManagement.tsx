@@ -88,7 +88,8 @@ const statusColors: Record<string, string> = {
 };
 
 export default function OnuManagement() {
-  const mikrotikId = localStorage.getItem("mikrotik_device_id") || "";
+  const { device, isValidating, hasValidDevice } = useValidatedDevice(true);
+  const mikrotikId = device?.id || localStorage.getItem("mikrotik_device_id") || "";
   const [onus, setOnus] = useState<OnuDevice[]>([]);
   const [templates, setTemplates] = useState<ConfigTemplate[]>([]);
   const [loading, setLoading] = useState(true);
