@@ -78,7 +78,7 @@ handle_existing_installation() {
     case "$OPTION" in
       1)
         echo -e "${YELLOW}Deteniendo servicios...${NC}"
-        cd "$INSTALL_DIR" && docker compose --profile cms --profile vpn down -v 2>/dev/null || true
+        cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
         cd /root
         rm -rf "$INSTALL_DIR"
         echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
@@ -115,9 +115,8 @@ handle_existing_installation() {
         # Regenerate nuxbill init SQL
         generate_nuxbill_sql
 
-        docker compose build --no-cache api
+        docker compose build --no-cache api cms-cdata
         docker compose up -d --build
-        start_optional_profiles
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
@@ -133,7 +132,7 @@ handle_existing_installation() {
         echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
         read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
         if [ "$CONFIRM" = "ELIMINAR" ]; then
-          cd "$INSTALL_DIR" && docker compose --profile cms --profile vpn down -v 2>/dev/null || true
+          cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
           rm -rf "$INSTALL_DIR"
           echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
         fi
@@ -409,15 +408,10 @@ is_truthy() {
   esac
 }
 
-start_optional_profiles() {
-  local cms_autostart="${CMS_AUTOSTART:-0}"
-
-  if is_truthy "$cms_autostart"; then
-    echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
-    docker compose --profile cms up -d cms-cdata 2>&1 | tail -5 || true
-  else
-    echo -e "${CYAN}CMS C-Data desactivado (CMS_AUTOSTART=${cms_autostart})${NC}"
-  fi
+start_optional_services() {
+  # Los servicios opcionales (CMS, Mikhmon, WireGuard) usan restart: "no"
+  # Se inician/detienen desde el panel de Servicios VPS
+  echo -e "${CYAN}Servicios opcionales disponibles desde el panel: CMS C-Data, Mikhmon, WireGuard${NC}"
 }
 
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
@@ -602,7 +596,7 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 
 # Limpiar contenedores huérfanos o en conflicto antes de levantar
 echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
-docker compose --profile cms --profile vpn down --remove-orphans 2>/dev/null || true
+docker compose down --remove-orphans 2>/dev/null || true
 for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-cms-cdata omnisync-wireguard; do
   docker rm -f "$cname" 2>/dev/null || true
 done
@@ -611,9 +605,9 @@ echo -e "${GREEN}✓ Contenedores limpios${NC}"
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
 # Build only custom images (api + phpnuxbill)
-docker compose build --no-cache api phpnuxbill
+docker compose build --no-cache api phpnuxbill cms-cdata
 
-# Start core services (without tr069/vpn profiles)
+# Start core services (optional services use restart: "no" and are managed from UI)
 docker compose up -d 2>&1 | tail -5
 
 # Wait for services to stabilize
@@ -665,8 +659,8 @@ echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius
 sleep 5
 
-# Iniciar perfiles opcionales configurados (TR-069)
-start_optional_profiles
+# Servicios opcionales disponibles desde el panel
+start_optional_services
 sleep 5
 
 # ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
@@ -754,9 +748,10 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 
 # Check optional services (informational only)
 echo ""
-echo -e "${CYAN}Servicios opcionales:${NC}"
-echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs): iniciar con 'docker compose --profile cms up -d'${NC}"
-echo -e "  ${YELLOW}ℹ WireGuard (VPN):   iniciar con 'docker compose --profile vpn up -d'${NC}"
+echo -e "${CYAN}Servicios opcionales (iniciar desde panel Servicios VPS):${NC}"
+echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs)${NC}"
+echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor)${NC}"
+echo -e "  ${YELLOW}ℹ WireGuard (VPN)${NC}"
 
 # Test HTTP endpoints — wait for nginx to be ready
 echo ""
@@ -843,13 +838,8 @@ echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  📡 SERVICIOS OPCIONALES                                  ║"
 echo "║  ─────────────────────────────────────────────           ║"
-echo "║  CMS C-Data (ONUs):                                      ║"
-echo "║    cd $INSTALL_DIR && docker compose --profile cms up -d  "
-echo "║    UI: http://$VPS_IP:18080                               "
-echo "║                                                          ║"
-echo "║                                                          ║"
-echo "║  WireGuard (VPN):                                        ║"
-echo "║    cd $INSTALL_DIR && docker compose --profile vpn up -d  "
+echo "║  CMS C-Data, Mikhmon y WireGuard se activan             ║"
+echo "║  desde el panel: Servicios VPS → Docker                 ║"
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
 echo "║  ─────────────────────────────────────────────           ║"
@@ -900,8 +890,6 @@ echo "  Estado:          cd $INSTALL_DIR && docker compose ps"
 echo "  Logs:            cd $INSTALL_DIR && docker compose logs -f"
 echo "  Reiniciar:       cd $INSTALL_DIR && docker compose restart"
 echo "  Reconstruir:     cd $INSTALL_DIR && docker compose up -d --build"
-echo "  CMS C-Data:      cd $INSTALL_DIR && docker compose --profile cms up -d"
-echo "  WireGuard:       cd $INSTALL_DIR && docker compose --profile vpn up -d"
 echo ""
 echo -e "${CYAN}Reinstalar:${NC}"
 echo "  curl -fsSL https://raw.githubusercontent.com/drab10688-dot/mikrotik-connect-hub/main/vps-stack/install.sh | sudo bash"
