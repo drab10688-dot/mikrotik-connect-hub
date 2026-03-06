@@ -507,6 +507,13 @@ NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
 CMS_AUTOSTART=0
 
+# ─── Preguntar si instalar CMS C-Data en el host ───
+echo ""
+echo -e "${YELLOW}¿Deseas instalar CMS C-Data (gestión OLT/ONU) en este servidor?${NC}"
+echo -e "  Se instala directamente en el host (no en Docker de OmniSync)"
+read -p "Instalar CMS C-Data? [y/n] (n): " INSTALL_CMS < /dev/tty
+INSTALL_CMS=${INSTALL_CMS:-n}
+
 # MikroTik config (optional)
 echo ""
 echo -e "${YELLOW}Configuración MikroTik (opcional, se puede configurar desde el panel):${NC}"
