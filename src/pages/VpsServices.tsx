@@ -191,13 +191,10 @@ export default function VpsServices() {
               <Monitor className="h-4 w-4" />
               CMS C-Data
             </TabsTrigger>
-            <TabsTrigger value="onus" className="gap-2">
-              <Radio className="h-4 w-4" />
-              ONUs
+            <TabsTrigger value="docker" className="gap-2">
+              <Container className="h-4 w-4" />
+              Docker
             </TabsTrigger>
-            <TabsTrigger value="vpn" className="gap-2">
-              <Shield className="h-4 w-4" />
-              VPN
             </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
