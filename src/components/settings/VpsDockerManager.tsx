@@ -57,8 +57,13 @@ const SERVICES: ManagedService[] = [
   { key: "api", aliases: ["api", "routeros-proxy", "omnisync-api"], label: "RouterOS API", icon: "🔌", desc: "Proxy REST para MikroTik" },
   { key: "freeradius", aliases: ["freeradius", "radius", "omnisync-freeradius"], label: "FreeRADIUS", icon: "🔐", desc: "Autenticación Hotspot/PPPoE" },
   { key: "mariadb", aliases: ["mariadb", "radius-db", "omnisync-mariadb"], label: "MariaDB", icon: "🗄️", desc: "Base de datos RADIUS" },
-  
   { key: "phpnuxbill", aliases: ["phpnuxbill", "omnisync-phpnuxbill"], label: "PHPNuxBill", icon: "💳", desc: "Facturación ISP", openPath: "/nuxbill/" },
+];
+
+const OPTIONAL_SERVICES: ManagedService[] = [
+  { key: "cms-cdata", aliases: ["cms-cdata", "omnisync-cms-cdata"], label: "CMS C-Data", icon: "📡", desc: "Gestión OLT/ONU", openPath: "/cms-cdata/" },
+  { key: "mikhmon", aliases: ["mikhmon", "omnisync-mikhmon"], label: "Mikhmon", icon: "📶", desc: "Hotspot Monitor", openPath: "/mikhmon/" },
+  { key: "wireguard", aliases: ["wireguard", "omnisync-wireguard"], label: "WireGuard VPN", icon: "🔒", desc: "VPN acceso remoto" },
 ];
 
 const getApiOrigin = () => {
