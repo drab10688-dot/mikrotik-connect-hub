@@ -16,6 +16,7 @@ import { api } from "@/lib/api-client";
 import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity, Upload, Send, Settings2 } from "lucide-react";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import SignalHistoryChart from "@/components/onu/SignalHistoryChart";
+import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 
 interface OnuDevice {
   id: string;
@@ -87,7 +88,8 @@ const statusColors: Record<string, string> = {
 };
 
 export default function OnuManagement() {
-  const mikrotikId = localStorage.getItem("mikrotik_device_id") || "";
+  const { device, isValidating, hasValidDevice } = useValidatedDevice(true);
+  const mikrotikId = device?.id || localStorage.getItem("mikrotik_device_id") || "";
   const [onus, setOnus] = useState<OnuDevice[]>([]);
   const [templates, setTemplates] = useState<ConfigTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -391,7 +393,18 @@ export default function OnuManagement() {
   };
 
 
-  if (!mikrotikId) {
+  if (isValidating) {
+    return (
+      <div className="flex h-screen bg-background">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasValidDevice || !mikrotikId) {
     return (
       <div className="flex h-screen bg-background">
         <Sidebar />

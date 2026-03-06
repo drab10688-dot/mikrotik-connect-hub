@@ -117,6 +117,7 @@ handle_existing_installation() {
 
         docker compose build --no-cache api
         docker compose up -d --build
+        start_optional_profiles
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
@@ -401,6 +402,24 @@ ensure_radius_schema() {
   return 1
 }
 
+is_truthy() {
+  case "${1,,}" in
+    1|true|yes|y|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+start_optional_profiles() {
+  local tr069_autostart="${TR069_AUTOSTART:-1}"
+
+  if is_truthy "$tr069_autostart"; then
+    echo -e "${YELLOW}Iniciando GenieACS (TR-069)...${NC}"
+    docker compose --profile tr069 up -d mongodb genieacs 2>&1 | tail -5 || true
+  else
+    echo -e "${CYAN}TR-069 desactivado (TR069_AUTOSTART=${tr069_autostart})${NC}"
+  fi
+}
+
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
 handle_existing_installation
 
@@ -492,6 +511,8 @@ MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
+GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)
+TR069_AUTOSTART=1
 
 # MikroTik config (optional)
 echo ""
