@@ -162,28 +162,6 @@ function CmscdataPanel() {
   );
 }
 
-function OnuManagementTab() {
-  const navigate = useNavigate();
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Radio className="h-5 w-5" />
-          Gestión de ONUs
-        </CardTitle>
-        <CardDescription>
-          Administración multi-marca de ONUs (ZTE, Huawei, Zyxel, Latic), monitoreo de señal óptica y configuración remota.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button onClick={() => navigate("/onu-management")} className="gap-2">
-          <Radio className="h-4 w-4" />
-          Abrir Gestión de ONUs
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
