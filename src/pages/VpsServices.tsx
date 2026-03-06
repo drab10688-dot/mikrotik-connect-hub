@@ -145,7 +145,7 @@ function CmscdataPanel() {
             <div>
               <p className="text-lg font-medium text-foreground">CMS C-Data no está activo</p>
               <p className="text-muted-foreground text-sm mt-1">
-                Actívalo desde Servicios VPS → Docker → Servicios opcionales → CMS C-Data → Iniciar
+                Verifica que CMS esté instalado en el host y escuchando en el puerto 18080.
               </p>
             </div>
           </div>
