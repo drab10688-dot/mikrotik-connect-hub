@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { Shield, Plus, Trash2, Download, Copy, RefreshCw, Wifi, WifiOff, Monitor, Network, Server } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { copyToClipboard as copyTextToClipboard } from "@/lib/clipboard";
 
 interface VpnPeer {
   id: string;
