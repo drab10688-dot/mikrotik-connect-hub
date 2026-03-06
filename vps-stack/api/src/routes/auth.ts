@@ -116,9 +116,24 @@ authRouter.get('/me', async (req: Request, res: Response) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as any;
     const { rows } = await pool.query(
-      `SELECT u.id, u.email, u.full_name, ur.role
+      `SELECT u.id, u.email, u.full_name,
+              COALESCE(
+                (
+                  SELECT ur.role
+                  FROM user_roles ur
+                  WHERE ur.user_id = u.id
+                  ORDER BY CASE ur.role
+                    WHEN 'super_admin' THEN 1
+                    WHEN 'admin' THEN 2
+                    WHEN 'secretary' THEN 3
+                    WHEN 'reseller' THEN 4
+                    ELSE 5
+                  END
+                  LIMIT 1
+                ),
+                'user'::app_role
+              ) AS role
        FROM users u
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
        WHERE u.id = $1`,
       [decoded.userId]
     );

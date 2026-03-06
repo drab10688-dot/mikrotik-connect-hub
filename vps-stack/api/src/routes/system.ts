@@ -209,27 +209,38 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
     const resolvedService = service
       ? (serviceAliases[service] || service.replace(/^omnisync-/, ''))
       : '';
+
+    const serviceProfiles: Record<string, string> = {
+      genieacs: 'tr069',
+      mongodb: 'tr069',
+      wireguard: 'vpn',
+    };
+
+    const profileArg = resolvedService && serviceProfiles[resolvedService]
+      ? ` --profile ${serviceProfiles[resolvedService]}`
+      : '';
+
     const svcArg = resolvedService ? ` ${resolvedService}` : '';
 
     let cmd = '';
     switch (action) {
       case 'ps':
-        cmd = 'docker compose -f /opt/omnisync/docker-compose.yml ps 2>&1';
+        cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml ps 2>&1`;
         break;
       case 'logs':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml logs --tail 80${svcArg} 2>&1`;
+        cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml logs --tail 80${svcArg} 2>&1`;
         break;
       case 'up':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml up -d${svcArg} 2>&1`;
+        cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml up -d${svcArg} 2>&1`;
         break;
       case 'down':
-        cmd = 'docker compose -f /opt/omnisync/docker-compose.yml down 2>&1';
+        cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml down 2>&1`;
         break;
       case 'pull':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml pull${svcArg} 2>&1`;
+        cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml pull${svcArg} 2>&1`;
         break;
       default:
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml ${action}${svcArg} 2>&1`;
+        cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml ${action}${svcArg} 2>&1`;
     }
 
     const output = execSync(cmd, { timeout: 60000 }).toString();

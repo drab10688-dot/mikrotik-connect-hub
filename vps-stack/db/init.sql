@@ -706,7 +706,9 @@ CREATE TABLE ubiquiti_devices (
 CREATE INDEX idx_ubiquiti_devices_created_by ON ubiquiti_devices(created_by);
 CREATE INDEX idx_ubiquiti_devices_client ON ubiquiti_devices(client_id);
 
-SELECT id, 'super_admin'::app_role FROM users WHERE email = 'admin@omnisync.local';
+INSERT INTO user_roles (user_id, role)
+SELECT id, 'super_admin'::app_role FROM users WHERE email = 'admin@omnisync.local'
+ON CONFLICT (user_id, role) DO NOTHING;
 
 INSERT INTO profiles (user_id, email, full_name)
 SELECT id, email, full_name FROM users WHERE email = 'admin@omnisync.local';

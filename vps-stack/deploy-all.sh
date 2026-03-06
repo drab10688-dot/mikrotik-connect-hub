@@ -388,6 +388,23 @@ CREATE INDEX IF NOT EXISTS idx_ubiquiti_devices_created_by ON ubiquiti_devices(c
 CREATE INDEX IF NOT EXISTS idx_ubiquiti_devices_client ON ubiquiti_devices(client_id);
 " 2>/dev/null && echo "  ✓ ubiquiti_devices OK" || echo "  ⚠ ubiquiti_devices skip"
 
+# Backfill roles (fix instalaciones antiguas sin super_admin asignado)
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+INSERT INTO user_roles (user_id, role)
+SELECT u.id, 'super_admin'::app_role
+FROM users u
+WHERE u.email = 'admin@omnisync.local'
+ON CONFLICT (user_id, role) DO NOTHING;
+
+INSERT INTO user_roles (user_id, role)
+SELECT u.id, 'user'::app_role
+FROM users u
+WHERE NOT EXISTS (
+  SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id
+)
+ON CONFLICT (user_id, role) DO NOTHING;
+" 2>/dev/null && echo "  ✓ user_roles backfill OK" || echo "  ⚠ user_roles backfill skip"
+
 echo "[7.5/10] Reiniciando FreeRADIUS + PHPNuxBill..."
 docker compose up -d freeradius phpnuxbill
 
