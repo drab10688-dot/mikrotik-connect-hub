@@ -673,6 +673,47 @@ sleep 5
 start_optional_profiles
 sleep 5
 
+# ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
+setup_wireguard_networking() {
+  if ! docker ps --format '{{.Names}}' | grep -q '^omnisync-wireguard$'; then
+    echo -e "${CYAN}ℹ WireGuard no activo, omitiendo configuración de red VPN${NC}"
+    return 0
+  fi
+
+  echo -e "${YELLOW}Configurando red VPN para acceso a MikroTiks remotos...${NC}"
+
+  # Conectar WireGuard a la red del stack si no lo está
+  docker network connect omnisync_omnisync-net omnisync-wireguard 2>/dev/null || true
+
+  # Obtener IP del contenedor WireGuard en la red del stack
+  local WG_IP
+  WG_IP=$(docker inspect omnisync-wireguard --format '{{range $k,$v := .NetworkSettings.Networks}}{{if eq $k "omnisync_omnisync-net"}}{{$v.IPAddress}}{{end}}{{end}}' 2>/dev/null)
+
+  if [ -z "$WG_IP" ]; then
+    WG_IP=$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $NF}')
+  fi
+
+  if [ -n "$WG_IP" ]; then
+    # Agregar ruta estática en el contenedor API
+    docker exec omnisync-api ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null && \
+      echo -e "${GREEN}✓ Ruta VPN configurada (10.13.13.0/24 via $WG_IP)${NC}" || \
+      echo -e "${YELLOW}⚠ No se pudo configurar ruta VPN${NC}"
+
+    # Configurar iptables en WireGuard para forwarding
+    docker exec omnisync-wireguard sh -c '
+      iptables -C FORWARD -i eth0 -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i eth0 -o wg0 -j ACCEPT
+      iptables -C FORWARD -i wg0 -o eth0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -o eth0 -j ACCEPT
+      iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -o wg0 -j MASQUERADE
+    ' 2>/dev/null && \
+      echo -e "${GREEN}✓ Forwarding VPN configurado${NC}" || \
+      echo -e "${YELLOW}⚠ No se pudo configurar forwarding VPN${NC}"
+  else
+    echo -e "${YELLOW}⚠ No se pudo detectar IP del contenedor WireGuard${NC}"
+  fi
+}
+
+setup_wireguard_networking
+
 # ═══════════════════════════════════════════════════
 # FASE 5: Verificación de servicios
 # ═══════════════════════════════════════════════════
