@@ -117,6 +117,7 @@ handle_existing_installation() {
 
         docker compose build --no-cache api
         docker compose up -d --build
+        start_optional_profiles
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
