@@ -334,25 +334,49 @@ hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
       );
 
       const profileName = plan.name_plan || 'default';
+      let mikrotikUserCreated = false;
+      let mikrotikError = '';
+
+      // First check if profile exists in MikroTik
+      let profileExists = false;
       try {
+        const profiles = await mikrotikRequest(config, '/rest/ip/hotspot/user/profile') as any[];
+        profileExists = profiles.some((p: any) => p.name === profileName);
+        if (!profileExists) {
+          console.warn(`⚠️ Profile "${profileName}" NOT found in MikroTik. Available: ${profiles.map((p: any) => p.name).join(', ')}`);
+        }
+      } catch (profErr: any) {
+        console.error('Error checking profiles:', profErr.message);
+      }
+
+      // Create hotspot user in MikroTik
+      try {
+        const useProfile = profileExists ? profileName : 'default';
+        console.log(`Creating MikroTik hotspot user: name=${vUser}, profile=${useProfile}`);
         await mikrotikRequest(config, '/rest/ip/hotspot/user/add', 'POST', {
-          name: vUser, password: vPass, profile: profileName,
+          name: vUser, password: vPass, profile: useProfile,
           comment: `NuxBill Voucher - ${plan.name_plan}`,
         });
+        mikrotikUserCreated = true;
+        console.log(`✅ MikroTik hotspot user created: ${vUser}`);
       } catch (mkErr: any) {
         if (mkErr.message?.includes('already')) {
+          mikrotikUserCreated = true;
           console.log(`Hotspot user ${vUser} already exists, skipping creation`);
         } else {
-          console.error('Error creating MikroTik user:', mkErr.message);
+          mikrotikError = mkErr.message || 'Error desconocido';
+          console.error(`❌ Error creating MikroTik hotspot user "${vUser}":`, mkErr.message);
         }
       }
 
       // Authorize client on MikroTik using IP/MAC from portal redirect
+      let authorized = false;
       if (ip && mac) {
         try {
           await mikrotikRequest(config, '/rest/ip/hotspot/active/login', 'POST', {
             user: vUser, password: vPass, ip, 'mac-address': mac,
           });
+          authorized = true;
           console.log(`NuxBill voucher: authorized ${vUser} ip=${ip} mac=${mac}`);
         } catch (authErr: any) {
           console.log(`active/login failed for voucher (${authErr.message}), trying ip-binding`);
@@ -361,8 +385,10 @@ hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
               address: ip, 'mac-address': mac, type: 'bypassed',
               comment: `OmniSync voucher: ${vUser}`,
             });
+            authorized = true;
           } catch (bErr: any) {
             if (!bErr.message?.includes('already')) console.error('IP binding failed:', bErr.message);
+            else authorized = true;
           }
         }
       }
@@ -372,7 +398,9 @@ hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
         data: {
           username: vUser, password: vPass, profile: profileName,
           plan: plan.name_plan, validity: `${plan.validity} ${plan.validity_unit}`,
-          hotspotUrl, type: 'voucher', authorized: !!(ip && mac),
+          hotspotUrl, type: 'voucher', authorized,
+          mikrotikUserCreated, mikrotikError: mikrotikError || undefined,
+          profileExists,
         }
       });
     }
@@ -439,5 +467,89 @@ hotspotRouter.post('/nuxbill-login', async (req: any, res: Response) => {
   } catch (error: any) {
     console.error('NuxBill login error:', error);
     res.status(500).json({ success: false, error: error.message || 'Error de autenticación' });
+  }
+});
+
+// ─── Diagnostic: Test NuxBill Voucher (requires JWT) ─────
+hotspotRouter.post('/:mikrotikId/test-nuxbill-voucher', async (req: AuthRequest, res: Response) => {
+  try {
+    const config = await getVerifiedConfig(req, res);
+    if (!config) return;
+
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'Campo "code" requerido' });
+    }
+
+    const steps: any[] = [];
+
+    // Step 1: Validate voucher in NuxBill DB
+    steps.push({ step: 'validate_voucher', status: 'running' });
+    const result = await validateVoucher(code);
+    if (!result) {
+      steps[0].status = 'failed';
+      steps[0].detail = 'Voucher no encontrado o ya usado (status != 0)';
+      return res.json({ success: false, steps });
+    }
+    steps[0].status = 'ok';
+    steps[0].detail = {
+      voucher_id: result.voucher.id,
+      plan: result.plan.name_plan,
+      plan_type: result.plan.type,
+      validity: `${result.plan.validity} ${result.plan.validity_unit}`,
+      router: result.router.name,
+      router_ip: result.router.ip_address,
+    };
+
+    // Step 2: Check if profile exists in MikroTik
+    steps.push({ step: 'check_mikrotik_profile', status: 'running' });
+    const profileName = result.plan.name_plan || 'default';
+    try {
+      const profiles = await mikrotikRequest(config, '/rest/ip/hotspot/user/profile') as any[];
+      const profileNames = profiles.map((p: any) => p.name);
+      const found = profileNames.includes(profileName);
+      steps[1].status = found ? 'ok' : 'warning';
+      steps[1].detail = {
+        looking_for: profileName,
+        found,
+        available_profiles: profileNames,
+      };
+    } catch (err: any) {
+      steps[1].status = 'error';
+      steps[1].detail = err.message;
+    }
+
+    // Step 3: Check existing hotspot users
+    steps.push({ step: 'check_existing_user', status: 'running' });
+    try {
+      const users = await mikrotikRequest(config, '/rest/ip/hotspot/user') as any[];
+      const existing = users.find((u: any) => u.name === code);
+      steps[2].status = 'ok';
+      steps[2].detail = {
+        user_exists: !!existing,
+        total_hotspot_users: users.length,
+        existing_user: existing ? { name: existing.name, profile: existing.profile, comment: existing.comment } : null,
+      };
+    } catch (err: any) {
+      steps[2].status = 'error';
+      steps[2].detail = err.message;
+    }
+
+    // Step 4: Try creating hotspot user (dry-run info)
+    steps.push({ step: 'create_user_test', status: 'info' });
+    steps[3].detail = {
+      would_create: {
+        name: code,
+        password: code,
+        profile: profileName,
+        comment: `NuxBill Voucher - ${result.plan.name_plan}`,
+      },
+      note: 'Use POST /nuxbill-login to actually create the user',
+    };
+
+    return res.json({ success: true, steps });
+  } catch (error: any) {
+    console.error('Test voucher error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
