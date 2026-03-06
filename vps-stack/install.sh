@@ -667,6 +667,10 @@ echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius
 sleep 5
 
+# Iniciar perfiles opcionales configurados (TR-069)
+start_optional_profiles
+sleep 5
+
 # ═══════════════════════════════════════════════════
 # FASE 5: Verificación de servicios
 # ═══════════════════════════════════════════════════
