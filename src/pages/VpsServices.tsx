@@ -6,12 +6,13 @@ import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map, Monitor, Wifi } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map, Monitor, Wifi, Info, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 function MikhmonPanel() {
   const [vpsHost, setVpsHost] = useState("");
