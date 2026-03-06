@@ -17,6 +17,34 @@ const WG_CONTAINER = process.env.WG_CONTAINER_NAME || 'omnisync-wireguard';
 const WG_IMAGE = process.env.WG_IMAGE || 'lscr.io/linuxserver/wireguard:latest';
 const WG_READY_TTL_MS = 5000;
 let wgLastCheckAt = 0;
+let cachedPublicIp = '';
+
+async function getPublicIp(): Promise<string> {
+  if (cachedPublicIp) return cachedPublicIp;
+  const commands = [
+    'curl -s -4 --max-time 5 ifconfig.me',
+    'curl -s -4 --max-time 5 api.ipify.org',
+    'curl -s -4 --max-time 5 icanhazip.com',
+    'curl -s -4 --max-time 5 ipecho.net/plain',
+    'hostname -I | awk \'{print $1}\'',
+  ];
+  for (const cmd of commands) {
+    try {
+      const { stdout } = await execAsync(cmd);
+      const ip = stdout.trim();
+      if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+        cachedPublicIp = ip;
+        return ip;
+      }
+    } catch {}
+  }
+  // Fallback: check env variable
+  if (process.env.VPS_PUBLIC_IP) {
+    cachedPublicIp = process.env.VPS_PUBLIC_IP;
+    return cachedPublicIp;
+  }
+  return '';
+}
 
 // ─── Helpers ──────────────────────────────────────
 function shellEscape(value: string): string {
