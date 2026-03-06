@@ -159,31 +159,7 @@ export default function OnuManagement() {
       if (res.warning) toast.warning(res.warning);
       else toast.success("ONU registrada exitosamente");
 
-      // Auto-provision via TR-069 if enabled
-      if (form.auto_provision_tr069 && form.serial_number && (form.wifi_ssid || form.pppoe_username)) {
-        try {
-          const provRes = await api("/genieacs/auto-provision", {
-            method: "POST",
-            body: {
-              serialNumber: form.serial_number,
-              wifiSsid: form.wifi_ssid || undefined,
-              wifiPassword: form.wifi_password || undefined,
-              pppoeUsername: form.pppoe_username || undefined,
-              pppoePassword: form.pppoe_password || undefined,
-              vlanId: form.vlan_id || undefined,
-              dns1: form.dns1 || undefined,
-              dns2: form.dns2 || undefined,
-            },
-          });
-          if (provRes.found) {
-            toast.success(`TR-069: ${provRes.message}`);
-          } else {
-            toast.info(provRes.message);
-          }
-        } catch (provErr: any) {
-          toast.warning(`ONU registrada pero auto-provisioning TR-069 falló: ${provErr.message}`);
-        }
-      }
+      // TR-069 auto-provision removed
 
       setShowAddOnu(false);
       setForm({
