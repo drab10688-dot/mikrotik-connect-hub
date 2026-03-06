@@ -310,7 +310,18 @@ function generateMikrotikScript(
 # 4) Asignar IP al túnel
 /ip address add address=${clientIp}/24 interface=wg-omnisync
 
-# 5) Verificar conectividad (esperar 5s)
+# 5) Firewall: permitir acceso API desde el VPS por el túnel
+:do { /ip firewall filter remove [find where comment="omnisync-vpn-api"] } on-error={}
+/ip firewall filter add \\
+  chain=input \\
+  src-address=${WG_SUBNET}.0/24 \\
+  protocol=tcp \\
+  dst-port=8728,8729,8738,80,443 \\
+  action=accept \\
+  comment="omnisync-vpn-api" \\
+  place-before=0
+
+# 6) Verificar conectividad (esperar 5s)
 :delay 5s
 :do { /ping ${WG_SUBNET}.1 count=3 } on-error={ :log warning "WireGuard: no se pudo hacer ping al servidor VPS" }
 
