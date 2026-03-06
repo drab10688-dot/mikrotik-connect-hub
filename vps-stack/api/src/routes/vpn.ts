@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
