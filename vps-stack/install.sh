@@ -659,8 +659,8 @@ echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius
 sleep 5
 
-# Iniciar perfiles opcionales configurados (TR-069)
-start_optional_profiles
+# Servicios opcionales disponibles desde el panel
+start_optional_services
 sleep 5
 
 # ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
