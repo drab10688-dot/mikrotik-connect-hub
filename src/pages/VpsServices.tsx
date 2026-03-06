@@ -1,12 +1,12 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
+import { VpsDockerManager } from "@/components/settings/VpsDockerManager";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map, Wifi, Info, ExternalLink, Monitor } from "lucide-react";
+import { Server, Megaphone, Shield, Map, Wifi, Info, ExternalLink, Monitor, Container } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
