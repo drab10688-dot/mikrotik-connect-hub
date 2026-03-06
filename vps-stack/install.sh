@@ -408,15 +408,10 @@ is_truthy() {
   esac
 }
 
-start_optional_profiles() {
-  local cms_autostart="${CMS_AUTOSTART:-0}"
-
-  if is_truthy "$cms_autostart"; then
-    echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
-    docker compose --profile cms up -d cms-cdata 2>&1 | tail -5 || true
-  else
-    echo -e "${CYAN}CMS C-Data desactivado (CMS_AUTOSTART=${cms_autostart})${NC}"
-  fi
+start_optional_services() {
+  # Los servicios opcionales (CMS, Mikhmon, WireGuard) usan restart: "no"
+  # Se inician/detienen desde el panel de Servicios VPS
+  echo -e "${CYAN}Servicios opcionales disponibles desde el panel: CMS C-Data, Mikhmon, WireGuard${NC}"
 }
 
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
