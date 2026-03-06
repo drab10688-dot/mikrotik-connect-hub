@@ -111,7 +111,8 @@ function CmscdataPanel() {
   }, []);
 
   const cmsUrl = `${window.location.protocol}//${vpsHost}/cms-cdata/`;
-  const cmsExternalUrl = `${window.location.protocol}//${vpsHost}:18080`;
+  // CMS C-Data en host expone HTTP plano en 18080 (evitar https://host:18080)
+  const cmsExternalUrl = `http://${vpsHost}:18080`;
 
   return (
     <Card>
