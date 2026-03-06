@@ -2,7 +2,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
-import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
+
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -153,10 +153,6 @@ export default function VpsServices() {
               <Shield className="h-4 w-4" />
               VPN
             </TabsTrigger>
-            <TabsTrigger value="antennas" className="gap-2">
-              <Radio className="h-4 w-4" />
-              Antenas
-            </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
               Publicidad
@@ -190,9 +186,6 @@ export default function VpsServices() {
             <VpnManager />
           </TabsContent>
 
-          <TabsContent value="antennas">
-            <AntennasDashboard />
-          </TabsContent>
 
           <TabsContent value="ads">
             <PortalAdsManager />
