@@ -60,6 +60,7 @@ services:
     volumes:
       - backup_data:/opt/omnisync/backups
       - /usr/local/bin/cloudflared:/usr/local/bin/cloudflared:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       postgres:
         condition: service_healthy

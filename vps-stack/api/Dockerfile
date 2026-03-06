@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install pg_dump and psql for direct database backups
-RUN apk add --no-cache postgresql16-client
+# Install pg_dump/psql for backups + Docker CLI for WireGuard management
+RUN apk add --no-cache postgresql16-client docker-cli
 
 WORKDIR /app
 
