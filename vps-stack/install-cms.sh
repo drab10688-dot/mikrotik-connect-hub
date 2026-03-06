@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================
 # CMS C-Data — Instalación automatizada en host
-# Sin preguntas de puertos: solo tenant (multi/isp)
+# Estrategia: instalar con puertos default, luego
+# parchear docker-compose.yml con puertos correctos
 # ============================================
 
 set -euo pipefail
@@ -15,36 +16,6 @@ NC='\033[0m'
 CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
 VPS_IP=$(hostname -I | awk '{print $1}')
-
-# Puertos preferidos (se auto-ajustan si están ocupados)
-PREF_MYSQL_PORT="${CMS_MYSQL_PORT:-3307}"
-PREF_REDIS_PORT="${CMS_REDIS_PORT:-6380}"
-PREF_EMQX_PORT="${CMS_EMQX_PORT:-1883}"
-PREF_ACS_PORT="${CMS_ACS_PORT:-9909}"
-PREF_STUN_PORT="${CMS_STUN_PORT:-3478}"
-PREF_APP_PORT="${CMS_APP_PORT:-9999}"
-PREF_NGINX_PORT="${CMS_WEB_PORT:-18080}"
-
-port_in_use() {
-  local port="$1"
-  ss -lntup 2>/dev/null | grep -q ":${port} "
-}
-
-pick_free_port() {
-  local port="$1"
-  while port_in_use "$port"; do
-    port=$((port + 1))
-  done
-  echo "$port"
-}
-
-CMS_MYSQL_PORT="$(pick_free_port "$PREF_MYSQL_PORT")"
-CMS_REDIS_PORT="$(pick_free_port "$PREF_REDIS_PORT")"
-CMS_EMQX_PORT="$(pick_free_port "$PREF_EMQX_PORT")"
-CMS_ACS_PORT="$(pick_free_port "$PREF_ACS_PORT")"
-CMS_STUN_PORT="$(pick_free_port "$PREF_STUN_PORT")"
-CMS_APP_PORT="$(pick_free_port "$PREF_APP_PORT")"
-CMS_NGINX_PORT="$(pick_free_port "$PREF_NGINX_PORT")"
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
@@ -72,42 +43,43 @@ fi
 
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
-# Limpieza de intentos previos
-mkdir -p "$CMS_DIR"
+# ── Limpieza total de intentos previos ──
+echo -e "${YELLOW}Limpiando instalaciones anteriores de CMS...${NC}"
 if [ -f "$CMS_DIR/docker-compose.yml" ]; then
-  (cd "$CMS_DIR" && docker compose down -v --remove-orphans >/dev/null 2>&1 || true)
+  (cd "$CMS_DIR" && docker compose down -v --remove-orphans 2>/dev/null || true)
 fi
-docker rm -f $(docker ps -aq --filter "name=cms-") >/dev/null 2>&1 || true
+# Forzar eliminación de todos los contenedores cms-*
+for c in $(docker ps -aq --filter "name=cms-" 2>/dev/null); do
+  docker rm -f "$c" 2>/dev/null || true
+done
+# Limpiar volúmenes huérfanos de CMS
+docker volume ls -q 2>/dev/null | grep -i cms | xargs -r docker volume rm 2>/dev/null || true
+echo -e "${GREEN}✓ Limpieza completa${NC}"
 
+# ── Descargar instalador ──
+mkdir -p "$CMS_DIR"
 cd "$CMS_DIR"
 
 echo -e "${YELLOW}Descargando instalador CMS C-Data v${CMS_VERSION}...${NC}"
 curl -fsSL -o cms_install.sh "https://cms.s.cdatayun.com/cms_linux/cms_install.sh"
 chmod +x cms_install.sh
 
-echo -e "${YELLOW}Puertos seleccionados automáticamente:${NC}"
-echo -e "  MySQL: ${CMS_MYSQL_PORT} | Redis: ${CMS_REDIS_PORT} | EMQX: ${CMS_EMQX_PORT}"
-echo -e "  ACS: ${CMS_ACS_PORT} | STUN: ${CMS_STUN_PORT} | APP: ${CMS_APP_PORT} | Nginx: ${CMS_NGINX_PORT}"
+# ── Ejecutar instalador con puertos default (sin modificar) ──
+# Respondemos "n" a todas las preguntas de puertos para usar los defaults
+# del instalador, luego parcheamos después.
+echo -e "${YELLOW}Ejecutando instalador con puertos default...${NC}"
 
-# Respuestas alineadas al instalador oficial
 cat > /tmp/cms_answers.txt << EOF
-y
-${CMS_MYSQL_PORT}
-y
-${CMS_REDIS_PORT}
-y
-${CMS_EMQX_PORT}
-y
-${CMS_ACS_PORT}
-y
-${CMS_STUN_PORT}
-y
-${CMS_APP_PORT}
-y
-${CMS_NGINX_PORT}
+n
+n
+n
+n
+n
+n
+n
 n
 ${CMS_TENANT_TYPE}
-http://${VPS_IP}:${CMS_NGINX_PORT}
+http://${VPS_IP}:80
 EOF
 
 set +e
@@ -116,28 +88,88 @@ INSTALL_EXIT=$?
 set -e
 rm -f /tmp/cms_answers.txt
 
-echo ""
-echo -e "${CYAN}Verificando instalación...${NC}"
-sleep 20
+# ── Esperar a que se genere docker-compose.yml ──
+sleep 5
 
-if [ -f "$CMS_DIR/docker-compose.yml" ]; then
-  docker compose up -d >/dev/null 2>&1 || true
+if [ ! -f "$CMS_DIR/docker-compose.yml" ]; then
+  echo -e "${RED}Error: No se generó docker-compose.yml${NC}"
+  echo -e "${RED}Revisa /tmp/cms_install.log${NC}"
+  exit 1
 fi
 
-echo -e "${CYAN}Contenedores CMS:${NC}"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo aún)"
+# ── Detener todo antes de parchear ──
+echo -e "${YELLOW}Deteniendo contenedores CMS para reconfigurar puertos...${NC}"
+cd "$CMS_DIR"
+docker compose down 2>/dev/null || true
 
-if ss -lntp | grep -q ":${CMS_NGINX_PORT} "; then
-  echo -e "${GREEN}✓ CMS C-Data escuchando en puerto ${CMS_NGINX_PORT}${NC}"
-else
-  echo -e "${YELLOW}⚠ CMS aún no escucha en ${CMS_NGINX_PORT}${NC}"
-  echo -e "${YELLOW}  Revisa: docker logs cms-rmqbroker --tail 80${NC}"
-  if free -m | awk 'NR==2{exit !($2<1800)}'; then
-    echo -e "${YELLOW}  VPS con RAM baja detectada; recomendado crear swap:${NC}"
-    echo -e "${YELLOW}  fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile swap swap defaults 0 0' >> /etc/fstab${NC}"
+# ── Parchear puertos en docker-compose.yml ──
+# OmniSync usa 3306 (MariaDB) y 6379 podría estar en uso
+# Reasignamos MySQL del CMS a 3307 y Nginx a 18080
+echo -e "${YELLOW}Parcheando puertos para evitar conflictos con OmniSync...${NC}"
+
+# MySQL: 3306 -> 3307
+sed -i 's/"3306:3306"/"3307:3306"/g' "$CMS_DIR/docker-compose.yml"
+# Redis: si usa 6379, cambiar a 6380
+sed -i 's/"6379:6379"/"6380:6379"/g' "$CMS_DIR/docker-compose.yml"
+# Nginx/Web: 80 -> 18080
+# El CMS puede mapear 80:80 o similar
+sed -i 's/"80:80"/"18080:80"/g' "$CMS_DIR/docker-compose.yml"
+sed -i 's/"80:8080"/"18080:8080"/g' "$CMS_DIR/docker-compose.yml"
+
+# También parchear el .env del CMS si existe
+if [ -f "$CMS_DIR/.env" ]; then
+  # Actualizar la URL del CMS
+  sed -i "s|CMS_URL=.*|CMS_URL=http://${VPS_IP}:18080|g" "$CMS_DIR/.env" 2>/dev/null || true
+  sed -i "s|DOMAIN=.*|DOMAIN=http://${VPS_IP}:18080|g" "$CMS_DIR/.env" 2>/dev/null || true
+fi
+
+echo -e "${GREEN}✓ Puertos parcheados${NC}"
+
+# ── Mostrar puertos finales ──
+echo -e "${CYAN}Puertos configurados:${NC}"
+echo -e "  MySQL CMS: 3307 (host) → 3306 (container)"
+echo -e "  Redis CMS: 6380 (host) → 6379 (container)"
+echo -e "  Web CMS:   18080 (host)"
+
+# ── Iniciar CMS con puertos corregidos ──
+echo -e "${YELLOW}Iniciando CMS C-Data con puertos corregidos...${NC}"
+cd "$CMS_DIR"
+docker compose up -d 2>&1
+
+echo -e "${CYAN}Esperando estabilización (60s)...${NC}"
+for i in $(seq 1 12); do
+  sleep 5
+  # Verificar si el puerto web ya responde
+  if ss -lntp | grep -q ":18080 "; then
+    echo -e "${GREEN}✓ CMS respondiendo en puerto 18080${NC}"
+    break
   fi
+  echo -e "  Esperando... (${i}/12)"
+done
+
+# ── Verificar estado ──
+echo ""
+echo -e "${CYAN}Contenedores CMS:${NC}"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
+
+# Verificar si MySQL del CMS está healthy
+if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
+  echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
+else
+  echo -e "${YELLOW}⚠ MySQL CMS aún iniciándose...${NC}"
+  echo -e "${YELLOW}  Verificar con: docker logs cms-mysql --tail 20${NC}"
 fi
 
+if ss -lntp | grep -q ":18080 "; then
+  echo -e "${GREEN}✓ CMS C-Data escuchando en puerto 18080${NC}"
+else
+  echo -e "${YELLOW}⚠ CMS aún no escucha en 18080${NC}"
+  echo -e "${YELLOW}  Espera unos minutos y verifica:${NC}"
+  echo -e "${YELLOW}    docker compose -f $CMS_DIR/docker-compose.yml logs --tail 30${NC}"
+  echo -e "${YELLOW}    ss -lntp | grep 18080${NC}"
+fi
+
+# ── Servicio systemd ──
 cat > /etc/systemd/system/cms-cdata.service << EOF
 [Unit]
 Description=CMS C-Data OLT/ONU Management
@@ -162,10 +194,11 @@ echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║   CMS C-Data — Instalación finalizada        ║${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════╣${NC}"
-echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}:${CMS_NGINX_PORT}${NC}"
+echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}:18080${NC}"
 echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
 echo -e "${CYAN}║${NC}  User:   ${GREEN}admin${NC}"
 echo -e "${CYAN}║${NC}  Pass:   ${GREEN}admin${NC}"
+echo -e "${CYAN}║${NC}  MySQL:  ${GREEN}puerto 3307${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 
