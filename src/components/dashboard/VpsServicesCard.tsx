@@ -414,8 +414,7 @@ add dst-address=${vpsHost || "TU_IP_VPS"} action=accept comment="OmniSync VPS"`}
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const loginUrl = isRunning && config?.tunnel_url ? config.tunnel_url + "/portal" : `http://${vpsHost || "TU_IP_VPS"}/portal`;
                       const script = `/ip hotspot profile set [find default=yes] login-by=http-chap,http-pap html-directory=hotspot login-page="${loginUrl}"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script Login Page copiado");
+                      handleCopy(script, "Script Login Page copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
