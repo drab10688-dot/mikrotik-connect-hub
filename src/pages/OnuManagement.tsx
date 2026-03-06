@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity, Upload, Send, Settings2 } from "lucide-react";
-import TR069Dashboard from "@/components/tr069/TR069Dashboard";
+// TR069Dashboard removed - replaced by CMS C-Data
 import SignalHistoryChart from "@/components/onu/SignalHistoryChart";
 import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 
