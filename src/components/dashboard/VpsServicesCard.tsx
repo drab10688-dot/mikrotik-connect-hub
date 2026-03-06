@@ -336,7 +336,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">URL Local del Portal</Label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-background px-3 py-2 rounded border truncate">{portalUrl}</code>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { navigator.clipboard.writeText(portalUrl); toast.success("URL copiada"); }}>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleCopy(portalUrl, "URL copiada")}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
