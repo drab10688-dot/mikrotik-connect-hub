@@ -32,6 +32,8 @@ services:
     build: ./api
     container_name: omnisync-api
     restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
     environment:
       NODE_ENV: production
       PORT: 3000
