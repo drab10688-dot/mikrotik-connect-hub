@@ -231,10 +231,6 @@ export default function VpsServices() {
             <VpnManager />
           </TabsContent>
 
-          <TabsContent value="vpn">
-            <VpnManager />
-          </TabsContent>
-
           <TabsContent value="ads">
             <PortalAdsManager />
           </TabsContent>
