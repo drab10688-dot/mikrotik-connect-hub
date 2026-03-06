@@ -243,10 +243,13 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
         cmd = `docker compose${profileArg} -f /opt/omnisync/docker-compose.yml ${action}${svcArg} 2>&1`;
     }
 
-    const output = execSync(cmd, { timeout: 60000 }).toString();
+    const output = execSync(cmd, { timeout: 120000 }).toString();
     res.json({ success: true, message: `Acción ${action} ejecutada`, output, service: resolvedService || null });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    const stderr = error.stderr ? error.stderr.toString() : '';
+    const stdout = error.stdout ? error.stdout.toString() : '';
+    const detail = stdout || stderr || error.message;
+    res.status(500).json({ success: false, error: detail, command: cmd });
   }
 });
 
