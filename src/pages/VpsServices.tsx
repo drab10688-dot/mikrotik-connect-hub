@@ -6,8 +6,82 @@ import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map, Monitor } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map, Monitor, Wifi } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 
+function MikhmonPanel() {
+  const [vpsHost, setVpsHost] = useState("");
+  const [mikhmonAvailable, setMikhmonAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    setVpsHost(host);
+    // Check if mikhmon is reachable
+    const url = `${window.location.protocol}//${host}/mikhmon/`;
+    fetch(url, { mode: "no-cors" })
+      .then(() => setMikhmonAvailable(true))
+      .catch(() => setMikhmonAvailable(false));
+  }, []);
+
+  const mikhmonUrl = `${window.location.protocol}//${vpsHost}/mikhmon/`;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Wifi className="h-5 w-5" />
+            Mikhmon V3 — Hotspot Monitor
+          </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Gestión avanzada de Hotspot MikroTik: vouchers, reportes, impresión térmica y más.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant={mikhmonAvailable ? "default" : "secondary"}>
+            {mikhmonAvailable === null ? "Verificando..." : mikhmonAvailable ? "Activo" : "No disponible"}
+          </Badge>
+          <Button variant="outline" size="sm" asChild>
+            <a href={mikhmonUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1" />
+              Abrir externo
+            </a>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {mikhmonAvailable === false ? (
+          <div className="text-center py-12 space-y-4">
+            <Wifi className="h-12 w-12 mx-auto text-muted-foreground" />
+            <div>
+              <p className="text-lg font-medium text-foreground">Mikhmon no está activo</p>
+              <p className="text-muted-foreground text-sm mt-1">
+                Para activar Mikhmon V3, ejecute en su VPS:
+              </p>
+              <code className="block mt-3 bg-muted p-3 rounded text-sm font-mono">
+                cd /opt/omnisync && docker compose --profile mikhmon up -d
+              </code>
+              <p className="text-muted-foreground text-xs mt-2">
+                Luego recargue esta página.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <iframe
+            src={mikhmonUrl}
+            className="w-full border-0 rounded-lg"
+            style={{ height: "75vh" }}
+            title="Mikhmon V3"
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
@@ -28,6 +102,10 @@ export default function VpsServices() {
             <TabsTrigger value="services" className="gap-2">
               <Server className="h-4 w-4" />
               Servicios
+            </TabsTrigger>
+            <TabsTrigger value="mikhmon" className="gap-2">
+              <Wifi className="h-4 w-4" />
+              Mikhmon
             </TabsTrigger>
             <TabsTrigger value="tr069" className="gap-2">
               <Monitor className="h-4 w-4" />
@@ -53,6 +131,10 @@ export default function VpsServices() {
 
           <TabsContent value="services">
             <VpsServicesCard mikrotikId={mikrotikId} />
+          </TabsContent>
+
+          <TabsContent value="mikhmon">
+            <MikhmonPanel />
           </TabsContent>
 
           <TabsContent value="tr069">
