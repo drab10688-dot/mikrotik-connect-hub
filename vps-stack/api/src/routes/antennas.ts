@@ -75,16 +75,24 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
 
     const config = await getDeviceConfig(pool, mikrotikId);
 
+    let connectionSucceeded = false;
+    let lastConnectionError = '';
+
     // Get wireless registration table (connected clients/stations)
     let registrations: any[] = [];
     try {
       const { data } = await mikrotikRequestWithFallback(config, '/rest/interface/wireless/registration-table');
       registrations = Array.isArray(data) ? data : [];
-    } catch {
+      connectionSucceeded = true;
+    } catch (error: any) {
+      lastConnectionError = error?.message || lastConnectionError;
       try {
         const data = await mikrotikRequest(config, '/rest/interface/wireless/registration-table');
         registrations = Array.isArray(data) ? data : [];
-      } catch { /* no wireless interface */ }
+        connectionSucceeded = true;
+      } catch (fallbackError: any) {
+        lastConnectionError = fallbackError?.message || lastConnectionError;
+      }
     }
 
     // Get wireless interfaces info
@@ -92,11 +100,16 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
     try {
       const { data } = await mikrotikRequestWithFallback(config, '/rest/interface/wireless');
       interfaces = Array.isArray(data) ? data : [];
-    } catch {
+      connectionSucceeded = true;
+    } catch (error: any) {
+      lastConnectionError = error?.message || lastConnectionError;
       try {
         const data = await mikrotikRequest(config, '/rest/interface/wireless');
         interfaces = Array.isArray(data) ? data : [];
-      } catch { /* ignore */ }
+        connectionSucceeded = true;
+      } catch (fallbackError: any) {
+        lastConnectionError = fallbackError?.message || lastConnectionError;
+      }
     }
 
     // Get system resource
@@ -104,11 +117,16 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
     try {
       const { data } = await mikrotikRequestWithFallback(config, '/rest/system/resource');
       systemResource = Array.isArray(data) ? data[0] : data;
-    } catch {
+      connectionSucceeded = true;
+    } catch (error: any) {
+      lastConnectionError = error?.message || lastConnectionError;
       try {
         const data = await mikrotikRequest(config, '/rest/system/resource');
         systemResource = Array.isArray(data) ? data[0] : data;
-      } catch { /* ignore */ }
+        connectionSucceeded = true;
+      } catch (fallbackError: any) {
+        lastConnectionError = fallbackError?.message || lastConnectionError;
+      }
     }
 
     // Get system identity
@@ -117,7 +135,22 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
       const { data } = await mikrotikRequestWithFallback(config, '/rest/system/identity');
       const idData = Array.isArray(data) ? data[0] : data;
       identity = idData?.name || '';
-    } catch { /* ignore */ }
+      connectionSucceeded = true;
+    } catch (error: any) {
+      lastConnectionError = error?.message || lastConnectionError;
+      try {
+        const data = await mikrotikRequest(config, '/rest/system/identity');
+        const idData = Array.isArray(data) ? data[0] : data;
+        identity = idData?.name || '';
+        connectionSucceeded = true;
+      } catch (fallbackError: any) {
+        lastConnectionError = fallbackError?.message || lastConnectionError;
+      }
+    }
+
+    if (!connectionSucceeded) {
+      throw new Error(lastConnectionError || 'Sin respuesta del dispositivo por API/VPN');
+    }
 
     // Parse registration data
     const clients = registrations.map((r: any) => ({
