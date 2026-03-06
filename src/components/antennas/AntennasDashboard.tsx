@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "sonner";
 import { apiGet, apiPost, apiPut, apiDelete, devicesApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
+import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 import {
   Radio, RefreshCw, Wifi, Signal, Activity, Cpu, RotateCcw, Eye,
   Users, Clock, Server, Filter, Plus, Settings2, Trash2, Edit, AlertTriangle, ChevronDown
@@ -60,6 +61,12 @@ function signalBadge(signal: number | null | undefined) {
   return <Badge variant="destructive" className="text-xs">Débil</Badge>;
 }
 
+const normalizeArrayPayload = <T = any>(payload: any): T[] => {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object" && Array.isArray(payload.data)) return payload.data;
+  return [];
+};
+
 // ─── Forms ──────────────────────────────────────
 const emptyMkForm = { name: "", host: "", username: "admin", password: "", port: 443, version: "v7", hotspot_url: "" };
 const emptyUbForm = { name: "", ip_address: "", username: "", password: "", model: "", mac_address: "", notes: "" };
@@ -67,6 +74,7 @@ const emptyConfigForm = { default_username: "ubnt", default_password: "" };
 
 export function AntennasDashboard() {
   const { user, isSuperAdmin } = useAuth();
+  const { device: selectedDevice } = useValidatedDevice(true);
   const [antennas, setAntennas] = useState<UnifiedAntenna[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -89,19 +97,35 @@ export function AntennasDashboard() {
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  const selectedMikrotikId = selectedDevice?.id || localStorage.getItem("mikrotik_device_id") || "";
+  const selectedMikrotikQuery = selectedMikrotikId ? `?mikrotik_id=${encodeURIComponent(selectedMikrotikId)}` : "";
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     const unified: UnifiedAntenna[] = [];
 
     try {
-      const mkDevices = await apiGet("/antennas/devices");
-      for (const d of mkDevices) {
-        unified.push({ id: d.id, name: d.name, host: d.host, brand: "mikrotik", version: d.version, status: d.status === "active" ? undefined : "pending" });
+      const mkPayload = await apiGet(`/antennas/devices${selectedMikrotikQuery}`);
+      const mkDevices = normalizeArrayPayload<any>(mkPayload);
+
+      if (mkDevices.length > 0) {
+        for (const d of mkDevices) {
+          unified.push({ id: d.id, name: d.name, host: d.host, brand: "mikrotik", version: d.version, status: d.status === "active" ? undefined : "pending" });
+        }
+      } else if (selectedMikrotikId) {
+        unified.push({
+          id: selectedMikrotikId,
+          name: selectedDevice?.name || "MikroTik sincronizado",
+          host: selectedDevice?.host || "IP no disponible",
+          brand: "mikrotik",
+          version: selectedDevice?.version,
+        });
       }
     } catch { /* ignore */ }
 
     try {
-      const ubDevices = await apiGet("/ubiquiti/devices");
+      const ubPayload = await apiGet("/ubiquiti/devices");
+      const ubDevices = normalizeArrayPayload<any>(ubPayload);
       for (const d of ubDevices) {
         unified.push({
           id: `ub-${d.id}`, ubiquiti_id: d.id, name: d.name, host: d.ip_address, brand: "ubiquiti",
@@ -113,7 +137,7 @@ export function AntennasDashboard() {
 
     setAntennas(unified);
     setLoading(false);
-  }, []);
+  }, [selectedMikrotikId, selectedMikrotikQuery, selectedDevice?.host, selectedDevice?.name, selectedDevice?.version]);
 
   const loadUbConfig = useCallback(async () => {
     try {
@@ -133,7 +157,8 @@ export function AntennasDashboard() {
     let firstErrorMessage = "";
 
     try {
-      const mkStatuses = await apiGet("/antennas/status/all");
+      const mkPayload = await apiGet(`/antennas/status/all${selectedMikrotikQuery}`);
+      const mkStatuses = normalizeArrayPayload<any>(mkPayload);
       setAntennas((prev) => prev.map((a) => {
         if (a.brand !== "mikrotik") return a;
         const st = mkStatuses.find((s: any) => s.id === a.id);
@@ -145,7 +170,8 @@ export function AntennasDashboard() {
     }
 
     try {
-      const ubStatuses = await apiGet("/ubiquiti/devices/status/all");
+      const ubPayload = await apiGet("/ubiquiti/devices/status/all");
+      const ubStatuses = normalizeArrayPayload<any>(ubPayload);
       setAntennas((prev) => prev.map((a) => {
         if (a.brand !== "ubiquiti") return a;
         const st = ubStatuses.find((s: any) => `ub-${s.id}` === a.id);
@@ -164,7 +190,7 @@ export function AntennasDashboard() {
       }
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedMikrotikQuery]);
 
   useEffect(() => {
     if (!antennas.length) return;
