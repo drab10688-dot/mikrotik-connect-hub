@@ -249,22 +249,35 @@ antennasRouter.get('/status/all', async (req: AuthRequest, res: Response) => {
           try {
             const { data } = await mikrotikRequestWithFallback(config, '/rest/interface/wireless/registration-table');
             registrations = Array.isArray(data) ? data : [];
-          } catch { /* ignore */ }
+          } catch { /* ignore optional wireless data */ }
 
           // Get system resource
           let sysRes: any = {};
+          let resourceLoaded = false;
+          let lastConnectionError = '';
           try {
             const { data } = await mikrotikRequestWithFallback(config, '/rest/system/resource');
             sysRes = Array.isArray(data) ? data[0] : data;
-          } catch { /* ignore */ }
+            resourceLoaded = true;
+          } catch (error: any) {
+            lastConnectionError = error?.message || lastConnectionError;
+          }
 
           // Get identity
           let identity = dev.name;
+          let identityLoaded = false;
           try {
             const { data } = await mikrotikRequestWithFallback(config, '/rest/system/identity');
             const idData = Array.isArray(data) ? data[0] : data;
             identity = idData?.name || dev.name;
-          } catch { /* ignore */ }
+            identityLoaded = true;
+          } catch (error: any) {
+            lastConnectionError = error?.message || lastConnectionError;
+          }
+
+          if (!resourceLoaded && !identityLoaded) {
+            throw new Error(lastConnectionError || 'Sin respuesta del dispositivo');
+          }
 
           // Aggregate signal from registrations
           const avgSignal = registrations.length > 0
