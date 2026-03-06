@@ -175,9 +175,13 @@ export function VpnManager() {
     }
   };
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copiado al portapapeles`);
+  const copyToClipboard = async (text: string, label: string) => {
+    const copied = await copyTextToClipboard(text);
+    if (copied) {
+      toast.success(`${label} copiado al portapapeles`);
+      return;
+    }
+    toast.error("No se pudo copiar. Verifica permisos del navegador.");
   };
 
   if (loading) {
