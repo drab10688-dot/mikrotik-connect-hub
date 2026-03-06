@@ -767,10 +767,14 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 
 # Check optional services (informational only)
 echo ""
-echo -e "${CYAN}Servicios opcionales (iniciar desde panel Servicios VPS):${NC}"
-echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs)${NC}"
-echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor)${NC}"
-echo -e "  ${YELLOW}ℹ WireGuard (VPN)${NC}"
+echo -e "${CYAN}Servicios opcionales:${NC}"
+if ss -lntp | grep -q ":18080"; then
+  echo -e "  ${GREEN}✓ CMS C-Data (ONUs) — activo en puerto 18080${NC}"
+else
+  echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs) — no instalado. Ejecutar: bash $INSTALL_DIR/install-cms.sh${NC}"
+fi
+echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
+echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
 
 # Test HTTP endpoints — wait for nginx to be ready
 echo ""
