@@ -179,7 +179,7 @@ AllowedIPs = ${allowedIps}
   // Write config via docker exec
   const escaped = fullConfig.replace(/'/g, "'\\''");
   await execAsync(
-    `docker exec omnisync-wireguard sh -c 'echo "${escaped.replace(/"/g, '\\"')}" > /config/wg_confs/${WG_INTERFACE}.conf'`
+    `docker exec ${WG_CONTAINER} sh -c 'echo "${escaped.replace(/"/g, '\\"')}" > ${WG_CONFIG_DIR}/${WG_INTERFACE}.conf'`
   );
 
   // Restart wireguard interface
