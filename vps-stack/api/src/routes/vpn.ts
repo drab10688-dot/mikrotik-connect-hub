@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { exec } from 'child_process';
