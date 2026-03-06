@@ -188,7 +188,7 @@ services:
       dockerfile: Dockerfile
     container_name: omnisync-cms-cdata
     restart: "no"
-    ports:
+    profiles: ["cms_container"]
       - "18080:18080"
     volumes:
       - cms_data:/opt/cms/data
