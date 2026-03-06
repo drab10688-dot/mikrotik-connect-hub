@@ -34,7 +34,8 @@ async function ensureWireguardContainer(force = false): Promise<void> {
       return;
     }
 
-    await execAsync(`docker start ${WG_CONTAINER}`);
+  await execAsync(`docker start ${WG_CONTAINER}`);
+    await new Promise(r => setTimeout(r, 3000));
     wgLastCheckAt = Date.now();
     console.log(`[VPN] Started container ${WG_CONTAINER}`);
     return;
@@ -64,6 +65,8 @@ async function ensureWireguardContainer(force = false): Promise<void> {
   ].join(' ');
 
   await execAsync(runCmd);
+  // Wait for container to fully initialize
+  await new Promise(r => setTimeout(r, 5000));
   wgLastCheckAt = Date.now();
   console.log(`[VPN] Created container ${WG_CONTAINER}`);
 }
@@ -95,9 +98,17 @@ async function wgExecWithInput(input: string, cmd: string): Promise<string> {
 }
 
 async function generateWgKeys(): Promise<{ privateKey: string; publicKey: string; presharedKey: string }> {
-  const privateKey = (await wgExec('wg genkey')).trim();
+  // Retry up to 3 times with delay for container startup
+  let privateKey = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    privateKey = (await wgExec('wg genkey')).trim();
+    if (privateKey) break;
+    console.log(`[VPN] wg genkey attempt ${attempt + 1} failed, retrying...`);
+    await new Promise(r => setTimeout(r, 3000));
+    await ensureWireguardContainer(true);
+  }
   if (!privateKey) {
-    throw new Error('WireGuard no está disponible en el servidor');
+    throw new Error('WireGuard no está disponible en el servidor. Verifica que Docker esté funcionando correctamente.');
   }
 
   const publicKey = (await wgExecWithInput(privateKey, 'wg pubkey')).trim();
