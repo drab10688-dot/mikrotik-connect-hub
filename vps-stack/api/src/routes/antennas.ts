@@ -5,31 +5,61 @@ import { pool } from '../lib/db';
 
 export const antennasRouter = Router();
 
-// ─── List all MikroTik devices (as antennas) ───
+const UUID_REGEX = /^[0-9a-fA-F-]{36}$/;
+
+function parseMikrotikFilter(raw: unknown): { mikrotikId: string | null; invalid: boolean } {
+  if (typeof raw !== 'string') return { mikrotikId: null, invalid: false };
+  const trimmed = raw.trim();
+  if (!trimmed) return { mikrotikId: null, invalid: false };
+  if (!UUID_REGEX.test(trimmed)) return { mikrotikId: null, invalid: true };
+  return { mikrotikId: trimmed, invalid: false };
+}
+
+async function getVisibleMikrotikDevices(userId: string, role: string, mikrotikId: string | null) {
+  if (role === 'super_admin') {
+    const filter = mikrotikId ? ' AND md.id = $1' : '';
+    const params = mikrotikId ? [mikrotikId] : [];
+
+    return pool.query(
+      `SELECT md.id, md.name, md.host, md.port, md.version, md.status, md.created_at
+       FROM mikrotik_devices md
+       WHERE md.status = 'active'::device_status${filter}
+       ORDER BY md.name ASC`,
+      params
+    );
+  }
+
+  const filter = mikrotikId ? ' AND md.id = $2' : '';
+  const params = mikrotikId ? [userId, mikrotikId] : [userId];
+
+  return pool.query(
+    `SELECT md.id, md.name, md.host, md.port, md.version, md.status, md.created_at
+     FROM mikrotik_devices md
+     INNER JOIN (
+       SELECT mikrotik_id FROM user_mikrotik_access WHERE user_id = $1
+       UNION
+       SELECT mikrotik_id FROM secretary_assignments WHERE secretary_id = $1
+       UNION
+       SELECT mikrotik_id FROM reseller_assignments WHERE reseller_id = $1
+     ) access ON access.mikrotik_id = md.id
+     WHERE md.status = 'active'::device_status${filter}
+     ORDER BY md.name ASC`,
+    params
+  );
+}
+
+// ─── List all visible MikroTik devices (as antennas) ───
 antennasRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
     const role = req.userRole!;
+    const { mikrotikId, invalid } = parseMikrotikFilter(req.query.mikrotik_id);
 
-    let result;
-    if (role === 'super_admin') {
-      result = await pool.query(
-        `SELECT md.id, md.name, md.host, md.port, md.version, md.status,
-                md.created_at
-         FROM mikrotik_devices md
-         ORDER BY md.name ASC`
-      );
-    } else {
-      result = await pool.query(
-        `SELECT md.id, md.name, md.host, md.port, md.version, md.status,
-                md.created_at
-         FROM mikrotik_devices md
-         JOIN user_mikrotik_access uma ON uma.mikrotik_id = md.id AND uma.user_id = $1
-         ORDER BY md.name ASC`,
-        [userId]
-      );
+    if (invalid) {
+      return res.status(400).json({ error: 'mikrotik_id inválido' });
     }
 
+    const result = await getVisibleMikrotikDevices(userId, role, mikrotikId);
     res.json(result.rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -163,24 +193,18 @@ antennasRouter.post('/devices/:id([0-9a-fA-F-]{36})/reboot', async (req: AuthReq
   }
 });
 
-// ─── Bulk wireless status for all devices ───
+// ─── Bulk wireless status for all visible devices ───
 antennasRouter.get('/status/all', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
     const role = req.userRole!;
+    const { mikrotikId, invalid } = parseMikrotikFilter(req.query.mikrotik_id);
 
-    let result;
-    if (role === 'super_admin') {
-      result = await pool.query('SELECT id, name, host, port, version FROM mikrotik_devices ORDER BY name');
-    } else {
-      result = await pool.query(
-        `SELECT md.id, md.name, md.host, md.port, md.version
-         FROM mikrotik_devices md
-         JOIN user_mikrotik_access uma ON uma.mikrotik_id = md.id AND uma.user_id = $1
-         ORDER BY md.name`,
-        [userId]
-      );
+    if (invalid) {
+      return res.status(400).json({ error: 'mikrotik_id inválido' });
     }
+
+    const result = await getVisibleMikrotikDevices(userId, role, mikrotikId);
 
     const statuses = await Promise.allSettled(
       result.rows.map(async (dev: any) => {

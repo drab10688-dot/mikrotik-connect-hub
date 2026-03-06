@@ -553,6 +553,8 @@ MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
 NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
 NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
+GENIEACS_UI_JWT_SECRET=${GENIEACS_UI_JWT_SECRET}
+TR069_AUTOSTART=${TR069_AUTOSTART}
 TZ=America/Bogota
 EOF
 
@@ -663,6 +665,10 @@ ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS longitude TEXT;
 # Reiniciar PHPNuxBill y FreeRADIUS para que tomen las tablas recién creadas
 echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius
+sleep 5
+
+# Iniciar perfiles opcionales configurados (TR-069)
+start_optional_profiles
 sleep 5
 
 # ═══════════════════════════════════════════════════
