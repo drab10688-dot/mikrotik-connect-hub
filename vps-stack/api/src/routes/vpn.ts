@@ -274,6 +274,48 @@ AllowedIPs = ${allowedIps}
   await wgExec(`wg-quick up ${WG_INTERFACE}`);
 }
 
+// ─── MikroTik Script Generator ───────────────────
+function generateMikrotikScript(
+  clientPrivateKey: string,
+  serverPublicKey: string,
+  presharedKey: string,
+  serverIp: string,
+  clientIp: string
+): string {
+  return `# ============================================
+# OmniSync WireGuard — RouterOS v7
+# Peer: ${clientIp}
+# Servidor: ${serverIp}:${WG_PORT}
+# ============================================
+
+# 1) Eliminar configuración anterior (si existe)
+:do { /ip address remove [find where interface=wg-omnisync] } on-error={}
+:do { /interface wireguard peers remove [find where interface=wg-omnisync] } on-error={}
+:do { /interface wireguard remove [find where name=wg-omnisync] } on-error={}
+
+# 2) Crear interfaz WireGuard
+/interface wireguard add name=wg-omnisync listen-port=13231 private-key="${clientPrivateKey}"
+
+# 3) Agregar peer del servidor VPS
+/interface wireguard peers add \\
+  interface=wg-omnisync \\
+  public-key="${serverPublicKey}" \\
+  preshared-key="${presharedKey}" \\
+  endpoint-address=${serverIp} \\
+  endpoint-port=${WG_PORT} \\
+  allowed-address=${WG_SUBNET}.0/24 \\
+  persistent-keepalive=25
+
+# 4) Asignar IP al túnel
+/ip address add address=${clientIp}/24 interface=wg-omnisync
+
+# 5) Verificar conectividad (esperar 5s)
+:delay 5s
+:do { /ping ${WG_SUBNET}.1 count=3 } on-error={ :log warning "WireGuard: no se pudo hacer ping al servidor VPS" }
+
+:log info "WireGuard OmniSync configurado exitosamente (${clientIp})"`;
+}
+
 // ─── GET /status ──────────────────────────────────
 vpnRouter.get('/status', async (req: Request, res: Response) => {
   try {
