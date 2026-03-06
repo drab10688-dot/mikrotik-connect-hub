@@ -414,7 +414,6 @@ export default function OnuManagement() {
             </div>
 
             {/* Unregistered devices section removed - using CMS C-Data */}
-            )}
 
             {loading ? (
               <Card><CardContent className="p-8 text-center text-muted-foreground">Cargando...</CardContent></Card>
