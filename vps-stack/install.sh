@@ -511,8 +511,7 @@ MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
-GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)
-TR069_AUTOSTART=1
+CMS_AUTOSTART=0
 
 # MikroTik config (optional)
 echo ""
