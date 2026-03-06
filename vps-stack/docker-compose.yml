@@ -186,7 +186,7 @@ services:
       context: ./cms-cdata
       dockerfile: Dockerfile
     container_name: omnisync-cms-cdata
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "18080:18080"
     volumes:
@@ -198,15 +198,12 @@ services:
 
   # ============================================
   # Mikhmon V3 - MikroTik Hotspot Monitor
-  # Perfil: mikhmon - iniciar con:
-  #   docker compose --profile mikhmon up -d
+  # Iniciar/detener desde el panel de Servicios VPS
   # ============================================
   mikhmon:
     image: rizkikotet/mikhmon:latest
     container_name: omnisync-mikhmon
-    restart: unless-stopped
-    profiles:
-      - mikhmon
+    restart: "no"
     environment:
       PUID: 1000
       PGID: 1000
