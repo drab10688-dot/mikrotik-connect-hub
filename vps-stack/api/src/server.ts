@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { Pool } from 'pg';
+import { pool } from './lib/db';
 import cron from 'node-cron';
 import { authRouter } from './routes/auth';
 import { devicesRouter } from './routes/devices';
@@ -30,19 +30,11 @@ import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 
+// Re-export pool for backward compatibility with cron jobs
+export { pool };
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Database pool
-export const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'omnisync',
-  user: process.env.DB_USER || 'omnisync',
-  password: process.env.DB_PASSWORD || 'changeme_postgres',
-  max: 20,
-  idleTimeoutMillis: 30000,
-});
 
 // Middleware
 app.use(helmet());
