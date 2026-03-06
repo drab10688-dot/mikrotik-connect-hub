@@ -417,12 +417,8 @@ Endpoint = ${publicIp}:${WG_PORT}
 AllowedIPs = ${WG_SUBNET}.0/24${remote_networks ? '' : ''}
 PersistentKeepalive = 25`;
 
-    // Generate MikroTik script for RouterOS v7
-    const mikrotikScript = `/interface wireguard add name=wg-omnisync listen-port=13231 private-key="${keys.privateKey}"
-/interface wireguard peers add interface=wg-omnisync public-key="${serverPubKey}" preshared-key="${keys.presharedKey}" endpoint-address=${publicIp} endpoint-port=${WG_PORT} allowed-address=${WG_SUBNET}.0/24 persistent-keepalive=25
-/ip address add address=${peerAddress.replace('/32', '/24')} interface=wg-omnisync
-# Ruta hacia la red del VPN server
-/ip route add dst-address=${WG_SUBNET}.0/24 gateway=wg-omnisync`;
+    const peerIp = peerAddress.split('/')[0];
+    const mikrotikScript = generateMikrotikScript(keys.privateKey, serverPubKey, keys.presharedKey, publicIp, peerIp);
 
     res.json({
       peer,
