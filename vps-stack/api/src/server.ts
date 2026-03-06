@@ -23,7 +23,7 @@ import { serviceOptionsRouter } from './routes/service-options';
 import { messagingRouter } from './routes/messaging';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
-import { genieacsRouter } from './routes/genieacs';
+// genieacs removed - replaced by CMS C-Data
 import { vpnRouter } from './routes/vpn';
 import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
