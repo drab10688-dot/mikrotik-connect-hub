@@ -195,7 +195,6 @@ export default function VpsServices() {
               <Container className="h-4 w-4" />
               Docker
             </TabsTrigger>
-            </TabsTrigger>
             <TabsTrigger value="vpn" className="gap-2">
               <Shield className="h-4 w-4" />
               VPN
