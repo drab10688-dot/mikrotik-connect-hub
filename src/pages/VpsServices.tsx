@@ -146,7 +146,13 @@ function CmscdataPanel() {
             <div>
               <p className="text-lg font-medium text-foreground">CMS C-Data no está activo</p>
               <p className="text-muted-foreground text-sm mt-1">
-                Verifica que CMS esté instalado en el host y escuchando en el puerto 18080.
+                Si no lo has instalado, ejecuta en tu VPS:
+              </p>
+              <code className="block mt-2 bg-muted px-3 py-2 rounded text-xs font-mono">
+                bash /opt/omnisync/install-cms.sh
+              </code>
+              <p className="text-muted-foreground text-xs mt-2">
+                Si ya está instalado, verifica que el servicio esté corriendo: <code className="bg-muted px-1 rounded">ss -lntp | grep 18080</code>
               </p>
             </div>
           </div>
