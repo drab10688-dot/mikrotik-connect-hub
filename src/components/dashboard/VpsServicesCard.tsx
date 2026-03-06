@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { PortalTemplateSelector } from "@/components/settings/PortalTemplateSelector";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface VpsServicesCardProps {
   mikrotikId?: string | null;
