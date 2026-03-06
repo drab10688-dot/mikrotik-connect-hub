@@ -49,7 +49,7 @@ services:
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
-      GENIEACS_NBI_URL: http://genieacs:7557
+      CMS_CDATA_URL: http://cms-cdata:18080
       BACKUP_DIR: /opt/omnisync/backups
       NUXBILL_DB_HOST: mariadb
       NUXBILL_DB_PORT: 3306
@@ -177,49 +177,26 @@ services:
       - omnisync-net
 
   # ============================================
-  # GenieACS - TR-069 (All-in-One)
-  # Perfil: tr069 - iniciar con:
-  #   docker compose --profile tr069 up -d
+  # CMS C-Data - Gestión de OLTs/ONUs
+  # Perfil: cms - iniciar con:
+  #   docker compose --profile cms up -d
   # ============================================
-  genieacs:
-    image: drumsergio/genieacs:latest
-    container_name: omnisync-genieacs
+  cms-cdata:
+    build:
+      context: ./cms-cdata
+      dockerfile: Dockerfile
+    container_name: omnisync-cms-cdata
     restart: unless-stopped
     profiles:
-      - tr069
-    environment:
-      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
-      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET:-changeme_genieacs_secret}
-      UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET:-changeme_genieacs_secret}
+      - cms
     ports:
-      - "7547:7547"   # CWMP
-      - "7557:7557"   # NBI (REST API)
-      - "7567:7567"   # FS (File Server)
-      - "3078:3000"   # UI (Web Interface)
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # MongoDB - Base de datos para GenieACS
-  # ============================================
-  mongodb:
-    image: mongo:6
-    container_name: omnisync-mongodb
-    restart: unless-stopped
-    profiles:
-      - tr069
+      - "18080:18080"
     volumes:
-      - mongodb_data:/data/db
+      - cms_data:/opt/cms/data
+    environment:
+      TZ: ${TZ:-America/Bogota}
     networks:
       - omnisync-net
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # ============================================
   # Mikhmon V3 - MikroTik Hotspot Monitor
@@ -273,7 +250,7 @@ volumes:
   postgres_data:
   mariadb_data:
   backup_data:
-  mongodb_data:
+  cms_data:
   nuxbill_uploads:
   nuxbill_cache:
   nuxbill_ui_cache:

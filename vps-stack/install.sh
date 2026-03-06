@@ -78,7 +78,7 @@ handle_existing_installation() {
     case "$OPTION" in
       1)
         echo -e "${YELLOW}Deteniendo servicios...${NC}"
-        cd "$INSTALL_DIR" && docker compose --profile tr069 --profile vpn down -v 2>/dev/null || true
+        cd "$INSTALL_DIR" && docker compose --profile cms --profile vpn down -v 2>/dev/null || true
         cd /root
         rm -rf "$INSTALL_DIR"
         echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
@@ -133,7 +133,7 @@ handle_existing_installation() {
         echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
         read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
         if [ "$CONFIRM" = "ELIMINAR" ]; then
-          cd "$INSTALL_DIR" && docker compose --profile tr069 --profile vpn down -v 2>/dev/null || true
+          cd "$INSTALL_DIR" && docker compose --profile cms --profile vpn down -v 2>/dev/null || true
           rm -rf "$INSTALL_DIR"
           echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
         fi
@@ -410,13 +410,13 @@ is_truthy() {
 }
 
 start_optional_profiles() {
-  local tr069_autostart="${TR069_AUTOSTART:-1}"
+  local cms_autostart="${CMS_AUTOSTART:-0}"
 
-  if is_truthy "$tr069_autostart"; then
-    echo -e "${YELLOW}Iniciando GenieACS (TR-069)...${NC}"
-    docker compose --profile tr069 up -d mongodb genieacs 2>&1 | tail -5 || true
+  if is_truthy "$cms_autostart"; then
+    echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
+    docker compose --profile cms up -d cms-cdata 2>&1 | tail -5 || true
   else
-    echo -e "${CYAN}TR-069 desactivado (TR069_AUTOSTART=${tr069_autostart})${NC}"
+    echo -e "${CYAN}CMS C-Data desactivado (CMS_AUTOSTART=${cms_autostart})${NC}"
   fi
 }
 
@@ -511,8 +511,7 @@ MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
-GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)
-TR069_AUTOSTART=1
+CMS_AUTOSTART=0
 
 # MikroTik config (optional)
 echo ""
@@ -553,8 +552,7 @@ MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
 NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
 NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
-GENIEACS_UI_JWT_SECRET=${GENIEACS_UI_JWT_SECRET}
-TR069_AUTOSTART=${TR069_AUTOSTART}
+CMS_AUTOSTART=${CMS_AUTOSTART}
 TZ=America/Bogota
 EOF
 
@@ -591,11 +589,9 @@ if command -v ufw &> /dev/null; then
   ufw allow 443/tcp >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
-  ufw allow 7547/tcp >/dev/null 2>&1   # TR-069 CWMP (ONUs → ACS)
-  ufw allow 7557/tcp >/dev/null 2>&1   # GenieACS NBI API
-  ufw allow 3078/tcp >/dev/null 2>&1   # GenieACS UI
+  ufw allow 18080/tcp >/dev/null 2>&1  # CMS C-Data UI
   ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547, 7557, 3078, 51820/udp) ✓${NC}"
+  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 18080, 51820/udp) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
@@ -606,8 +602,8 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 
 # Limpiar contenedores huérfanos o en conflicto antes de levantar
 echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
-docker compose --profile tr069 --profile vpn down --remove-orphans 2>/dev/null || true
-for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-mongodb omnisync-genieacs omnisync-genieacs-cwmp omnisync-genieacs-nbi omnisync-genieacs-fs omnisync-genieacs-ui omnisync-wireguard; do
+docker compose --profile cms --profile vpn down --remove-orphans 2>/dev/null || true
+for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-cms-cdata omnisync-wireguard; do
   docker rm -f "$cname" 2>/dev/null || true
 done
 echo -e "${GREEN}✓ Contenedores limpios${NC}"
@@ -759,7 +755,7 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 # Check optional services (informational only)
 echo ""
 echo -e "${CYAN}Servicios opcionales:${NC}"
-echo -e "  ${YELLOW}ℹ GenieACS (TR-069): iniciar con 'docker compose --profile tr069 up -d'${NC}"
+echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs): iniciar con 'docker compose --profile cms up -d'${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN):   iniciar con 'docker compose --profile vpn up -d'${NC}"
 
 # Test HTTP endpoints — wait for nginx to be ready
@@ -847,10 +843,10 @@ echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  📡 SERVICIOS OPCIONALES                                  ║"
 echo "║  ─────────────────────────────────────────────           ║"
-echo "║  GenieACS (TR-069):                                      ║"
-echo "║    cd $INSTALL_DIR && docker compose --profile tr069 up -d"
-echo "║    UI: http://$VPS_IP:3078                                "
-echo "║    ACS URL: http://$VPS_IP:7547                           "
+echo "║  CMS C-Data (ONUs):                                      ║"
+echo "║    cd $INSTALL_DIR && docker compose --profile cms up -d  "
+echo "║    UI: http://$VPS_IP:18080                               "
+echo "║                                                          ║"
 echo "║                                                          ║"
 echo "║  WireGuard (VPN):                                        ║"
 echo "║    cd $INSTALL_DIR && docker compose --profile vpn up -d  "
@@ -904,7 +900,7 @@ echo "  Estado:          cd $INSTALL_DIR && docker compose ps"
 echo "  Logs:            cd $INSTALL_DIR && docker compose logs -f"
 echo "  Reiniciar:       cd $INSTALL_DIR && docker compose restart"
 echo "  Reconstruir:     cd $INSTALL_DIR && docker compose up -d --build"
-echo "  GenieACS:        cd $INSTALL_DIR && docker compose --profile tr069 up -d"
+echo "  CMS C-Data:      cd $INSTALL_DIR && docker compose --profile cms up -d"
 echo "  WireGuard:       cd $INSTALL_DIR && docker compose --profile vpn up -d"
 echo ""
 echo -e "${CYAN}Reinstalar:${NC}"
