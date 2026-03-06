@@ -61,7 +61,6 @@ const SERVICES: ManagedService[] = [
 ];
 
 const OPTIONAL_SERVICES: ManagedService[] = [
-  { key: "cms-cdata", aliases: ["cms-cdata", "omnisync-cms-cdata"], label: "CMS C-Data", icon: "📡", desc: "Gestión OLT/ONU", openPath: "/cms-cdata/" },
   { key: "mikhmon", aliases: ["mikhmon", "omnisync-mikhmon"], label: "Mikhmon", icon: "📶", desc: "Hotspot Monitor", openPath: "/mikhmon/" },
   { key: "wireguard", aliases: ["wireguard", "omnisync-wireguard"], label: "WireGuard VPN", icon: "🔒", desc: "VPN acceso remoto" },
 ];

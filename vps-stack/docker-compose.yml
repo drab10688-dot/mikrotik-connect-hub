@@ -87,6 +87,8 @@ services:
       - api
     networks:
       - omnisync-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ============================================
   # MariaDB - Base de datos para FreeRADIUS + NuxBill
@@ -186,6 +188,7 @@ services:
       dockerfile: Dockerfile
     container_name: omnisync-cms-cdata
     restart: "no"
+    profiles: ["cms_container"]
     ports:
       - "18080:18080"
     volumes:
