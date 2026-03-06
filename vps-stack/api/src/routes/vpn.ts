@@ -400,7 +400,7 @@ vpnRouter.post('/peers', async (req: Request, res: Response) => {
 
     // Generate client config
     const serverPubKey = await getServerPublicKey();
-    const publicIp = await getPublicIp();
+    const publicIp = await getPublicIp(getRequestHost(req));
     if (!publicIp) {
       return res.status(500).json({ error: 'No se pudo detectar la IP pública del VPS. Configure VPS_PUBLIC_IP en el .env' });
     }
