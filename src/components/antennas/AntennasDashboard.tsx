@@ -415,7 +415,7 @@ export function AntennasDashboard() {
           {filtered.map((ant) => {
             const bc = brandConfig[ant.brand];
             return (
-              <Card key={ant.id} className="relative">
+              <Card key={ant.id} className={`relative ${ant.is_wireless_client ? "border-l-4 border-l-primary/40" : ""}`}>
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
@@ -423,12 +423,22 @@ export function AntennasDashboard() {
                         <Wifi className="h-4 w-4 text-primary" /> {ant.name}
                       </CardTitle>
                       <p className="text-xs text-muted-foreground">{ant.host}</p>
+                      {ant.is_wireless_client && ant.parent_device_name && (
+                        <p className="text-xs text-muted-foreground">📡 {ant.parent_device_name}</p>
+                      )}
+                      {ant.is_wireless_client && ant.mac_address && (
+                        <p className="text-xs text-muted-foreground font-mono">{ant.mac_address}</p>
+                      )}
                       {ant.model && <p className="text-xs text-muted-foreground">{ant.model}</p>}
                       {ant.board && <p className="text-xs text-muted-foreground">{ant.board}</p>}
                       {ant.client_name && <p className="text-xs text-muted-foreground">👤 {ant.client_name}</p>}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <Badge className={`${bc.color} text-xs text-white`}>{bc.icon} {bc.label}</Badge>
+                      {ant.is_wireless_client ? (
+                        <Badge variant="outline" className="text-xs">📶 CPE</Badge>
+                      ) : (
+                        <Badge className={`${bc.color} text-xs text-white`}>{bc.icon} {bc.label}</Badge>
+                      )}
                       {ant.status === "online" && <Badge className="bg-green-600 text-xs">Online</Badge>}
                       {ant.status === "offline" && <Badge variant="destructive" className="text-xs">Offline</Badge>}
                       {ant.status === "no_credentials" && <Badge variant="outline" className="text-xs">Sin cred.</Badge>}
@@ -452,22 +462,32 @@ export function AntennasDashboard() {
                     </div>
                   </div>
 
+                  {ant.is_wireless_client && (ant.tx_rate || ant.rx_rate) && (
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                      {ant.tx_rate && <div><span className="text-muted-foreground">TX:</span> <span className="font-medium">{ant.tx_rate}</span></div>}
+                      {ant.rx_rate && <div><span className="text-muted-foreground">RX:</span> <span className="font-medium">{ant.rx_rate}</span></div>}
+                    </div>
+                  )}
+
                   <div className="flex justify-center gap-4 text-xs text-muted-foreground">
-                    {ant.connected_clients != null && <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {ant.connected_clients}</span>}
+                    {ant.connected_clients != null && !ant.is_wireless_client && <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {ant.connected_clients}</span>}
                     {ant.cpu != null && <span className="flex items-center gap-1"><Cpu className="h-3 w-3" /> {ant.cpu}%</span>}
                     {ant.uptime && <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {ant.uptime}</span>}
+                    {ant.is_wireless_client && ant.distance != null && ant.distance > 0 && <span className="flex items-center gap-1">📏 {ant.distance}m</span>}
                   </div>
 
-                  <div className="flex gap-1 justify-center pt-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleViewDetail(ant)} title="Ver detalle"><Eye className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleReboot(ant)} title="Reiniciar"><RotateCcw className="h-4 w-4" /></Button>
-                    {ant.brand === "ubiquiti" && (
-                      <>
-                        <Button variant="ghost" size="sm" onClick={() => openEditUb(ant)} title="Editar"><Edit className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteUb(ant)} title="Eliminar" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                      </>
-                    )}
-                  </div>
+                  {!ant.is_wireless_client && (
+                    <div className="flex gap-1 justify-center pt-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleViewDetail(ant)} title="Ver detalle"><Eye className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleReboot(ant)} title="Reiniciar"><RotateCcw className="h-4 w-4" /></Button>
+                      {ant.brand === "ubiquiti" && (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => openEditUb(ant)} title="Editar"><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteUb(ant)} title="Eliminar" className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {ant.brand === "ubiquiti" && !ant.status && !hasGlobalConfig && (
                     <div className="flex items-center gap-1 text-xs text-orange-500 justify-center">
