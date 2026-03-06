@@ -390,12 +390,34 @@ CREATE INDEX IF NOT EXISTS idx_ubiquiti_devices_client ON ubiquiti_devices(clien
 
 # Backfill roles (fix instalaciones antiguas sin super_admin asignado)
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+-- Asignar super_admin al usuario admin@omnisync.local
 INSERT INTO user_roles (user_id, role)
 SELECT u.id, 'super_admin'::app_role
 FROM users u
 WHERE u.email = 'admin@omnisync.local'
 ON CONFLICT (user_id, role) DO NOTHING;
 
+-- Asignar super_admin al primer usuario creado (owner del sistema)
+INSERT INTO user_roles (user_id, role)
+SELECT u.id, 'super_admin'::app_role
+FROM users u
+ORDER BY u.created_at ASC
+LIMIT 1
+ON CONFLICT (user_id, role) DO NOTHING;
+
+-- Asignar super_admin a usuarios con is_admin = true (si existe la columna)
+DO \\\$\\\$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_admin') THEN
+    INSERT INTO user_roles (user_id, role)
+    SELECT u.id, 'super_admin'::app_role
+    FROM users u
+    WHERE u.is_admin = true
+    ON CONFLICT (user_id, role) DO NOTHING;
+  END IF;
+END \\\$\\\$;
+
+-- Asignar rol 'user' a quienes no tienen ningún rol
 INSERT INTO user_roles (user_id, role)
 SELECT u.id, 'user'::app_role
 FROM users u
