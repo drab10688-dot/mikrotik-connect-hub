@@ -2,7 +2,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
-import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
+
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
