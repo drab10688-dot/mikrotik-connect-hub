@@ -287,11 +287,14 @@ vpnRouter.get('/status', async (req: Request, res: Response) => {
 
     for (const line of lines) {
       const parts = line.split('\t');
-      if (parts.length >= 4) {
-        if (parts[0] === WG_INTERFACE && parts.length === 4) {
-          serverUp = true;
-        } else if (parts.length >= 8) {
-          // Peer line: interface, public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx
+      if (parts[0] === WG_INTERFACE && parts.length === 5) {
+        // Interface line: interface, private_key, public_key, listen_port, fwmark
+        serverUp = true;
+        continue;
+      }
+
+      if (parts.length >= 8) {
+        // Peer line: interface, public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx
           peerStatus[parts[1]] = {
             endpoint: parts[3] === '(none)' ? null : parts[3],
             lastHandshake: parts[5] !== '0' ? new Date(parseInt(parts[5]) * 1000).toISOString() : null,
