@@ -153,10 +153,6 @@ export default function VpsServices() {
               <Shield className="h-4 w-4" />
               VPN
             </TabsTrigger>
-            <TabsTrigger value="antennas" className="gap-2">
-              <Radio className="h-4 w-4" />
-              Antenas
-            </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
               Publicidad
