@@ -224,6 +224,7 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
         </div>
 
         <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Servicios principales</p>
           {SERVICES.map((svc) => {
             const container = svc.aliases.map((alias) => containersByName[alias]).find(Boolean);
 
@@ -245,7 +246,7 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
                       size="sm"
                       variant="outline"
                       className="h-6 text-[10px] px-2"
-                      onClick={() => openServicePanel(svc.openPath)}
+                      onClick={() => openServicePanel(svc.openPath!)}
                     >
                       <ExternalLink className="h-3 w-3 mr-1" />
                       Abrir
@@ -261,6 +262,75 @@ export function VpsDockerManager({ mikrotikId }: VpsDockerManagerProps) {
                   >
                     <RefreshCw className="h-3 w-3" />
                   </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => dockerMutation.mutate({ action: "logs", service: svc.key })}
+                    disabled={dockerMutation.isPending}
+                    title="Ver logs"
+                  >
+                    <ScrollText className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Servicios opcionales</p>
+          {OPTIONAL_SERVICES.map((svc) => {
+            const container = svc.aliases.map((alias) => containersByName[alias]).find(Boolean);
+            const isRunning = container?.status?.toLowerCase().includes("up") || container?.status?.toLowerCase().includes("running");
+
+            return (
+              <div key={svc.key} className="flex items-center gap-2 p-2 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
+                <span className="text-sm">{svc.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">{svc.label}</span>
+                    {container ? getStatusBadge(container.status) : (
+                      <Badge variant="outline" className="text-[9px] text-muted-foreground">No instalado</Badge>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground truncate">{svc.desc}</p>
+                </div>
+                <div className="flex gap-1">
+                  {isRunning ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => dockerMutation.mutate({ action: "stop", service: svc.key })}
+                      disabled={dockerMutation.isPending}
+                    >
+                      <Square className="h-3 w-3 mr-1" />
+                      Detener
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => dockerMutation.mutate({ action: "up", service: svc.key })}
+                      disabled={dockerMutation.isPending}
+                    >
+                      <Play className="h-3 w-3 mr-1" />
+                      Iniciar
+                    </Button>
+                  )}
+                  {svc.openPath && isRunning && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => openServicePanel(svc.openPath!)}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      Abrir
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
