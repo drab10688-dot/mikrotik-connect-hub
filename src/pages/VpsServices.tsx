@@ -131,12 +131,12 @@ function CmscdataPanel() {
           <Badge variant={cmsAvailable ? "default" : "secondary"}>
             {cmsAvailable === null ? "Verificando..." : cmsAvailable ? "Activo" : "No disponible"}
           </Badge>
-          <Button variant="outline" size="sm" asChild>
-            <a href={cmsExternalUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4 mr-1" />
-              Abrir externo
-            </a>
-          </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href={cmsExternalUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4 mr-1" />
+                Abrir host (HTTP)
+              </a>
+            </Button>
         </div>
       </CardHeader>
       <CardContent>
