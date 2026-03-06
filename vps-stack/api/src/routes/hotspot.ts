@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { validateVoucher, activateVoucher, validateCustomer, getCustomerActivePlan } from '../lib/nuxbill';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 
 export const hotspotRouter = Router();
 

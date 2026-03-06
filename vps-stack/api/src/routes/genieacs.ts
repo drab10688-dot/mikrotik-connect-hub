@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 
 export const genieacsRouter = Router();
 genieacsRouter.use(authMiddleware);

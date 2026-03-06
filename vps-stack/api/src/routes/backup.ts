@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';

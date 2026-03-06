@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 import { getDeviceConfig, mikrotikRequest } from '../lib/mikrotik';
 
 export const clientsRouter = Router();

@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { connect as netConnect } from 'net';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, mikrotikRequestWithFallback, testNativeApiLogin, isNativeApiPort } from '../lib/mikrotik';
 
