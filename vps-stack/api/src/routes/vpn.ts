@@ -13,38 +13,110 @@ const WG_CONFIG_DIR = '/config/wg_confs';
 const WG_INTERFACE = 'wg0';
 const WG_PORT = process.env.WG_PORT || '51820';
 const WG_SUBNET = '10.13.13';
+const WG_CONTAINER = process.env.WG_CONTAINER_NAME || 'omnisync-wireguard';
+const WG_IMAGE = process.env.WG_IMAGE || 'lscr.io/linuxserver/wireguard:latest';
+const WG_READY_TTL_MS = 5000;
+let wgLastCheckAt = 0;
 
 // ─── Helpers ──────────────────────────────────────
+function shellEscape(value: string): string {
+  return value.replace(/'/g, `'\\''`);
+}
+
+async function ensureWireguardContainer(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - wgLastCheckAt < WG_READY_TTL_MS) return;
+
+  try {
+    const { stdout } = await execAsync(`docker inspect -f "{{.State.Running}}" ${WG_CONTAINER}`);
+    if (stdout.trim() === 'true') {
+      wgLastCheckAt = now;
+      return;
+    }
+
+    await execAsync(`docker start ${WG_CONTAINER}`);
+    wgLastCheckAt = Date.now();
+    console.log(`[VPN] Started container ${WG_CONTAINER}`);
+    return;
+  } catch (err: any) {
+    const msg = `${err?.stderr || ''} ${err?.message || ''}`;
+    const missing = msg.includes('No such object') || msg.includes('No such container');
+    if (!missing) {
+      throw new Error(`No se pudo verificar WireGuard: ${msg.trim()}`);
+    }
+  }
+
+  const tz = process.env.TZ || 'America/Bogota';
+  const runCmd = [
+    'docker run -d',
+    `--name ${WG_CONTAINER}`,
+    '--restart unless-stopped',
+    '--cap-add NET_ADMIN',
+    '--cap-add SYS_MODULE',
+    '-e PUID=1000',
+    '-e PGID=1000',
+    `-e TZ='${shellEscape(tz)}'`,
+    `-p ${WG_PORT}:51820/udp`,
+    '--sysctl net.ipv4.conf.all.src_valid_mark=1',
+    '--sysctl net.ipv4.ip_forward=1',
+    '-v wireguard_config:/config',
+    WG_IMAGE,
+  ].join(' ');
+
+  await execAsync(runCmd);
+  wgLastCheckAt = Date.now();
+  console.log(`[VPN] Created container ${WG_CONTAINER}`);
+}
+
 async function wgExec(cmd: string): Promise<string> {
   try {
-    const { stdout } = await execAsync(`docker exec omnisync-wireguard ${cmd}`);
+    await ensureWireguardContainer();
+    const { stdout } = await execAsync(`docker exec ${WG_CONTAINER} ${cmd}`);
     return stdout.trim();
   } catch (err: any) {
-    console.error(`[VPN] exec error: ${err.message}`);
+    const msg = `${err?.stderr || ''} ${err?.message || ''}`;
+    if (msg.includes('No such container') || msg.includes('is not running')) {
+      await ensureWireguardContainer(true);
+      const { stdout } = await execAsync(`docker exec ${WG_CONTAINER} ${cmd}`);
+      return stdout.trim();
+    }
+    console.error(`[VPN] exec error: ${msg.trim()}`);
     return '';
   }
 }
 
+async function wgExecWithInput(input: string, cmd: string): Promise<string> {
+  await ensureWireguardContainer();
+  const escaped = shellEscape(input);
+  const { stdout } = await execAsync(
+    `printf '%s' '${escaped}' | docker exec -i ${WG_CONTAINER} ${cmd}`
+  );
+  return stdout.trim();
+}
+
 async function generateWgKeys(): Promise<{ privateKey: string; publicKey: string; presharedKey: string }> {
   const privateKey = (await wgExec('wg genkey')).trim();
-  // Use echo pipe to get public key
-  const { stdout: publicKey } = await execAsync(
-    `echo "${privateKey}" | docker exec -i omnisync-wireguard wg pubkey`
-  );
+  if (!privateKey) {
+    throw new Error('WireGuard no está disponible en el servidor');
+  }
+
+  const publicKey = (await wgExecWithInput(privateKey, 'wg pubkey')).trim();
   const presharedKey = (await wgExec('wg genpsk')).trim();
-  return { privateKey, publicKey: publicKey.trim(), presharedKey };
+
+  if (!publicKey || !presharedKey) {
+    throw new Error('No se pudieron generar las claves de WireGuard');
+  }
+
+  return { privateKey, publicKey, presharedKey };
 }
 
 async function getServerPublicKey(): Promise<string> {
   // Read from wg0.conf or generate
   try {
-    const output = await wgExec(`cat /config/wg_confs/${WG_INTERFACE}.conf`);
+    const output = await wgExec(`cat ${WG_CONFIG_DIR}/${WG_INTERFACE}.conf`);
     const match = output.match(/PrivateKey\s*=\s*(.+)/);
     if (match) {
-      const { stdout } = await execAsync(
-        `echo "${match[1].trim()}" | docker exec -i omnisync-wireguard wg pubkey`
-      );
-      return stdout.trim();
+      return await wgExecWithInput(match[1].trim(), 'wg pubkey');
     }
   } catch {}
   return '';
