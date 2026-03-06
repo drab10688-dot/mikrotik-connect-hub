@@ -152,7 +152,7 @@ antennasRouter.post('/devices/:id([0-9a-fA-F-]{36})/reboot', async (req: AuthReq
     const config = await getDeviceConfig(pool, mikrotikId);
 
     try {
-      await mikrotikRequestWithFallback(config, '/system/reboot/print', 'POST');
+      await mikrotikRequestWithFallback(config, '/rest/system/reboot', 'POST');
     } catch {
       await mikrotikRequest(config, '/rest/system/reboot', 'POST');
     }
