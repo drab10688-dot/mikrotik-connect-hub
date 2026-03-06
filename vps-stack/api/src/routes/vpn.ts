@@ -23,6 +23,15 @@ function shellEscape(value: string): string {
   return value.replace(/'/g, `'\\''`);
 }
 
+function isWireguardContainerUnavailable(rawMessage: string): boolean {
+  const message = rawMessage.toLowerCase();
+  return (
+    message.includes('no such object') ||
+    message.includes('no such container') ||
+    message.includes('is not running')
+  );
+}
+
 async function ensureWireguardContainer(force = false): Promise<void> {
   const now = Date.now();
   if (!force && now - wgLastCheckAt < WG_READY_TTL_MS) return;
@@ -34,15 +43,14 @@ async function ensureWireguardContainer(force = false): Promise<void> {
       return;
     }
 
-  await execAsync(`docker start ${WG_CONTAINER}`);
+    await execAsync(`docker start ${WG_CONTAINER}`);
     await new Promise(r => setTimeout(r, 3000));
     wgLastCheckAt = Date.now();
     console.log(`[VPN] Started container ${WG_CONTAINER}`);
     return;
   } catch (err: any) {
     const msg = `${err?.stderr || ''} ${err?.message || ''}`;
-    const missing = msg.includes('No such object') || msg.includes('No such container');
-    if (!missing) {
+    if (!isWireguardContainerUnavailable(msg)) {
       throw new Error(`No se pudo verificar WireGuard: ${msg.trim()}`);
     }
   }
@@ -78,7 +86,7 @@ async function wgExec(cmd: string): Promise<string> {
     return stdout.trim();
   } catch (err: any) {
     const msg = `${err?.stderr || ''} ${err?.message || ''}`;
-    if (msg.includes('No such container') || msg.includes('is not running')) {
+    if (isWireguardContainerUnavailable(msg)) {
       await ensureWireguardContainer(true);
       const { stdout } = await execAsync(`docker exec ${WG_CONTAINER} ${cmd}`);
       return stdout.trim();
@@ -89,12 +97,25 @@ async function wgExec(cmd: string): Promise<string> {
 }
 
 async function wgExecWithInput(input: string, cmd: string): Promise<string> {
-  await ensureWireguardContainer();
   const escaped = shellEscape(input);
-  const { stdout } = await execAsync(
-    `printf '%s' '${escaped}' | docker exec -i ${WG_CONTAINER} ${cmd}`
-  );
-  return stdout.trim();
+
+  try {
+    await ensureWireguardContainer();
+    const { stdout } = await execAsync(
+      `printf '%s' '${escaped}' | docker exec -i ${WG_CONTAINER} ${cmd}`
+    );
+    return stdout.trim();
+  } catch (err: any) {
+    const msg = `${err?.stderr || ''} ${err?.message || ''}`;
+    if (isWireguardContainerUnavailable(msg)) {
+      await ensureWireguardContainer(true);
+      const { stdout } = await execAsync(
+        `printf '%s' '${escaped}' | docker exec -i ${WG_CONTAINER} ${cmd}`
+      );
+      return stdout.trim();
+    }
+    throw new Error(`No se pudo ejecutar comando WireGuard: ${msg.trim()}`);
+  }
 }
 
 async function generateWgKeys(): Promise<{ privateKey: string; publicKey: string; presharedKey: string }> {
