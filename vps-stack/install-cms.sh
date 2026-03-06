@@ -103,24 +103,47 @@ cd "$CMS_DIR"
 docker compose down 2>/dev/null || true
 
 # ── Parchear puertos en docker-compose.yml ──
-# OmniSync usa 3306 (MariaDB) y 6379 podría estar en uso
-# Reasignamos MySQL del CMS a 3307 y Nginx a 18080
+# OmniSync usa 3306 y 80; evitamos choques forzando puertos alternos del CMS
 echo -e "${YELLOW}Parcheando puertos para evitar conflictos con OmniSync...${NC}"
 
-# MySQL: 3306 -> 3307
-sed -i 's/"3306:3306"/"3307:3306"/g' "$CMS_DIR/docker-compose.yml"
-# Redis: si usa 6379, cambiar a 6380
-sed -i 's/"6379:6379"/"6380:6379"/g' "$CMS_DIR/docker-compose.yml"
-# Nginx/Web: 80 -> 18080
-# El CMS puede mapear 80:80 o similar
-sed -i 's/"80:80"/"18080:80"/g' "$CMS_DIR/docker-compose.yml"
-sed -i 's/"80:8080"/"18080:8080"/g' "$CMS_DIR/docker-compose.yml"
+CMS_COMPOSE_FILE="$CMS_DIR/docker-compose.yml"
 
-# También parchear el .env del CMS si existe
+# Soportar múltiples formatos de mapeo: con/sin comillas y con/sin /tcp
+sed -i \
+  -e 's/"3306:3306"/"3307:3306"/g' \
+  -e "s/'3306:3306'/'3307:3306'/g" \
+  -e 's/3306:3306\/tcp/3307:3306\/tcp/g' \
+  -e 's/3306:3306/3307:3306/g' \
+  -e 's/"6379:6379"/"6380:6379"/g' \
+  -e "s/'6379:6379'/'6380:6379'/g" \
+  -e 's/6379:6379\/tcp/6380:6379\/tcp/g' \
+  -e 's/6379:6379/6380:6379/g' \
+  -e 's/"80:80"/"18080:80"/g' \
+  -e "s/'80:80'/'18080:80'/g" \
+  -e 's/80:80\/tcp/18080:80\/tcp/g' \
+  -e 's/80:80/18080:80/g' \
+  -e 's/"80:8080"/"18080:8080"/g' \
+  -e "s/'80:8080'/'18080:8080'/g" \
+  -e 's/80:8080\/tcp/18080:8080\/tcp/g' \
+  -e 's/80:8080/18080:8080/g' \
+  "$CMS_COMPOSE_FILE"
+
+# También parchear .env del CMS (si usa variables de puertos)
 if [ -f "$CMS_DIR/.env" ]; then
-  # Actualizar la URL del CMS
-  sed -i "s|CMS_URL=.*|CMS_URL=http://${VPS_IP}:18080|g" "$CMS_DIR/.env" 2>/dev/null || true
-  sed -i "s|DOMAIN=.*|DOMAIN=http://${VPS_IP}:18080|g" "$CMS_DIR/.env" 2>/dev/null || true
+  sed -Ei \
+    -e 's|^(MYSQL_PORT\s*=\s*).*$|\13307|g' \
+    -e 's|^(REDIS_PORT\s*=\s*).*$|\16380|g' \
+    -e 's|^(NGINX_PORT\s*=\s*).*$|\118080|g' \
+    -e "s|^CMS_URL=.*|CMS_URL=http://${VPS_IP}:18080|g" \
+    -e "s|^DOMAIN=.*|DOMAIN=http://${VPS_IP}:18080|g" \
+    "$CMS_DIR/.env" 2>/dev/null || true
+fi
+
+# Validación: no debe quedar 3306 publicado en host para el CMS
+if grep -Eq '(^|[^0-9])3306:3306([^0-9]|$)' "$CMS_COMPOSE_FILE"; then
+  echo -e "${RED}Error: El parche de puertos no se aplicó correctamente (sigue 3306:3306).${NC}"
+  echo -e "${RED}Revisa $CMS_COMPOSE_FILE${NC}"
+  exit 1
 fi
 
 echo -e "${GREEN}✓ Puertos parcheados${NC}"
