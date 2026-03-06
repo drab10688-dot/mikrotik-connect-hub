@@ -189,6 +189,7 @@ services:
     container_name: omnisync-cms-cdata
     restart: "no"
     profiles: ["cms_container"]
+    ports:
       - "18080:18080"
     volumes:
       - cms_data:/opt/cms/data
