@@ -148,44 +148,7 @@ export default function OnuManagement() {
 
   useEffect(() => { loadData(); }, [mikrotikId]);
 
-  const handleSyncACS = async () => {
-    setSyncLoading(true);
-    try {
-      const res = await api(`/genieacs/auto-sync/${mikrotikId}`, { method: "POST" });
-      setSyncStats({ linked: res.linked, updated: res.updated, newDevices: res.newDevices });
-      setUnregistered(res.unregistered || []);
-      if (res.linked > 0) {
-        toast.success(`${res.linked} ONUs vinculadas automáticamente`);
-        loadData();
-      } else if (res.newDevices > 0) {
-        toast.info(`${res.newDevices} ONUs detectadas en ACS sin registrar`);
-      } else {
-        toast.info(res.message);
-      }
-    } catch (err: any) {
-      toast.error("Error sincronizando: " + err.message);
-    } finally {
-      setSyncLoading(false);
-    }
-  };
-
-  const handleAutoRegister = async (devices: UnregisteredDevice[]) => {
-    setSyncLoading(true);
-    try {
-      const res = await api(`/genieacs/auto-register/${mikrotikId}`, {
-        method: "POST",
-        body: { devices },
-      });
-      toast.success(res.message);
-      setUnregistered([]);
-      setSyncStats(null);
-      loadData();
-    } catch (err: any) {
-      toast.error("Error registrando: " + err.message);
-    } finally {
-      setSyncLoading(false);
-    }
-  };
+  // ACS sync functions removed - using CMS C-Data instead
 
   const handleAddOnu = async () => {
     try {
