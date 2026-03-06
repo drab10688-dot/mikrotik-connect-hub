@@ -65,13 +65,7 @@ interface ConfigTemplate {
   is_default: boolean;
 }
 
-interface GenieACSFile {
-  id: string;
-  filename: string;
-  metadata: Record<string, any>;
-  length: number;
-  uploadDate: string;
-}
+// GenieACS file interface removed
 
 const brandOptions = [
   { value: "latic", label: "Latic" },
