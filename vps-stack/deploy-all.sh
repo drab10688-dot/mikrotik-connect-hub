@@ -297,11 +297,11 @@ cp "$TMP_DIR/app/vps-stack/repair-nuxbill-auth.sh" "$APP_DIR/repair-nuxbill-auth
 chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 
 # ─── Rebuild core containers ───────────────────
-echo "[4/10] Reconstruyendo API + PHPNuxBill..."
+echo "[4/10] Reconstruyendo API + servicios..."
 cd "$APP_DIR"
 sync_nuxbill_env_file
 normalize_nuxbill_app_url
-docker compose build --no-cache api
+docker compose build --no-cache api cms-cdata
 docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."
