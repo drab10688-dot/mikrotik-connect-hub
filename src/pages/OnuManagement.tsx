@@ -745,9 +745,6 @@ export default function OnuManagement() {
                         <Button variant="outline" size="sm" className="flex-1" onClick={() => copyToClipboard(t.template_content)}>
                           <Copy className="w-3 h-3 mr-1" /> Copiar
                         </Button>
-                        <Button variant="default" size="sm" className="flex-1" onClick={() => handleUploadTemplateToACS(t)}>
-                          <Upload className="w-3 h-3 mr-1" /> Subir a ACS
-                        </Button>
                       </div>
                     </CardContent>
                   </Card>
