@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { mikrotikCommandApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

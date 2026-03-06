@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { devicesApi, secretariesApi } from "@/lib/api-client";
