@@ -8,39 +8,9 @@ import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Server, Megaphone, Shield, Radio, Map, Monitor } from "lucide-react";
 
+
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
-  const [tr069Fullscreen, setTr069Fullscreen] = useState(false);
-  const queryClient = useQueryClient();
-
-  const vpsHost = localStorage.getItem('vps_api_url')?.replace(/https?:\/\//, '').replace(/:\d+.*/, '')
-    || localStorage.getItem('vps_ip')
-    || window.location.hostname;
-
-  const genieacsUrl = `http://${vpsHost}:3078`;
-
-  const { data: vpsStatus } = useQuery({
-    queryKey: ["vps-status", mikrotikId],
-    queryFn: () => vpsApi.status(mikrotikId || "default"),
-    refetchInterval: 5000,
-  });
-
-  const tr069Status = String(vpsStatus?.containers_map?.genieacs?.status || "");
-  const mongoStatus = String(vpsStatus?.containers_map?.mongodb?.status || "");
-  const tr069Running = tr069Status.toLowerCase().includes("up");
-  const mongoRunning = mongoStatus.toLowerCase().includes("up");
-  const tr069Ready = tr069Running && mongoRunning;
-
-  const startTr069Mutation = useMutation({
-    mutationFn: () => vpsApi.docker(mikrotikId || "default", "up", "genieacs"),
-    onSuccess: () => {
-      toast.success("TR-069 iniciado");
-      queryClient.invalidateQueries({ queryKey: ["vps-status", mikrotikId] });
-    },
-    onError: (err: any) => {
-      toast.error(err.message || "No se pudo iniciar TR-069");
-    },
-  });
 
   return (
     <div className="min-h-screen bg-background">
