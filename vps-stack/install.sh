@@ -409,9 +409,10 @@ is_truthy() {
 }
 
 start_optional_services() {
-  # Los servicios opcionales (CMS, Mikhmon, WireGuard) usan restart: "no"
-  # Se inician/detienen desde el panel de Servicios VPS
-  echo -e "${CYAN}Servicios opcionales disponibles desde el panel: CMS C-Data, Mikhmon, WireGuard${NC}"
+  # Servicios opcionales:
+  # - CMS C-Data se instala/ejecuta en host con install-cms.sh
+  # - Mikhmon y WireGuard se inician/detienen desde el panel de Servicios VPS
+  echo -e "${CYAN}Servicios opcionales: CMS (host), Mikhmon (Docker), WireGuard (Docker)${NC}"
 }
 
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
