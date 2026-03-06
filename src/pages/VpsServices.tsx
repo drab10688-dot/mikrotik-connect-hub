@@ -145,11 +145,8 @@ function CmscdataPanel() {
             <div>
               <p className="text-lg font-medium text-foreground">CMS C-Data no está activo</p>
               <p className="text-muted-foreground text-sm mt-1">
-                Reinicie el stack para activar CMS C-Data:
+                Actívalo desde Servicios VPS → Docker → Servicios opcionales → CMS C-Data → Iniciar
               </p>
-              <code className="block mt-3 bg-muted p-3 rounded text-sm font-mono">
-                cd /opt/omnisync && docker compose up -d
-              </code>
             </div>
           </div>
         ) : (
