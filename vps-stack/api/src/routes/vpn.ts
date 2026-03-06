@@ -274,6 +274,48 @@ AllowedIPs = ${allowedIps}
   await wgExec(`wg-quick up ${WG_INTERFACE}`);
 }
 
+// ─── MikroTik Script Generator ───────────────────
+function generateMikrotikScript(
+  clientPrivateKey: string,
+  serverPublicKey: string,
+  presharedKey: string,
+  serverIp: string,
+  clientIp: string
+): string {
+  return `# ============================================
+# OmniSync WireGuard — RouterOS v7
+# Peer: ${clientIp}
+# Servidor: ${serverIp}:${WG_PORT}
+# ============================================
+
+# 1) Eliminar configuración anterior (si existe)
+:do { /ip address remove [find where interface=wg-omnisync] } on-error={}
+:do { /interface wireguard peers remove [find where interface=wg-omnisync] } on-error={}
+:do { /interface wireguard remove [find where name=wg-omnisync] } on-error={}
+
+# 2) Crear interfaz WireGuard
+/interface wireguard add name=wg-omnisync listen-port=13231 private-key="${clientPrivateKey}"
+
+# 3) Agregar peer del servidor VPS
+/interface wireguard peers add \\
+  interface=wg-omnisync \\
+  public-key="${serverPublicKey}" \\
+  preshared-key="${presharedKey}" \\
+  endpoint-address=${serverIp} \\
+  endpoint-port=${WG_PORT} \\
+  allowed-address=${WG_SUBNET}.0/24 \\
+  persistent-keepalive=25
+
+# 4) Asignar IP al túnel
+/ip address add address=${clientIp}/24 interface=wg-omnisync
+
+# 5) Verificar conectividad (esperar 5s)
+:delay 5s
+:do { /ping ${WG_SUBNET}.1 count=3 } on-error={ :log warning "WireGuard: no se pudo hacer ping al servidor VPS" }
+
+:log info "WireGuard OmniSync configurado exitosamente (${clientIp})"`;
+}
+
 // ─── GET /status ──────────────────────────────────
 vpnRouter.get('/status', async (req: Request, res: Response) => {
   try {
@@ -417,12 +459,8 @@ Endpoint = ${publicIp}:${WG_PORT}
 AllowedIPs = ${WG_SUBNET}.0/24${remote_networks ? '' : ''}
 PersistentKeepalive = 25`;
 
-    // Generate MikroTik script for RouterOS v7
-    const mikrotikScript = `/interface wireguard add name=wg-omnisync listen-port=13231 private-key="${keys.privateKey}"
-/interface wireguard peers add interface=wg-omnisync public-key="${serverPubKey}" preshared-key="${keys.presharedKey}" endpoint-address=${publicIp} endpoint-port=${WG_PORT} allowed-address=${WG_SUBNET}.0/24 persistent-keepalive=25
-/ip address add address=${peerAddress.replace('/32', '/24')} interface=wg-omnisync
-# Ruta hacia la red del VPN server
-/ip route add dst-address=${WG_SUBNET}.0/24 gateway=wg-omnisync`;
+    const peerIp = peerAddress.split('/')[0];
+    const mikrotikScript = generateMikrotikScript(keys.privateKey, serverPubKey, keys.presharedKey, publicIp, peerIp);
 
     res.json({
       peer,
@@ -470,10 +508,8 @@ Endpoint = ${publicIp}:${WG_PORT}
 AllowedIPs = ${WG_SUBNET}.0/24
 PersistentKeepalive = 25`;
 
-    const mikrotikScript = `/interface wireguard add name=wg-omnisync listen-port=13231 private-key="${peer.private_key}"
-/interface wireguard peers add interface=wg-omnisync public-key="${serverPubKey}" preshared-key="${peer.preshared_key}" endpoint-address=${publicIp} endpoint-port=${WG_PORT} allowed-address=${WG_SUBNET}.0/24 persistent-keepalive=25
-/ip address add address=${peer.peer_address.replace('/32', '/24')} interface=wg-omnisync
-/ip route add dst-address=${WG_SUBNET}.0/24 gateway=wg-omnisync`;
+    const peerIp = peer.peer_address.split('/')[0];
+    const mikrotikScript = generateMikrotikScript(peer.private_key, serverPubKey, peer.preshared_key, publicIp, peerIp);
 
     res.json({ clientConfig, mikrotikScript, peer });
   } catch (error: any) {
