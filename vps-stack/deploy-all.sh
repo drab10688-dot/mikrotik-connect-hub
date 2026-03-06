@@ -280,7 +280,7 @@ rsync -a --delete \
   "$TMP_DIR/app/vps-stack/api/" "$APP_DIR/api/"
 
 # Also update shared VPS files (docker-compose, db init, nginx, radius, etc.)
-for item in docker-compose.yml db nginx radius mariadb-init phpnuxbill cms-cdata; do
+for item in docker-compose.yml db nginx radius mariadb-init phpnuxbill cms-cdata install-cms.sh; do
   if [ -e "$TMP_DIR/app/vps-stack/$item" ]; then
     if [ -d "$TMP_DIR/app/vps-stack/$item" ]; then
       rsync -a "$TMP_DIR/app/vps-stack/$item/" "$APP_DIR/$item/"
@@ -301,7 +301,7 @@ echo "[4/10] Reconstruyendo API + servicios..."
 cd "$APP_DIR"
 sync_nuxbill_env_file
 normalize_nuxbill_app_url
-docker compose build --no-cache api cms-cdata
+docker compose build --no-cache api
 docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."

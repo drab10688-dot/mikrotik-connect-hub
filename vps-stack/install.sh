@@ -507,6 +507,13 @@ NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
 CMS_AUTOSTART=0
 
+# ─── Preguntar si instalar CMS C-Data en el host ───
+echo ""
+echo -e "${YELLOW}¿Deseas instalar CMS C-Data (gestión OLT/ONU) en este servidor?${NC}"
+echo -e "  Se instala directamente en el host (no en Docker de OmniSync)"
+read -p "Instalar CMS C-Data? [y/n] (n): " INSTALL_CMS < /dev/tty
+INSTALL_CMS=${INSTALL_CMS:-n}
+
 # MikroTik config (optional)
 echo ""
 echo -e "${YELLOW}Configuración MikroTik (opcional, se puede configurar desde el panel):${NC}"
@@ -604,8 +611,8 @@ echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
-# Build only custom images (api + phpnuxbill)
-docker compose build --no-cache api phpnuxbill cms-cdata
+# Build only custom images (api + phpnuxbill) — CMS C-Data se instala aparte en el host
+docker compose build --no-cache api phpnuxbill
 
 # Start core services (optional services use restart: "no" and are managed from UI)
 docker compose up -d 2>&1 | tail -5
@@ -662,6 +669,18 @@ sleep 5
 # Servicios opcionales disponibles desde el panel
 start_optional_services
 sleep 5
+
+# ─── Instalar CMS C-Data en el host si el usuario lo solicitó ───
+if is_truthy "$INSTALL_CMS"; then
+  echo ""
+  echo -e "${CYAN}═══ Instalando CMS C-Data en el host ═══${NC}"
+  if [ -f "$INSTALL_DIR/install-cms.sh" ]; then
+    bash "$INSTALL_DIR/install-cms.sh"
+  else
+    echo -e "${RED}Script install-cms.sh no encontrado en $INSTALL_DIR${NC}"
+    echo -e "${YELLOW}Puedes instalarlo después con: bash $INSTALL_DIR/install-cms.sh${NC}"
+  fi
+fi
 
 # ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
 setup_wireguard_networking() {
@@ -748,10 +767,14 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 
 # Check optional services (informational only)
 echo ""
-echo -e "${CYAN}Servicios opcionales (iniciar desde panel Servicios VPS):${NC}"
-echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs)${NC}"
-echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor)${NC}"
-echo -e "  ${YELLOW}ℹ WireGuard (VPN)${NC}"
+echo -e "${CYAN}Servicios opcionales:${NC}"
+if ss -lntp | grep -q ":18080"; then
+  echo -e "  ${GREEN}✓ CMS C-Data (ONUs) — activo en puerto 18080${NC}"
+else
+  echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs) — no instalado. Ejecutar: bash $INSTALL_DIR/install-cms.sh${NC}"
+fi
+echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
+echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
 
 # Test HTTP endpoints — wait for nginx to be ready
 echo ""
