@@ -306,7 +306,7 @@ vpnRouter.get('/status', async (req: Request, res: Response) => {
     }
 
     // Get VPS public IP
-    const publicIp = await getPublicIp();
+    const publicIp = await getPublicIp(getRequestHost(req));
 
     res.json({
       serverUp,
