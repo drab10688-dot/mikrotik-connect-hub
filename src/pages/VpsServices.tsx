@@ -141,6 +141,10 @@ export default function VpsServices() {
               <Wifi className="h-4 w-4" />
               Mikhmon
             </TabsTrigger>
+            <TabsTrigger value="onus" className="gap-2">
+              <Radio className="h-4 w-4" />
+              ONUs
+            </TabsTrigger>
             <TabsTrigger value="tr069" className="gap-2">
               <Monitor className="h-4 w-4" />
               TR-069
@@ -165,14 +169,23 @@ export default function VpsServices() {
 
           <TabsContent value="services">
             <VpsServicesCard mikrotikId={mikrotikId} />
+            <FactoryCredentials user="admin@omnisync.local" pass="admin" label="Panel OmniSync" />
+            <FactoryCredentials user="admin" pass="admin" label="PHPNuxBill" />
           </TabsContent>
 
           <TabsContent value="mikhmon">
             <MikhmonPanel />
           </TabsContent>
 
+          <TabsContent value="onus">
+            <OnuManagementTab />
+          </TabsContent>
+
           <TabsContent value="tr069">
-            <TR069Dashboard />
+            <FactoryCredentials user="admin" pass="admin" label="GenieACS" />
+            <div className="mt-4">
+              <TR069Dashboard />
+            </div>
           </TabsContent>
 
           <TabsContent value="vpn">
