@@ -187,6 +187,7 @@ services:
       - tr069
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET:-changeme_genieacs_secret}
     ports:
       - "7547:7547"   # CWMP
       - "7557:7557"   # NBI (REST API)
