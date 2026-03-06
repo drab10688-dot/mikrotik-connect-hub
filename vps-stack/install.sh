@@ -755,7 +755,7 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 # Check optional services (informational only)
 echo ""
 echo -e "${CYAN}Servicios opcionales:${NC}"
-echo -e "  ${YELLOW}ℹ GenieACS (TR-069): iniciar con 'docker compose --profile tr069 up -d'${NC}"
+echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs): iniciar con 'docker compose --profile cms up -d'${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN):   iniciar con 'docker compose --profile vpn up -d'${NC}"
 
 # Test HTTP endpoints — wait for nginx to be ready
