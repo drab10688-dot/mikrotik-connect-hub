@@ -410,13 +410,13 @@ is_truthy() {
 }
 
 start_optional_profiles() {
-  local tr069_autostart="${TR069_AUTOSTART:-1}"
+  local cms_autostart="${CMS_AUTOSTART:-0}"
 
-  if is_truthy "$tr069_autostart"; then
-    echo -e "${YELLOW}Iniciando GenieACS (TR-069)...${NC}"
-    docker compose --profile tr069 up -d mongodb genieacs 2>&1 | tail -5 || true
+  if is_truthy "$cms_autostart"; then
+    echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
+    docker compose --profile cms up -d cms-cdata 2>&1 | tail -5 || true
   else
-    echo -e "${CYAN}TR-069 desactivado (TR069_AUTOSTART=${tr069_autostart})${NC}"
+    echo -e "${CYAN}CMS C-Data desactivado (CMS_AUTOSTART=${cms_autostart})${NC}"
   fi
 }
 
