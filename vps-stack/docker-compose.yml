@@ -215,15 +215,12 @@ services:
 
   # ============================================
   # WireGuard VPN - Acceso remoto a redes MikroTik
-  # Perfil: vpn - iniciar con:
-  #   docker compose --profile vpn up -d
+  # Iniciar/detener desde el panel de Servicios VPS
   # ============================================
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest
     container_name: omnisync-wireguard
-    restart: unless-stopped
-    profiles:
-      - vpn
+    restart: "no"
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
