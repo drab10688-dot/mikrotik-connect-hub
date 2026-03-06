@@ -354,10 +354,7 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                       variant="outline"
                       size="icon"
                       onClick={() => {
-                        navigator.clipboard.writeText(
-                          `${window.location.origin}/api/messaging/telegram/webhook`
-                        );
-                        toast.success("URL copiada al portapapeles");
+                        copyToClipboard(`${window.location.origin}/api/messaging/telegram/webhook`).then(ok => ok ? toast.success("URL copiada al portapapeles") : toast.error("No se pudo copiar"));
                       }}
                     >
                       <Copy className="h-4 w-4" />
