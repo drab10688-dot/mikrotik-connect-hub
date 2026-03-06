@@ -249,7 +249,7 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
     const stderr = error.stderr ? error.stderr.toString() : '';
     const stdout = error.stdout ? error.stdout.toString() : '';
     const detail = stdout || stderr || error.message;
-    res.status(500).json({ success: false, error: detail, command: cmd });
+    res.status(500).json({ success: false, error: detail });
   }
 });
 
