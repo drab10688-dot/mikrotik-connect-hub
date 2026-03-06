@@ -106,12 +106,21 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     localStorage.setItem('cloudflare_domain_enabled', String(enabled));
   };
 
+  const handleCopy = (text: string, successMessage = "Copiado al portapapeles") => {
+    copyToClipboard(text).then((copied) => {
+      if (copied) {
+        toast.success(successMessage);
+        return;
+      }
+      toast.error("No se pudo copiar. Verifica permisos del navegador.");
+    });
+  };
+
   const copyNginxConfig = () => {
     const cfg = services.map(s =>
       `# ${s.name}\nserver {\n    listen 80;\n    server_name ${s.subdomain}.${cloudflareDomain};\n    location / {\n        proxy_pass http://localhost:${s.port};\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n}\n`
     ).join('\n');
-    navigator.clipboard.writeText(cfg);
-    toast.success("Config Nginx copiada");
+    handleCopy(cfg, "Config Nginx copiada");
   };
 
   // ─── Tunnel mutation (simple start/stop) ───────────────────────────
