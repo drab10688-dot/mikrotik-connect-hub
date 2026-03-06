@@ -250,7 +250,7 @@ volumes:
   postgres_data:
   mariadb_data:
   backup_data:
-  mongodb_data:
+  cms_data:
   nuxbill_uploads:
   nuxbill_cache:
   nuxbill_ui_cache:
