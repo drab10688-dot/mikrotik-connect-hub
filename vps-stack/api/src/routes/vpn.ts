@@ -466,10 +466,8 @@ Endpoint = ${publicIp}:${WG_PORT}
 AllowedIPs = ${WG_SUBNET}.0/24
 PersistentKeepalive = 25`;
 
-    const mikrotikScript = `/interface wireguard add name=wg-omnisync listen-port=13231 private-key="${peer.private_key}"
-/interface wireguard peers add interface=wg-omnisync public-key="${serverPubKey}" preshared-key="${peer.preshared_key}" endpoint-address=${publicIp} endpoint-port=${WG_PORT} allowed-address=${WG_SUBNET}.0/24 persistent-keepalive=25
-/ip address add address=${peer.peer_address.replace('/32', '/24')} interface=wg-omnisync
-/ip route add dst-address=${WG_SUBNET}.0/24 gateway=wg-omnisync`;
+    const peerIp = peer.peer_address.split('/')[0];
+    const mikrotikScript = generateMikrotikScript(peer.private_key, serverPubKey, peer.preshared_key, publicIp, peerIp);
 
     res.json({ clientConfig, mikrotikScript, peer });
   } catch (error: any) {
