@@ -2,33 +2,53 @@
 set -e
 
 CMS_DIR="/opt/cms"
-CMS_BIN="$CMS_DIR/cms"
+CMS_VERSION="${CMS_VERSION:-4.0.3}"
 
-# Download CMS binary if not present
-if [ ! -f "$CMS_BIN" ]; then
-  echo "Descargando CMS C-Data..."
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64|amd64) CMS_ARCH="amd64" ;;
-    aarch64|arm64) CMS_ARCH="arm64" ;;
-    *) echo "Arquitectura no soportada: $ARCH"; exit 1 ;;
-  esac
-  
-  # Try to download from GitHub release
-  wget -q "https://github.com/beryindo/cms/releases/latest/download/cms-linux-${CMS_ARCH}" -O "$CMS_BIN" 2>/dev/null || \
-  wget -q "https://github.com/beryindo/cms/raw/main/cms-linux-${CMS_ARCH}" -O "$CMS_BIN" 2>/dev/null || \
-  wget -q "https://cdatayun.com/download/cms-linux-${CMS_ARCH}" -O "$CMS_BIN" 2>/dev/null || true
-  
-  chmod +x "$CMS_BIN" 2>/dev/null || true
+# Check if CMS is already installed
+if [ ! -f "$CMS_DIR/cms_install.sh" ]; then
+  echo "Descargando instalador CMS C-Data v${CMS_VERSION}..."
+  curl -fsSL -o "$CMS_DIR/cms_install.sh" "https://cms.s.cdatayun.com/cms_linux/cms_install.sh"
+  chmod +x "$CMS_DIR/cms_install.sh"
 fi
 
-if [ -f "$CMS_BIN" ] && [ -x "$CMS_BIN" ]; then
-  echo "Iniciando CMS C-Data en puerto 18080..."
-  exec "$CMS_BIN" --port 18080 --data-dir /opt/cms/data
+# Run installer if CMS binary not found
+if ! command -v cms &>/dev/null && [ ! -f /usr/local/bin/cms ] && [ ! -f "$CMS_DIR/cms" ]; then
+  echo "Instalando CMS C-Data v${CMS_VERSION}..."
+  cd "$CMS_DIR"
+  ./cms_install.sh install --version "$CMS_VERSION" || {
+    echo "Error al instalar CMS. Verificando archivos..."
+    ls -la "$CMS_DIR/"
+    # Try to find the binary
+    find / -name "cms" -type f 2>/dev/null | head -5
+    echo "Iniciando servidor placeholder..."
+    while true; do
+      echo -e "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/html\r\n\r\n<html><body><h1>CMS C-Data</h1><p>Error de instalacion. Revise los logs del contenedor.</p></body></html>" | nc -l -p 18080 -q 1 2>/dev/null || sleep 5
+    done
+  }
+fi
+
+echo "Iniciando CMS C-Data v${CMS_VERSION}..."
+
+# Try known locations for CMS binary
+if command -v cms &>/dev/null; then
+  exec cms
+elif [ -f /usr/local/bin/cms ]; then
+  exec /usr/local/bin/cms
+elif [ -f "$CMS_DIR/cms" ]; then
+  exec "$CMS_DIR/cms"
 else
-  echo "CMS binary no disponible. Iniciando servidor placeholder..."
-  # Simple HTTP server as placeholder
-  while true; do
-    echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body><h1>CMS C-Data</h1><p>El binario de CMS no se pudo descargar. Verifique la conectividad del servidor.</p></body></html>" | nc -l -p 18080 -q 1 2>/dev/null || sleep 5
-  done
+  # Search for installed binary
+  CMS_BIN=$(find / -name "cms" -type f -executable 2>/dev/null | head -1)
+  if [ -n "$CMS_BIN" ]; then
+    echo "CMS encontrado en: $CMS_BIN"
+    exec "$CMS_BIN"
+  else
+    echo "CMS binary no encontrado tras la instalacion."
+    echo "Contenido de $CMS_DIR:"
+    ls -laR "$CMS_DIR/" 2>/dev/null
+    echo "Iniciando servidor placeholder en puerto 18080..."
+    while true; do
+      echo -e "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/html\r\n\r\n<html><body><h1>CMS C-Data</h1><p>Binario no encontrado. Ejecute manualmente: docker exec -it omnisync-cms-cdata ./cms_install.sh install --version ${CMS_VERSION}</p></body></html>" | nc -l -p 18080 -q 1 2>/dev/null || sleep 5
+    done
+  fi
 fi
