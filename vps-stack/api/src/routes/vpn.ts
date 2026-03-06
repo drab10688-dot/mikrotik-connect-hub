@@ -423,11 +423,10 @@ vpnRouter.get('/peers/:id/config', async (req: Request, res: Response) => {
 
     const peer = result.rows[0];
     const serverPubKey = await getServerPublicKey();
-    let publicIp = '';
-    try {
-      const { stdout } = await execAsync('curl -s -4 ifconfig.me 2>/dev/null || hostname -I | awk \'{print $1}\'');
-      publicIp = stdout.trim();
-    } catch {}
+    const publicIp = await getPublicIp();
+    if (!publicIp) {
+      return res.status(500).json({ error: 'No se pudo detectar la IP pública del VPS. Configure VPS_PUBLIC_IP en el .env' });
+    }
 
     const clientConfig = `[Interface]
 PrivateKey = ${peer.private_key}
