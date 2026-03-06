@@ -6,12 +6,24 @@ import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map, Monitor, Wifi } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map, Monitor, Wifi, Info, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+function FactoryCredentials({ user, pass, label }: { user: string; pass: string; label?: string }) {
+  return (
+    <Alert className="mt-3">
+      <Info className="h-4 w-4" />
+      <AlertDescription className="text-xs">
+        <strong>Credenciales de fábrica{label ? ` (${label})` : ""}:</strong> Usuario: <code className="bg-muted px-1 rounded">{user}</code> — Contraseña: <code className="bg-muted px-1 rounded">{pass}</code>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 function MikhmonPanel() {
   const [vpsHost, setVpsHost] = useState("");
@@ -20,7 +32,6 @@ function MikhmonPanel() {
   useEffect(() => {
     const host = window.location.hostname;
     setVpsHost(host);
-    // Check if mikhmon is reachable
     const url = `${window.location.protocol}//${host}/mikhmon/`;
     fetch(url, { mode: "no-cors" })
       .then(() => setMikhmonAvailable(true))
@@ -40,6 +51,7 @@ function MikhmonPanel() {
           <p className="text-sm text-muted-foreground mt-1">
             Gestión avanzada de Hotspot MikroTik: vouchers, reportes, impresión térmica y más.
           </p>
+          <FactoryCredentials user="mikhmon" pass="1234" />
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={mikhmonAvailable ? "default" : "secondary"}>
@@ -83,6 +95,28 @@ function MikhmonPanel() {
   );
 }
 
+function OnuManagementTab() {
+  const navigate = useNavigate();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Radio className="h-5 w-5" />
+          Gestión de ONUs
+        </CardTitle>
+        <CardDescription>
+          Administración multi-marca de ONUs (ZTE, Huawei, Zyxel, Latic), monitoreo de señal óptica y configuración remota.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button onClick={() => navigate("/onu-management")} className="gap-2">
+          <Radio className="h-4 w-4" />
+          Abrir Gestión de ONUs
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
 
@@ -106,6 +140,10 @@ export default function VpsServices() {
             <TabsTrigger value="mikhmon" className="gap-2">
               <Wifi className="h-4 w-4" />
               Mikhmon
+            </TabsTrigger>
+            <TabsTrigger value="onus" className="gap-2">
+              <Radio className="h-4 w-4" />
+              ONUs
             </TabsTrigger>
             <TabsTrigger value="tr069" className="gap-2">
               <Monitor className="h-4 w-4" />
@@ -131,14 +169,23 @@ export default function VpsServices() {
 
           <TabsContent value="services">
             <VpsServicesCard mikrotikId={mikrotikId} />
+            <FactoryCredentials user="admin@omnisync.local" pass="admin" label="Panel OmniSync" />
+            <FactoryCredentials user="admin" pass="admin" label="PHPNuxBill" />
           </TabsContent>
 
           <TabsContent value="mikhmon">
             <MikhmonPanel />
           </TabsContent>
 
+          <TabsContent value="onus">
+            <OnuManagementTab />
+          </TabsContent>
+
           <TabsContent value="tr069">
-            <TR069Dashboard />
+            <FactoryCredentials user="admin" pass="admin" label="GenieACS" />
+            <div className="mt-4">
+              <TR069Dashboard />
+            </div>
           </TabsContent>
 
           <TabsContent value="vpn">
