@@ -130,6 +130,7 @@ function CmscdataPanel() {
           <p className="text-sm text-muted-foreground mt-1">
             Gestión centralizada de OLTs y ONUs C-Data, Huawei, ZTE. Configuración remota, monitoreo de señal óptica y aprovisionamiento.
           </p>
+          <FactoryCredentials user="admin" pass="admin" label="CMS C-Data" />
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={cmsAvailable ? "default" : "secondary"}>
