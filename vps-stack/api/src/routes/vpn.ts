@@ -65,6 +65,8 @@ async function ensureWireguardContainer(force = false): Promise<void> {
   ].join(' ');
 
   await execAsync(runCmd);
+  // Wait for container to fully initialize
+  await new Promise(r => setTimeout(r, 5000));
   wgLastCheckAt = Date.now();
   console.log(`[VPN] Created container ${WG_CONTAINER}`);
 }
