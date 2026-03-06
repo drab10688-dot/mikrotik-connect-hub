@@ -182,10 +182,8 @@ export default function VpsServices() {
           </TabsContent>
 
           <TabsContent value="tr069">
+            <TR069Dashboard />
             <FactoryCredentials user="admin" pass="admin" label="GenieACS" />
-            <div className="mt-4">
-              <TR069Dashboard />
-            </div>
           </TabsContent>
 
           <TabsContent value="vpn">
