@@ -1,5 +1,6 @@
-import { Router, Request, Response } from 'express';
-import { Pool } from 'pg';
+import { Router, Response } from 'express';
+import { AuthRequest } from '../middleware/auth';
+import { pool } from '../lib/db';
 
 const router = Router();
 
@@ -74,15 +75,10 @@ async function airOsReboot(host: string, session: AirOsSession): Promise<boolean
   }
 }
 
-function getPool(req: Request): Pool {
-  return (req as any).app.get('pool') || (req as any).pool;
-}
-
 // ─── Global Config ─────────────────────────────
-router.get('/config', async (req: Request, res: Response) => {
+router.get('/config', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
     const result = await pool.query(
       'SELECT id, default_username, created_at, updated_at FROM ubiquiti_global_config WHERE created_by = $1 LIMIT 1',
       [userId]
@@ -93,10 +89,9 @@ router.get('/config', async (req: Request, res: Response) => {
   }
 });
 
-router.put('/config', async (req: Request, res: Response) => {
+router.put('/config', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
     const { default_username, default_password } = req.body;
 
     if (!default_username || !default_password) {
@@ -127,10 +122,9 @@ router.put('/config', async (req: Request, res: Response) => {
 });
 
 // ─── Devices CRUD ──────────────────────────────
-router.get('/devices', async (req: Request, res: Response) => {
+router.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
     const result = await pool.query(
       `SELECT ud.*, ic.client_name 
        FROM ubiquiti_devices ud
@@ -145,10 +139,9 @@ router.get('/devices', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/devices', async (req: Request, res: Response) => {
+router.post('/devices', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
     const { name, ip_address, username, password, model, mac_address, client_id, notes } = req.body;
 
     if (!name || !ip_address) {
@@ -167,10 +160,9 @@ router.post('/devices', async (req: Request, res: Response) => {
   }
 });
 
-router.put('/devices/:id([0-9a-fA-F-]{36})', async (req: Request, res: Response) => {
+router.put('/devices/:id([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
     const { name, ip_address, username, password, model, mac_address, client_id, notes } = req.body;
 
     const result = await pool.query(
@@ -196,10 +188,9 @@ router.put('/devices/:id([0-9a-fA-F-]{36})', async (req: Request, res: Response)
   }
 });
 
-router.delete('/devices/:id([0-9a-fA-F-]{36})', async (req: Request, res: Response) => {
+router.delete('/devices/:id([0-9a-fA-F-]{36})', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
     const result = await pool.query(
       'DELETE FROM ubiquiti_devices WHERE id = $1 AND created_by = $2 RETURNING id',
       [req.params.id, userId]
@@ -212,10 +203,9 @@ router.delete('/devices/:id([0-9a-fA-F-]{36})', async (req: Request, res: Respon
 });
 
 // ─── Device Status (Signal, Noise, CCQ) ────────
-router.get('/devices/:id([0-9a-fA-F-]{36})/status', async (req: Request, res: Response) => {
+router.get('/devices/:id([0-9a-fA-F-]{36})/status', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
 
     const device = await pool.query(
       'SELECT * FROM ubiquiti_devices WHERE id = $1 AND created_by = $2',
@@ -293,10 +283,9 @@ router.get('/devices/:id([0-9a-fA-F-]{36})/status', async (req: Request, res: Re
 });
 
 // ─── Reboot Device ─────────────────────────────
-router.post('/devices/:id([0-9a-fA-F-]{36})/reboot', async (req: Request, res: Response) => {
+router.post('/devices/:id([0-9a-fA-F-]{36})/reboot', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
 
     const device = await pool.query(
       'SELECT * FROM ubiquiti_devices WHERE id = $1 AND created_by = $2',
@@ -333,10 +322,9 @@ router.post('/devices/:id([0-9a-fA-F-]{36})/reboot', async (req: Request, res: R
 });
 
 // ─── Bulk Status (all devices at once) ─────────
-router.get('/devices/status/all', async (req: Request, res: Response) => {
+router.get('/devices/status/all', async (req: AuthRequest, res: Response) => {
   try {
-    const pool = getPool(req);
-    const userId = (req as any).user?.id;
+    const userId = req.userId!;
 
     const devices = await pool.query(
       'SELECT id, name, ip_address, username, password, last_signal, last_noise, last_ccq, last_seen FROM ubiquiti_devices WHERE created_by = $1',
