@@ -169,11 +169,49 @@ export function AntennasDashboard() {
     try {
       const mkPayload = await apiGet(`/antennas/status/all${selectedMikrotikQuery}`);
       const mkStatuses = normalizeArrayPayload<any>(mkPayload);
-      setAntennas((prev) => prev.map((a) => {
-        if (a.brand !== "mikrotik") return a;
-        const st = mkStatuses.find((s: any) => s.id === a.id);
-        return st ? { ...a, status: st.status, signal: st.signal, noise: st.noise, ccq: st.ccq, uptime: st.uptime, cpu: st.cpu, connected_clients: st.connected_clients, board: st.board, version: st.version || a.version, name: st.name || a.name } : a;
-      }));
+      
+      setAntennas((prev) => {
+        // Remove old wireless clients, keep base MikroTik devices and Ubiquiti
+        const nonWirelessClients = prev.filter((a) => !a.is_wireless_client);
+        
+        // Update base MikroTik device statuses
+        const updated = nonWirelessClients.map((a) => {
+          if (a.brand !== "mikrotik") return a;
+          const st = mkStatuses.find((s: any) => s.id === a.id);
+          return st ? { ...a, status: st.status, signal: st.signal, noise: st.noise, ccq: st.ccq, uptime: st.uptime, cpu: st.cpu, connected_clients: st.connected_clients, board: st.board, version: st.version || a.version, name: st.name || a.name } as UnifiedAntenna : a;
+        });
+        
+        // Flatten wireless clients from all devices into antenna cards
+        const wirelessClients: UnifiedAntenna[] = [];
+        for (const st of mkStatuses) {
+          if (st.wireless_clients && Array.isArray(st.wireless_clients)) {
+            for (const wc of st.wireless_clients) {
+              wirelessClients.push({
+                id: wc.id,
+                name: wc.radio_name || wc.mac_address || "CPE",
+                host: wc.last_ip || wc.mac_address || "",
+                brand: "mikrotik",
+                status: "online",
+                signal: wc.signal,
+                noise: wc.noise,
+                ccq: wc.tx_ccq,
+                uptime: wc.uptime,
+                is_wireless_client: true,
+                parent_device_name: st.name || "",
+                mac_address: wc.mac_address,
+                radio_name: wc.radio_name,
+                interface_name: wc.interface,
+                tx_rate: wc.tx_rate,
+                rx_rate: wc.rx_rate,
+                last_ip: wc.last_ip,
+                distance: wc.distance,
+              });
+            }
+          }
+        }
+        
+        return [...updated, ...wirelessClients];
+      });
       syncedMikrotik = true;
     } catch (e: any) {
       firstErrorMessage ||= e?.message || "Error al consultar antenas MikroTik";
