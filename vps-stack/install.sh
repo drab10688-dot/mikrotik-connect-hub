@@ -78,7 +78,7 @@ handle_existing_installation() {
     case "$OPTION" in
       1)
         echo -e "${YELLOW}Deteniendo servicios...${NC}"
-        cd "$INSTALL_DIR" && docker compose --profile tr069 --profile vpn down -v 2>/dev/null || true
+        cd "$INSTALL_DIR" && docker compose --profile cms --profile vpn down -v 2>/dev/null || true
         cd /root
         rm -rf "$INSTALL_DIR"
         echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
