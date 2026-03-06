@@ -350,7 +350,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                   </Label>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-background px-3 py-2 rounded border truncate text-green-600">{config.tunnel_url}</code>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { navigator.clipboard.writeText(config.tunnel_url); toast.success("URL copiada"); }}>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleCopy(config.tunnel_url, "URL copiada")}>
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
                   </div>
