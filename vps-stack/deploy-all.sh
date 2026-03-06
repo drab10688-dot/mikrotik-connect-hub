@@ -301,7 +301,7 @@ echo "[4/10] Reconstruyendo API + servicios..."
 cd "$APP_DIR"
 sync_nuxbill_env_file
 normalize_nuxbill_app_url
-docker compose build --no-cache api cms-cdata
+docker compose build --no-cache api
 docker compose up -d --build api phpnuxbill mariadb
 
 echo "[5/10] Sincronizando cuentas MariaDB..."
