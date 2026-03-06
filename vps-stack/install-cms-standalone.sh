@@ -2,6 +2,7 @@
 # ============================================
 # CMS C-Data — Instalación standalone
 # Sin dependencias de OmniSync
+# Compatible con VPS de 4GB+ RAM
 # ============================================
 set -euo pipefail
 
@@ -14,11 +15,13 @@ NC='\033[0m'
 CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
 VPS_IP=$(hostname -I | awk '{print $1}')
+TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
 echo "║   CMS C-Data — Instalador Standalone         ║"
 echo "║   Versión: ${CMS_VERSION}                              ║"
+echo "║   RAM: ${TOTAL_RAM_MB}MB detectada                     ║"
 echo "╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -49,6 +52,14 @@ if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
 fi
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
+# ── Crear swap si hay menos de 8GB ──
+if [ "$TOTAL_RAM_MB" -lt 8000 ] && [ ! -f /swapfile ]; then
+  echo -e "${YELLOW}Creando swap de 2GB para mayor estabilidad...${NC}"
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+  echo -e "${GREEN}✓ Swap creado${NC}"
+fi
+
 # ── Limpieza total ──
 echo -e "${YELLOW}Limpiando instalaciones anteriores de CMS...${NC}"
 if [ -f "$CMS_DIR/docker-compose.yml" ]; then
@@ -69,38 +80,70 @@ echo -e "${YELLOW}Descargando instalador CMS C-Data v${CMS_VERSION}...${NC}"
 curl -fsSL -o cms_install.sh "https://cms.s.cdatayun.com/cms_linux/cms_install.sh"
 chmod +x cms_install.sh
 
-# ── Analizar cuántas preguntas hace el instalador ──
-# El instalador pregunta:
-#   1. mysql port modify? [y/n]      → n
-#   2. redis port modify? [y/n]      → n
-#   3. emqx port modify? [y/n]       → n
-#   4. acs port modify? [y/n]        → n
-#   5. stun port modify? [y/n]       → n
-#   6. cms port modify? [y/n]        → n
-#   7. nginx port modify? [y/n]      → n
-#   8. data volume modify? [y/n]     → n
-#   9. tenant type [multi/isp]       → isp/multi
-#  10. domain/URL                    → http://IP:80
-#
-# Después inicia MySQL y continúa la instalación
-
 echo -e "${YELLOW}Ejecutando instalador (esto puede tardar varios minutos)...${NC}"
 
-# Generar respuestas automáticas
+# Generar respuestas automáticas:
+# 8x "n" (no cambiar puertos ni volúmenes) + tipo tenant + URL
 {
-  # 7 preguntas de puertos + 1 de volumen = 8x "n"
   for i in $(seq 1 8); do echo "n"; done
-  # Tipo de tenant
   echo "${CMS_TENANT_TYPE}"
-  # URL/dominio
   echo "http://${VPS_IP}:80"
 } | timeout 600 bash cms_install.sh install --version "$CMS_VERSION" 2>&1 | tee /tmp/cms_install.log
 
 INSTALL_EXIT=${PIPESTATUS[1]:-0}
 
-echo ""
-echo -e "${YELLOW}Esperando estabilización de servicios (90s)...${NC}"
-for i in $(seq 1 18); do
+# ── Verificar que se generó docker-compose.yml ──
+if [ ! -f "$CMS_DIR/docker-compose.yml" ]; then
+  echo -e "${RED}Error: No se generó docker-compose.yml${NC}"
+  echo -e "${RED}Revisa: cat /tmp/cms_install.log${NC}"
+  exit 1
+fi
+
+# ── Parchear Java heap de RocketMQ Broker ──
+# Evita error "Initial heap size > maximum heap size"
+echo -e "${YELLOW}Parcheando configuración de Java para RocketMQ...${NC}"
+cd "$CMS_DIR"
+docker compose down 2>/dev/null || true
+
+# Calcular heap apropiado según RAM disponible
+if [ "$TOTAL_RAM_MB" -ge 16000 ]; then
+  RMQ_HEAP="1g"
+elif [ "$TOTAL_RAM_MB" -ge 8000 ]; then
+  RMQ_HEAP="512m"
+else
+  RMQ_HEAP="256m"
+fi
+
+# Parchear el broker: agregar/reemplazar JAVA_OPT_EXT si existe
+if grep -q "JAVA_OPT_EXT" "$CMS_DIR/docker-compose.yml"; then
+  # Reemplazar valores existentes de Xms/Xmx
+  sed -i -E "s/-Xms[0-9]+[mgMG]/-Xms${RMQ_HEAP}/g; s/-Xmx[0-9]+[mgMG]/-Xmx${RMQ_HEAP}/g" "$CMS_DIR/docker-compose.yml"
+else
+  # Inyectar JAVA_OPT_EXT en el servicio rmqbroker
+  # Buscar la sección de environment del broker y agregar la variable
+  sed -i "/container_name: cms-rmqbroker/,/^  [a-z]/{
+    /environment:/a\\      JAVA_OPT_EXT: '-server -Xms${RMQ_HEAP} -Xmx${RMQ_HEAP}'
+  }" "$CMS_DIR/docker-compose.yml" 2>/dev/null || true
+fi
+
+# También parchear el namesrv si tiene valores altos
+if grep -q "cms-rmqnamesrv" "$CMS_DIR/docker-compose.yml"; then
+  sed -i "/container_name: cms-rmqnamesrv/,/^  [a-z]/{
+    /environment:/a\\      JAVA_OPT_EXT: '-server -Xms${RMQ_HEAP} -Xmx${RMQ_HEAP}'
+  }" "$CMS_DIR/docker-compose.yml" 2>/dev/null || true
+fi
+
+# Eliminar mem_limit si excede la RAM disponible
+sed -i '/mem_limit:/d' "$CMS_DIR/docker-compose.yml" 2>/dev/null || true
+
+echo -e "${GREEN}✓ Java heap configurado a ${RMQ_HEAP} por servicio${NC}"
+
+# ── Iniciar CMS ──
+echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
+docker compose up -d 2>&1
+
+echo -e "${CYAN}Esperando estabilización de servicios (120s máx)...${NC}"
+for i in $(seq 1 24); do
   sleep 5
   # Verificar si el servicio web responde
   if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:80" 2>/dev/null | grep -qE "^(200|301|302)"; then
@@ -108,7 +151,14 @@ for i in $(seq 1 18); do
     break
   fi
   RUNNING=$(docker ps --format "{{.Names}}" | grep -c "cms-" 2>/dev/null || echo "0")
-  echo -e "  Esperando... (${i}/18) — ${RUNNING} contenedores CMS activos"
+  UNHEALTHY=$(docker ps --format "{{.Names}} {{.Status}}" | grep "cms-" | grep -c "unhealthy" 2>/dev/null || echo "0")
+  echo -e "  Esperando... (${i}/24) — ${RUNNING} contenedores, ${UNHEALTHY} unhealthy"
+  
+  # Si el broker sigue fallando después de 60s, mostrar logs
+  if [ "$i" -eq 12 ] && docker ps --format "{{.Status}}" --filter "name=cms-rmqbroker" | grep -q "Restarting"; then
+    echo -e "${YELLOW}⚠ Broker aún reiniciando. Logs:${NC}"
+    docker logs cms-rmqbroker 2>&1 | tail -5
+  fi
 done
 
 # ── Verificar estado ──
@@ -149,6 +199,7 @@ echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}${NC}"
 echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
 echo -e "${CYAN}║${NC}  User:   ${GREEN}admin${NC}"
 echo -e "${CYAN}║${NC}  Pass:   ${GREEN}admin${NC}"
+echo -e "${CYAN}║${NC}  Heap:   ${GREEN}${RMQ_HEAP} (RocketMQ)${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 
