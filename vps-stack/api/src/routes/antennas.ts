@@ -48,12 +48,11 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
     // Get wireless registration table (connected clients/stations)
     let registrations: any[] = [];
     try {
-      const { data } = await mikrotikRequestWithFallback(config, '/interface/wireless/registration-table/print');
+      const { data } = await mikrotikRequestWithFallback(config, '/rest/interface/wireless/registration-table');
       registrations = Array.isArray(data) ? data : [];
     } catch {
-      // Try alternative path for older versions
       try {
-        const data = await mikrotikRequest(config, '/rest/interface/wireless/registration-table/print');
+        const data = await mikrotikRequest(config, '/rest/interface/wireless/registration-table');
         registrations = Array.isArray(data) ? data : [];
       } catch { /* no wireless interface */ }
     }
@@ -61,11 +60,11 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
     // Get wireless interfaces info
     let interfaces: any[] = [];
     try {
-      const { data } = await mikrotikRequestWithFallback(config, '/interface/wireless/print');
+      const { data } = await mikrotikRequestWithFallback(config, '/rest/interface/wireless');
       interfaces = Array.isArray(data) ? data : [];
     } catch {
       try {
-        const data = await mikrotikRequest(config, '/rest/interface/wireless/print');
+        const data = await mikrotikRequest(config, '/rest/interface/wireless');
         interfaces = Array.isArray(data) ? data : [];
       } catch { /* ignore */ }
     }
@@ -73,11 +72,11 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
     // Get system resource
     let systemResource: any = {};
     try {
-      const { data } = await mikrotikRequestWithFallback(config, '/system/resource/print');
+      const { data } = await mikrotikRequestWithFallback(config, '/rest/system/resource');
       systemResource = Array.isArray(data) ? data[0] : data;
     } catch {
       try {
-        const data = await mikrotikRequest(config, '/rest/system/resource/print');
+        const data = await mikrotikRequest(config, '/rest/system/resource');
         systemResource = Array.isArray(data) ? data[0] : data;
       } catch { /* ignore */ }
     }
@@ -85,7 +84,7 @@ antennasRouter.get('/devices/:id([0-9a-fA-F-]{36})/wireless', async (req: AuthRe
     // Get system identity
     let identity = '';
     try {
-      const { data } = await mikrotikRequestWithFallback(config, '/system/identity/print');
+      const { data } = await mikrotikRequestWithFallback(config, '/rest/system/identity');
       const idData = Array.isArray(data) ? data[0] : data;
       identity = idData?.name || '';
     } catch { /* ignore */ }
