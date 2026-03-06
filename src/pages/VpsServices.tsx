@@ -173,7 +173,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, VPN, CMS, antenas y publicidad.
+            Gestión de servicios, VPN, CMS, Docker y publicidad.
           </p>
         </div>
 
