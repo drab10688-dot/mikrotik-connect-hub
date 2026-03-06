@@ -2,11 +2,9 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
-
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
-import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map, Monitor, Wifi, Info, ExternalLink } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map, Wifi, Info, ExternalLink, Monitor } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -105,6 +103,76 @@ function MikhmonPanel() {
   );
 }
 
+function CmscdataPanel() {
+  const [vpsHost, setVpsHost] = useState("");
+  const [cmsAvailable, setCmsAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    setVpsHost(host);
+    const url = `${window.location.protocol}//${host}/cms-cdata/`;
+    fetch(url, { mode: "no-cors" })
+      .then(() => setCmsAvailable(true))
+      .catch(() => setCmsAvailable(false));
+  }, []);
+
+  const cmsUrl = `${window.location.protocol}//${vpsHost}/cms-cdata/`;
+  const cmsExternalUrl = `${window.location.protocol}//${vpsHost}:18080`;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="h-5 w-5" />
+            CMS C-Data — Gestión OLT/ONU
+          </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Gestión centralizada de OLTs y ONUs C-Data, Huawei, ZTE. Configuración remota, monitoreo de señal óptica y aprovisionamiento.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant={cmsAvailable ? "default" : "secondary"}>
+            {cmsAvailable === null ? "Verificando..." : cmsAvailable ? "Activo" : "No disponible"}
+          </Badge>
+          <Button variant="outline" size="sm" asChild>
+            <a href={cmsExternalUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1" />
+              Abrir externo
+            </a>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {cmsAvailable === false ? (
+          <div className="text-center py-12 space-y-4">
+            <Monitor className="h-12 w-12 mx-auto text-muted-foreground" />
+            <div>
+              <p className="text-lg font-medium text-foreground">CMS C-Data no está activo</p>
+              <p className="text-muted-foreground text-sm mt-1">
+                Para activar CMS C-Data, ejecute en su VPS:
+              </p>
+              <code className="block mt-3 bg-muted p-3 rounded text-sm font-mono">
+                cd /opt/omnisync && docker compose --profile cms up -d
+              </code>
+              <p className="text-muted-foreground text-xs mt-2">
+                Luego recargue esta página.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <iframe
+            src={cmsUrl}
+            className="w-full border-0 rounded-lg"
+            style={{ height: "75vh" }}
+            title="CMS C-Data"
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function OnuManagementTab() {
   const navigate = useNavigate();
   return (
@@ -127,6 +195,7 @@ function OnuManagementTab() {
     </Card>
   );
 }
+
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
 
@@ -137,7 +206,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, VPN, TR-069, antenas y publicidad.
+            Gestión de servicios, VPN, CMS, antenas y publicidad.
           </p>
         </div>
 
@@ -151,13 +220,13 @@ export default function VpsServices() {
               <Wifi className="h-4 w-4" />
               Mikhmon
             </TabsTrigger>
+            <TabsTrigger value="cms" className="gap-2">
+              <Monitor className="h-4 w-4" />
+              CMS C-Data
+            </TabsTrigger>
             <TabsTrigger value="onus" className="gap-2">
               <Radio className="h-4 w-4" />
               ONUs
-            </TabsTrigger>
-            <TabsTrigger value="tr069" className="gap-2">
-              <Monitor className="h-4 w-4" />
-              TR-069
             </TabsTrigger>
             <TabsTrigger value="vpn" className="gap-2">
               <Shield className="h-4 w-4" />
@@ -183,19 +252,17 @@ export default function VpsServices() {
             <MikhmonPanel />
           </TabsContent>
 
-          <TabsContent value="onus">
-            <OnuManagementTab />
+          <TabsContent value="cms">
+            <CmscdataPanel />
           </TabsContent>
 
-          <TabsContent value="tr069">
-            <TR069Dashboard />
-            <FactoryCredentials user="admin" pass="admin" label="GenieACS" />
+          <TabsContent value="onus">
+            <OnuManagementTab />
           </TabsContent>
 
           <TabsContent value="vpn">
             <VpnManager />
           </TabsContent>
-
 
           <TabsContent value="ads">
             <PortalAdsManager />

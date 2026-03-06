@@ -77,7 +77,7 @@ app.use('/api/backups', authMiddleware, backupRouter);
 app.use('/api/auth/users', authMiddleware, usersRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/onu', authMiddleware, onuRouter);
-app.use('/api/genieacs', authMiddleware, genieacsRouter);
+// genieacs route removed - replaced by CMS C-Data
 app.use('/api/vpn', authMiddleware, vpnRouter);
 app.use('/api/ubiquiti', authMiddleware, ubiquitiRouter);
 app.use('/api/antennas', authMiddleware, antennasRouter);
