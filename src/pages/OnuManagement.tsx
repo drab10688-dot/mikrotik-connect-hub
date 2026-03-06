@@ -189,9 +189,7 @@ export default function OnuManagement() {
       setForm({
         serial_number: "", mac_address: "", brand: "latic", model: "",
         management_ip: "", olt_port: "", wifi_ssid: "", wifi_password: "",
-        pppoe_username: "", pppoe_password: "", pppoe_profile: "",
-        client_id: "", notes: "", auto_create_pppoe: false, auto_provision_tr069: false,
-        vlan_id: "", dns1: "", dns2: "",
+        client_id: "", notes: "", auto_create_pppoe: false,
       });
       loadData();
     } catch (err: any) {
