@@ -145,3 +145,49 @@ authRouter.get('/me', async (req: Request, res: Response) => {
     res.status(401).json({ error: 'Token inválido' });
   }
 });
+
+// ─── Debug: Check user roles ─────────────────
+authRouter.get('/debug-roles', async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autenticado' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as any;
+    
+    // Get all roles for this user
+    const { rows: roles } = await pool.query(
+      'SELECT role, created_at FROM user_roles WHERE user_id = $1 ORDER BY created_at',
+      [decoded.userId]
+    );
+
+    // Get user info
+    const { rows: users } = await pool.query(
+      'SELECT id, email, full_name, is_active FROM users WHERE id = $1',
+      [decoded.userId]
+    );
+
+    // Get device access
+    const { rows: access } = await pool.query(
+      `SELECT uma.mikrotik_id, md.name as device_name 
+       FROM user_mikrotik_access uma 
+       LEFT JOIN mikrotik_devices md ON md.id = uma.mikrotik_id
+       WHERE uma.user_id = $1`,
+      [decoded.userId]
+    );
+
+    res.json({
+      token_claims: { userId: decoded.userId, role: decoded.role },
+      user: users[0] || null,
+      all_roles: roles,
+      device_access: access,
+      effective_role: roles.length > 0 
+        ? roles.sort((a: any, b: any) => {
+            const priority: Record<string, number> = { super_admin: 1, admin: 2, secretary: 3, reseller: 4, user: 5 };
+            return (priority[a.role] || 99) - (priority[b.role] || 99);
+          })[0].role
+        : 'user (no role assigned)',
+    });
+  } catch (err: any) {
+    res.status(401).json({ error: 'Token inválido', detail: err.message });
+  }
+});

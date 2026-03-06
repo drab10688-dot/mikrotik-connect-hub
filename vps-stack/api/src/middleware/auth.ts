@@ -54,6 +54,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
     req.userId = decoded.userId;
     req.userRole = rows[0].role || decoded.role || 'user';
+    console.log(`🔑 Auth: userId=${req.userId}, dbRole=${rows[0].role}, tokenRole=${decoded.role}, finalRole=${req.userRole}`);
     next();
   } catch {
     return res.status(401).json({ error: 'Token inválido o expirado' });
