@@ -396,8 +396,7 @@ add dst-host=*.trycloudflare.com action=allow comment="Cloudflare Tunnel HTTPS"`
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const vpsIpLocal = vpsHost || "TU_IP_VPS";
                       const script = `/ip hotspot walled-garden ip\nadd dst-address=${vpsIpLocal} action=accept comment="OmniSync VPS"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script IP List copiado");
+                      handleCopy(script, "Script IP List copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
