@@ -34,7 +34,8 @@ async function ensureWireguardContainer(force = false): Promise<void> {
       return;
     }
 
-    await execAsync(`docker start ${WG_CONTAINER}`);
+  await execAsync(`docker start ${WG_CONTAINER}`);
+    await new Promise(r => setTimeout(r, 3000));
     wgLastCheckAt = Date.now();
     console.log(`[VPN] Started container ${WG_CONTAINER}`);
     return;
