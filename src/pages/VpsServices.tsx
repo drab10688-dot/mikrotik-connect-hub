@@ -80,13 +80,7 @@ function MikhmonPanel() {
             <div>
               <p className="text-lg font-medium text-foreground">Mikhmon no está activo</p>
               <p className="text-muted-foreground text-sm mt-1">
-                Para activar Mikhmon, ejecute en su VPS:
-              </p>
-              <code className="block mt-3 bg-muted p-3 rounded text-sm font-mono">
-                cd /opt/omnisync && docker compose --profile mikhmon up -d
-              </code>
-              <p className="text-muted-foreground text-xs mt-2">
-                Luego recargue esta página.
+                Actívalo desde Servicios VPS → Docker → Servicios opcionales → Mikhmon → Iniciar
               </p>
             </div>
           </div>
