@@ -356,6 +356,7 @@ export function AntennasDashboard() {
           <p className="text-sm text-muted-foreground">
             {antennas.length} antena{antennas.length !== 1 ? "s" : ""}
             {mkCount > 0 && ` · ${mkCount} MikroTik`}
+            {wcCount > 0 && ` · ${wcCount} CPE`}
             {ubCount > 0 && ` · ${ubCount} Ubiquiti`}
           </p>
         </div>
