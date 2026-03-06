@@ -196,6 +196,10 @@ export default function VpsServices() {
               Docker
             </TabsTrigger>
             </TabsTrigger>
+            <TabsTrigger value="vpn" className="gap-2">
+              <Shield className="h-4 w-4" />
+              VPN
+            </TabsTrigger>
             <TabsTrigger value="ads" className="gap-2">
               <Megaphone className="h-4 w-4" />
               Publicidad
@@ -220,8 +224,12 @@ export default function VpsServices() {
             <CmscdataPanel />
           </TabsContent>
 
-          <TabsContent value="onus">
-            <OnuManagementTab />
+          <TabsContent value="docker">
+            <VpsDockerManager mikrotikId={mikrotikId || null} />
+          </TabsContent>
+
+          <TabsContent value="vpn">
+            <VpnManager />
           </TabsContent>
 
           <TabsContent value="vpn">
