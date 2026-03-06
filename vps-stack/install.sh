@@ -133,7 +133,7 @@ handle_existing_installation() {
         echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
         read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
         if [ "$CONFIRM" = "ELIMINAR" ]; then
-          cd "$INSTALL_DIR" && docker compose --profile tr069 --profile vpn down -v 2>/dev/null || true
+          cd "$INSTALL_DIR" && docker compose --profile cms --profile vpn down -v 2>/dev/null || true
           rm -rf "$INSTALL_DIR"
           echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
         fi
