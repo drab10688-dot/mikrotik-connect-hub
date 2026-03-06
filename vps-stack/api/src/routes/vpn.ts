@@ -19,30 +19,57 @@ const WG_READY_TTL_MS = 5000;
 let wgLastCheckAt = 0;
 let cachedPublicIp = '';
 
-async function getPublicIp(): Promise<string> {
+function isValidIpv4(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  return parts.length === 4 && parts.every(part => Number.isInteger(part) && part >= 0 && part <= 255);
+}
+
+function extractIpv4(value: string): string {
+  const match = value.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+  if (!match) return '';
+  return isValidIpv4(match[0]) ? match[0] : '';
+}
+
+function getRequestHost(req: Request): string {
+  const forwardedHost = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]?.trim();
+  const hostHeader = (forwardedHost || req.get('host') || '').trim();
+  return hostHeader.replace(/^https?:\/\//, '').split(':')[0];
+}
+
+async function getPublicIp(fallbackHost = ''): Promise<string> {
   if (cachedPublicIp) return cachedPublicIp;
+
   const commands = [
     'curl -s -4 --max-time 5 ifconfig.me',
     'curl -s -4 --max-time 5 api.ipify.org',
     'curl -s -4 --max-time 5 icanhazip.com',
     'curl -s -4 --max-time 5 ipecho.net/plain',
-    'hostname -I | awk \'{print $1}\'',
+    "ip route get 1.1.1.1 | awk '{print $7; exit}'",
+    'hostname -i',
   ];
+
   for (const cmd of commands) {
     try {
       const { stdout } = await execAsync(cmd);
-      const ip = stdout.trim();
-      if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+      const ip = extractIpv4(stdout.trim());
+      if (ip) {
         cachedPublicIp = ip;
         return ip;
       }
     } catch {}
   }
-  // Fallback: check env variable
-  if (process.env.VPS_PUBLIC_IP) {
-    cachedPublicIp = process.env.VPS_PUBLIC_IP;
-    return cachedPublicIp;
+
+  const envIp = process.env.VPS_PUBLIC_IP?.trim() || '';
+  if (envIp && isValidIpv4(envIp)) {
+    cachedPublicIp = envIp;
+    return envIp;
   }
+
+  const normalizedFallback = fallbackHost.trim();
+  if (normalizedFallback) {
+    return normalizedFallback;
+  }
+
   return '';
 }
 
@@ -260,23 +287,26 @@ vpnRouter.get('/status', async (req: Request, res: Response) => {
 
     for (const line of lines) {
       const parts = line.split('\t');
-      if (parts.length >= 4) {
-        if (parts[0] === WG_INTERFACE && parts.length === 4) {
-          serverUp = true;
-        } else if (parts.length >= 8) {
-          // Peer line: interface, public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx
-          peerStatus[parts[1]] = {
-            endpoint: parts[3] === '(none)' ? null : parts[3],
-            lastHandshake: parts[5] !== '0' ? new Date(parseInt(parts[5]) * 1000).toISOString() : null,
-            transferRx: parseInt(parts[6]) || 0,
-            transferTx: parseInt(parts[7]) || 0,
-          };
-        }
+
+      if (parts[0] === WG_INTERFACE && parts.length === 5) {
+        // Interface line: interface, private_key, public_key, listen_port, fwmark
+        serverUp = true;
+        continue;
+      }
+
+      if (parts.length >= 8) {
+        // Peer line: interface, public_key, preshared_key, endpoint, allowed_ips, latest_handshake, transfer_rx, transfer_tx
+        peerStatus[parts[1]] = {
+          endpoint: parts[3] === '(none)' ? null : parts[3],
+          lastHandshake: parts[5] !== '0' ? new Date(parseInt(parts[5]) * 1000).toISOString() : null,
+          transferRx: parseInt(parts[6]) || 0,
+          transferTx: parseInt(parts[7]) || 0,
+        };
       }
     }
 
     // Get VPS public IP
-    const publicIp = await getPublicIp();
+    const publicIp = await getPublicIp(getRequestHost(req));
 
     res.json({
       serverUp,
@@ -370,7 +400,7 @@ vpnRouter.post('/peers', async (req: Request, res: Response) => {
 
     // Generate client config
     const serverPubKey = await getServerPublicKey();
-    const publicIp = await getPublicIp();
+    const publicIp = await getPublicIp(getRequestHost(req));
     if (!publicIp) {
       return res.status(500).json({ error: 'No se pudo detectar la IP pública del VPS. Configure VPS_PUBLIC_IP en el .env' });
     }
@@ -423,7 +453,7 @@ vpnRouter.get('/peers/:id/config', async (req: Request, res: Response) => {
 
     const peer = result.rows[0];
     const serverPubKey = await getServerPublicKey();
-    const publicIp = await getPublicIp();
+    const publicIp = await getPublicIp(getRequestHost(req));
     if (!publicIp) {
       return res.status(500).json({ error: 'No se pudo detectar la IP pública del VPS. Configure VPS_PUBLIC_IP en el .env' });
     }

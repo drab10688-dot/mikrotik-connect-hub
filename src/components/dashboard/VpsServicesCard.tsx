@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { PortalTemplateSelector } from "@/components/settings/PortalTemplateSelector";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface VpsServicesCardProps {
   mikrotikId?: string | null;
@@ -105,12 +106,21 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     localStorage.setItem('cloudflare_domain_enabled', String(enabled));
   };
 
+  const handleCopy = (text: string, successMessage = "Copiado al portapapeles") => {
+    copyToClipboard(text).then((copied) => {
+      if (copied) {
+        toast.success(successMessage);
+        return;
+      }
+      toast.error("No se pudo copiar. Verifica permisos del navegador.");
+    });
+  };
+
   const copyNginxConfig = () => {
     const cfg = services.map(s =>
       `# ${s.name}\nserver {\n    listen 80;\n    server_name ${s.subdomain}.${cloudflareDomain};\n    location / {\n        proxy_pass http://localhost:${s.port};\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n}\n`
     ).join('\n');
-    navigator.clipboard.writeText(cfg);
-    toast.success("Config Nginx copiada");
+    handleCopy(cfg, "Config Nginx copiada");
   };
 
   // ─── Tunnel mutation (simple start/stop) ───────────────────────────
@@ -263,7 +273,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-background px-2 py-1.5 rounded border truncate text-center">{config.tunnel_url}</code>
-                    <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={() => { navigator.clipboard.writeText(config.tunnel_url || ""); toast.success("URL copiada"); }}>
+                    <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={() => handleCopy(config.tunnel_url || "", "URL copiada")}>
                       <Copy className="h-3 w-3" />
                     </Button>
                     <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" asChild>
@@ -326,7 +336,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">URL Local del Portal</Label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-background px-3 py-2 rounded border truncate">{portalUrl}</code>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { navigator.clipboard.writeText(portalUrl); toast.success("URL copiada"); }}>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleCopy(portalUrl, "URL copiada")}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -340,7 +350,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                   </Label>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-background px-3 py-2 rounded border truncate text-green-600">{config.tunnel_url}</code>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { navigator.clipboard.writeText(config.tunnel_url); toast.success("URL copiada"); }}>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleCopy(config.tunnel_url, "URL copiada")}>
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -367,8 +377,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const vpsIpLocal = vpsHost || "TU_IP_VPS";
                       const script = `/ip hotspot walled-garden\nadd dst-host=${vpsIpLocal} action=allow comment="OmniSync Portal"\nadd dst-host=*.trycloudflare.com action=allow comment="Cloudflare Tunnel HTTPS"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script Walled Garden copiado");
+                      handleCopy(script, "Script Walled Garden copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -387,8 +396,7 @@ add dst-host=*.trycloudflare.com action=allow comment="Cloudflare Tunnel HTTPS"`
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const vpsIpLocal = vpsHost || "TU_IP_VPS";
                       const script = `/ip hotspot walled-garden ip\nadd dst-address=${vpsIpLocal} action=accept comment="OmniSync VPS"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script IP List copiado");
+                      handleCopy(script, "Script IP List copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -406,8 +414,7 @@ add dst-address=${vpsHost || "TU_IP_VPS"} action=accept comment="OmniSync VPS"`}
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const loginUrl = isRunning && config?.tunnel_url ? config.tunnel_url + "/portal" : `http://${vpsHost || "TU_IP_VPS"}/portal`;
                       const script = `/ip hotspot profile set [find default=yes] login-by=http-chap,http-pap html-directory=hotspot login-page="${loginUrl}"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script Login Page copiado");
+                      handleCopy(script, "Script Login Page copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -427,8 +434,7 @@ add dst-address=${vpsHost || "TU_IP_VPS"} action=accept comment="OmniSync VPS"`}
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const vpsIpLocal = vpsHost || "TU_IP_VPS";
                       const script = `/ip dns static\nadd name=portal.omnisync.local address=${vpsIpLocal} comment="OmniSync Portal"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script DNS copiado");
+                      handleCopy(script, "Script DNS copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>

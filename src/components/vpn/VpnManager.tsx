@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { Shield, Plus, Trash2, Download, Copy, RefreshCw, Wifi, WifiOff, Monitor, Network, Server } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { copyToClipboard as copyTextToClipboard } from "@/lib/clipboard";
 
 interface VpnPeer {
   id: string;
@@ -174,9 +175,13 @@ export function VpnManager() {
     }
   };
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copiado al portapapeles`);
+  const copyToClipboard = async (text: string, label: string) => {
+    const copied = await copyTextToClipboard(text);
+    if (copied) {
+      toast.success(`${label} copiado al portapapeles`);
+      return;
+    }
+    toast.error("No se pudo copiar. Verifica permisos del navegador.");
   };
 
   if (loading) {
