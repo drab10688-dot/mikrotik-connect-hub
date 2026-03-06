@@ -401,6 +401,24 @@ ensure_radius_schema() {
   return 1
 }
 
+is_truthy() {
+  case "${1,,}" in
+    1|true|yes|y|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+start_optional_profiles() {
+  local tr069_autostart="${TR069_AUTOSTART:-1}"
+
+  if is_truthy "$tr069_autostart"; then
+    echo -e "${YELLOW}Iniciando GenieACS (TR-069)...${NC}"
+    docker compose --profile tr069 up -d mongodb genieacs 2>&1 | tail -5 || true
+  else
+    echo -e "${CYAN}TR-069 desactivado (TR069_AUTOSTART=${tr069_autostart})${NC}"
+  fi
+}
+
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
 handle_existing_installation
 
