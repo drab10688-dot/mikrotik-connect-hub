@@ -611,8 +611,8 @@ echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
-# Build only custom images (api + phpnuxbill)
-docker compose build --no-cache api phpnuxbill cms-cdata
+# Build only custom images (api + phpnuxbill) — CMS C-Data se instala aparte en el host
+docker compose build --no-cache api phpnuxbill
 
 # Start core services (optional services use restart: "no" and are managed from UI)
 docker compose up -d 2>&1 | tail -5
