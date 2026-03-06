@@ -204,22 +204,16 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
       'omnisync-mariadb': 'mariadb',
       phpnuxbill: 'phpnuxbill',
       'omnisync-phpnuxbill': 'phpnuxbill',
+      'omnisync-cms-cdata': 'cms-cdata',
+      'omnisync-mikhmon': 'mikhmon',
+      'omnisync-wireguard': 'wireguard',
     };
 
     const resolvedService = service
       ? (serviceAliases[service] || service.replace(/^omnisync-/, ''))
       : '';
 
-    const serviceProfiles: Record<string, string> = {
-      genieacs: 'tr069',
-      mongodb: 'tr069',
-      wireguard: 'vpn',
-    };
-
-    const profileArg = resolvedService && serviceProfiles[resolvedService]
-      ? ` --profile ${serviceProfiles[resolvedService]}`
-      : '';
-
+    // No profiles needed - all services are in the default compose file
     const svcArg = resolvedService ? ` ${resolvedService}` : '';
 
     let cmd = '';
