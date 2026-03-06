@@ -28,6 +28,7 @@ function FactoryCredentials({ user, pass, label }: { user: string; pass: string;
 function MikhmonPanel() {
   const [vpsHost, setVpsHost] = useState("");
   const [mikhmonAvailable, setMikhmonAvailable] = useState<boolean | null>(null);
+  const [mikhmonVersion, setMikhmonVersion] = useState("version-4");
 
   useEffect(() => {
     const host = window.location.hostname;
@@ -38,7 +39,8 @@ function MikhmonPanel() {
       .catch(() => setMikhmonAvailable(false));
   }, []);
 
-  const mikhmonUrl = `${window.location.protocol}//${vpsHost}/mikhmon/`;
+  const mikhmonBaseUrl = `${window.location.protocol}//${vpsHost}/mikhmon/`;
+  const mikhmonAppUrl = `${mikhmonBaseUrl}${mikhmonVersion}/`;
 
   return (
     <Card>
@@ -46,7 +48,7 @@ function MikhmonPanel() {
         <div>
           <CardTitle className="flex items-center gap-2">
             <Wifi className="h-5 w-5" />
-            Mikhmon V3 — Hotspot Monitor
+            Mikhmon — Hotspot Monitor
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
             Gestión avanzada de Hotspot MikroTik: vouchers, reportes, impresión térmica y más.
@@ -54,11 +56,19 @@ function MikhmonPanel() {
           <FactoryCredentials user="mikhmon" pass="1234" />
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={mikhmonVersion}
+            onChange={(e) => setMikhmonVersion(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="version-3">V3</option>
+            <option value="version-4">V4</option>
+          </select>
           <Badge variant={mikhmonAvailable ? "default" : "secondary"}>
             {mikhmonAvailable === null ? "Verificando..." : mikhmonAvailable ? "Activo" : "No disponible"}
           </Badge>
           <Button variant="outline" size="sm" asChild>
-            <a href={mikhmonUrl} target="_blank" rel="noopener noreferrer">
+            <a href={mikhmonAppUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4 mr-1" />
               Abrir externo
             </a>
@@ -72,7 +82,7 @@ function MikhmonPanel() {
             <div>
               <p className="text-lg font-medium text-foreground">Mikhmon no está activo</p>
               <p className="text-muted-foreground text-sm mt-1">
-                Para activar Mikhmon V3, ejecute en su VPS:
+                Para activar Mikhmon, ejecute en su VPS:
               </p>
               <code className="block mt-3 bg-muted p-3 rounded text-sm font-mono">
                 cd /opt/omnisync && docker compose --profile mikhmon up -d
@@ -84,10 +94,10 @@ function MikhmonPanel() {
           </div>
         ) : (
           <iframe
-            src={mikhmonUrl}
+            src={mikhmonAppUrl}
             className="w-full border-0 rounded-lg"
             style={{ height: "75vh" }}
-            title="Mikhmon V3"
+            title="Mikhmon"
           />
         )}
       </CardContent>
