@@ -54,7 +54,8 @@ export function useValidatedDevice(autoSelectFirst: boolean = true) {
 
     // No valid device stored, auto-select first if enabled
     if (autoSelectFirst && devices.length > 0) {
-      const firstDevice = devices[0];
+      const firstActiveDevice = devices.find((d: any) => d?.status === 'active');
+      const firstDevice = firstActiveDevice || devices[0];
       const deviceConfig: MikroTikDeviceConfig = {
         id: firstDevice.id,
         name: firstDevice.name,

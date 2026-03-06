@@ -125,8 +125,13 @@ export function AntennasDashboard() {
   useEffect(() => { loadAll(); loadUbConfig(); }, [loadAll, loadUbConfig]);
 
   // ─── Refresh ──────────────────────────────────
-  const refreshAllStatuses = async () => {
-    setRefreshing(true);
+  const refreshAllStatuses = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setRefreshing(true);
+
+    let syncedMikrotik = false;
+    let syncedUbiquiti = false;
+    let firstErrorMessage = "";
+
     try {
       const mkStatuses = await apiGet("/antennas/status/all");
       setAntennas((prev) => prev.map((a) => {
@@ -134,7 +139,10 @@ export function AntennasDashboard() {
         const st = mkStatuses.find((s: any) => s.id === a.id);
         return st ? { ...a, status: st.status, signal: st.signal, noise: st.noise, ccq: st.ccq, uptime: st.uptime, cpu: st.cpu, connected_clients: st.connected_clients, board: st.board, version: st.version || a.version, name: st.name || a.name } : a;
       }));
-    } catch { /* ignore */ }
+      syncedMikrotik = true;
+    } catch (e: any) {
+      firstErrorMessage ||= e?.message || "Error al consultar antenas MikroTik";
+    }
 
     try {
       const ubStatuses = await apiGet("/ubiquiti/devices/status/all");
@@ -143,11 +151,31 @@ export function AntennasDashboard() {
         const st = ubStatuses.find((s: any) => `ub-${s.id}` === a.id);
         return st ? { ...a, status: st.status, signal: st.signal, noise: st.noise, ccq: st.ccq, uptime: st.uptime, cpu: st.cpu } : a;
       }));
-    } catch { /* ignore */ }
+      syncedUbiquiti = true;
+    } catch (e: any) {
+      firstErrorMessage ||= e?.message || "Error al consultar antenas Ubiquiti";
+    }
 
-    toast.success("Señales actualizadas");
-    setRefreshing(false);
-  };
+    if (!silent) {
+      if (syncedMikrotik || syncedUbiquiti) {
+        toast.success("Señales actualizadas");
+      } else {
+        toast.error(firstErrorMessage || "Error al sincronizar señales");
+      }
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!antennas.length) return;
+
+    void refreshAllStatuses({ silent: true });
+    const intervalId = window.setInterval(() => {
+      void refreshAllStatuses({ silent: true });
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [antennas.length, refreshAllStatuses]);
 
   // ─── Add MikroTik ────────────────────────────
   const handleAddMk = async () => {
@@ -272,7 +300,7 @@ export function AntennasDashboard() {
             <Settings2 className="h-4 w-4 mr-1" /> Cred. Globales
           </Button>
 
-          <Button variant="outline" size="sm" onClick={refreshAllStatuses} disabled={refreshing}>
+          <Button variant="outline" size="sm" onClick={() => void refreshAllStatuses()} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Consultando..." : "Señales"}
           </Button>

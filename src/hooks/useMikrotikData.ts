@@ -1,108 +1,131 @@
 import { useQuery } from "@tanstack/react-query";
-import { 
-  getSystemInfo, 
+import {
+  getSelectedDeviceId,
+  getSystemInfo,
   getHotspotUsers,
   getPPPoEUsers,
   getPPPoEActive,
   getVouchers,
 } from "@/lib/mikrotik";
 
+const useMikrotikDeviceId = () => getSelectedDeviceId();
+
 export const useSystemResources = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["system-resources"],
+    queryKey: ["system-resources", mikrotikId],
     queryFn: () => getSystemInfo("resources"),
-    refetchInterval: 10000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 10000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const useHotspotActiveUsers = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["hotspot-active"],
+    queryKey: ["hotspot-active", mikrotikId],
     queryFn: () => getSystemInfo("hotspot-active"),
-    refetchInterval: 10000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 10000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const useHotspotUsers = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["hotspot-users"],
+    queryKey: ["hotspot-users", mikrotikId],
     queryFn: () => getHotspotUsers(),
-    refetchInterval: 15000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 15000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const useInterfaces = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["interfaces"],
+    queryKey: ["interfaces", mikrotikId],
     queryFn: () => getSystemInfo("interfaces"),
-    refetchInterval: 15000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 15000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const usePPPConnections = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["ppp-connections"],
+    queryKey: ["ppp-connections", mikrotikId],
     queryFn: () => getSystemInfo("ppp"),
-    refetchInterval: 15000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 15000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const usePPPoEUsers = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["pppoe-users"],
+    queryKey: ["pppoe-users", mikrotikId],
     queryFn: () => getPPPoEUsers(),
-    refetchInterval: 15000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 15000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const usePPPoEActive = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["pppoe-active"],
+    queryKey: ["pppoe-active", mikrotikId],
     queryFn: () => getPPPoEActive(),
-    refetchInterval: 10000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 10000 : false,
     retry: 2,
     retryDelay: 1000,
   });
 };
 
 export const useVouchers = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["vouchers"],
+    queryKey: ["vouchers", mikrotikId],
     queryFn: () => getVouchers(),
-    refetchInterval: 10000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 10000 : false,
   });
 };
 
 export const useHotspotProfiles = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["hotspot-profiles"],
+    queryKey: ["hotspot-profiles", mikrotikId],
     queryFn: async () => {
       const { getHotspotProfiles } = await import("@/lib/mikrotik");
       return getHotspotProfiles();
     },
-    refetchInterval: 30000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 30000 : false,
   });
 };
 
 export const usePPPoEProfiles = () => {
+  const mikrotikId = useMikrotikDeviceId();
   return useQuery({
-    queryKey: ["pppoe-profiles"],
+    queryKey: ["pppoe-profiles", mikrotikId],
     queryFn: async () => {
       const { getPPPoEProfiles } = await import("@/lib/mikrotik");
       return getPPPoEProfiles();
     },
-    refetchInterval: 30000,
+    enabled: !!mikrotikId,
+    refetchInterval: mikrotikId ? 30000 : false,
   });
 };
