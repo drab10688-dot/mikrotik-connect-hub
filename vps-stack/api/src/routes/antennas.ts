@@ -295,6 +295,27 @@ antennasRouter.get('/status/all', async (req: AuthRequest, res: Response) => {
               sum + parseInt(r['noise-floor'] || r.noise_floor || '0'), 0) / registrations.length)
             : null;
 
+          // Build wireless_clients array from registration table
+          const wireless_clients = registrations.map((r: any, idx: number) => ({
+            id: `${dev.id}-wc-${idx}`,
+            parent_device_id: dev.id,
+            parent_device_name: identity,
+            mac_address: r['mac-address'] || r.mac_address || '',
+            interface: r.interface || '',
+            radio_name: r['radio-name'] || r.radio_name || '',
+            signal: parseInt(r['signal-strength'] || r.signal_strength || '0') || null,
+            noise: parseInt(r['noise-floor'] || r.noise_floor || '0') || null,
+            tx_ccq: parseInt(r['tx-ccq'] || r.tx_ccq || '0') || null,
+            rx_ccq: parseInt(r['rx-ccq'] || r.rx_ccq || '0') || null,
+            tx_rate: r['tx-rate'] || r.tx_rate || '',
+            rx_rate: r['rx-rate'] || r.rx_rate || '',
+            uptime: r.uptime || '',
+            last_ip: r['last-ip'] || r.last_ip || '',
+            distance: parseInt(r.distance || '0') || null,
+            tx_power: parseInt(r['tx-power'] || r.tx_power || '0') || null,
+            bytes: r.bytes || '',
+          }));
+
           return {
             id: dev.id,
             name: identity,
@@ -308,6 +329,7 @@ antennasRouter.get('/status/all', async (req: AuthRequest, res: Response) => {
             cpu: parseInt(sysRes['cpu-load'] || sysRes.cpu_load || '0'),
             board: sysRes['board-name'] || sysRes.board_name || '',
             version: sysRes.version || dev.version,
+            wireless_clients,
           };
         } catch {
           return {
@@ -319,12 +341,13 @@ antennasRouter.get('/status/all', async (req: AuthRequest, res: Response) => {
             signal: null,
             noise: null,
             ccq: null,
+            wireless_clients: [],
           };
         }
       })
     );
 
-    const data = statuses.map((r) => r.status === 'fulfilled' ? r.value : { status: 'error' });
+    const data = statuses.map((r) => r.status === 'fulfilled' ? r.value : { status: 'error', wireless_clients: [] });
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
