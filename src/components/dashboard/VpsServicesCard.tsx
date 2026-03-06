@@ -377,8 +377,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const vpsIpLocal = vpsHost || "TU_IP_VPS";
                       const script = `/ip hotspot walled-garden\nadd dst-host=${vpsIpLocal} action=allow comment="OmniSync Portal"\nadd dst-host=*.trycloudflare.com action=allow comment="Cloudflare Tunnel HTTPS"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script Walled Garden copiado");
+                      handleCopy(script, "Script Walled Garden copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
