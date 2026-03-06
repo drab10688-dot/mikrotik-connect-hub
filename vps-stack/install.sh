@@ -115,9 +115,8 @@ handle_existing_installation() {
         # Regenerate nuxbill init SQL
         generate_nuxbill_sql
 
-        docker compose build --no-cache api
+        docker compose build --no-cache api cms-cdata
         docker compose up -d --build
-        start_optional_profiles
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
