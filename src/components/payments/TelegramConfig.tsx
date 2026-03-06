@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { messagingApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -354,10 +355,7 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                       variant="outline"
                       size="icon"
                       onClick={() => {
-                        navigator.clipboard.writeText(
-                          `${window.location.origin}/api/messaging/telegram/webhook`
-                        );
-                        toast.success("URL copiada al portapapeles");
+                        copyToClipboard(`${window.location.origin}/api/messaging/telegram/webhook`).then(ok => ok ? toast.success("URL copiada al portapapeles") : toast.error("No se pudo copiar"));
                       }}
                     >
                       <Copy className="h-4 w-4" />
@@ -448,8 +446,7 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => {
-                                      navigator.clipboard.writeText(activationLink);
-                                      toast.success("Enlace copiado");
+                                      copyToClipboard(activationLink).then(ok => ok ? toast.success("Enlace copiado") : toast.error("No se pudo copiar"));
                                     }}
                                     title="Copiar enlace"
                                   >

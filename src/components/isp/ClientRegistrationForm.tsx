@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyToClipboard as copyTextToClipboard } from "@/lib/clipboard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -227,7 +228,7 @@ export function ClientRegistrationForm({ onSuccess, onClientRegistered, useStand
         ? `🌐 *Datos de conexión PPPoE*\n\n👤 Cliente: ${result.clientName}\n📧 Usuario: ${result.username}\n🔑 Contraseña: ${result.password}\n🌍 IP Asignada: ${result.remoteIP}\n\n¡Gracias por confiar en nosotros!`
         : `🌐 *Datos de conexión*\n\n👤 Cliente: ${result.clientName}\n📧 Nombre: ${result.username}\n🌍 IP Asignada: ${result.remoteIP}\n⚡ Velocidad: ${result.speed}\n\n¡Gracias por confiar en nosotros!`;
       
-      const copyToClipboard = () => { navigator.clipboard.writeText(message.replace(/\*/g, '')); toast.success("Copiado al portapapeles"); };
+      const copyToClipboard = () => { copyTextToClipboard(message.replace(/\*/g, '')).then(ok => ok ? toast.success("Copiado al portapapeles") : toast.error("No se pudo copiar")); };
       const shareWhatsApp = () => { window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank'); };
 
       // Show MikroTik warning if creation failed

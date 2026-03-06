@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { vpsApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,9 +119,10 @@ export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
     onError: (err: any) => toast.error(err.message),
   });
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Copiado al portapapeles");
+  const handleCopy = async (text: string) => {
+    const copied = await copyToClipboard(text);
+    if (copied) toast.success("Copiado al portapapeles");
+    else toast.error("No se pudo copiar");
   };
 
   if (!mikrotikId) {

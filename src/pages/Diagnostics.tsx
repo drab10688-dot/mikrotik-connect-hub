@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -72,23 +73,7 @@ const parseErrorMessage = (raw: string, fallback: string) => {
   }
 };
 
-const copyText = async (text: string): Promise<boolean> => {
-  if (navigator.clipboard?.writeText && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return true;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
-  const ok = document.execCommand("copy");
-  document.body.removeChild(textarea);
-  return ok;
-};
+const copyText = (text: string): Promise<boolean> => copyToClipboard(text);
 
 export default function Diagnostics() {
   const [tests, setTests] = useState<EndpointTest[]>(
