@@ -178,8 +178,7 @@ services:
 
   # ============================================
   # CMS C-Data - Gestión de OLTs/ONUs
-  # Perfil: cms - iniciar con:
-  #   docker compose --profile cms up -d
+  # Iniciar/detener desde el panel de Servicios VPS
   # ============================================
   cms-cdata:
     build:
