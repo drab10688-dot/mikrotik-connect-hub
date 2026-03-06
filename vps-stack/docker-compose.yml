@@ -87,6 +87,8 @@ services:
       - api
     networks:
       - omnisync-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ============================================
   # MariaDB - Base de datos para FreeRADIUS + NuxBill
