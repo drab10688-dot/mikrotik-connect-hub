@@ -35,6 +35,16 @@ interface UnifiedAntenna {
   ubiquiti_id?: string;
   last_seen?: string | null;
   client_name?: string;
+  // Wireless client (CPE) specific fields
+  is_wireless_client?: boolean;
+  parent_device_name?: string;
+  mac_address?: string;
+  radio_name?: string;
+  interface_name?: string;
+  tx_rate?: string;
+  rx_rate?: string;
+  last_ip?: string;
+  distance?: number | null;
 }
 
 // ─── Brand config ───────────────────────────────
