@@ -121,21 +121,72 @@ cron.schedule('0 3 * * *', () => {
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
   
-  // Auto-configure WireGuard route if wireguard container is reachable
-  try {
-    const wgIp = execSync(
-      "getent hosts omnisync-wireguard | awk '{print $1}' | head -1",
-      { encoding: 'utf-8', timeout: 5000 }
-    ).trim();
-    if (wgIp) {
-      try {
-        execSync(`ip route add 10.13.13.0/24 via ${wgIp} 2>/dev/null || true`, { timeout: 5000 });
-        console.log(`🔗 WireGuard route added via ${wgIp}`);
-      } catch {
-        console.log('ℹ️ WireGuard route already exists or not needed');
+  // Auto-configure WireGuard route after a short delay (wait for DNS)
+  setTimeout(async () => {
+    try {
+      // Try multiple methods to find WireGuard container IP
+      const methods = [
+        "getent hosts omnisync-wireguard | awk '{print $1}' | head -1",
+        "getent hosts wireguard | awk '{print $1}' | head -1",
+        "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' omnisync-wireguard 2>/dev/null | awk '{print $NF}'",
+      ];
+      
+      let wgIp = '';
+      for (const cmd of methods) {
+        try {
+          const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000 }).trim();
+          if (result && /^\d+\.\d+\.\d+\.\d+$/.test(result)) {
+            wgIp = result;
+            break;
+          }
+        } catch {}
       }
+      
+      if (wgIp) {
+        // First ensure WireGuard is on our network
+        try {
+          execSync(
+            `docker network connect omnisync_omnisync-net omnisync-wireguard 2>/dev/null || true`,
+            { timeout: 10000 }
+          );
+        } catch {}
+        
+        // Re-resolve after network connect
+        try {
+          const freshIp = execSync(
+            `docker inspect omnisync-wireguard --format '{{range $k,$v := .NetworkSettings.Networks}}{{if eq $k "omnisync_omnisync-net"}}{{$v.IPAddress}}{{end}}{{end}}' 2>/dev/null`,
+            { encoding: 'utf-8', timeout: 5000 }
+          ).trim();
+          if (freshIp && /^\d+\.\d+\.\d+\.\d+$/.test(freshIp)) {
+            wgIp = freshIp;
+          }
+        } catch {}
+        
+        // Add route
+        try {
+          execSync(`ip route replace 10.13.13.0/24 via ${wgIp}`, { timeout: 5000 });
+          console.log(`🔗 WireGuard route configured via ${wgIp}`);
+        } catch (routeErr: any) {
+          console.log(`⚠️ Could not add WireGuard route: ${routeErr.message}`);
+        }
+        
+        // Setup iptables forwarding on WireGuard container
+        try {
+          const fwdCmds = [
+            'iptables -C FORWARD -i eth0 -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i eth0 -o wg0 -j ACCEPT',
+            'iptables -C FORWARD -i wg0 -o eth0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -o eth0 -j ACCEPT',
+            'iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -o wg0 -j MASQUERADE',
+          ].join(' && ');
+          execSync(`docker exec omnisync-wireguard sh -c '${fwdCmds}'`, { timeout: 10000 });
+          console.log(`🔗 WireGuard iptables forwarding configured`);
+        } catch (fwErr: any) {
+          console.log(`⚠️ Could not configure WireGuard forwarding: ${fwErr.message}`);
+        }
+      } else {
+        console.log('ℹ️ WireGuard container not found, skipping route setup');
+      }
+    } catch (err: any) {
+      console.log(`ℹ️ WireGuard route setup skipped: ${err.message}`);
     }
-  } catch {
-    console.log('ℹ️ WireGuard container not found, skipping route setup');
-  }
+  }, 5000);
 });
