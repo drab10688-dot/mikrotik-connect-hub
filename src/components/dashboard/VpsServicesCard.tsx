@@ -74,6 +74,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
     { name: "OmniSync Panel", description: "Panel principal de gestión ISP", port: 80, subdomain: "panel", proxyPath: "/", icon: Server, color: "text-primary" },
     { name: "API Backend", description: "API REST del servidor", port: 3000, subdomain: "api", path: "/api/health", proxyPath: "/api/health", icon: Database, color: "text-blue-500" },
     { name: "PHPNuxBill", description: "Billing Hotspot - Gestión de cobros", port: 8080, subdomain: "billing", proxyPath: "/nuxbill/", icon: CreditCard, color: "text-amber-500" },
+    { name: "GenieACS (TR-069)", description: "Servidor ACS para gestión remota de ONUs", port: 3078, subdomain: "tr069", icon: Monitor, color: "text-emerald-500", defaultCreds: "Sin autenticación por defecto" },
   ];
 
   const getServiceUrl = (service: VpsService) => {

@@ -5,7 +5,11 @@ import { VpnManager } from "@/components/vpn/VpnManager";
 import { AntennasDashboard } from "@/components/antennas/AntennasDashboard";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map } from "lucide-react";
+import { Server, Megaphone, Shield, Radio, Map, Monitor } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { ExternalLink, Maximize2, Minimize2, AlertTriangle } from "lucide-react";
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
