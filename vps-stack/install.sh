@@ -409,9 +409,10 @@ is_truthy() {
 }
 
 start_optional_services() {
-  # Los servicios opcionales (CMS, Mikhmon, WireGuard) usan restart: "no"
-  # Se inician/detienen desde el panel de Servicios VPS
-  echo -e "${CYAN}Servicios opcionales disponibles desde el panel: CMS C-Data, Mikhmon, WireGuard${NC}"
+  # Servicios opcionales:
+  # - CMS C-Data se instala/ejecuta en host con install-cms.sh
+  # - Mikhmon y WireGuard se inician/detienen desde el panel de Servicios VPS
+  echo -e "${CYAN}Servicios opcionales: CMS (host), Mikhmon (Docker), WireGuard (Docker)${NC}"
 }
 
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
@@ -861,8 +862,8 @@ echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  📡 SERVICIOS OPCIONALES                                  ║"
 echo "║  ─────────────────────────────────────────────           ║"
-echo "║  CMS C-Data, Mikhmon y WireGuard se activan             ║"
-echo "║  desde el panel: Servicios VPS → Docker                 ║"
+echo "║  CMS C-Data (host): bash /opt/omnisync/install-cms.sh   ║"
+echo "║  Mikhmon y WireGuard: Servicios VPS → Docker            ║"
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
 echo "║  ─────────────────────────────────────────────           ║"
