@@ -748,9 +748,10 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 
 # Check optional services (informational only)
 echo ""
-echo -e "${CYAN}Servicios opcionales:${NC}"
-echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs): iniciar con 'docker compose --profile cms up -d'${NC}"
-echo -e "  ${YELLOW}ℹ WireGuard (VPN):   iniciar con 'docker compose --profile vpn up -d'${NC}"
+echo -e "${CYAN}Servicios opcionales (iniciar desde panel Servicios VPS):${NC}"
+echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs)${NC}"
+echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor)${NC}"
+echo -e "  ${YELLOW}ℹ WireGuard (VPN)${NC}"
 
 # Test HTTP endpoints — wait for nginx to be ready
 echo ""
