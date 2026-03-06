@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -518,12 +519,30 @@ PersistentKeepalive = 25`;
 });
 
 // ─── PUT /peers/:id ───────────────────────────────
-vpnRouter.put('/peers/:id', async (req: Request, res: Response) => {
+vpnRouter.put('/peers/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).userId;
-    const userRole = (req as any).userRole;
+    const userId = req.userId!;
+    const userRole = req.userRole!;
     const { name, description, mikrotik_id, remote_networks, is_active } = req.body;
+
+    const peerBeforeUpdate = await pool.query(
+      `SELECT id, created_by, mikrotik_id, peer_address FROM vpn_peers WHERE id = $1`,
+      [id]
+    );
+    if (peerBeforeUpdate.rows.length === 0) return res.status(404).json({ error: 'Peer not found' });
+
+    const existingPeer = peerBeforeUpdate.rows[0];
+    if (userRole !== 'super_admin' && existingPeer.created_by !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    if (mikrotik_id) {
+      const hasDeviceAccess = await verifyDeviceAccess(userId, userRole, mikrotik_id);
+      if (!hasDeviceAccess) {
+        return res.status(403).json({ error: 'Sin acceso al MikroTik seleccionado' });
+      }
+    }
 
     const sets: string[] = [];
     const values: any[] = [];
@@ -537,19 +556,27 @@ vpnRouter.put('/peers/:id', async (req: Request, res: Response) => {
 
     if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
-    let query = `UPDATE vpn_peers SET ${sets.join(', ')}, updated_at = now() WHERE id = $${idx++}`;
+    const updateQuery = `UPDATE vpn_peers SET ${sets.join(', ')}, updated_at = now() WHERE id = $${idx++} RETURNING *`;
     values.push(id);
-    if (userRole !== 'super_admin') {
-      query += ` AND created_by = $${idx++}`;
-      values.push(userId);
-    }
-    query += ` RETURNING *`;
 
-    const result = await pool.query(query, values);
+    const result = await pool.query(updateQuery, values);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Peer not found' });
 
+    const updatedPeer = result.rows[0];
+
+    if (mikrotik_id !== undefined && updatedPeer.mikrotik_id) {
+      const vpnIp = (updatedPeer.peer_address || '').split('/')[0];
+      if (vpnIp) {
+        await pool.query(
+          `UPDATE mikrotik_devices SET host = $1, updated_at = now() WHERE id = $2`,
+          [vpnIp, updatedPeer.mikrotik_id]
+        );
+        console.log(`[VPN] Updated MikroTik ${updatedPeer.mikrotik_id} host to VPN IP ${vpnIp}`);
+      }
+    }
+
     await syncWireguardConfig();
-    res.json(result.rows[0]);
+    res.json(updatedPeer);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
