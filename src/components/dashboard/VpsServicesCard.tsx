@@ -434,8 +434,7 @@ add dst-address=${vpsHost || "TU_IP_VPS"} action=accept comment="OmniSync VPS"`}
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
                       const vpsIpLocal = vpsHost || "TU_IP_VPS";
                       const script = `/ip dns static\nadd name=portal.omnisync.local address=${vpsIpLocal} comment="OmniSync Portal"`;
-                      navigator.clipboard.writeText(script);
-                      toast.success("Script DNS copiado");
+                      handleCopy(script, "Script DNS copiado");
                     }}>
                       <Copy className="h-3 w-3" />
                     </Button>
