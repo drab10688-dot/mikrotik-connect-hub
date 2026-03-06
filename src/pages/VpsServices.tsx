@@ -1,12 +1,12 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
+import { VpsDockerManager } from "@/components/settings/VpsDockerManager";
 import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Radio, Map, Wifi, Info, ExternalLink, Monitor } from "lucide-react";
+import { Server, Megaphone, Shield, Map, Wifi, Info, ExternalLink, Monitor, Container } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,28 +162,6 @@ function CmscdataPanel() {
   );
 }
 
-function OnuManagementTab() {
-  const navigate = useNavigate();
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Radio className="h-5 w-5" />
-          Gestión de ONUs
-        </CardTitle>
-        <CardDescription>
-          Administración multi-marca de ONUs (ZTE, Huawei, Zyxel, Latic), monitoreo de señal óptica y configuración remota.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button onClick={() => navigate("/onu-management")} className="gap-2">
-          <Radio className="h-4 w-4" />
-          Abrir Gestión de ONUs
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function VpsServices() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || undefined;
@@ -195,7 +173,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, VPN, CMS, antenas y publicidad.
+            Gestión de servicios, VPN, CMS, Docker y publicidad.
           </p>
         </div>
 
@@ -213,9 +191,9 @@ export default function VpsServices() {
               <Monitor className="h-4 w-4" />
               CMS C-Data
             </TabsTrigger>
-            <TabsTrigger value="onus" className="gap-2">
-              <Radio className="h-4 w-4" />
-              ONUs
+            <TabsTrigger value="docker" className="gap-2">
+              <Container className="h-4 w-4" />
+              Docker
             </TabsTrigger>
             <TabsTrigger value="vpn" className="gap-2">
               <Shield className="h-4 w-4" />
@@ -245,8 +223,8 @@ export default function VpsServices() {
             <CmscdataPanel />
           </TabsContent>
 
-          <TabsContent value="onus">
-            <OnuManagementTab />
+          <TabsContent value="docker">
+            <VpsDockerManager mikrotikId={mikrotikId || null} />
           </TabsContent>
 
           <TabsContent value="vpn">
