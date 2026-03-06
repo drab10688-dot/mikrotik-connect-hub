@@ -120,4 +120,22 @@ cron.schedule('0 3 * * *', () => {
 
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
+  
+  // Auto-configure WireGuard route if wireguard container is reachable
+  try {
+    const wgIp = execSync(
+      "getent hosts omnisync-wireguard | awk '{print $1}' | head -1",
+      { encoding: 'utf-8', timeout: 5000 }
+    ).trim();
+    if (wgIp) {
+      try {
+        execSync(`ip route add 10.13.13.0/24 via ${wgIp} 2>/dev/null || true`, { timeout: 5000 });
+        console.log(`🔗 WireGuard route added via ${wgIp}`);
+      } catch {
+        console.log('ℹ️ WireGuard route already exists or not needed');
+      }
+    }
+  } catch {
+    console.log('ℹ️ WireGuard container not found, skipping route setup');
+  }
 });
