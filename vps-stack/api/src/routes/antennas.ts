@@ -190,21 +190,21 @@ antennasRouter.get('/status/all', async (req: AuthRequest, res: Response) => {
           // Get registration table
           let registrations: any[] = [];
           try {
-            const { data } = await mikrotikRequestWithFallback(config, '/interface/wireless/registration-table/print');
+            const { data } = await mikrotikRequestWithFallback(config, '/rest/interface/wireless/registration-table');
             registrations = Array.isArray(data) ? data : [];
           } catch { /* ignore */ }
 
           // Get system resource
           let sysRes: any = {};
           try {
-            const { data } = await mikrotikRequestWithFallback(config, '/system/resource/print');
+            const { data } = await mikrotikRequestWithFallback(config, '/rest/system/resource');
             sysRes = Array.isArray(data) ? data[0] : data;
           } catch { /* ignore */ }
 
           // Get identity
           let identity = dev.name;
           try {
-            const { data } = await mikrotikRequestWithFallback(config, '/system/identity/print');
+            const { data } = await mikrotikRequestWithFallback(config, '/rest/system/identity');
             const idData = Array.isArray(data) ? data[0] : data;
             identity = idData?.name || dev.name;
           } catch { /* ignore */ }
