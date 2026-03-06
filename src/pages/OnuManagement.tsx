@@ -662,3 +662,7 @@ export default function OnuManagement() {
           </DialogContent>
         </Dialog>
 
+      </div>
+    </div>
+  );
+}
