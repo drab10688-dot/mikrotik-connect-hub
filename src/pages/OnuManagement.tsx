@@ -393,7 +393,18 @@ export default function OnuManagement() {
   };
 
 
-  if (!mikrotikId) {
+  if (isValidating) {
+    return (
+      <div className="flex h-screen bg-background">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasValidDevice || !mikrotikId) {
     return (
       <div className="flex h-screen bg-background">
         <Sidebar />
