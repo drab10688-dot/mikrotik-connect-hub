@@ -445,8 +445,7 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => {
-                                      navigator.clipboard.writeText(activationLink);
-                                      toast.success("Enlace copiado");
+                                      copyToClipboard(activationLink).then(ok => ok ? toast.success("Enlace copiado") : toast.error("No se pudo copiar"));
                                     }}
                                     title="Copiar enlace"
                                   >

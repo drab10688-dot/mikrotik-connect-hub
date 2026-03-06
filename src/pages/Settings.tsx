@@ -139,10 +139,10 @@ export default function Settings() {
       diagnostic: diagnosticResult,
     };
 
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    const copied = await copyToClipboard(JSON.stringify(report, null, 2));
+    if (copied) {
       toast.success("Reporte de diagnóstico copiado");
-    } catch {
+    } else {
       toast.error("No se pudo copiar el reporte");
     }
   };

@@ -118,9 +118,10 @@ export function CloudflareConfig({ mikrotikId }: CloudflareConfigProps) {
     onError: (err: any) => toast.error(err.message),
   });
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Copiado al portapapeles");
+  const handleCopy = async (text: string) => {
+    const copied = await copyToClipboard(text);
+    if (copied) toast.success("Copiado al portapapeles");
+    else toast.error("No se pudo copiar");
   };
 
   if (!mikrotikId) {
