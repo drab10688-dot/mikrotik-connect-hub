@@ -670,6 +670,18 @@ sleep 5
 start_optional_services
 sleep 5
 
+# ─── Instalar CMS C-Data en el host si el usuario lo solicitó ───
+if is_truthy "$INSTALL_CMS"; then
+  echo ""
+  echo -e "${CYAN}═══ Instalando CMS C-Data en el host ═══${NC}"
+  if [ -f "$INSTALL_DIR/install-cms.sh" ]; then
+    bash "$INSTALL_DIR/install-cms.sh"
+  else
+    echo -e "${RED}Script install-cms.sh no encontrado en $INSTALL_DIR${NC}"
+    echo -e "${YELLOW}Puedes instalarlo después con: bash $INSTALL_DIR/install-cms.sh${NC}"
+  fi
+fi
+
 # ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
 setup_wireguard_networking() {
   if ! docker ps --format '{{.Names}}' | grep -q '^omnisync-wireguard$'; then
