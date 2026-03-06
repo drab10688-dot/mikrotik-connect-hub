@@ -341,8 +341,9 @@ export function AntennasDashboard() {
   };
 
   const filtered = brandFilter === "all" ? antennas : antennas.filter((a) => a.brand === brandFilter);
-  const mkCount = antennas.filter((a) => a.brand === "mikrotik").length;
+  const mkCount = antennas.filter((a) => a.brand === "mikrotik" && !a.is_wireless_client).length;
   const ubCount = antennas.filter((a) => a.brand === "ubiquiti").length;
+  const wcCount = antennas.filter((a) => a.is_wireless_client).length;
 
   return (
     <div className="space-y-4">
