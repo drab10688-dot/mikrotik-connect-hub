@@ -413,52 +413,7 @@ export default function OnuManagement() {
               </Dialog>
             </div>
 
-            {/* Unregistered ACS devices */}
-            {unregistered.length > 0 && (
-              <Card className="border-dashed border-primary/50">
-                <CardHeader className="p-4 pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Download className="w-4 h-4 text-primary" />
-                      {unregistered.length} ONUs detectadas en ACS sin registrar
-                    </CardTitle>
-                    <Button size="sm" onClick={() => handleAutoRegister(unregistered)} disabled={syncLoading}>
-                      {syncLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-                      Registrar Todas
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs">Serial</TableHead>
-                        <TableHead className="text-xs">Fabricante</TableHead>
-                        <TableHead className="text-xs">Modelo</TableHead>
-                        <TableHead className="text-xs">Firmware</TableHead>
-                        <TableHead className="text-xs">Último INFORM</TableHead>
-                        <TableHead className="text-xs text-right">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {unregistered.map((d) => (
-                        <TableRow key={d.deviceId}>
-                          <TableCell className="font-mono text-xs">{d.serial}</TableCell>
-                          <TableCell className="text-xs">{d.manufacturer}</TableCell>
-                          <TableCell className="text-xs">{d.model || "-"}</TableCell>
-                          <TableCell className="text-xs">{d.firmware || "-"}</TableCell>
-                          <TableCell className="text-xs">{d.lastInform ? new Date(d.lastInform).toLocaleString() : "-"}</TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" variant="outline" onClick={() => handleAutoRegister([d])}>
-                              <Plus className="w-3 h-3 mr-1" /> Registrar
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+            {/* Unregistered devices section removed - using CMS C-Data */}
             )}
 
             {loading ? (
