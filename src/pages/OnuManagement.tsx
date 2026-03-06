@@ -138,11 +138,7 @@ export default function OnuManagement() {
         setProfiles((profilesRes.data || []).map((p: any) => p.name));
       } catch { setProfiles([]); }
 
-      // Load GenieACS files
-      try {
-        const filesRes = await api('/genieacs/files');
-        setAcsFiles(filesRes.data || []);
-      } catch { setAcsFiles([]); }
+      // GenieACS files loading removed
     } catch (err: any) {
       toast.error("Error cargando ONUs: " + err.message);
     } finally {
