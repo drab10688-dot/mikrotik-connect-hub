@@ -300,7 +300,7 @@ export function AntennasDashboard() {
             <Settings2 className="h-4 w-4 mr-1" /> Cred. Globales
           </Button>
 
-          <Button variant="outline" size="sm" onClick={refreshAllStatuses} disabled={refreshing}>
+          <Button variant="outline" size="sm" onClick={() => void refreshAllStatuses()} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Consultando..." : "Señales"}
           </Button>
