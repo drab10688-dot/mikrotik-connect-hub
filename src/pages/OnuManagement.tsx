@@ -318,10 +318,6 @@ export default function OnuManagement() {
               <FileText className="w-4 h-4 mr-2" />
               Plantillas ({templates.length})
             </TabsTrigger>
-            <TabsTrigger value="tr069">
-              <Signal className="w-4 h-4 mr-2" />
-              TR-069
-            </TabsTrigger>
             <TabsTrigger value="signal">
               <Activity className="w-4 h-4 mr-2" />
               Señal Óptica
