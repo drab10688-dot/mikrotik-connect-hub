@@ -97,7 +97,7 @@ export default function OnuManagement() {
   const [syncLoading, setSyncLoading] = useState(false);
   const [unregistered, setUnregistered] = useState<UnregisteredDevice[]>([]);
   const [syncStats, setSyncStats] = useState<{ linked: number; updated: number; newDevices: number } | null>(null);
-  const [acsFiles, setAcsFiles] = useState<GenieACSFile[]>([]);
+  // acsFiles state removed
   const [showUploadFile, setShowUploadFile] = useState(false);
   const [showPushConfig, setShowPushConfig] = useState(false);
   const [pushTargetOnu, setPushTargetOnu] = useState<OnuDevice | null>(null);
