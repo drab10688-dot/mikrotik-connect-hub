@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 
 export interface AuthRequest extends Request {
   userId?: string;

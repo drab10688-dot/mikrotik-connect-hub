@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 
 export const queuesRouter = Router();
 

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { pool } from '../server';
+import { pool } from '../lib/db';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as crypto from 'crypto';
