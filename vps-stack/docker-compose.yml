@@ -220,6 +220,26 @@ services:
       retries: 5
 
   # ============================================
+  # Mikhmon V3 - MikroTik Hotspot Monitor
+  # Perfil: mikhmon - iniciar con:
+  #   docker compose --profile mikhmon up -d
+  # ============================================
+  mikhmon:
+    image: rizkikotet/mikhmon:latest
+    container_name: omnisync-mikhmon
+    restart: unless-stopped
+    profiles:
+      - mikhmon
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ:-America/Bogota}
+    ports:
+      - "8888:80"
+    networks:
+      - omnisync-net
+
+  # ============================================
   # WireGuard VPN - Acceso remoto a redes MikroTik
   # Perfil: vpn - iniciar con:
   #   docker compose --profile vpn up -d
