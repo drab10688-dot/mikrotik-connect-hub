@@ -625,8 +625,30 @@ CSSEOF
   log "Tema OmniSync (flavor) instalado ✓"
 }
 
-# ── 9) Install OmniSync portal templates ─────────
+# ── 9) Install OmniSync portal templates (optional) ─────────
+# Set NUXBILL_PORTAL=omnisync in .env to enable OmniSync portal theme
+# Default: use NuxBill factory templates
 install_portal_templates() {
+  local portal_mode="${NUXBILL_PORTAL:-default}"
+
+  if [ "$portal_mode" != "omnisync" ]; then
+    log "Portal NuxBill: modo fábrica (default) ✓"
+    # If originals were backed up and OmniSync templates are active, restore them
+    local tpl_dst=""
+    for d in "$NUXROOT/ui/ui/customer" "$NUXROOT/ui/customer"; do
+      if [ -d "$d" ]; then tpl_dst="$d"; break; fi
+    done
+    if [ -n "$tpl_dst" ]; then
+      for f in header-public.tpl login.tpl; do
+        if [ -f "$tpl_dst/${f}.orig" ]; then
+          cp "$tpl_dst/${f}.orig" "$tpl_dst/$f" 2>/dev/null || true
+        fi
+      done
+      chown -R www-data:www-data "$tpl_dst" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
   local tpl_src="/opt/omnisync-templates"
   local tpl_dst_primary="$NUXROOT/ui/ui/customer"
   local tpl_dst_alt="$NUXROOT/ui/customer"
@@ -646,7 +668,7 @@ install_portal_templates() {
     return 0
   fi
 
-  # Backup originals only once + copy without tumbar el contenedor si falla algo
+  # Backup originals only once
   for f in header-public.tpl login.tpl; do
     if [ -f "$tpl_dst/$f" ] && [ ! -f "$tpl_dst/${f}.orig" ]; then
       cp "$tpl_dst/$f" "$tpl_dst/${f}.orig" 2>/dev/null || true
