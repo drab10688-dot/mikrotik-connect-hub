@@ -203,6 +203,8 @@ else
   echo -e "${GREEN}✓ Tenant ya estaba inicializado${NC}"
 fi
 
+normalize_cms_channels
+
 # Esperar a que el servicio web responda
 echo -e "${CYAN}Esperando servicio web...${NC}"
 for i in $(seq 1 24); do
