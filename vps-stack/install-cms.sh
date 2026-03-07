@@ -174,15 +174,55 @@ echo -e "${YELLOW}Iniciando CMS C-Data con puertos corregidos...${NC}"
 cd "$CMS_DIR"
 docker compose up -d 2>&1
 
-echo -e "${CYAN}Esperando estabilización (60s)...${NC}"
+echo -e "${CYAN}Esperando estabilización (180s máx)...${NC}"
+for i in $(seq 1 36); do
+  sleep 5
+  if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
+    echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
+    break
+  fi
+  echo -e "  Esperando MySQL... (${i}/36)"
+done
+
+# ── Inicializar tenant automáticamente ──
+echo -e "${YELLOW}Inicializando tenant ${CMS_TENANT_TYPE}...${NC}"
+
+# Esperar a que cms-boot esté healthy
+for i in $(seq 1 24); do
+  if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-boot.*healthy"; then
+    break
+  fi
+  sleep 5
+  echo -e "  Esperando cms-boot... (${i}/24)"
+done
+
+# Crear directorio de configuración si no existe
+mkdir -p /opt/cms-cdata/conf/sys
+
+# Verificar si ya está inicializado
+INIT_FLAG=$(docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -BN -e "select initialized_flag from cms_global_config;" 2>/dev/null' || echo "0")
+
+if [ "$INIT_FLAG" != "1" ]; then
+  echo -e "${YELLOW}Ejecutando SQL de inicialización...${NC}"
+  docker exec cms-mysql sh -c 'sed -i "s|{tenant_host}|http://'"${VPS_IP}:18080"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql' 2>/dev/null || true
+  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"' 2>/dev/null
+  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "update cms_global_config set initialized_flag = 1"' 2>/dev/null
+  docker restart cms-boot
+  echo -e "${GREEN}✓ Tenant inicializado${NC}"
+  sleep 10
+else
+  echo -e "${GREEN}✓ Tenant ya estaba inicializado${NC}"
+fi
+
+# Esperar servicio web
+echo -e "${CYAN}Esperando servicio web...${NC}"
 for i in $(seq 1 12); do
   sleep 5
-  # Verificar si el puerto web ya responde
   if ss -lntp | grep -q ":18080 "; then
     echo -e "${GREEN}✓ CMS respondiendo en puerto 18080${NC}"
     break
   fi
-  echo -e "  Esperando... (${i}/12)"
+  echo -e "  Esperando web... (${i}/12)"
 done
 
 # ── Verificar estado ──
@@ -190,21 +230,10 @@ echo ""
 echo -e "${CYAN}Contenedores CMS:${NC}"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
 
-# Verificar si MySQL del CMS está healthy
 if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
   echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
 else
   echo -e "${YELLOW}⚠ MySQL CMS aún iniciándose...${NC}"
-  echo -e "${YELLOW}  Verificar con: docker logs cms-mysql --tail 20${NC}"
-fi
-
-if ss -lntp | grep -q ":18080 "; then
-  echo -e "${GREEN}✓ CMS C-Data escuchando en puerto 18080${NC}"
-else
-  echo -e "${YELLOW}⚠ CMS aún no escucha en 18080${NC}"
-  echo -e "${YELLOW}  Espera unos minutos y verifica:${NC}"
-  echo -e "${YELLOW}    docker compose -f $CMS_DIR/docker-compose.yml logs --tail 30${NC}"
-  echo -e "${YELLOW}    ss -lntp | grep 18080${NC}"
 fi
 
 # ── Servicio systemd ──
@@ -234,8 +263,8 @@ echo -e "${CYAN}║   CMS C-Data — Instalación finalizada        ║${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════╣${NC}"
 echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}:18080${NC}"
 echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
-echo -e "${CYAN}║${NC}  User:   ${GREEN}admin${NC}"
-echo -e "${CYAN}║${NC}  Pass:   ${GREEN}admin${NC}"
+echo -e "${CYAN}║${NC}  User:   ${GREEN}root${NC}"
+echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC}"
 echo -e "${CYAN}║${NC}  MySQL:  ${GREEN}puerto 3307${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
