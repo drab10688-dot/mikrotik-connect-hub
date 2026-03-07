@@ -36,8 +36,14 @@ echo ""
 echo -e "${YELLOW}¿Qué tipo de instalación deseas?${NC}"
 echo -e "  ${GREEN}isp${NC}   — Un solo ISP (tu empresa)"
 echo -e "  ${GREEN}multi${NC} — Multi-tenant (revender servicio a otros ISPs)"
-read -p "Tipo de tenant [multi/isp] (isp): " CMS_TENANT_TYPE < /dev/tty
-CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-isp}
+
+if [ "$CMS_SKIP_TENANT_PROMPT" = "1" ]; then
+  CMS_TENANT_TYPE="$CMS_TENANT_TYPE_DEFAULT"
+  echo -e "${CYAN}→ Tipo preseleccionado por instalador OmniSync: ${CMS_TENANT_TYPE}${NC}"
+else
+  read -p "Tipo de tenant [multi/isp] (isp): " CMS_TENANT_TYPE < /dev/tty
+  CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-$CMS_TENANT_TYPE_DEFAULT}
+fi
 
 if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
   echo -e "${RED}Opción inválida. Usa 'multi' o 'isp'${NC}"
