@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================
 # CMS C-Data — Instalación standalone
+# Usa beryindo/cms con puertos default
 # Sin dependencias de OmniSync
-# Compatible con VPS de 4GB+ RAM
 # ============================================
 set -euo pipefail
 
@@ -12,11 +12,8 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
-VPS_IP=$(hostname -I | awk '{print $1}')
-TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
-CMS_INSTALL_TIMEOUT="${CMS_INSTALL_TIMEOUT:-900}"
+VPS_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 
 normalize_cms_channels() {
   echo -e "${YELLOW}Normalizando canales TR-069/MQTT del CMS...${NC}"
@@ -24,7 +21,7 @@ normalize_cms_channels() {
   if docker exec cms-mysql sh -c "mysql -uroot -p\"\${MYSQL_ROOT_PASSWORD}\" --default-character-set=utf8mb4 ccssx_boot -e \"UPDATE iot_channel SET channel_url='${VPS_IP}:9909/v1/acs', channel_port=9909 WHERE channel_id=1; UPDATE iot_channel SET channel_url='${VPS_IP}', channel_port=1883 WHERE channel_id=2;\""; then
     docker exec cms-redis redis-cli FLUSHALL >/dev/null 2>&1 || true
     docker restart cms-boot >/dev/null 2>&1 || true
-    echo -e "${GREEN}✓ Canales del CMS normalizados (sin protocolo duplicado)${NC}"
+    echo -e "${GREEN}✓ Canales del CMS normalizados${NC}"
   else
     echo -e "${YELLOW}⚠ No se pudo normalizar iot_channel automáticamente${NC}"
   fi
@@ -32,9 +29,8 @@ normalize_cms_channels() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
-echo "║   CMS C-Data — Instalador Standalone         ║"
-echo "║   Versión: ${CMS_VERSION}                              ║"
-echo "║   RAM: ${TOTAL_RAM_MB}MB detectada                     ║"
+echo "║   CMS C-Data — Instalador Standalone          ║"
+echo "║   Fuente: beryindo/cms (GitHub)                ║"
 echo "╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -66,6 +62,7 @@ fi
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
 # ── Crear swap si hay menos de 8GB ──
+TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
 if [ "$TOTAL_RAM_MB" -lt 8000 ] && [ ! -f /swapfile ]; then
   echo -e "${YELLOW}Creando swap de 2GB para mayor estabilidad...${NC}"
   fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
@@ -85,83 +82,41 @@ docker volume ls -q 2>/dev/null | grep -i cms | xargs -r docker volume rm 2>/dev
 rm -rf "$CMS_DIR"
 echo -e "${GREEN}✓ Limpieza completa${NC}"
 
-# ── Descargar instalador ──
+# ── Descargar e instalar con beryindo/cms ──
 mkdir -p "$CMS_DIR"
 cd "$CMS_DIR"
 
-echo -e "${YELLOW}Descargando instalador CMS C-Data v${CMS_VERSION}...${NC}"
-curl -fsSL -o cms_install.sh "https://cms.s.cdatayun.com/cms_linux/cms_install.sh"
-chmod +x cms_install.sh
+echo -e "${YELLOW}Descargando instalador desde beryindo/cms...${NC}"
+wget -q -O install_docker.sh https://raw.githubusercontent.com/beryindo/cms/refs/heads/main/install_docker.sh
+chmod +x install_docker.sh
 
-echo -e "${YELLOW}Ejecutando instalador (esto puede tardar varios minutos)...${NC}"
+echo -e "${YELLOW}Ejecutando instalador con puertos default...${NC}"
 
-# Generar respuestas automáticas:
-# 8x "n" (no cambiar puertos ni volúmenes) + tipo tenant + URL
+# Respuestas: todos los puertos default (n), tenant type, host
+cat > /tmp/cms_answers.txt << EOF
+n
+n
+n
+n
+n
+n
+n
+n
+${CMS_TENANT_TYPE}
+${VPS_IP}
+EOF
+
 set +e
-{
-  for i in $(seq 1 8); do echo "n"; done
-  echo "${CMS_TENANT_TYPE}"
-  echo "http://${VPS_IP}:80"
-} | timeout "${CMS_INSTALL_TIMEOUT}" bash cms_install.sh install --version "$CMS_VERSION" 2>&1 | tee /tmp/cms_install.log
-INSTALL_EXIT=${PIPESTATUS[1]:-1}
+bash install_docker.sh < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
+INSTALL_EXIT=${PIPESTATUS[0]:-1}
 set -e
+rm -f /tmp/cms_answers.txt
 
-if [ "$INSTALL_EXIT" -eq 124 ]; then
-  echo -e "${YELLOW}⚠ Timeout del instalador oficial (${CMS_INSTALL_TIMEOUT}s). Continuando con la configuración generada...${NC}"
-elif [ "$INSTALL_EXIT" -ne 0 ]; then
-  echo -e "${YELLOW}⚠ El instalador oficial devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
+if [ "$INSTALL_EXIT" -ne 0 ]; then
+  echo -e "${YELLOW}⚠ El instalador devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
 fi
 
-# ── Verificar que se generó docker-compose.yml ──
-if [ ! -f "$CMS_DIR/docker-compose.yml" ]; then
-  echo -e "${RED}Error: No se generó docker-compose.yml${NC}"
-  echo -e "${RED}Revisa: cat /tmp/cms_install.log${NC}"
-  exit 1
-fi
-
-# ── Parchear Java heap de RocketMQ Broker ──
-# Evita error "Initial heap size > maximum heap size"
-echo -e "${YELLOW}Parcheando configuración de Java para RocketMQ...${NC}"
-cd "$CMS_DIR"
-docker compose down 2>/dev/null || true
-
-# Calcular heap apropiado según RAM disponible
-if [ "$TOTAL_RAM_MB" -ge 16000 ]; then
-  RMQ_HEAP="1g"
-elif [ "$TOTAL_RAM_MB" -ge 8000 ]; then
-  RMQ_HEAP="512m"
-else
-  RMQ_HEAP="256m"
-fi
-
-# Parchear el broker: agregar/reemplazar JAVA_OPT_EXT si existe
-if grep -q "JAVA_OPT_EXT" "$CMS_DIR/docker-compose.yml"; then
-  # Reemplazar valores existentes de Xms/Xmx
-  sed -i -E "s/-Xms[0-9]+[mgMG]/-Xms${RMQ_HEAP}/g; s/-Xmx[0-9]+[mgMG]/-Xmx${RMQ_HEAP}/g" "$CMS_DIR/docker-compose.yml"
-else
-  # Inyectar JAVA_OPT_EXT en el servicio rmqbroker
-  # Buscar la sección de environment del broker y agregar la variable
-  sed -i "/container_name: cms-rmqbroker/,/^  [a-z]/{
-    /environment:/a\\      JAVA_OPT_EXT: '-server -Xms${RMQ_HEAP} -Xmx${RMQ_HEAP}'
-  }" "$CMS_DIR/docker-compose.yml" 2>/dev/null || true
-fi
-
-# También parchear el namesrv si tiene valores altos
-if grep -q "cms-rmqnamesrv" "$CMS_DIR/docker-compose.yml"; then
-  sed -i "/container_name: cms-rmqnamesrv/,/^  [a-z]/{
-    /environment:/a\\      JAVA_OPT_EXT: '-server -Xms${RMQ_HEAP} -Xmx${RMQ_HEAP}'
-  }" "$CMS_DIR/docker-compose.yml" 2>/dev/null || true
-fi
-
-# Eliminar mem_limit si excede la RAM disponible
-sed -i '/mem_limit:/d' "$CMS_DIR/docker-compose.yml" 2>/dev/null || true
-
-echo -e "${GREEN}✓ Java heap configurado a ${RMQ_HEAP} por servicio${NC}"
-
-# ── Iniciar CMS ──
-echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
-docker compose up -d 2>&1
-
+# ── Esperar estabilización ──
 echo -e "${CYAN}Esperando estabilización de servicios (180s máx)...${NC}"
 for i in $(seq 1 36); do
   sleep 5
@@ -173,10 +128,7 @@ for i in $(seq 1 36); do
   echo -e "  Esperando MySQL... (${i}/36) — ${RUNNING} contenedores activos"
 done
 
-# ── Inicializar tenant automáticamente ──
-echo -e "${YELLOW}Inicializando tenant ${CMS_TENANT_TYPE}...${NC}"
-
-# Esperar a que cms-boot esté healthy
+# ── Esperar cms-boot ──
 for i in $(seq 1 24); do
   if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-boot.*healthy"; then
     break
@@ -185,27 +137,10 @@ for i in $(seq 1 24); do
   echo -e "  Esperando cms-boot... (${i}/24)"
 done
 
-# Crear directorio de configuración si no existe
-mkdir -p /opt/cms-cdata/conf/sys
-
-# Verificar si ya está inicializado
-INIT_FLAG=$(docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -BN -e "select initialized_flag from cms_global_config;" 2>/dev/null' || echo "0")
-
-if [ "$INIT_FLAG" != "1" ]; then
-  echo -e "${YELLOW}Ejecutando SQL de inicialización...${NC}"
-  docker exec cms-mysql sh -c 'sed -i "s|{tenant_host}|'"${VPS_IP}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql' 2>/dev/null || true
-  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"' 2>/dev/null
-  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "update cms_global_config set initialized_flag = 1"' 2>/dev/null
-  docker restart cms-boot
-  echo -e "${GREEN}✓ Tenant inicializado${NC}"
-  sleep 10
-else
-  echo -e "${GREEN}✓ Tenant ya estaba inicializado${NC}"
-fi
-
+# ── Normalizar canales ──
 normalize_cms_channels
 
-# Esperar a que el servicio web responda
+# ── Esperar servicio web ──
 echo -e "${CYAN}Esperando servicio web...${NC}"
 for i in $(seq 1 24); do
   sleep 5
@@ -216,7 +151,7 @@ for i in $(seq 1 24); do
   echo -e "  Esperando web... (${i}/24)"
 done
 
-# ── Verificar estado ──
+# ── Estado ──
 echo ""
 echo -e "${CYAN}Estado de contenedores CMS:${NC}"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
@@ -250,11 +185,9 @@ echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}${NC}"
 echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
 echo -e "${CYAN}║${NC}  User:   ${GREEN}root${NC}"
 echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC}"
-echo -e "${CYAN}║${NC}  Heap:   ${GREEN}${RMQ_HEAP} (RocketMQ)${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 
 if [ "$INSTALL_EXIT" -ne 0 ]; then
-  echo -e "${YELLOW}⚠ El instalador devolvió código ${INSTALL_EXIT}${NC}"
-  echo -e "${YELLOW}  Revisa: cat /tmp/cms_install.log${NC}"
+  echo -e "${YELLOW}⚠ Revisa /tmp/cms_install.log si hay problemas${NC}"
 fi
