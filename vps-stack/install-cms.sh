@@ -1,8 +1,7 @@
 #!/bin/bash
 # ============================================
-# CMS C-Data — Instalación automatizada en host
-# Estrategia: instalar con puertos default, luego
-# parchear docker-compose.yml con puertos correctos
+# CMS C-Data — Instalación con beryindo/cms
+# Integrado al stack OmniSync (puertos alternos)
 # ============================================
 
 set -euo pipefail
@@ -13,10 +12,8 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
-VPS_IP=$(hostname -I | awk '{print $1}')
-CMS_INSTALL_TIMEOUT="${CMS_INSTALL_TIMEOUT:-900}"
+VPS_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 CMS_SKIP_TENANT_PROMPT="${CMS_SKIP_TENANT_PROMPT:-0}"
 CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
 
@@ -26,7 +23,7 @@ normalize_cms_channels() {
   if docker exec cms-mysql sh -c "mysql -uroot -p\"\${MYSQL_ROOT_PASSWORD}\" --default-character-set=utf8mb4 ccssx_boot -e \"UPDATE iot_channel SET channel_url='${VPS_IP}:9909/v1/acs', channel_port=9909 WHERE channel_id=1; UPDATE iot_channel SET channel_url='${VPS_IP}', channel_port=1883 WHERE channel_id=2;\""; then
     docker exec cms-redis redis-cli FLUSHALL >/dev/null 2>&1 || true
     docker restart cms-boot >/dev/null 2>&1 || true
-    echo -e "${GREEN}✓ Canales del CMS normalizados (sin protocolo duplicado)${NC}"
+    echo -e "${GREEN}✓ Canales del CMS normalizados${NC}"
   else
     echo -e "${YELLOW}⚠ No se pudo normalizar iot_channel automáticamente${NC}"
   fi
@@ -34,8 +31,8 @@ normalize_cms_channels() {
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
-echo "║   CMS C-Data — Instalador Automático         ║"
-echo "║   Versión: ${CMS_VERSION}                              ║"
+echo "║   CMS C-Data — Instalador (beryindo/cms)     ║"
+echo "║   Integrado con OmniSync                      ║"
 echo "╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -44,6 +41,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# ── Tipo de tenant ──
 echo ""
 echo -e "${YELLOW}¿Qué tipo de instalación deseas?${NC}"
 echo -e "  ${GREEN}isp${NC}   — Un solo ISP (tu empresa)"
@@ -51,7 +49,7 @@ echo -e "  ${GREEN}multi${NC} — Multi-tenant (revender servicio a otros ISPs)"
 
 if [ "$CMS_SKIP_TENANT_PROMPT" = "1" ]; then
   CMS_TENANT_TYPE="$CMS_TENANT_TYPE_DEFAULT"
-  echo -e "${CYAN}→ Tipo preseleccionado por instalador OmniSync: ${CMS_TENANT_TYPE}${NC}"
+  echo -e "${CYAN}→ Tipo preseleccionado: ${CMS_TENANT_TYPE}${NC}"
 else
   read -p "Tipo de tenant [multi/isp] (isp): " CMS_TENANT_TYPE < /dev/tty
   CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-$CMS_TENANT_TYPE_DEFAULT}
@@ -64,142 +62,84 @@ fi
 
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
-# ── Limpieza total de intentos previos ──
+# ── Limpieza de intentos previos ──
 echo -e "${YELLOW}Limpiando instalaciones anteriores de CMS...${NC}"
 if [ -f "$CMS_DIR/docker-compose.yml" ]; then
   (cd "$CMS_DIR" && docker compose down -v --remove-orphans 2>/dev/null || true)
 fi
-# Forzar eliminación de todos los contenedores cms-*
 for c in $(docker ps -aq --filter "name=cms-" 2>/dev/null); do
   docker rm -f "$c" 2>/dev/null || true
 done
-# Limpiar volúmenes huérfanos de CMS
 docker volume ls -q 2>/dev/null | grep -i cms | xargs -r docker volume rm 2>/dev/null || true
+rm -rf "$CMS_DIR"
 echo -e "${GREEN}✓ Limpieza completa${NC}"
 
-# ── Descargar instalador ──
+# ── Descargar e instalar con beryindo/cms ──
 mkdir -p "$CMS_DIR"
 cd "$CMS_DIR"
 
-echo -e "${YELLOW}Descargando instalador CMS C-Data v${CMS_VERSION}...${NC}"
-curl -fsSL -o cms_install.sh "https://cms.s.cdatayun.com/cms_linux/cms_install.sh"
-chmod +x cms_install.sh
+echo -e "${YELLOW}Descargando instalador desde beryindo/cms...${NC}"
+wget -q -O install_docker.sh https://raw.githubusercontent.com/beryindo/cms/refs/heads/main/install_docker.sh
+chmod +x install_docker.sh
 
-# ── Ejecutar instalador con puertos default (sin modificar) ──
-# Respondemos "n" a todas las preguntas de puertos para usar los defaults
-# del instalador, luego parcheamos después.
-echo -e "${YELLOW}Ejecutando instalador con puertos default...${NC}"
+# Puertos alternos para coexistir con OmniSync:
+# MySQL: 3307 (OmniSync usa 3306)
+# Redis: 6380 (OmniSync/MariaDB)
+# Web/Nginx: 18080 (OmniSync usa 80)
+# emqx, acs, stun, cms: sin conflicto, puertos default
+echo -e "${YELLOW}Ejecutando instalador con puertos alternos para OmniSync...${NC}"
+echo -e "${CYAN}  MySQL: 3307 | Redis: 6380 | Web: 18080 | Resto: default${NC}"
 
+# Respuestas al instalador interactivo:
+# 1. mysql port modify? y → 3307
+# 2. redis port modify? y → 6380
+# 3. emqx port modify? n
+# 4. acs port modify? n
+# 5. stun port modify? n
+# 6. cms service port modify? n
+# 7. nginx port modify? y → 18080
+# 8. data volume modify? n
+# 9. tenant type: isp/multi
+# 10. tenant host: IP
 cat > /tmp/cms_answers.txt << EOF
+y
+3307
+y
+6380
 n
 n
 n
 n
-n
-n
-n
+y
+18080
 n
 ${CMS_TENANT_TYPE}
-http://${VPS_IP}:80
+${VPS_IP}
 EOF
 
 set +e
-timeout "${CMS_INSTALL_TIMEOUT}" bash cms_install.sh install --version "$CMS_VERSION" < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
+bash install_docker.sh < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
 INSTALL_EXIT=${PIPESTATUS[0]:-1}
 set -e
 rm -f /tmp/cms_answers.txt
 
-if [ "$INSTALL_EXIT" -eq 124 ]; then
-  echo -e "${YELLOW}⚠ Timeout del instalador oficial (${CMS_INSTALL_TIMEOUT}s). Continuando con la configuración generada...${NC}"
-elif [ "$INSTALL_EXIT" -ne 0 ]; then
-  echo -e "${YELLOW}⚠ El instalador oficial devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
+if [ "$INSTALL_EXIT" -ne 0 ]; then
+  echo -e "${YELLOW}⚠ El instalador devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
 fi
 
-# ── Esperar a que se genere docker-compose.yml ──
-sleep 5
-
-if [ ! -f "$CMS_DIR/docker-compose.yml" ]; then
-  echo -e "${RED}Error: No se generó docker-compose.yml${NC}"
-  echo -e "${RED}Revisa /tmp/cms_install.log${NC}"
-  exit 1
-fi
-
-# ── Detener todo antes de parchear ──
-echo -e "${YELLOW}Deteniendo contenedores CMS para reconfigurar puertos...${NC}"
-cd "$CMS_DIR"
-docker compose down 2>/dev/null || true
-
-# ── Parchear puertos en docker-compose.yml ──
-# OmniSync usa 3306 y 80; evitamos choques forzando puertos alternos del CMS
-echo -e "${YELLOW}Parcheando puertos para evitar conflictos con OmniSync...${NC}"
-
-CMS_COMPOSE_FILE="$CMS_DIR/docker-compose.yml"
-
-# Soportar múltiples formatos de mapeo: con/sin comillas y con/sin /tcp
-sed -i \
-  -e 's/"3306:3306"/"3307:3306"/g' \
-  -e "s/'3306:3306'/'3307:3306'/g" \
-  -e 's/3306:3306\/tcp/3307:3306\/tcp/g' \
-  -e 's/3306:3306/3307:3306/g' \
-  -e 's/"6379:6379"/"6380:6379"/g' \
-  -e "s/'6379:6379'/'6380:6379'/g" \
-  -e 's/6379:6379\/tcp/6380:6379\/tcp/g' \
-  -e 's/6379:6379/6380:6379/g' \
-  -e 's/"80:80"/"18080:80"/g' \
-  -e "s/'80:80'/'18080:80'/g" \
-  -e 's/80:80\/tcp/18080:80\/tcp/g' \
-  -e 's/80:80/18080:80/g' \
-  -e 's/"80:8080"/"18080:8080"/g' \
-  -e "s/'80:8080'/'18080:8080'/g" \
-  -e 's/80:8080\/tcp/18080:8080\/tcp/g' \
-  -e 's/80:8080/18080:8080/g' \
-  "$CMS_COMPOSE_FILE"
-
-# También parchear .env del CMS (si usa variables de puertos)
-if [ -f "$CMS_DIR/.env" ]; then
-  sed -Ei \
-    -e 's|^(MYSQL_PORT\s*=\s*).*$|\13307|g' \
-    -e 's|^(REDIS_PORT\s*=\s*).*$|\16380|g' \
-    -e 's|^(NGINX_PORT\s*=\s*).*$|\118080|g' \
-    -e "s|^CMS_URL=.*|CMS_URL=http://${VPS_IP}:18080|g" \
-    -e "s|^DOMAIN=.*|DOMAIN=http://${VPS_IP}:18080|g" \
-    "$CMS_DIR/.env" 2>/dev/null || true
-fi
-
-# Validación: no debe quedar 3306 publicado en host para el CMS
-if grep -Eq '(^|[^0-9])3306:3306([^0-9]|$)' "$CMS_COMPOSE_FILE"; then
-  echo -e "${RED}Error: El parche de puertos no se aplicó correctamente (sigue 3306:3306).${NC}"
-  echo -e "${RED}Revisa $CMS_COMPOSE_FILE${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}✓ Puertos parcheados${NC}"
-
-# ── Mostrar puertos finales ──
-echo -e "${CYAN}Puertos configurados:${NC}"
-echo -e "  MySQL CMS: 3307 (host) → 3306 (container)"
-echo -e "  Redis CMS: 6380 (host) → 6379 (container)"
-echo -e "  Web CMS:   18080 (host)"
-
-# ── Iniciar CMS con puertos corregidos ──
-echo -e "${YELLOW}Iniciando CMS C-Data con puertos corregidos...${NC}"
-cd "$CMS_DIR"
-docker compose up -d 2>&1
-
-echo -e "${CYAN}Esperando estabilización (180s máx)...${NC}"
+# ── Esperar estabilización ──
+echo -e "${CYAN}Esperando estabilización de servicios (180s máx)...${NC}"
 for i in $(seq 1 36); do
   sleep 5
   if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
     echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
     break
   fi
-  echo -e "  Esperando MySQL... (${i}/36)"
+  RUNNING=$(docker ps --format "{{.Names}}" | grep -c "cms-" 2>/dev/null || echo "0")
+  echo -e "  Esperando MySQL... (${i}/36) — ${RUNNING} contenedores activos"
 done
 
-# ── Inicializar tenant automáticamente ──
-echo -e "${YELLOW}Inicializando tenant ${CMS_TENANT_TYPE}...${NC}"
-
-# Esperar a que cms-boot esté healthy
+# ── Esperar cms-boot ──
 for i in $(seq 1 24); do
   if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-boot.*healthy"; then
     break
@@ -208,28 +148,11 @@ for i in $(seq 1 24); do
   echo -e "  Esperando cms-boot... (${i}/24)"
 done
 
-# Crear directorio de configuración si no existe
-mkdir -p /opt/cms-cdata/conf/sys
-
-# Verificar si ya está inicializado
-INIT_FLAG=$(docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -BN -e "select initialized_flag from cms_global_config;" 2>/dev/null' || echo "0")
-
-if [ "$INIT_FLAG" != "1" ]; then
-  echo -e "${YELLOW}Ejecutando SQL de inicialización...${NC}"
-  docker exec cms-mysql sh -c 'sed -i "s|{tenant_host}|'"${VPS_IP}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql' 2>/dev/null || true
-  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"' 2>/dev/null
-  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "update cms_global_config set initialized_flag = 1"' 2>/dev/null
-  docker restart cms-boot
-  echo -e "${GREEN}✓ Tenant inicializado${NC}"
-  sleep 10
-else
-  echo -e "${GREEN}✓ Tenant ya estaba inicializado${NC}"
-fi
-
+# ── Normalizar canales ──
 normalize_cms_channels
 
-# Esperar servicio web
-echo -e "${CYAN}Esperando servicio web...${NC}"
+# ── Esperar servicio web ──
+echo -e "${CYAN}Esperando servicio web en puerto 18080...${NC}"
 for i in $(seq 1 12); do
   sleep 5
   if ss -lntp | grep -q ":18080 "; then
@@ -239,16 +162,10 @@ for i in $(seq 1 12); do
   echo -e "  Esperando web... (${i}/12)"
 done
 
-# ── Verificar estado ──
+# ── Estado ──
 echo ""
 echo -e "${CYAN}Contenedores CMS:${NC}"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
-
-if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
-  echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
-else
-  echo -e "${YELLOW}⚠ MySQL CMS aún iniciándose...${NC}"
-fi
 
 # ── Servicio systemd ──
 cat > /etc/systemd/system/cms-cdata.service << EOF
@@ -280,9 +197,10 @@ echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
 echo -e "${CYAN}║${NC}  User:   ${GREEN}root${NC}"
 echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC}"
 echo -e "${CYAN}║${NC}  MySQL:  ${GREEN}puerto 3307${NC}"
+echo -e "${CYAN}║${NC}  Redis:  ${GREEN}puerto 6380${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 
 if [ "$INSTALL_EXIT" -ne 0 ]; then
-  echo -e "${YELLOW}⚠ El instalador devolvió código ${INSTALL_EXIT}. Revisa /tmp/cms_install.log${NC}"
+  echo -e "${YELLOW}⚠ Revisa /tmp/cms_install.log si hay problemas${NC}"
 fi
