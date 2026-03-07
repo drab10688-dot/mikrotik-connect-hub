@@ -181,7 +181,7 @@ INIT_FLAG=$(docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}"
 
 if [ "$INIT_FLAG" != "1" ]; then
   echo -e "${YELLOW}Ejecutando SQL de inicialización...${NC}"
-  docker exec cms-mysql sh -c 'sed -i "s|{tenant_host}|http://'"${VPS_IP}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql' 2>/dev/null || true
+  docker exec cms-mysql sh -c 'sed -i "s|{tenant_host}|'"${VPS_IP}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql' 2>/dev/null || true
   docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"' 2>/dev/null
   docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "update cms_global_config set initialized_flag = 1"' 2>/dev/null
   docker restart cms-boot
