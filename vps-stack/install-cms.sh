@@ -20,6 +20,18 @@ CMS_INSTALL_TIMEOUT="${CMS_INSTALL_TIMEOUT:-900}"
 CMS_SKIP_TENANT_PROMPT="${CMS_SKIP_TENANT_PROMPT:-0}"
 CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
 
+normalize_cms_channels() {
+  echo -e "${YELLOW}Normalizando canales TR-069/MQTT del CMS...${NC}"
+
+  if docker exec cms-mysql sh -c "mysql -uroot -p\"\${MYSQL_ROOT_PASSWORD}\" --default-character-set=utf8mb4 ccssx_boot -e \"UPDATE iot_channel SET channel_url='${VPS_IP}:9909/v1/acs', channel_port=9909 WHERE channel_id=1; UPDATE iot_channel SET channel_url='${VPS_IP}', channel_port=1883 WHERE channel_id=2;\""; then
+    docker exec cms-redis redis-cli FLUSHALL >/dev/null 2>&1 || true
+    docker restart cms-boot >/dev/null 2>&1 || true
+    echo -e "${GREEN}✓ Canales del CMS normalizados (sin protocolo duplicado)${NC}"
+  else
+    echo -e "${YELLOW}⚠ No se pudo normalizar iot_channel automáticamente${NC}"
+  fi
+}
+
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
 echo "║   CMS C-Data — Instalador Automático         ║"
@@ -213,6 +225,8 @@ if [ "$INIT_FLAG" != "1" ]; then
 else
   echo -e "${GREEN}✓ Tenant ya estaba inicializado${NC}"
 fi
+
+normalize_cms_channels
 
 # Esperar servicio web
 echo -e "${CYAN}Esperando servicio web...${NC}"
