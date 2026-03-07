@@ -16,6 +16,9 @@ NC='\033[0m'
 CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
 VPS_IP=$(hostname -I | awk '{print $1}')
+CMS_INSTALL_TIMEOUT="${CMS_INSTALL_TIMEOUT:-900}"
+CMS_SKIP_TENANT_PROMPT="${CMS_SKIP_TENANT_PROMPT:-0}"
+CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
@@ -33,8 +36,14 @@ echo ""
 echo -e "${YELLOW}¿Qué tipo de instalación deseas?${NC}"
 echo -e "  ${GREEN}isp${NC}   — Un solo ISP (tu empresa)"
 echo -e "  ${GREEN}multi${NC} — Multi-tenant (revender servicio a otros ISPs)"
-read -p "Tipo de tenant [multi/isp] (isp): " CMS_TENANT_TYPE < /dev/tty
-CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-isp}
+
+if [ "$CMS_SKIP_TENANT_PROMPT" = "1" ]; then
+  CMS_TENANT_TYPE="$CMS_TENANT_TYPE_DEFAULT"
+  echo -e "${CYAN}→ Tipo preseleccionado por instalador OmniSync: ${CMS_TENANT_TYPE}${NC}"
+else
+  read -p "Tipo de tenant [multi/isp] (isp): " CMS_TENANT_TYPE < /dev/tty
+  CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-$CMS_TENANT_TYPE_DEFAULT}
+fi
 
 if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
   echo -e "${RED}Opción inválida. Usa 'multi' o 'isp'${NC}"
@@ -83,10 +92,16 @@ http://${VPS_IP}:80
 EOF
 
 set +e
-bash cms_install.sh install --version "$CMS_VERSION" < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
-INSTALL_EXIT=$?
+timeout "${CMS_INSTALL_TIMEOUT}" bash cms_install.sh install --version "$CMS_VERSION" < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
+INSTALL_EXIT=${PIPESTATUS[0]:-1}
 set -e
 rm -f /tmp/cms_answers.txt
+
+if [ "$INSTALL_EXIT" -eq 124 ]; then
+  echo -e "${YELLOW}⚠ Timeout del instalador oficial (${CMS_INSTALL_TIMEOUT}s). Continuando con la configuración generada...${NC}"
+elif [ "$INSTALL_EXIT" -ne 0 ]; then
+  echo -e "${YELLOW}⚠ El instalador oficial devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
+fi
 
 # ── Esperar a que se genere docker-compose.yml ──
 sleep 5

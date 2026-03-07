@@ -514,8 +514,17 @@ echo -e "${YELLOW}¿Deseas instalar CMS C-Data (gestión OLT/ONU) en este servid
 echo -e "  Se instala directamente en el host (no en Docker de OmniSync)"
 read -p "Instalar CMS C-Data? [y/n] (n): " INSTALL_CMS < /dev/tty
 INSTALL_CMS=${INSTALL_CMS:-n}
+CMS_TENANT_TYPE="isp"
 
-# MikroTik config (optional)
+if is_truthy "$INSTALL_CMS"; then
+  read -p "Tipo de tenant CMS [isp/multi] (isp): " CMS_TENANT_TYPE < /dev/tty
+  CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-isp}
+
+  if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
+    echo -e "${RED}Opción inválida para CMS. Usa 'multi' o 'isp'${NC}"
+    exit 1
+  fi
+fi
 echo ""
 echo -e "${YELLOW}Configuración MikroTik (opcional, se puede configurar desde el panel):${NC}"
 read -p "Host/IP del MikroTik (Enter para omitir): " MIKROTIK_HOST < /dev/tty
@@ -676,7 +685,10 @@ if is_truthy "$INSTALL_CMS"; then
   echo ""
   echo -e "${CYAN}═══ Instalando CMS C-Data en el host ═══${NC}"
   if [ -f "$INSTALL_DIR/install-cms.sh" ]; then
-    bash "$INSTALL_DIR/install-cms.sh"
+    if ! CMS_SKIP_TENANT_PROMPT=1 CMS_TENANT_TYPE_DEFAULT="$CMS_TENANT_TYPE" CMS_INSTALL_TIMEOUT=1200 bash "$INSTALL_DIR/install-cms.sh"; then
+      echo -e "${YELLOW}⚠ La instalación de CMS no finalizó correctamente, OmniSync seguirá activo.${NC}"
+      echo -e "${YELLOW}  Reintentar manualmente: CMS_TENANT_TYPE_DEFAULT=$CMS_TENANT_TYPE bash $INSTALL_DIR/install-cms.sh${NC}"
+    fi
   else
     echo -e "${RED}Script install-cms.sh no encontrado en $INSTALL_DIR${NC}"
     echo -e "${YELLOW}Puedes instalarlo después con: bash $INSTALL_DIR/install-cms.sh${NC}"
