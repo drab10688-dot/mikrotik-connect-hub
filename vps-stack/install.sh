@@ -685,7 +685,10 @@ if is_truthy "$INSTALL_CMS"; then
   echo ""
   echo -e "${CYAN}═══ Instalando CMS C-Data en el host ═══${NC}"
   if [ -f "$INSTALL_DIR/install-cms.sh" ]; then
-    bash "$INSTALL_DIR/install-cms.sh"
+    if ! CMS_SKIP_TENANT_PROMPT=1 CMS_TENANT_TYPE_DEFAULT="$CMS_TENANT_TYPE" CMS_INSTALL_TIMEOUT=1200 bash "$INSTALL_DIR/install-cms.sh"; then
+      echo -e "${YELLOW}⚠ La instalación de CMS no finalizó correctamente, OmniSync seguirá activo.${NC}"
+      echo -e "${YELLOW}  Reintentar manualmente: CMS_TENANT_TYPE_DEFAULT=$CMS_TENANT_TYPE bash $INSTALL_DIR/install-cms.sh${NC}"
+    fi
   else
     echo -e "${RED}Script install-cms.sh no encontrado en $INSTALL_DIR${NC}"
     echo -e "${YELLOW}Puedes instalarlo después con: bash $INSTALL_DIR/install-cms.sh${NC}"

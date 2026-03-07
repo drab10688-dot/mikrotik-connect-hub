@@ -92,10 +92,16 @@ http://${VPS_IP}:80
 EOF
 
 set +e
-bash cms_install.sh install --version "$CMS_VERSION" < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
-INSTALL_EXIT=$?
+timeout "${CMS_INSTALL_TIMEOUT}" bash cms_install.sh install --version "$CMS_VERSION" < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
+INSTALL_EXIT=${PIPESTATUS[0]:-1}
 set -e
 rm -f /tmp/cms_answers.txt
+
+if [ "$INSTALL_EXIT" -eq 124 ]; then
+  echo -e "${YELLOW}⚠ Timeout del instalador oficial (${CMS_INSTALL_TIMEOUT}s). Continuando con la configuración generada...${NC}"
+elif [ "$INSTALL_EXIT" -ne 0 ]; then
+  echo -e "${YELLOW}⚠ El instalador oficial devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
+fi
 
 # ── Esperar a que se genere docker-compose.yml ──
 sleep 5

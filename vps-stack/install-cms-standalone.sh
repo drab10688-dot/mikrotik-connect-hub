@@ -85,13 +85,20 @@ echo -e "${YELLOW}Ejecutando instalador (esto puede tardar varios minutos)...${N
 
 # Generar respuestas automáticas:
 # 8x "n" (no cambiar puertos ni volúmenes) + tipo tenant + URL
+set +e
 {
   for i in $(seq 1 8); do echo "n"; done
   echo "${CMS_TENANT_TYPE}"
   echo "http://${VPS_IP}:80"
-} | timeout 600 bash cms_install.sh install --version "$CMS_VERSION" 2>&1 | tee /tmp/cms_install.log
+} | timeout "${CMS_INSTALL_TIMEOUT}" bash cms_install.sh install --version "$CMS_VERSION" 2>&1 | tee /tmp/cms_install.log
+INSTALL_EXIT=${PIPESTATUS[1]:-1}
+set -e
 
-INSTALL_EXIT=${PIPESTATUS[1]:-0}
+if [ "$INSTALL_EXIT" -eq 124 ]; then
+  echo -e "${YELLOW}⚠ Timeout del instalador oficial (${CMS_INSTALL_TIMEOUT}s). Continuando con la configuración generada...${NC}"
+elif [ "$INSTALL_EXIT" -ne 0 ]; then
+  echo -e "${YELLOW}⚠ El instalador oficial devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
+fi
 
 # ── Verificar que se generó docker-compose.yml ──
 if [ ! -f "$CMS_DIR/docker-compose.yml" ]; then
