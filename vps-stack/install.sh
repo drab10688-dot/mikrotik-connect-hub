@@ -514,8 +514,17 @@ echo -e "${YELLOW}¿Deseas instalar CMS C-Data (gestión OLT/ONU) en este servid
 echo -e "  Se instala directamente en el host (no en Docker de OmniSync)"
 read -p "Instalar CMS C-Data? [y/n] (n): " INSTALL_CMS < /dev/tty
 INSTALL_CMS=${INSTALL_CMS:-n}
+CMS_TENANT_TYPE="isp"
 
-# MikroTik config (optional)
+if is_truthy "$INSTALL_CMS"; then
+  read -p "Tipo de tenant CMS [isp/multi] (isp): " CMS_TENANT_TYPE < /dev/tty
+  CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-isp}
+
+  if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
+    echo -e "${RED}Opción inválida para CMS. Usa 'multi' o 'isp'${NC}"
+    exit 1
+  fi
+fi
 echo ""
 echo -e "${YELLOW}Configuración MikroTik (opcional, se puede configurar desde el panel):${NC}"
 read -p "Host/IP del MikroTik (Enter para omitir): " MIKROTIK_HOST < /dev/tty

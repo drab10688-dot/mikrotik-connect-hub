@@ -16,6 +16,9 @@ NC='\033[0m'
 CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
 VPS_IP=$(hostname -I | awk '{print $1}')
+CMS_INSTALL_TIMEOUT="${CMS_INSTALL_TIMEOUT:-900}"
+CMS_SKIP_TENANT_PROMPT="${CMS_SKIP_TENANT_PROMPT:-0}"
+CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"

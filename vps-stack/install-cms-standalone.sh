@@ -16,6 +16,7 @@ CMS_VERSION="${CMS_VERSION:-4.0.3}"
 CMS_DIR="/opt/cms-cdata"
 VPS_IP=$(hostname -I | awk '{print $1}')
 TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
+CMS_INSTALL_TIMEOUT="${CMS_INSTALL_TIMEOUT:-900}"
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
