@@ -150,33 +150,62 @@ echo -e "${GREEN}✓ Java heap configurado a ${RMQ_HEAP} por servicio${NC}"
 echo -e "${YELLOW}Iniciando CMS C-Data...${NC}"
 docker compose up -d 2>&1
 
-echo -e "${CYAN}Esperando estabilización de servicios (120s máx)...${NC}"
+echo -e "${CYAN}Esperando estabilización de servicios (180s máx)...${NC}"
+for i in $(seq 1 36); do
+  sleep 5
+  if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
+    echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
+    break
+  fi
+  RUNNING=$(docker ps --format "{{.Names}}" | grep -c "cms-" 2>/dev/null || echo "0")
+  echo -e "  Esperando MySQL... (${i}/36) — ${RUNNING} contenedores activos"
+done
+
+# ── Inicializar tenant automáticamente ──
+echo -e "${YELLOW}Inicializando tenant ${CMS_TENANT_TYPE}...${NC}"
+
+# Esperar a que cms-boot esté healthy
+for i in $(seq 1 24); do
+  if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-boot.*healthy"; then
+    break
+  fi
+  sleep 5
+  echo -e "  Esperando cms-boot... (${i}/24)"
+done
+
+# Crear directorio de configuración si no existe
+mkdir -p /opt/cms-cdata/conf/sys
+
+# Verificar si ya está inicializado
+INIT_FLAG=$(docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -BN -e "select initialized_flag from cms_global_config;" 2>/dev/null' || echo "0")
+
+if [ "$INIT_FLAG" != "1" ]; then
+  echo -e "${YELLOW}Ejecutando SQL de inicialización...${NC}"
+  docker exec cms-mysql sh -c 'sed -i "s|{tenant_host}|http://'"${VPS_IP}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql' 2>/dev/null || true
+  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"' 2>/dev/null
+  docker exec cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "update cms_global_config set initialized_flag = 1"' 2>/dev/null
+  docker restart cms-boot
+  echo -e "${GREEN}✓ Tenant inicializado${NC}"
+  sleep 10
+else
+  echo -e "${GREEN}✓ Tenant ya estaba inicializado${NC}"
+fi
+
+# Esperar a que el servicio web responda
+echo -e "${CYAN}Esperando servicio web...${NC}"
 for i in $(seq 1 24); do
   sleep 5
-  # Verificar si el servicio web responde
   if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:80" 2>/dev/null | grep -qE "^(200|301|302)"; then
     echo -e "${GREEN}✓ CMS respondiendo en puerto 80${NC}"
     break
   fi
-  RUNNING=$(docker ps --format "{{.Names}}" | grep -c "cms-" 2>/dev/null || echo "0")
-  UNHEALTHY=$(docker ps --format "{{.Names}} {{.Status}}" | grep "cms-" | grep -c "unhealthy" 2>/dev/null || echo "0")
-  echo -e "  Esperando... (${i}/24) — ${RUNNING} contenedores, ${UNHEALTHY} unhealthy"
-  
-  # Si el broker sigue fallando después de 60s, mostrar logs
-  if [ "$i" -eq 12 ] && docker ps --format "{{.Status}}" --filter "name=cms-rmqbroker" | grep -q "Restarting"; then
-    echo -e "${YELLOW}⚠ Broker aún reiniciando. Logs:${NC}"
-    docker logs cms-rmqbroker 2>&1 | tail -5
-  fi
+  echo -e "  Esperando web... (${i}/24)"
 done
 
 # ── Verificar estado ──
 echo ""
 echo -e "${CYAN}Estado de contenedores CMS:${NC}"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
-
-echo ""
-echo -e "${CYAN}Puertos en uso:${NC}"
-ss -lntp | grep -E ":(80|3306|6379|1883|9909|9999) " || echo "  (verificando...)"
 
 # ── Servicio systemd ──
 cat > /etc/systemd/system/cms-cdata.service << EOF
@@ -205,8 +234,8 @@ echo -e "${CYAN}║   CMS C-Data — Instalación finalizada        ║${NC}"
 echo -e "${CYAN}╠══════════════════════════════════════════════╣${NC}"
 echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}${NC}"
 echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
-echo -e "${CYAN}║${NC}  User:   ${GREEN}admin${NC}"
-echo -e "${CYAN}║${NC}  Pass:   ${GREEN}admin${NC}"
+echo -e "${CYAN}║${NC}  User:   ${GREEN}root${NC}"
+echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC}"
 echo -e "${CYAN}║${NC}  Heap:   ${GREEN}${RMQ_HEAP} (RocketMQ)${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
