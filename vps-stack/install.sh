@@ -115,7 +115,7 @@ handle_existing_installation() {
         # Regenerate nuxbill init SQL
         generate_nuxbill_sql
 
-        docker compose build --no-cache api cms-cdata
+        docker compose build --no-cache api phpnuxbill
         docker compose up -d --build
         sleep 10
         if ! ensure_mariadb_accounts; then
