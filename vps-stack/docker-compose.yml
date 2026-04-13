@@ -49,7 +49,6 @@ services:
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
-      CMS_CDATA_URL: http://cms-cdata:18080
       BACKUP_DIR: /opt/omnisync/backups
       NUXBILL_DB_HOST: mariadb
       NUXBILL_DB_PORT: 3306
@@ -174,26 +173,6 @@ services:
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
-      TZ: ${TZ:-America/Bogota}
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # CMS C-Data - Gestión de OLTs/ONUs
-  # Iniciar/detener desde el panel de Servicios VPS
-  # ============================================
-  cms-cdata:
-    build:
-      context: ./cms-cdata
-      dockerfile: Dockerfile
-    container_name: omnisync-cms-cdata
-    restart: "no"
-    profiles: ["cms_container"]
-    ports:
-      - "18080:18080"
-    volumes:
-      - cms_data:/opt/cms/data
-    environment:
       TZ: ${TZ:-America/Bogota}
     networks:
       - omnisync-net
