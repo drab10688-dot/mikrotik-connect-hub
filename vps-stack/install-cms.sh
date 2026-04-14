@@ -154,7 +154,17 @@ patch_vendor_files() {
   set_env_value NGINX_PORT_MQTTS "$CMS_MQTTS_PORT" "$env_file"
   set_env_value VOLUME_PATH ./ "$env_file"
 
-  sed -i 's/docker exec -it /docker exec -i /g' "$init_file"
+  sed -i \
+    -e "s/^    mysql_port=\"3306\"/    mysql_port=\"${CMS_MYSQL_PORT}\"/" \
+    -e "s/^    redis_port=\"6379\"/    redis_port=\"${CMS_REDIS_PORT}\"/" \
+    -e "s/^    mqtt_port=\"1883\"/    mqtt_port=\"${CMS_EMQX_PORT}\"/" \
+    -e "s/^    cms_acs_port=\"9909\"/    cms_acs_port=\"${CMS_ACS_PORT}\"/" \
+    -e "s/^    cms_stun_port=\"3478\"/    cms_stun_port=\"${CMS_STUN_PORT}\"/" \
+    -e "s/^    cms_boot_port=\"9999\"/    cms_boot_port=\"${CMS_BOOT_PORT}\"/" \
+    -e "s/^    nginx_port=\"80\"/    nginx_port=\"${CMS_HTTP_PORT}\"/" \
+    -e 's/docker exec -it /docker exec -i /g' \
+    "$init_file"
+
   chmod +x "$CMS_DIR/cms_init.sh" "$CMS_DIR/cms.sh"
   chmod +x "$CMS_DIR"/script/*.sh
 }
