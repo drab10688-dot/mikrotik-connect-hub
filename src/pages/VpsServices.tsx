@@ -5,7 +5,7 @@ import { PortalAdsManager } from "@/components/portal/PortalAdsManager";
 import { VpnManager } from "@/components/vpn/VpnManager";
 import { MikrotikMapView } from "@/components/maps/MikrotikMapView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, Megaphone, Shield, Map, Wifi, Info, ExternalLink, Monitor, Container } from "lucide-react";
+import { Server, Megaphone, Shield, Map, Wifi, Info, ExternalLink, Monitor, Container, Radio } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -162,6 +162,82 @@ function CmscdataPanel() {
             className="w-full border-0 rounded-lg"
             style={{ height: "75vh" }}
             title="CMS C-Data"
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function UispPanel() {
+  const [vpsHost, setVpsHost] = useState("");
+  const [uispAvailable, setUispAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    setVpsHost(host);
+    const url = `${window.location.protocol}//${host}/uisp/`;
+    fetch(url, { mode: "no-cors" })
+      .then(() => setUispAvailable(true))
+      .catch(() => setUispAvailable(false));
+  }, []);
+
+  const uispUrl = `${window.location.protocol}//${vpsHost}/uisp/`;
+  const uispExternalUrl = `https://${vpsHost}:9443`;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Radio className="h-5 w-5" />
+            UISP — Ubiquiti ISP Manager
+          </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Gestión centralizada de infraestructura Ubiquiti: dispositivos AirMax, EdgeRouter, switches y más. Monitoreo, firmware y CRM integrado.
+          </p>
+          <Alert className="mt-3">
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-xs">
+              <strong>Primer acceso:</strong> Crea tu cuenta de administrador directamente en UISP al iniciar sesión por primera vez.
+            </AlertDescription>
+          </Alert>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant={uispAvailable ? "default" : "secondary"}>
+            {uispAvailable === null ? "Verificando..." : uispAvailable ? "Activo" : "No disponible"}
+          </Badge>
+          <Button variant="outline" size="sm" asChild>
+            <a href={uispExternalUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1" />
+              Abrir externo
+            </a>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {uispAvailable === false ? (
+          <div className="text-center py-12 space-y-4">
+            <Radio className="h-12 w-12 mx-auto text-muted-foreground" />
+            <div>
+              <p className="text-lg font-medium text-foreground">UISP no está activo</p>
+              <p className="text-muted-foreground text-sm mt-1">
+                Si no lo has instalado, ejecuta en tu VPS:
+              </p>
+              <code className="block mt-2 bg-muted px-3 py-2 rounded text-xs font-mono">
+                bash /opt/omnisync/install-uisp.sh
+              </code>
+              <p className="text-muted-foreground text-xs mt-2">
+                Requisitos: 2 GB RAM mínimo, puertos 9080 y 9443 libres.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <iframe
+            src={uispUrl}
+            className="w-full border-0 rounded-lg"
+            style={{ height: "75vh" }}
+            title="UISP"
           />
         )}
       </CardContent>
