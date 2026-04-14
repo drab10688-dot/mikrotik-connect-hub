@@ -181,6 +181,32 @@ wait_for_http() {
   return 1
 }
 
+build_install_answers() {
+  local answers=()
+
+  append_prompt_answer() {
+    local desired_port="$1"
+    local default_port="$2"
+
+    if [[ "$desired_port" = "$default_port" ]]; then
+      answers+=("n")
+    else
+      answers+=("y" "$desired_port")
+    fi
+  }
+
+  append_prompt_answer "$CMS_MYSQL_PORT" "3306"
+  append_prompt_answer "$CMS_REDIS_PORT" "6379"
+  append_prompt_answer "$CMS_EMQX_PORT" "1883"
+  append_prompt_answer "$CMS_ACS_PORT" "9909"
+  append_prompt_answer "$CMS_STUN_PORT" "3478"
+  append_prompt_answer "$CMS_BOOT_PORT" "9999"
+  append_prompt_answer "$CMS_HTTP_PORT" "80"
+
+  answers+=("n" "$TENANT_TYPE" "$TENANT_HOST")
+  printf '%s\n' "${answers[@]}"
+}
+
 show_status() {
   if [[ -f "$CMS_DIR/docker-compose.yml" ]]; then
     (cd "$CMS_DIR" && docker compose ps) || true
@@ -207,8 +233,6 @@ uninstall_cms() {
 }
 
 run_install() {
-  local answers
-
   prompt_defaults
 
   if [[ "$CMS_HTTP_PORT" != "18080" ]]; then
@@ -231,10 +255,9 @@ run_install() {
   patch_vendor_files
 
   info "Instalando CMS en ${CMS_DIR}..."
-  answers=$(printf 'n\nn\nn\nn\nn\nn\nn\nn\n%s\n%s\n' "$TENANT_TYPE" "$TENANT_HOST")
   (
     cd "$CMS_DIR"
-    printf '%s' "$answers" | bash ./cms_init.sh install --version "$CMS_VERSION"
+    build_install_answers | bash ./cms_init.sh install --version "$CMS_VERSION"
   )
 
   ok "CMS instalado"
