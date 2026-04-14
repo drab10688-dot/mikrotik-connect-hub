@@ -57,7 +57,7 @@ const SERVICES: ManagedService[] = [
   { key: "api", aliases: ["api", "routeros-proxy", "omnisync-api"], label: "RouterOS API", icon: "🔌", desc: "Proxy REST para MikroTik" },
   { key: "freeradius", aliases: ["freeradius", "radius", "omnisync-freeradius"], label: "FreeRADIUS", icon: "🔐", desc: "Autenticación Hotspot/PPPoE" },
   { key: "mariadb", aliases: ["mariadb", "radius-db", "omnisync-mariadb"], label: "MariaDB", icon: "🗄️", desc: "Base de datos RADIUS" },
-  { key: "phpnuxbill", aliases: ["phpnuxbill", "omnisync-phpnuxbill"], label: "PHPNuxBill", icon: "💳", desc: "Facturación ISP", openPath: "/nuxbill/" },
+  { key: "phpnuxbill", aliases: ["phpnuxbill", "omnisync-phpnuxbill"], label: "PHPNuxBill", icon: "💳", desc: "Facturación ISP", openPath: "/nuxbill/?_route=admin" },
 ];
 
 const OPTIONAL_SERVICES: ManagedService[] = [

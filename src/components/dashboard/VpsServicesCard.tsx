@@ -74,7 +74,7 @@ export function VpsServicesCard({ mikrotikId }: VpsServicesCardProps) {
   const services: VpsService[] = [
     { name: "OmniSync Panel", description: "Panel principal de gestión ISP", port: 80, subdomain: "panel", proxyPath: "/", icon: Server, color: "text-primary" },
     { name: "API Backend", description: "API REST del servidor", port: 3000, subdomain: "api", path: "/api/health", proxyPath: "/api/health", icon: Database, color: "text-blue-500" },
-    { name: "PHPNuxBill", description: "Billing Hotspot - Gestión de cobros", port: 8080, subdomain: "billing", proxyPath: "/nuxbill/", icon: CreditCard, color: "text-amber-500" },
+    { name: "PHPNuxBill", description: "Billing Hotspot - Gestión de cobros", port: 8080, subdomain: "billing", path: "/?_route=admin", proxyPath: "/nuxbill/?_route=admin", icon: CreditCard, color: "text-amber-500", defaultCreds: "admin / admin" },
     { name: "Mikhmon V3", description: "Hotspot Monitor - Vouchers e impresión", port: 8888, subdomain: "mikhmon", proxyPath: "/mikhmon/", icon: Wifi, color: "text-violet-500", defaultCreds: "mikhmon / 1234" },
     { name: "CMS C-Data", description: "Gestión centralizada de OLTs y ONUs", port: 18080, subdomain: "cms", proxyPath: "/cms-cdata/", icon: Monitor, color: "text-emerald-500", defaultCreds: "admin / admin" },
   ];
