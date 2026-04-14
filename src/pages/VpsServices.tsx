@@ -274,6 +274,10 @@ export default function VpsServices() {
               <Monitor className="h-4 w-4" />
               CMS C-Data
             </TabsTrigger>
+            <TabsTrigger value="uisp" className="gap-2">
+              <Radio className="h-4 w-4" />
+              UISP
+            </TabsTrigger>
             <TabsTrigger value="docker" className="gap-2">
               <Container className="h-4 w-4" />
               Docker
@@ -304,6 +308,10 @@ export default function VpsServices() {
 
           <TabsContent value="cms">
             <CmscdataPanel />
+          </TabsContent>
+
+          <TabsContent value="uisp">
+            <UispPanel />
           </TabsContent>
 
           <TabsContent value="docker">
