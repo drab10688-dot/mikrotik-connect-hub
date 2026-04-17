@@ -552,3 +552,57 @@ export const portalAdsApi = {
   trackImpression: (adId: string) => apiPost(`/portal-ads/public/${adId}/impression`, {}, { noAuth: true }),
   trackClick: (adId: string) => apiPost(`/portal-ads/public/${adId}/click`, {}, { noAuth: true }),
 };
+
+// ─── RADIUS Manager API ──────────────────────────────────
+export const radiusApi = {
+  stats: async () => unwrapData(await apiGet<any>('/radius/sessions/stats')),
+
+  listUsers: async (params: { search?: string; group?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.group) q.set('group', params.group);
+    const qs = q.toString();
+    return unwrapArray(await apiGet<any>(`/radius/users${qs ? '?' + qs : ''}`));
+  },
+  getUser: async (username: string) => unwrapData(await apiGet<any>(`/radius/users/${encodeURIComponent(username)}`)),
+  createUser: (data: { username: string; password: string; group?: string; attributes?: any }) =>
+    apiPost('/radius/users', data),
+  updateUser: (username: string, data: { password?: string; group?: string; attributes?: any }) =>
+    apiPut(`/radius/users/${encodeURIComponent(username)}`, data),
+  deleteUser: (username: string) => apiDelete(`/radius/users/${encodeURIComponent(username)}`),
+
+  listGroups: async () => unwrapArray(await apiGet<any>('/radius/groups')),
+  createGroup: (groupname: string, attributes: Record<string, string>) =>
+    apiPost('/radius/groups', { groupname, attributes }),
+  updateGroup: (groupname: string, attributes: Record<string, string>) =>
+    apiPut(`/radius/groups/${encodeURIComponent(groupname)}`, { attributes }),
+  deleteGroup: (groupname: string) => apiDelete(`/radius/groups/${encodeURIComponent(groupname)}`),
+
+  activeSessions: async () => unwrapArray(await apiGet<any>('/radius/sessions/active')),
+  sessionHistory: async (params: { username?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.username) q.set('username', params.username);
+    if (params.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return unwrapArray(await apiGet<any>(`/radius/sessions/history${qs ? '?' + qs : ''}`));
+  },
+  disconnectSession: (id: number) => apiPost(`/radius/sessions/${id}/disconnect`),
+
+  listNas: async () => unwrapArray(await apiGet<any>('/radius/nas')),
+  createNas: (data: { nasname: string; shortname: string; secret: string; type?: string; description?: string }) =>
+    apiPost('/radius/nas', data),
+  updateNas: (id: number, data: any) => apiPut(`/radius/nas/${id}`, data),
+  deleteNas: (id: number) => apiDelete(`/radius/nas/${id}`),
+
+  provisionAuto: (mikrotikId: string, data: {
+    radius_host: string; secret?: string; services?: string;
+    enable_hotspot?: boolean; enable_ppp?: boolean; register_nas?: boolean;
+  }) => apiPost(`/radius/provision/${mikrotikId}/auto`, data),
+  provisionScript: async (mikrotikId: string, params: { radius_host: string; secret?: string; services?: string }): Promise<string> => {
+    const q = new URLSearchParams();
+    q.set('radius_host', params.radius_host);
+    if (params.secret) q.set('secret', params.secret);
+    if (params.services) q.set('services', params.services);
+    return apiGet<string>(`/radius/provision/${mikrotikId}/script?${q.toString()}`);
+  },
+};

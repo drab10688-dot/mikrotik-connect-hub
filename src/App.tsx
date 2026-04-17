@@ -36,6 +36,7 @@ import HotspotMonitor from "./pages/HotspotMonitor";
 
 import VpsServices from "./pages/VpsServices";
 import OnuManagement from "./pages/OnuManagement";
+import RadiusManager from "./pages/RadiusManager";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
 const queryClient = new QueryClient();
@@ -80,6 +81,7 @@ const App = () => (
           <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />
           <Route path="/admin/secretaries" element={<ProtectedRoute><Secretaries /></ProtectedRoute>} />
           <Route path="/onu-management" element={<ProtectedRoute><OnuManagement /></ProtectedRoute>} />
+          <Route path="/radius" element={<ProtectedRoute><RadiusManager /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

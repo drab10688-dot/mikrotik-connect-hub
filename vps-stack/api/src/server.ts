@@ -27,6 +27,7 @@ import { onuRouter } from './routes/onu';
 import { vpnRouter } from './routes/vpn';
 import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
+import { radiusRouter } from './routes/radius';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -81,6 +82,7 @@ app.use('/api/onu', authMiddleware, onuRouter);
 app.use('/api/vpn', authMiddleware, vpnRouter);
 app.use('/api/ubiquiti', authMiddleware, ubiquitiRouter);
 app.use('/api/antennas', authMiddleware, antennasRouter);
+app.use('/api/radius', authMiddleware, radiusRouter);
 
 // Aliases for frontend compatibility
 app.use('/api/mikrotik', authMiddleware, (req, res, next) => {
