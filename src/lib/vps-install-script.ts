@@ -175,24 +175,7 @@ services:
       - /etc/os-release:/host/etc/os-release:ro
     restart: unless-stopped
 
-  # ═══════════════════════════════════════════
-  # daloRADIUS - Panel Web para FreeRADIUS
-  # ═══════════════════════════════════════════
-  daloradius:
-    image: lhaig/daloradius:latest
-    container_name: omnisync-daloradius
-    ports:
-      - "8000:80"
-    environment:
-      - MYSQL_HOST=radius-db
-      - MYSQL_PORT=3306
-      - MYSQL_DATABASE=radius
-      - MYSQL_USER=radius
-      - MYSQL_PASSWORD=omnisync_radius_2024
-    depends_on:
-      radius-db:
-        condition: service_healthy
-    restart: unless-stopped
+  # daloRADIUS removido — reemplazado por el módulo nativo "RADIUS Manager" de OmniSync
 
 COMPOSEOF
 
@@ -602,7 +585,7 @@ echo "   🤖 Agente OmniSync   → puerto $AGENT_PORT"
 echo "   🔌 RouterOS API Proxy→ puerto 8728"
 echo "   🔐 FreeRADIUS        → puertos 1812/1813 UDP"
 echo "   📊 Netdata Monitor   → puerto 19999"
-echo "   🌐 daloRADIUS Panel  → puerto 8000"
+echo "   🧭 RADIUS Manager    → integrado en el panel OmniSync (/radius)"
 echo "   🗄️  MariaDB (RADIUS)  → puerto 3306"
 echo ""
 echo -e "\${YELLOW}📋 Comandos útiles:\${NC}"
