@@ -190,6 +190,12 @@ export function RadiusUsersTab() {
           </TableBody>
         </Table>
       </div>
+
+      <RadiusClientMonitor
+        username={monitorUser}
+        open={!!monitorUser}
+        onOpenChange={(o) => { if (!o) setMonitorUser(null); }}
+      />
     </div>
   );
 }

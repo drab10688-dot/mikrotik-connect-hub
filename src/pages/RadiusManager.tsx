@@ -9,9 +9,11 @@ import { RadiusUsersTab } from "@/components/radius/RadiusUsersTab";
 import { RadiusGroupsTab } from "@/components/radius/RadiusGroupsTab";
 import { RadiusSessionsTab } from "@/components/radius/RadiusSessionsTab";
 import { RadiusNasTab } from "@/components/radius/RadiusNasTab";
+import { RadiusTopConsumers } from "@/components/radius/RadiusTopConsumers";
 
 export default function RadiusManager() {
   const [tab, setTab] = useState("users");
+  const [monitorUser, setMonitorUser] = useState<string | null>(null);
 
   const { data: stats } = useQuery({
     queryKey: ["radius", "stats"],
