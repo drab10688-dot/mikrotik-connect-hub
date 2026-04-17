@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/select";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid,
-  LineChart, Line,
 } from "recharts";
 import {
   Activity, PowerOff, Ban, ShieldCheck, Wifi, ArrowDownUp,
