@@ -379,6 +379,220 @@ radiusRouter.post('/sessions/:id/disconnect', async (req: AuthRequest, res: Resp
 });
 
 // ═══════════════════════════════════════════════════════════
+// MONITOR  - Estadísticas y acciones por cliente
+// ═══════════════════════════════════════════════════════════
+
+/** GET /api/radius/monitor/top?range=24h|7d|30d&limit=10 */
+radiusRouter.get('/monitor/top', async (req: AuthRequest, res: Response) => {
+  try {
+    const range = String(req.query.range || '24h');
+    const limit = Math.min(parseInt(String(req.query.limit || '10'), 10) || 10, 50);
+    const interval =
+      range === '30d' ? '30 DAY' : range === '7d' ? '7 DAY' : '24 HOUR';
+    const rows = await rq(
+      `SELECT username,
+              COALESCE(SUM(acctinputoctets),0) AS bytes_in,
+              COALESCE(SUM(acctoutputoctets),0) AS bytes_out,
+              COALESCE(SUM(acctinputoctets+acctoutputoctets),0) AS bytes_total,
+              COUNT(*) AS sessions
+         FROM radacct
+        WHERE acctstarttime >= DATE_SUB(NOW(), INTERVAL ${interval})
+        GROUP BY username
+        ORDER BY bytes_total DESC
+        LIMIT ?`,
+      [limit]
+    );
+    res.json({ data: rows });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/radius/monitor/:username/traffic?bucket=hour|day|month&range=24h|7d|30d|12m */
+radiusRouter.get('/monitor/:username/traffic', async (req: AuthRequest, res: Response) => {
+  try {
+    const { username } = req.params;
+    const bucket = String(req.query.bucket || 'hour');
+    const range = String(req.query.range || '24h');
+
+    const fmt =
+      bucket === 'month' ? '%Y-%m'
+        : bucket === 'day' ? '%Y-%m-%d'
+        : '%Y-%m-%d %H:00';
+
+    const interval =
+      range === '12m' ? '12 MONTH'
+        : range === '30d' ? '30 DAY'
+        : range === '7d' ? '7 DAY'
+        : '24 HOUR';
+
+    const rows = await rq(
+      `SELECT DATE_FORMAT(acctstarttime, ?) AS bucket,
+              COALESCE(SUM(acctinputoctets),0) AS bytes_in,
+              COALESCE(SUM(acctoutputoctets),0) AS bytes_out,
+              COUNT(*) AS sessions
+         FROM radacct
+        WHERE username = ?
+          AND acctstarttime >= DATE_SUB(NOW(), INTERVAL ${interval})
+        GROUP BY bucket
+        ORDER BY bucket ASC`,
+      [fmt, username]
+    );
+    res.json({ data: rows });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/radius/monitor/:username/disconnects?limit=50 - sesiones cerradas con causa */
+radiusRouter.get('/monitor/:username/disconnects', async (req: AuthRequest, res: Response) => {
+  try {
+    const { username } = req.params;
+    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 500);
+    const rows = await rq(
+      `SELECT radacctid, acctstarttime, acctstoptime, acctsessiontime,
+              acctterminatecause, framedipaddress, callingstationid, nasipaddress,
+              acctinputoctets, acctoutputoctets
+         FROM radacct
+        WHERE username = ? AND acctstoptime IS NOT NULL
+        ORDER BY acctstoptime DESC
+        LIMIT ?`,
+      [username, limit]
+    );
+    res.json({ data: rows });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/radius/monitor/:username/live - sesión activa actual del usuario */
+radiusRouter.get('/monitor/:username/live', async (req: AuthRequest, res: Response) => {
+  try {
+    const { username } = req.params;
+    const rows = await rq(
+      `SELECT radacctid, nasipaddress, framedipaddress, callingstationid, calledstationid,
+              acctstarttime, acctsessiontime, acctinputoctets, acctoutputoctets,
+              acctinputpackets, acctoutputpackets
+         FROM radacct
+        WHERE username = ? AND acctstoptime IS NULL
+        ORDER BY acctstarttime DESC`,
+      [username]
+    );
+    res.json({ data: rows });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/radius/monitor/:username/kick - desconecta vía MikroTik API (PPP active + Hotspot active) */
+radiusRouter.post('/monitor/:username/kick', async (req: AuthRequest, res: Response) => {
+  try {
+    const { username } = req.params;
+    const log: string[] = [];
+
+    // Buscar NAS de la sesión activa
+    const sessions = await rq(
+      `SELECT DISTINCT nasipaddress FROM radacct
+        WHERE username = ? AND acctstoptime IS NULL`,
+      [username]
+    );
+
+    if (!sessions.length) {
+      // intentar igual cerrar accounting
+      await rwrite(
+        `UPDATE radacct SET acctstoptime = NOW(), acctterminatecause = 'Admin-Reset'
+          WHERE username = ? AND acctstoptime IS NULL`,
+        [username]
+      );
+      return res.json({ success: true, log: ['Sin sesiones activas en accounting'] });
+    }
+
+    // Localizar mikrotik_devices que coincidan por host
+    const nasIps = sessions.map((s: any) => s.nasipaddress).filter(Boolean);
+    const { rows: devices } = await pool.query(
+      `SELECT id, host, port, username, password, version
+         FROM mikrotik_devices
+        WHERE host = ANY($1::text[])`,
+      [nasIps]
+    );
+
+    for (const dev of devices) {
+      const cfg: any = {
+        id: dev.id, host: dev.host, port: dev.port,
+        username: dev.username, password: dev.password, version: dev.version,
+      };
+      // PPP active
+      try {
+        const actives: any = await mikrotikRequest(cfg, '/rest/ppp/active');
+        const match = (actives || []).find((a: any) => a.name === username);
+        if (match) {
+          await mikrotikRequest(cfg, '/rest/ppp/active/remove', 'POST', { '.id': match['.id'] });
+          log.push(`✓ PPP active removido en ${dev.host}`);
+        }
+      } catch (e: any) { log.push(`⚠ PPP ${dev.host}: ${e.message}`); }
+      // Hotspot active
+      try {
+        const actives: any = await mikrotikRequest(cfg, '/rest/ip/hotspot/active');
+        const match = (actives || []).find((a: any) => a.user === username);
+        if (match) {
+          await mikrotikRequest(cfg, '/rest/ip/hotspot/active/remove', 'POST', { '.id': match['.id'] });
+          log.push(`✓ Hotspot active removido en ${dev.host}`);
+        }
+      } catch (e: any) { log.push(`⚠ Hotspot ${dev.host}: ${e.message}`); }
+    }
+
+    // Cerrar accounting
+    await rwrite(
+      `UPDATE radacct SET acctstoptime = NOW(), acctterminatecause = 'Admin-Reset'
+        WHERE username = ? AND acctstoptime IS NULL`,
+      [username]
+    );
+    log.push('✓ Accounting cerrado');
+
+    res.json({ success: true, log });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/radius/monitor/:username/block  body:{ blocked:boolean } */
+radiusRouter.post('/monitor/:username/block', async (req: AuthRequest, res: Response) => {
+  try {
+    const { username } = req.params;
+    const blocked = !!(req.body || {}).blocked;
+    if (blocked) {
+      await rwrite(
+        `INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Auth-Type', ':=', 'Reject')
+         ON DUPLICATE KEY UPDATE value='Reject'`,
+        [username]
+      );
+    } else {
+      await rwrite(
+        `DELETE FROM radcheck WHERE username = ? AND attribute = 'Auth-Type' AND value = 'Reject'`,
+        [username]
+      );
+    }
+    res.json({ success: true, blocked });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/radius/monitor/:username/status - true si bloqueado */
+radiusRouter.get('/monitor/:username/status', async (req: AuthRequest, res: Response) => {
+  try {
+    const { username } = req.params;
+    const rows = await rq(
+      `SELECT 1 FROM radcheck WHERE username = ? AND attribute = 'Auth-Type' AND value = 'Reject' LIMIT 1`,
+      [username]
+    );
+    res.json({ data: { blocked: rows.length > 0 } });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
 // NAS  (tabla nas - clientes RADIUS / routers MikroTik)
 // ═══════════════════════════════════════════════════════════
 
