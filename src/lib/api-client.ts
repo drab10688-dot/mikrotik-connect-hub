@@ -605,4 +605,20 @@ export const radiusApi = {
     if (params.services) q.set('services', params.services);
     return apiGet<string>(`/radius/provision/${mikrotikId}/script?${q.toString()}`);
   },
+
+  // Monitor
+  monitorTop: async (range: '24h'|'7d'|'30d' = '24h', limit = 10) =>
+    unwrapArray(await apiGet<any>(`/radius/monitor/top?range=${range}&limit=${limit}`)),
+  monitorTraffic: async (username: string, bucket: 'hour'|'day'|'month' = 'hour', range: '24h'|'7d'|'30d'|'12m' = '24h') =>
+    unwrapArray(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/traffic?bucket=${bucket}&range=${range}`)),
+  monitorDisconnects: async (username: string, limit = 50) =>
+    unwrapArray(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/disconnects?limit=${limit}`)),
+  monitorLive: async (username: string) =>
+    unwrapArray(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/live`)),
+  monitorStatus: async (username: string) =>
+    unwrapData(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/status`)),
+  monitorKick: (username: string) =>
+    apiPost(`/radius/monitor/${encodeURIComponent(username)}/kick`),
+  monitorBlock: (username: string, blocked: boolean) =>
+    apiPost(`/radius/monitor/${encodeURIComponent(username)}/block`, { blocked }),
 };

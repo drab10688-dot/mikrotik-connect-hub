@@ -10,8 +10,9 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Edit, Search } from "lucide-react";
+import { Plus, Trash2, Edit, Search, Activity } from "lucide-react";
 import { toast } from "sonner";
+import { RadiusClientMonitor } from "./RadiusClientMonitor";
 
 export function RadiusUsersTab() {
   const qc = useQueryClient();
@@ -19,6 +20,7 @@ export function RadiusUsersTab() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ username: "", password: "", group: "", framed_ip: "" });
+  const [monitorUser, setMonitorUser] = useState<string | null>(null);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["radius", "users", search],
@@ -150,7 +152,14 @@ export function RadiusUsersTab() {
               <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Sin usuarios</TableCell></TableRow>
             ) : users.map((u: any) => (
               <TableRow key={u.id}>
-                <TableCell className="font-mono">{u.username}</TableCell>
+                <TableCell className="font-mono">
+                  <button
+                    className="hover:text-primary hover:underline transition text-left"
+                    onClick={() => setMonitorUser(u.username)}
+                  >
+                    {u.username}
+                  </button>
+                </TableCell>
                 <TableCell>{u.groups || <span className="text-muted-foreground">—</span>}</TableCell>
                 <TableCell>
                   {u.active_sessions > 0
@@ -160,6 +169,9 @@ export function RadiusUsersTab() {
                 <TableCell className="text-xs">{u.last_session ? new Date(u.last_session).toLocaleString() : "—"}</TableCell>
                 <TableCell>{formatBytes(Number(u.total_bytes || 0))}</TableCell>
                 <TableCell className="text-right space-x-1">
+                  <Button size="sm" variant="ghost" onClick={() => setMonitorUser(u.username)} title="Monitor">
+                    <Activity className="w-4 h-4" />
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => startEdit(u)}>
                     <Edit className="w-4 h-4" />
                   </Button>
@@ -178,6 +190,12 @@ export function RadiusUsersTab() {
           </TableBody>
         </Table>
       </div>
+
+      <RadiusClientMonitor
+        username={monitorUser}
+        open={!!monitorUser}
+        onOpenChange={(o) => { if (!o) setMonitorUser(null); }}
+      />
     </div>
   );
 }
