@@ -10,6 +10,7 @@ import { RadiusGroupsTab } from "@/components/radius/RadiusGroupsTab";
 import { RadiusSessionsTab } from "@/components/radius/RadiusSessionsTab";
 import { RadiusNasTab } from "@/components/radius/RadiusNasTab";
 import { RadiusTopConsumers } from "@/components/radius/RadiusTopConsumers";
+import { RadiusClientMonitor } from "@/components/radius/RadiusClientMonitor";
 
 export default function RadiusManager() {
   const [tab, setTab] = useState("users");
@@ -47,33 +48,45 @@ export default function RadiusManager() {
           />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Administración</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={tab} onValueChange={setTab}>
-              <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full">
-                <TabsTrigger value="users">Usuarios</TabsTrigger>
-                <TabsTrigger value="groups">Perfiles</TabsTrigger>
-                <TabsTrigger value="sessions">Sesiones</TabsTrigger>
-                <TabsTrigger value="nas">NAS / Routers</TabsTrigger>
-              </TabsList>
-              <TabsContent value="users" className="mt-4">
-                <RadiusUsersTab />
-              </TabsContent>
-              <TabsContent value="groups" className="mt-4">
-                <RadiusGroupsTab />
-              </TabsContent>
-              <TabsContent value="sessions" className="mt-4">
-                <RadiusSessionsTab />
-              </TabsContent>
-              <TabsContent value="nas" className="mt-4">
-                <RadiusNasTab />
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Administración</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={tab} onValueChange={setTab}>
+                <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full">
+                  <TabsTrigger value="users">Usuarios</TabsTrigger>
+                  <TabsTrigger value="groups">Perfiles</TabsTrigger>
+                  <TabsTrigger value="sessions">Sesiones</TabsTrigger>
+                  <TabsTrigger value="nas">NAS / Routers</TabsTrigger>
+                </TabsList>
+                <TabsContent value="users" className="mt-4">
+                  <RadiusUsersTab />
+                </TabsContent>
+                <TabsContent value="groups" className="mt-4">
+                  <RadiusGroupsTab />
+                </TabsContent>
+                <TabsContent value="sessions" className="mt-4">
+                  <RadiusSessionsTab />
+                </TabsContent>
+                <TabsContent value="nas" className="mt-4">
+                  <RadiusNasTab />
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          <div className="lg:col-span-1">
+            <RadiusTopConsumers onSelectUser={setMonitorUser} />
+          </div>
+        </div>
+
+        <RadiusClientMonitor
+          username={monitorUser}
+          open={!!monitorUser}
+          onOpenChange={(o) => { if (!o) setMonitorUser(null); }}
+        />
       </main>
     </div>
   );
