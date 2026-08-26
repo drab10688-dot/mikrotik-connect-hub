@@ -280,7 +280,7 @@ export default function OnuManagement() {
 
         {noMikrotik && (
           <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-            No hay un dispositivo MikroTik seleccionado. Las pestañas <strong>ONUs</strong>, <strong>Plantillas</strong> y <strong>Señal Óptica</strong> requieren un MikroTik, pero la pestaña <strong>TR-069 / ACS</strong> funciona con GenieACS sin MikroTik.
+            No hay un dispositivo MikroTik seleccionado. <strong>ONUs conectadas</strong> funciona directamente con GenieACS; el registro local, las plantillas y el historial óptico requieren un MikroTik.
           </div>
         )}
 

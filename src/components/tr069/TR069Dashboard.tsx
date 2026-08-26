@@ -127,8 +127,6 @@ export default function TR069Dashboard() {
         "_id",
         "_deviceId",
         "_lastInform",
-        "InternetGatewayDevice.DeviceInfo",
-        "Device.DeviceInfo",
       ].join(",");
       const [healthRes, devicesRes] = await Promise.all([
         api("/genieacs/health").catch(() => ({ success: false })),
@@ -169,6 +167,11 @@ export default function TR069Dashboard() {
   }, []);
 
   useEffect(() => { loadDevices(); }, [loadDevices]);
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(loadDevices, 30000);
+    return () => window.clearInterval(refreshTimer);
+  }, [loadDevices]);
 
   const loadSignalOverview = useCallback(async () => {
     setSignalLoading(true);

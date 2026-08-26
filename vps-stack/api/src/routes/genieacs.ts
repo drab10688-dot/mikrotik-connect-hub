@@ -27,6 +27,10 @@ async function genieFetch(path: string, options: RequestInit = {}) {
   return res.text();
 }
 
+function asDevice(payload: any): any {
+  return Array.isArray(payload) ? payload[0] : payload;
+}
+
 // Helper: extract parameter value from GenieACS device tree
 function getParam(device: any, path: string): any {
   const parts = path.split('.');
@@ -52,7 +56,7 @@ genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
 genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
     const query = (req.query.query as string) || '';
-    const projection = (req.query.projection as string) || '_id,_deviceId,_lastInform,InternetGatewayDevice.DeviceInfo,Device.DeviceInfo';
+    const projection = (req.query.projection as string) || '_id,_deviceId,_lastInform';
     const params: string[] = [];
     // Una proyección vacía hace que el NBI devuelva error/lista vacía: se omite.
     if (projection) params.push(`projection=${encodeURIComponent(projection)}`);
@@ -63,7 +67,7 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
       data = await genieFetch(url);
     } catch {
       // Fallback: al menos devolver identificadores e info básica
-       data = await genieFetch('/devices/?projection=_id,_deviceId,_lastInform,InternetGatewayDevice.DeviceInfo,Device.DeviceInfo');
+       data = await genieFetch('/devices/?projection=_id');
     }
     res.json({ success: true, data: Array.isArray(data) ? data : [] });
   } catch (err: any) {
@@ -86,7 +90,7 @@ genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response)
 genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
 
     const igd = device?.InternetGatewayDevice || device?.Device || {};
     const di = igd?.DeviceInfo || {};
@@ -625,7 +629,7 @@ genieacsRouter.post('/devices/:deviceId/diagnostics', async (req: AuthRequest, r
 genieacsRouter.get('/devices/:deviceId/diagnostics/:type', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId, type } = req.params;
-    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
 
     const igd = device?.InternetGatewayDevice || device?.Device || {};
     let result: any = {};
