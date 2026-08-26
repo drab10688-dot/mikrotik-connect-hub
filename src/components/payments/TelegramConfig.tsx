@@ -239,10 +239,14 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="config" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               Configuración
+            </TabsTrigger>
+            <TabsTrigger value="tecnicos" className="flex items-center gap-2">
+              <HardHat className="h-4 w-4" />
+              Bot Técnicos
             </TabsTrigger>
             <TabsTrigger value="send" className="flex items-center gap-2">
               <SendIcon className="h-4 w-4" />
@@ -253,6 +257,10 @@ export function TelegramConfig({ mikrotikId }: TelegramConfigProps) {
               Historial
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="tecnicos" className="mt-4">
+            <TelegramTechBot mikrotikId={mikrotikId} />
+          </TabsContent>
 
           <TabsContent value="config" className="space-y-4 mt-4">
             <div className="grid gap-4">
