@@ -231,6 +231,7 @@ services:
     image: mongo:6
     container_name: omnisync-mongo
     restart: unless-stopped
+    profiles: ["builtin-acs"]
     volumes:
       - mongo_data:/data/db
     networks:
