@@ -680,10 +680,10 @@ export default function TR069Dashboard() {
                                   </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-3 pt-0">
-                                  <p className="text-xs text-muted-foreground mb-2">{monitor.wifiClients.length} clientes conectados</p>
-                                  {monitor.wifiClients.length > 0 ? (
+                                  <p className="text-xs text-muted-foreground mb-2">{(monitor.wifiClients || []).length} clientes conectados</p>
+                                  {(monitor.wifiClients || []).length > 0 ? (
                                     <div className="space-y-1 max-h-32 overflow-y-auto">
-                                      {monitor.wifiClients.map((c, i) => (
+                                      {(monitor.wifiClients || []).map((c, i) => (
                                         <div key={i} className="flex justify-between text-xs bg-muted/50 px-2 py-1 rounded">
                                           <span className="font-mono">{c.mac}</span>
                                           <span>{c.signal !== null ? `${c.signal} dBm` : ""}</span>
