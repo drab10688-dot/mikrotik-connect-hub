@@ -623,10 +623,16 @@ export default function OnuManagement() {
 
           </TabsContent>
 
+          {/* ─── TR-069 Tab ───────────────────────────── */}
+          <TabsContent value="tr069">
+            <TR069Dashboard />
+          </TabsContent>
+
           {/* ─── Signal History Tab ───────────────────── */}
           <TabsContent value="signal">
             <SignalHistoryChart mikrotikId={mikrotikId} />
           </TabsContent>
+
         </Tabs>
 
         {/* ─── WiFi Change Dialog ─────────────────────── */}
