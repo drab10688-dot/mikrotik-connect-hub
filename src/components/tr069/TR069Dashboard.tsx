@@ -228,15 +228,16 @@ export default function TR069Dashboard() {
 
   const loadMonitor = async (deviceId: string) => {
     setMonitorLoading(true);
+    setMonitor(null);
     try {
       const [monRes, trafficRes] = await Promise.all([
-        api(`/genieacs/devices/${encodeURIComponent(deviceId)}/monitor`),
+        api(`/genieacs/devices/${encodeURIComponent(deviceId)}/monitor`).catch(() => null),
         api(`/genieacs/devices/${encodeURIComponent(deviceId)}/traffic`).catch(() => ({ data: [] })),
       ]);
-      setMonitor(monRes.data);
-      setTraffic(trafficRes.data || []);
-    } catch (err: any) {
-      toast.error("Error cargando monitoreo: " + err.message);
+      // El monitoreo es opcional: si falla, el panel WiFi debe seguir usable.
+      const mon = monRes ? (monRes.data ?? monRes) : null;
+      setMonitor(mon && typeof mon === "object" ? mon : null);
+      setTraffic(Array.isArray(trafficRes) ? trafficRes : (trafficRes.data || []));
     } finally {
       setMonitorLoading(false);
     }
