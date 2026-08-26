@@ -780,19 +780,33 @@ check_service "MariaDB"     "omnisync-mariadb"
 check_service "FreeRADIUS"  "omnisync-freeradius"
 check_service "PHPNuxBill"  "omnisync-phpnuxbill"
 
+# GenieACS interno es parte del core cuando no hay ACS externo configurado
+GENIEACS_EXTERNAL=0
+if [ -n "${GENIEACS_NBI_URL:-}" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs:7557" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs-nbi:7557" ]; then
+  GENIEACS_EXTERNAL=1
+fi
+if [ "$GENIEACS_EXTERNAL" = "0" ]; then
+  check_service "MongoDB (ACS)" "omnisync-mongo"
+  check_service "GenieACS TR-069" "omnisync-genieacs"
+fi
+
 echo ""
 echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC}"
+
+echo ""
+echo -e "${CYAN}Gestión de ONUs (TR-069):${NC}"
+if [ "$GENIEACS_EXTERNAL" = "1" ]; then
+  echo -e "  ${GREEN}✓ GenieACS externo — NBI: ${GENIEACS_NBI_URL}${NC}"
+else
+  echo -e "  ${GREEN}✓ GenieACS integrado — UI: http://$VPS_IP:3001 (admin/admin)${NC}"
+  echo -e "  ${GREEN}  ACS URL para las ONUs: http://$VPS_IP:7547${NC}"
+  echo -e "  ${GREEN}  Panel gráfico OmniSync: http://$VPS_IP/onu-management${NC}"
+fi
 
 # Check optional services (informational only)
 echo ""
 echo -e "${CYAN}Servicios opcionales:${NC}"
-if [ -n "${GENIEACS_NBI_URL:-}" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs:7557" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs-nbi:7557" ]; then
-  echo -e "  ${GREEN}✓ GenieACS externo — NBI: ${GENIEACS_NBI_URL}${NC}"
-elif docker ps --format '{{.Names}}' | grep -q '^omnisync-genieacs$'; then
-  echo -e "  ${GREEN}✓ GenieACS (ONUs TR-069) — UI :3001 | CWMP :7547${NC}"
-else
-  echo -e "  ${YELLOW}ℹ GenieACS — iniciar con: docker compose --profile builtin-acs up -d mongo genieacs${NC}"
-fi
+
 echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
 
