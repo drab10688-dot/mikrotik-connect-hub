@@ -763,10 +763,12 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 # Check optional services (informational only)
 echo ""
 echo -e "${CYAN}Servicios opcionales:${NC}"
-if docker ps --format '{{.Names}}' | grep -q '^omnisync-genieacs$'; then
+if [ -n "${GENIEACS_NBI_URL:-}" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs:7557" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs-nbi:7557" ]; then
+  echo -e "  ${GREEN}✓ GenieACS externo — NBI: ${GENIEACS_NBI_URL}${NC}"
+elif docker ps --format '{{.Names}}' | grep -q '^omnisync-genieacs$'; then
   echo -e "  ${GREEN}✓ GenieACS (ONUs TR-069) — UI :3001 | CWMP :7547${NC}"
 else
-  echo -e "  ${YELLOW}ℹ GenieACS — iniciar con: docker compose up -d mongo genieacs${NC}"
+  echo -e "  ${YELLOW}ℹ GenieACS — iniciar con: docker compose --profile builtin-acs up -d mongo genieacs${NC}"
 fi
 echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
