@@ -116,7 +116,7 @@ handle_existing_installation() {
         generate_nuxbill_sql
 
         docker compose build --no-cache api phpnuxbill
-        docker compose up -d --build
+        docker compose up -d --build $(acs_profile_arg)
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
@@ -148,6 +148,18 @@ handle_existing_installation() {
 # ═══════════════════════════════════════════════════
 # Helper functions
 # ═══════════════════════════════════════════════════
+
+# Determina si se usa el GenieACS interno (perfil builtin-acs) o uno externo.
+# Si GENIEACS_NBI_URL apunta a una instancia externa (no al servicio interno),
+# no se arrancan omnisync-mongo/omnisync-genieacs para evitar conflictos de puerto.
+acs_profile_arg() {
+  local nbi="${GENIEACS_NBI_URL:-}"
+  if [ -n "$nbi" ] && [ "$nbi" != "http://genieacs:7557" ] && [ "$nbi" != "http://genieacs-nbi:7557" ]; then
+    echo ""
+  else
+    echo "--profile builtin-acs"
+  fi
+}
 
 generate_radius_configs() {
   local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
@@ -607,7 +619,9 @@ echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)..
 docker compose build --no-cache api phpnuxbill
 
 # Start core services (optional services use restart: "no" and are managed from UI)
-docker compose up -d 2>&1 | tail -5
+# GenieACS interno solo se arranca si no hay un ACS externo configurado
+source "$INSTALL_DIR/.env" 2>/dev/null || true
+docker compose up -d $(acs_profile_arg) 2>&1 | tail -5
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
@@ -749,10 +763,12 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 # Check optional services (informational only)
 echo ""
 echo -e "${CYAN}Servicios opcionales:${NC}"
-if docker ps --format '{{.Names}}' | grep -q '^omnisync-genieacs$'; then
+if [ -n "${GENIEACS_NBI_URL:-}" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs:7557" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs-nbi:7557" ]; then
+  echo -e "  ${GREEN}✓ GenieACS externo — NBI: ${GENIEACS_NBI_URL}${NC}"
+elif docker ps --format '{{.Names}}' | grep -q '^omnisync-genieacs$'; then
   echo -e "  ${GREEN}✓ GenieACS (ONUs TR-069) — UI :3001 | CWMP :7547${NC}"
 else
-  echo -e "  ${YELLOW}ℹ GenieACS — iniciar con: docker compose up -d mongo genieacs${NC}"
+  echo -e "  ${YELLOW}ℹ GenieACS — iniciar con: docker compose --profile builtin-acs up -d mongo genieacs${NC}"
 fi
 echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
