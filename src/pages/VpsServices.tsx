@@ -252,7 +252,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, VPN, CMS, Docker y publicidad.
+            Gestión de servicios, VPN, GenieACS, Docker y publicidad.
           </p>
         </div>
 
@@ -266,9 +266,9 @@ export default function VpsServices() {
               <Wifi className="h-4 w-4" />
               Mikhmon
             </TabsTrigger>
-            <TabsTrigger value="cms" className="gap-2">
+            <TabsTrigger value="acs" className="gap-2">
               <Monitor className="h-4 w-4" />
-              CMS C-Data
+              GenieACS
             </TabsTrigger>
             <TabsTrigger value="uisp" className="gap-2">
               <Radio className="h-4 w-4" />
@@ -302,8 +302,8 @@ export default function VpsServices() {
             <MikhmonPanel />
           </TabsContent>
 
-          <TabsContent value="cms">
-            <CmscdataPanel />
+          <TabsContent value="acs">
+            <GenieacsPanel />
           </TabsContent>
 
           <TabsContent value="uisp">
