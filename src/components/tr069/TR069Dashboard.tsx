@@ -741,7 +741,15 @@ export default function TR069Dashboard() {
                             </div>
                           </>
                         ) : (
-                          <p className="text-center text-muted-foreground py-4">Seleccione un dispositivo para ver su monitoreo</p>
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed p-3">
+                            <p className="text-xs text-muted-foreground">
+                              El monitoreo extendido (señal, WAN, tráfico) aún no está disponible para esta ONU.
+                              La configuración WiFi de arriba sí funciona.
+                            </p>
+                            <Button size="sm" variant="outline" onClick={() => loadMonitor(deviceId)}>
+                              <RotateCcw className="w-3 h-3 mr-1" /> Reintentar monitoreo
+                            </Button>
+                          </div>
                         )}
                       </div>
                     )}
