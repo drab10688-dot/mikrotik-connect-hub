@@ -27,6 +27,16 @@ async function genieFetch(path: string, options: RequestInit = {}) {
   return res.text();
 }
 
+// GenieACS NBI no soporta GET /devices/:id (devuelve 405). Se consulta por query.
+async function fetchDevice(deviceId: string, projection?: string): Promise<any> {
+  const q = encodeURIComponent(JSON.stringify({ _id: deviceId }));
+  const proj = projection ? `&projection=${encodeURIComponent(projection)}` : '';
+  const payload = await genieFetch(`/devices/?query=${q}${proj}`);
+  const dev = Array.isArray(payload) ? payload[0] : payload;
+  if (!dev) throw new Error('Dispositivo no encontrado en el ACS');
+  return dev;
+}
+
 function asDevice(payload: any): any {
   return Array.isArray(payload) ? payload[0] : payload;
 }
@@ -79,7 +89,7 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
 genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const data = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+    const data = await fetchDevice(deviceId);
     res.json({ success: true, data });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -90,7 +100,7 @@ genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response)
 genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
+    const device = await fetchDevice(deviceId);
 
     const igd = device?.InternetGatewayDevice || device?.Device || {};
     const di = igd?.DeviceInfo || {};
@@ -632,7 +642,7 @@ genieacsRouter.post('/devices/:deviceId/diagnostics', async (req: AuthRequest, r
 genieacsRouter.get('/devices/:deviceId/diagnostics/:type', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId, type } = req.params;
-    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
+    const device = await fetchDevice(deviceId);
 
     const igd = device?.InternetGatewayDevice || device?.Device || {};
     let result: any = {};
@@ -848,7 +858,7 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
 genieacsRouter.get('/devices/:deviceId/traffic', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
+    const device = await fetchDevice(deviceId);
 
     const igd = device?.InternetGatewayDevice || device?.Device || {};
     const wanStats = igd?.WANDevice?.['1']?.WANCommonInterfaceConfig || {};
@@ -1311,7 +1321,7 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
 
     for (const onu of onuResult.rows) {
       try {
-        const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`));
+        const device = await fetchDevice(onu.acs_device_id);
         const igd = device?.InternetGatewayDevice || device?.Device || {};
 
         // Extract optical power (multi-vendor paths)
@@ -1753,7 +1763,7 @@ function findCatv(device: any) {
 genieacsRouter.get('/devices/:deviceId/onu-status', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
+    const device = await fetchDevice(deviceId);
     const igd = device?.InternetGatewayDevice || {};
     const di = igd?.DeviceInfo || device?.Device?.DeviceInfo || {};
     const catv = findCatv(device);
@@ -1826,7 +1836,7 @@ genieacsRouter.post('/devices/:deviceId/catv', async (req: AuthRequest, res: Res
 
     let targetPath = path as string | undefined;
     if (!targetPath) {
-      const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
+      const device = await fetchDevice(deviceId);
       targetPath = findCatv(device).path || undefined;
     }
     if (!targetPath) {
