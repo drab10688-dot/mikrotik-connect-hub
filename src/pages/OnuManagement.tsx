@@ -121,7 +121,14 @@ export default function OnuManagement() {
   });
 
   const loadData = async () => {
-    if (!mikrotikId) return;
+    if (!mikrotikId) {
+      setOnus([]);
+      setTemplates([]);
+      setClients([]);
+      setProfiles([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [onuRes, templatesRes, clientsRes] = await Promise.all([
@@ -129,14 +136,15 @@ export default function OnuManagement() {
         api(`/onu/${mikrotikId}/templates/list`),
         api(`/clients/${mikrotikId}`).catch(() => ({ data: [] })),
       ]);
-      setOnus(onuRes.data || []);
-      setTemplates(templatesRes.data || []);
-      setClients(clientsRes.data || []);
+      setOnus(Array.isArray(onuRes) ? onuRes : (onuRes.data || []));
+      setTemplates(Array.isArray(templatesRes) ? templatesRes : (templatesRes.data || []));
+      setClients(Array.isArray(clientsRes) ? clientsRes : (clientsRes.data || []));
 
       // Load PPPoE profiles
       try {
         const profilesRes = await api(`/pppoe/${mikrotikId}/profiles`);
-        setProfiles((profilesRes.data || []).map((p: any) => p.name));
+        const profileRows = Array.isArray(profilesRes) ? profilesRes : (profilesRes.data || []);
+        setProfiles(profileRows.map((p: any) => p.name));
       } catch { setProfiles([]); }
 
       // GenieACS files loading removed

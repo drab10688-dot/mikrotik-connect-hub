@@ -135,14 +135,14 @@ export default function TR069Dashboard() {
         api(`/genieacs/devices?projection=${encodeURIComponent(deviceProjection)}`).catch(() => ({ data: [] })),
       ]);
       setHealth(healthRes.success ? "online" : "offline");
-      let list: any[] = devicesRes.data || [];
+      let list: any[] = Array.isArray(devicesRes) ? devicesRes : (devicesRes.data || []);
 
       // Fallback: si /devices no devuelve nada (proyección vacía o error del NBI),
       // reconstruimos la lista desde signal-overview para no dejar el panel vacío.
       if (list.length === 0) {
         try {
           const ov = await api("/genieacs/signal-overview");
-          const entries: SignalEntry[] = ov.data || [];
+          const entries: SignalEntry[] = Array.isArray(ov) ? ov : (ov.data || []);
           setSignalOverview(entries);
           list = entries.map((e) => ({
             _id: e.deviceId,
@@ -177,7 +177,7 @@ export default function TR069Dashboard() {
     setSignalLoading(true);
     try {
       const res = await api("/genieacs/signal-overview");
-      setSignalOverview(res.data || []);
+      setSignalOverview(Array.isArray(res) ? res : (res.data || []));
     } catch {
       // silently fail
     } finally {
