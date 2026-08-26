@@ -320,9 +320,6 @@ export default function SimpleOnuPanel() {
                   </Card>
                 </CardContent>
               )}
-
-                </CardContent>
-              )}
             </Card>
           );
         })
