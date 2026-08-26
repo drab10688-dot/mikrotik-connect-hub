@@ -619,7 +619,9 @@ echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)..
 docker compose build --no-cache api phpnuxbill
 
 # Start core services (optional services use restart: "no" and are managed from UI)
-docker compose up -d 2>&1 | tail -5
+# GenieACS interno solo se arranca si no hay un ACS externo configurado
+source "$INSTALL_DIR/.env" 2>/dev/null || true
+docker compose up -d $(acs_profile_arg) 2>&1 | tail -5
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
