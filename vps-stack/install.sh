@@ -436,6 +436,26 @@ start_optional_services() {
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
 handle_existing_installation
 
+# ─── Fresh install prompt ─────────────────────────
+if [ ! -d "$INSTALL_DIR" ] || [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
+  echo ""
+  echo -e "${CYAN}════════════════════════════════════════════${NC}"
+  echo -e "${GREEN}   OmniSync — Instalación nueva${NC}"
+  echo -e "${CYAN}════════════════════════════════════════════${NC}"
+  echo -e "${YELLOW}Se instalará OmniSync completo en este VPS:${NC}"
+  echo -e "  • API + Panel web (Nginx)"
+  echo -e "  • PostgreSQL + MariaDB + FreeRADIUS"
+  echo -e "  • PHPNuxBill + GenieACS (ACS integrado)"
+  echo -e "  • WireGuard + Mikhmon (opcionales)"
+  echo ""
+  read -p "¿Instalar OmniSync ahora? (s/N): " CONFIRM_INSTALL < /dev/tty
+  if [ "$CONFIRM_INSTALL" != "s" ] && [ "$CONFIRM_INSTALL" != "S" ]; then
+    echo -e "${YELLOW}Instalación cancelada.${NC}"
+    exit 0
+  fi
+  echo -e "${GREEN}Iniciando instalación...${NC}"
+fi
+
 # ═══════════════════════════════════════════════════
 # FASE 1: Dependencias del sistema
 # ═══════════════════════════════════════════════════
