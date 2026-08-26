@@ -809,12 +809,8 @@ export default function TR069Dashboard() {
                                 onClick={() => { if (confirm("¿Reiniciar esta ONU?")) runAction(deviceId, "reboot"); }}>
                                 <Power className="w-3 h-3 mr-1" /> Reboot
                               </Button>
-                              <Button size="sm" variant="outline" className="text-destructive"
-                                disabled={!!actionLoading}
-                                onClick={() => { if (confirm("¿Factory reset? Se perderá toda la configuración.")) runAction(deviceId, "factory-reset"); }}>
-                                <AlertTriangle className="w-3 h-3 mr-1" /> Factory Reset
-                              </Button>
                               <Button size="sm" variant="outline"
+
                                 onClick={() => { setSelectedDevice(device); setShowFirmwareDialog(true); }}>
                                 <Upload className="w-3 h-3 mr-1" /> Firmware
                               </Button>
