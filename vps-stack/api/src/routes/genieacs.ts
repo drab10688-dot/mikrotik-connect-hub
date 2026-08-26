@@ -51,12 +51,21 @@ genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
 // ─── List all devices (CPEs) ─────────────────────────────
 genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
-    const query = req.query.query || '';
-    const projection = req.query.projection || '';
-    let url = `/devices/?projection=${encodeURIComponent(projection as string)}`;
-    if (query) url += `&query=${encodeURIComponent(query as string)}`;
-    const data = await genieFetch(url);
-    res.json({ success: true, data });
+    const query = (req.query.query as string) || '';
+    const projection = (req.query.projection as string) || '';
+    const params: string[] = [];
+    // Una proyección vacía hace que el NBI devuelva error/lista vacía: se omite.
+    if (projection) params.push(`projection=${encodeURIComponent(projection)}`);
+    if (query) params.push(`query=${encodeURIComponent(query)}`);
+    const url = `/devices/${params.length ? `?${params.join('&')}` : ''}`;
+    let data: any;
+    try {
+      data = await genieFetch(url);
+    } catch {
+      // Fallback: al menos devolver identificadores e info básica
+      data = await genieFetch('/devices/?projection=_id,_lastInform,InternetGatewayDevice.DeviceInfo,Device.DeviceInfo');
+    }
+    res.json({ success: true, data: Array.isArray(data) ? data : [] });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
