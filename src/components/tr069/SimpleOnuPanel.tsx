@@ -104,6 +104,42 @@ export default function SimpleOnuPanel() {
     }
   };
 
+  const loadPppoe = useCallback(async (deviceId: string) => {
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/pppoe`);
+      const list = Array.isArray(res) ? res : (res?.data || []);
+      setPppoeCurrent((p) => ({ ...p, [deviceId]: list }));
+      const first = list[0];
+      if (first) {
+        setPppoe((p) => ({
+          ...p,
+          [deviceId]: p[deviceId] || { username: first.username || "", password: first.password || "" },
+        }));
+      }
+    } catch {
+      setPppoeCurrent((p) => ({ ...p, [deviceId]: [] }));
+    }
+  }, []);
+
+  const toggleExpand = (deviceId: string) => {
+    const open = expanded === deviceId;
+    setExpanded(open ? null : deviceId);
+    if (!open) loadPppoe(deviceId);
+  };
+
+  const refreshPppoe = async (deviceId: string) => {
+    setBusy(`rpppoe-${deviceId}`);
+    try {
+      await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-pppoe`, { method: "POST" });
+      toast.success("Leyendo PPPoE de la ONU, espere unos segundos...");
+      setTimeout(() => loadPppoe(deviceId), 8000);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const savePppoe = async (deviceId: string) => {
     const form = pppoe[deviceId];
     if (!form?.username) return toast.error("Ingrese el usuario PPPoE");
@@ -114,12 +150,14 @@ export default function SimpleOnuPanel() {
         body: { username: form.username, password: form.password },
       });
       toast.success(res?.message || "PPPoE enviado a la ONU");
+      setTimeout(() => loadPppoe(deviceId), 8000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setBusy(null);
     }
   };
+
 
   if (health === "offline" && !loading) {
     return (
