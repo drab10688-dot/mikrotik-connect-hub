@@ -57,17 +57,21 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
   const [forms, setForms] = useState<Record<string, { ssid: string; password: string; channel: string }>>({});
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
 
+  const [error, setError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
-      const data: OnuStatus = res.data || res;
-      if (!data || !Array.isArray(data.radios)) {
-        throw new Error("La respuesta del ACS no contiene información de radios WiFi");
+      const data: OnuStatus = res?.data ?? res;
+      if (!data || typeof data !== "object") {
+        throw new Error("El ACS no devolvió información de esta ONU");
       }
-      setStatus(data);
+      const radios = Array.isArray(data.radios) ? data.radios : [];
+      setStatus({ ...data, radios, catv: data.catv || { path: null, enabled: null } });
       const next: Record<string, { ssid: string; password: string; channel: string }> = {};
-      (data.radios || []).forEach((r) => {
+      radios.forEach((r) => {
         next[r.path] = {
           ssid: r.ssid || "",
           password: r.password || "",
@@ -76,7 +80,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
       });
       setForms(next);
     } catch (err: any) {
-      toast.error("Error cargando ONU: " + err.message);
+      setError(err.message || "Error cargando la ONU");
     } finally {
       setLoading(false);
     }
