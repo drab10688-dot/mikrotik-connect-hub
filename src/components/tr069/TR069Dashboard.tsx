@@ -127,6 +127,12 @@ export default function TR069Dashboard() {
         "_id",
         "_deviceId",
         "_lastInform",
+        "InternetGatewayDevice.DeviceInfo.Manufacturer",
+        "InternetGatewayDevice.DeviceInfo.ModelName",
+        "InternetGatewayDevice.DeviceInfo.ProductClass",
+        "InternetGatewayDevice.DeviceInfo.SerialNumber",
+        "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
+        "InternetGatewayDevice.DeviceInfo.UpTime",
       ].join(",");
       const [healthRes, devicesRes] = await Promise.all([
         api("/genieacs/health").catch(() => ({ success: false })),
