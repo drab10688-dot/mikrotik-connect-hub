@@ -77,12 +77,19 @@ handle_existing_installation() {
 
     case "$OPTION" in
       1)
+        echo -e "${RED}⚠ Esto ELIMINARÁ todos los datos y volúmenes actuales.${NC}"
+        read -p "Escribe 'REINSTALAR' para confirmar (Enter para cancelar): " CONFIRM_REINSTALL < /dev/tty
+        if [ "$CONFIRM_REINSTALL" != "REINSTALAR" ]; then
+          echo -e "${YELLOW}Operación cancelada. No se eliminó nada.${NC}"
+          exit 0
+        fi
         echo -e "${YELLOW}Deteniendo servicios...${NC}"
         cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
         cd /root
         rm -rf "$INSTALL_DIR"
         echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
         ;;
+
       2)
         echo -e "${YELLOW}Actualizando archivos...${NC}"
         TEMP_DIR=$(mktemp -d)
