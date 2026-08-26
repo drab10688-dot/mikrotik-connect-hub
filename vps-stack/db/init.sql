@@ -353,6 +353,45 @@ CREATE TABLE telegram_config (
   UNIQUE(mikrotik_id)
 );
 
+-- Bot de Telegram para técnicos (alta PPPoE + configuración WiFi de ONU)
+CREATE TABLE telegram_technicians (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+  chat_id TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(mikrotik_id, chat_id)
+);
+
+CREATE TABLE telegram_bot_sessions (
+  chat_id TEXT PRIMARY KEY,
+  mikrotik_id UUID,
+  step TEXT,
+  data JSONB DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE telegram_provisions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mikrotik_id UUID,
+  technician_chat_id TEXT,
+  technician_name TEXT,
+  client_name TEXT,
+  pppoe_username TEXT,
+  pppoe_password TEXT,
+  profile TEXT,
+  wifi_ssid TEXT,
+  wifi_password TEXT,
+  onu_serial TEXT,
+  onu_device_id TEXT,
+  status TEXT,
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+
 CREATE TABLE whatsapp_config (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
