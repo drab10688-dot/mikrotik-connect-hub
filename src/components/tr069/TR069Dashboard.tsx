@@ -123,9 +123,18 @@ export default function TR069Dashboard() {
   const loadDevices = useCallback(async () => {
     setLoading(true);
     try {
+      const deviceProjection = [
+        "_id",
+        "_deviceId",
+        "_lastInform",
+        "InternetGatewayDevice.DeviceInfo",
+        "Device.DeviceInfo",
+      ].join(",");
       const [healthRes, devicesRes] = await Promise.all([
         api("/genieacs/health").catch(() => ({ success: false })),
-        api("/genieacs/devices").catch(() => ({ data: [] })),
+        // Do not request the complete parameter tree here. Dual-band ONUs can
+        // produce a very large response and make the visible device list fail.
+        api(`/genieacs/devices?projection=${encodeURIComponent(deviceProjection)}`).catch(() => ({ data: [] })),
       ]);
       setHealth(healthRes.success ? "online" : "offline");
       let list: any[] = devicesRes.data || [];
@@ -402,7 +411,7 @@ export default function TR069Dashboard() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <Badge variant={health === "online" ? "default" : "destructive"}>
             {health === "online" ? "ACS Online" : "ACS Offline"}
@@ -415,14 +424,16 @@ export default function TR069Dashboard() {
       </div>
 
       {/* Sub-tabs */}
-      <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
-        <TabsList className="grid grid-cols-5 w-full">
+      <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="min-w-0">
+        <div className="w-full overflow-x-auto pb-1">
+        <TabsList className="grid min-w-[560px] grid-cols-5 w-full">
           <TabsTrigger value="monitoring"><Activity className="w-3 h-3 mr-1" /> Monitor</TabsTrigger>
           <TabsTrigger value="config"><Settings className="w-3 h-3 mr-1" /> Config</TabsTrigger>
           <TabsTrigger value="maintenance"><HardDrive className="w-3 h-3 mr-1" /> Manten.</TabsTrigger>
           <TabsTrigger value="diagnostics"><Terminal className="w-3 h-3 mr-1" /> Diagnóst.</TabsTrigger>
           <TabsTrigger value="provisioning"><Zap className="w-3 h-3 mr-1" /> Provisión</TabsTrigger>
         </TabsList>
+        </div>
 
         {/* ═══ MONITORING TAB ═══ */}
         <TabsContent value="monitoring" className="space-y-4">
@@ -441,7 +452,8 @@ export default function TR069Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
+                <div className="w-full overflow-x-auto">
+                <Table className="min-w-[760px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-xs">ONU</TableHead>
@@ -509,6 +521,7 @@ export default function TR069Dashboard() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           )}
