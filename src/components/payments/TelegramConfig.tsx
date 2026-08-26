@@ -13,10 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare, ExternalLink, Trash2 } from "lucide-react";
+import { Send as SendIcon, Settings, History, Eye, EyeOff, Loader2, CheckCircle, XCircle, Clock, Copy, Link, Users, MessageSquare, ExternalLink, Trash2, HardHat } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { TelegramTechBot } from "./TelegramTechBot";
 
 interface TelegramConfigProps {
   mikrotikId: string | null;
