@@ -567,7 +567,7 @@ export default function TR069Dashboard() {
                         <Button
                           size="sm" variant="ghost" className="h-7 px-2"
                           disabled={actionLoading === `signal-${deviceId}`}
-                          onClick={(e) => { e.stopPropagation(); refreshSignal(deviceId); }}
+                          onClick={(e) => { e.stopPropagation(); refreshDeviceSignal(deviceId); }}
                         >
                           {actionLoading === `signal-${deviceId}`
                             ? <Loader2 className="w-3 h-3 animate-spin" />
