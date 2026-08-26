@@ -380,10 +380,10 @@ export default function OnuManagement() {
                     </div>
                     <div className="space-y-2">
                       <Label>Cliente ISP</Label>
-                      <Select value={form.client_id} onValueChange={v => setForm(p => ({ ...p, client_id: v }))}>
+                      <Select value={form.client_id || "__none__"} onValueChange={v => setForm(p => ({ ...p, client_id: v === "__none__" ? "" : v }))}>
                         <SelectTrigger><SelectValue placeholder="Vincular a cliente" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Sin vincular</SelectItem>
+                          <SelectItem value="__none__">Sin vincular</SelectItem>
                           {clients.map((c: any) => (
                             <SelectItem key={c.id} value={c.id}>{c.client_name} ({c.username})</SelectItem>
                           ))}

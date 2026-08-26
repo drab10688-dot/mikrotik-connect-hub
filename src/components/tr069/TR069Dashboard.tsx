@@ -536,28 +536,47 @@ export default function TR069Dashboard() {
                 const info = getDeviceInfo(device);
                 const deviceId = device._id;
                 const isExpanded = expandedDevice === deviceId;
+                const sig = signalOverview.find((s) => s.deviceId === deviceId);
 
                 return (
                   <Card key={deviceId} className="overflow-hidden">
                     <div
-                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="flex flex-wrap items-center justify-between gap-3 p-4 cursor-pointer bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10 transition-colors"
                       onClick={() => selectDevice(device)}
                     >
-                      <div className="flex items-center gap-4">
-                        <Router className="w-5 h-5 text-primary" />
-                        <div>
-                          <p className="font-medium">{info.manufacturer} {info.model}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{info.serial}</p>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="rounded-lg bg-primary/10 p-2">
+                          <Router className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{info.manufacturer} {info.model}</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">{info.serial}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right text-sm">
-                          <p className="text-muted-foreground">Firmware: {info.softwareVersion}</p>
-                          <p className="text-muted-foreground">Uptime: {info.uptime}</p>
-                        </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className={`text-xs ${getSignalColor(sig?.rxPower ?? null)}`}>
+                          <Signal className="w-3 h-3 mr-1" />
+                          Rx {sig?.rxPower !== null && sig?.rxPower !== undefined ? `${sig.rxPower} dBm` : "—"}
+                        </Badge>
+                        <Badge variant="outline" className={`text-xs ${getSignalColor(sig?.txPower ?? null)}`}>
+                          <Radio className="w-3 h-3 mr-1" />
+                          Tx {sig?.txPower !== null && sig?.txPower !== undefined ? `${sig.txPower} dBm` : "—"}
+                        </Badge>
+                        <Badge variant="secondary" className="text-xs">FW {info.softwareVersion}</Badge>
+                        <Badge variant="secondary" className="text-xs">Uptime {info.uptime}</Badge>
+                        <Button
+                          size="sm" variant="ghost" className="h-7 px-2"
+                          disabled={actionLoading === `signal-${deviceId}`}
+                          onClick={(e) => { e.stopPropagation(); refreshDeviceSignal(deviceId); }}
+                        >
+                          {actionLoading === `signal-${deviceId}`
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <RotateCcw className="w-3 h-3" />}
+                        </Button>
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </div>
                     </div>
+
 
                     {isExpanded && (
                       <div className="border-t p-4 space-y-4">
@@ -809,12 +828,8 @@ export default function TR069Dashboard() {
                                 onClick={() => { if (confirm("¿Reiniciar esta ONU?")) runAction(deviceId, "reboot"); }}>
                                 <Power className="w-3 h-3 mr-1" /> Reboot
                               </Button>
-                              <Button size="sm" variant="outline" className="text-destructive"
-                                disabled={!!actionLoading}
-                                onClick={() => { if (confirm("¿Factory reset? Se perderá toda la configuración.")) runAction(deviceId, "factory-reset"); }}>
-                                <AlertTriangle className="w-3 h-3 mr-1" /> Factory Reset
-                              </Button>
                               <Button size="sm" variant="outline"
+
                                 onClick={() => { setSelectedDevice(device); setShowFirmwareDialog(true); }}>
                                 <Upload className="w-3 h-3 mr-1" /> Firmware
                               </Button>
