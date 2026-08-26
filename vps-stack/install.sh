@@ -149,6 +149,18 @@ handle_existing_installation() {
 # Helper functions
 # ═══════════════════════════════════════════════════
 
+# Determina si se usa el GenieACS interno (perfil builtin-acs) o uno externo.
+# Si GENIEACS_NBI_URL apunta a una instancia externa (no al servicio interno),
+# no se arrancan omnisync-mongo/omnisync-genieacs para evitar conflictos de puerto.
+acs_profile_arg() {
+  local nbi="${GENIEACS_NBI_URL:-}"
+  if [ -n "$nbi" ] && [ "$nbi" != "http://genieacs:7557" ] && [ "$nbi" != "http://genieacs-nbi:7557" ]; then
+    echo ""
+  else
+    echo "--profile builtin-acs"
+  fi
+}
+
 generate_radius_configs() {
   local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
   local radius_secret="${RADIUS_SECRET:-testing123}"
