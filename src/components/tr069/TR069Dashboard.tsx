@@ -361,10 +361,24 @@ export default function TR069Dashboard() {
 
   const getDeviceInfo = (device: any) => {
     const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
+    // GenieACS siempre expone _deviceId (OUI-ProductClass-Serial) aunque el árbol
+    // completo no esté cargado todavía.
+    const meta = device?._deviceId || {};
+    const idParts = typeof device?._id === "string" ? device._id.split("-") : [];
+    const serialFromId = idParts.length >= 3 ? idParts.slice(2).join("-") : "";
+    const modelFromId = idParts.length >= 2 ? idParts[1] : "";
+
     return {
-      manufacturer: di?.Manufacturer?._value || "Desconocido",
-      model: di?.ModelName?._value || di?.ProductClass?._value || "-",
-      serial: di?.SerialNumber?._value || "-",
+      manufacturer:
+        di?.Manufacturer?._value || meta?._Manufacturer || meta?._OUI || "Desconocido",
+      model:
+        di?.ModelName?._value ||
+        di?.ProductClass?._value ||
+        meta?._ProductClass ||
+        modelFromId ||
+        "-",
+      serial:
+        di?.SerialNumber?._value || meta?._SerialNumber || serialFromId || "-",
       softwareVersion: di?.SoftwareVersion?._value || "-",
       uptime: di?.UpTime?._value ? formatUptime(di.UpTime._value) : "-",
     };
