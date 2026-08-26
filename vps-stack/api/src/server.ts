@@ -23,7 +23,7 @@ import { serviceOptionsRouter } from './routes/service-options';
 import { messagingRouter } from './routes/messaging';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
-// genieacs removed - replaced by CMS C-Data
+import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
@@ -78,7 +78,7 @@ app.use('/api/backups', authMiddleware, backupRouter);
 app.use('/api/auth/users', authMiddleware, usersRouter);
 app.use('/api/messaging', authMiddleware, messagingRouter);
 app.use('/api/onu', authMiddleware, onuRouter);
-// genieacs route removed - replaced by CMS C-Data
+app.use('/api/genieacs', authMiddleware, genieacsRouter);
 app.use('/api/vpn', authMiddleware, vpnRouter);
 app.use('/api/ubiquiti', authMiddleware, ubiquitiRouter);
 app.use('/api/antennas', authMiddleware, antennasRouter);
