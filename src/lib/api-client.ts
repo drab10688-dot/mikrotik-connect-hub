@@ -406,6 +406,21 @@ export const messagingApi = {
   sendWhatsapp: (data: any) => apiPost('/messaging/whatsapp/send', data),
 };
 
+// ─── Bot de Telegram para técnicos ────────────────────────
+export const techBotApi = {
+  listTechnicians: (mikrotikId: string) =>
+    apiGet<any>(`/telegram-bot/technicians?mikrotik_id=${mikrotikId}`),
+  addTechnician: (data: { mikrotik_id: string; chat_id: string; full_name: string }) =>
+    apiPost('/telegram-bot/technicians', data),
+  updateTechnician: (id: string, data: { is_active?: boolean; full_name?: string }) =>
+    apiPut(`/telegram-bot/technicians/${id}`, data),
+  deleteTechnician: (id: string) => apiDelete(`/telegram-bot/technicians/${id}`),
+  listProvisions: (mikrotikId: string) =>
+    apiGet<any>(`/telegram-bot/provisions?mikrotik_id=${mikrotikId}`),
+  setupWebhook: (mikrotikId: string, publicUrl: string) =>
+    apiPost('/telegram-bot/setup-webhook', { mikrotik_id: mikrotikId, public_url: publicUrl }),
+};
+
 // ─── Service Options API ──────────────────────────────────
 const serviceOptionsPrimaryBase = '/service-options';
 const serviceOptionsLegacyBase = '/clients/service-options';
