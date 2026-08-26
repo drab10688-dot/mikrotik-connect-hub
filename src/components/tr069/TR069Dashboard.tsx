@@ -127,6 +127,12 @@ export default function TR069Dashboard() {
         "_id",
         "_deviceId",
         "_lastInform",
+        "InternetGatewayDevice.DeviceInfo.Manufacturer",
+        "InternetGatewayDevice.DeviceInfo.ModelName",
+        "InternetGatewayDevice.DeviceInfo.ProductClass",
+        "InternetGatewayDevice.DeviceInfo.SerialNumber",
+        "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
+        "InternetGatewayDevice.DeviceInfo.UpTime",
       ].join(",");
       const [healthRes, devicesRes] = await Promise.all([
         api("/genieacs/health").catch(() => ({ success: false })),
@@ -222,15 +228,16 @@ export default function TR069Dashboard() {
 
   const loadMonitor = async (deviceId: string) => {
     setMonitorLoading(true);
+    setMonitor(null);
     try {
       const [monRes, trafficRes] = await Promise.all([
-        api(`/genieacs/devices/${encodeURIComponent(deviceId)}/monitor`),
+        api(`/genieacs/devices/${encodeURIComponent(deviceId)}/monitor`).catch(() => null),
         api(`/genieacs/devices/${encodeURIComponent(deviceId)}/traffic`).catch(() => ({ data: [] })),
       ]);
-      setMonitor(monRes.data);
-      setTraffic(trafficRes.data || []);
-    } catch (err: any) {
-      toast.error("Error cargando monitoreo: " + err.message);
+      // El monitoreo es opcional: si falla, el panel WiFi debe seguir usable.
+      const mon = monRes ? (monRes.data ?? monRes) : null;
+      setMonitor(mon && typeof mon === "object" ? mon : null);
+      setTraffic(Array.isArray(trafficRes) ? trafficRes : (trafficRes.data || []));
     } finally {
       setMonitorLoading(false);
     }
@@ -589,6 +596,10 @@ export default function TR069Dashboard() {
 
                     {isExpanded && (
                       <div className="border-t p-4 space-y-4">
+                        {/* WiFi (SSID/clave), radios y CATV — siempre disponible,
+                            aunque el monitoreo completo del ACS falle. */}
+                        <OnuRadiosPanel deviceId={deviceId} />
+
                         {monitorLoading ? (
                           <div className="flex items-center justify-center p-8">
                             <Loader2 className="w-6 h-6 animate-spin" />
@@ -669,10 +680,10 @@ export default function TR069Dashboard() {
                                   </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-3 pt-0">
-                                  <p className="text-xs text-muted-foreground mb-2">{monitor.wifiClients.length} clientes conectados</p>
-                                  {monitor.wifiClients.length > 0 ? (
+                                  <p className="text-xs text-muted-foreground mb-2">{(monitor.wifiClients || []).length} clientes conectados</p>
+                                  {(monitor.wifiClients || []).length > 0 ? (
                                     <div className="space-y-1 max-h-32 overflow-y-auto">
-                                      {monitor.wifiClients.map((c, i) => (
+                                      {(monitor.wifiClients || []).map((c, i) => (
                                         <div key={i} className="flex justify-between text-xs bg-muted/50 px-2 py-1 rounded">
                                           <span className="font-mono">{c.mac}</span>
                                           <span>{c.signal !== null ? `${c.signal} dBm` : ""}</span>
@@ -686,8 +697,8 @@ export default function TR069Dashboard() {
                               </Card>
                             </div>
 
-                            {/* Radios WiFi (2.4G / 5G) + CATV */}
-                            <OnuRadiosPanel deviceId={deviceId} />
+
+
 
 
 
@@ -737,7 +748,15 @@ export default function TR069Dashboard() {
                             </div>
                           </>
                         ) : (
-                          <p className="text-center text-muted-foreground py-4">Seleccione un dispositivo para ver su monitoreo</p>
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed p-3">
+                            <p className="text-xs text-muted-foreground">
+                              El monitoreo extendido (señal, WAN, tráfico) aún no está disponible para esta ONU.
+                              La configuración WiFi de arriba sí funciona.
+                            </p>
+                            <Button size="sm" variant="outline" onClick={() => loadMonitor(deviceId)}>
+                              <RotateCcw className="w-3 h-3 mr-1" /> Reintentar monitoreo
+                            </Button>
+                          </div>
                         )}
                       </div>
                     )}
