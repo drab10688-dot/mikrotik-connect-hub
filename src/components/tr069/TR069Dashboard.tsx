@@ -606,6 +606,11 @@ export default function TR069Dashboard() {
                               </Card>
                             </div>
 
+                            {/* Radios WiFi (2.4G / 5G) + CATV */}
+                            <OnuRadiosPanel deviceId={deviceId} />
+
+
+
                             {/* Traffic Stats */}
                             {traffic.length > 0 && (
                               <Card>
