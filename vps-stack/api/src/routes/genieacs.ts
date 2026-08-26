@@ -1321,7 +1321,7 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
 
     for (const onu of onuResult.rows) {
       try {
-        const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`));
+        const device = await fetchDevice(onu.acs_device_id);
         const igd = device?.InternetGatewayDevice || device?.Device || {};
 
         // Extract optical power (multi-vendor paths)
