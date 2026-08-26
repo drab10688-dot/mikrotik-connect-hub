@@ -97,22 +97,19 @@ function MikhmonPanel() {
   );
 }
 
-function CmscdataPanel() {
+function GenieacsPanel() {
   const [vpsHost, setVpsHost] = useState("");
-  const [cmsAvailable, setCmsAvailable] = useState<boolean | null>(null);
+  const [acsAvailable, setAcsAvailable] = useState<boolean | null>(null);
 
   useEffect(() => {
     const host = window.location.hostname;
     setVpsHost(host);
-    const url = `${window.location.protocol}//${host}/cms-cdata/`;
-    fetch(url, { mode: "no-cors" })
-      .then(() => setCmsAvailable(true))
-      .catch(() => setCmsAvailable(false));
+    fetch(`http://${host}:3001/`, { mode: "no-cors" })
+      .then(() => setAcsAvailable(true))
+      .catch(() => setAcsAvailable(false));
   }, []);
 
-  const cmsUrl = `${window.location.protocol}//${vpsHost}/cms-cdata/`;
-  // CMS C-Data en host expone HTTP plano en 18080 (evitar https://host:18080)
-  const cmsExternalUrl = `http://${vpsHost}:18080`;
+  const acsUrl = `http://${vpsHost}:3001`;
 
   return (
     <Card>
@@ -120,54 +117,53 @@ function CmscdataPanel() {
         <div>
           <CardTitle className="flex items-center gap-2">
             <Monitor className="h-5 w-5" />
-            CMS C-Data — Gestión OLT/ONU
+            GenieACS — Gestión ONU multi-marca (TR-069)
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestión centralizada de OLTs y ONUs C-Data, Huawei, ZTE. Configuración remota, monitoreo de señal óptica y aprovisionamiento.
+            Aprovisionamiento y configuración remota de ONUs Zyxel, V-SOL, Latic, Huawei, C-Data y cualquier CPE TR-069: WiFi, PPPoE, señal óptica y firmware.
           </p>
-          <FactoryCredentials user="admin" pass="admin" label="CMS C-Data" />
+          <FactoryCredentials user="admin" pass="admin" label="GenieACS UI" />
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={cmsAvailable ? "default" : "secondary"}>
-            {cmsAvailable === null ? "Verificando..." : cmsAvailable ? "Activo" : "No disponible"}
+          <Badge variant={acsAvailable ? "default" : "secondary"}>
+            {acsAvailable === null ? "Verificando..." : acsAvailable ? "Activo" : "No disponible"}
           </Badge>
-            <Button variant="outline" size="sm" asChild>
-              <a href={cmsExternalUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4 mr-1" />
-                Abrir host (HTTP)
-              </a>
-            </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href={acsUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1" />
+              Abrir GenieACS
+            </a>
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
-        {cmsAvailable === false ? (
+        {acsAvailable === false ? (
           <div className="text-center py-12 space-y-4">
             <Monitor className="h-12 w-12 mx-auto text-muted-foreground" />
             <div>
-              <p className="text-lg font-medium text-foreground">CMS C-Data no está activo</p>
-              <p className="text-muted-foreground text-sm mt-1">
-                Si no lo has instalado, ejecuta en tu VPS:
-              </p>
+              <p className="text-lg font-medium text-foreground">GenieACS no está activo</p>
+              <p className="text-muted-foreground text-sm mt-1">Levántalo en tu VPS con:</p>
               <code className="block mt-2 bg-muted px-3 py-2 rounded text-xs font-mono">
-                bash /opt/omnisync/install-cms.sh
+                cd /opt/omnisync &amp;&amp; docker compose up -d mongo genieacs
               </code>
               <p className="text-muted-foreground text-xs mt-2">
-                Si ya está instalado, verifica que el servicio esté corriendo: <code className="bg-muted px-1 rounded">ss -lntp | grep 18080</code>
+                Las ONUs deben apuntar su ACS URL a <code className="bg-muted px-1 rounded">http://{vpsHost}:7547</code>
               </p>
             </div>
           </div>
         ) : (
           <iframe
-            src={cmsUrl}
+            src={acsUrl}
             className="w-full border-0 rounded-lg"
             style={{ height: "75vh" }}
-            title="CMS C-Data"
+            title="GenieACS"
           />
         )}
       </CardContent>
     </Card>
   );
 }
+
 
 function UispPanel() {
   const [vpsHost, setVpsHost] = useState("");
@@ -256,7 +252,7 @@ export default function VpsServices() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Servicios VPS</h1>
           <p className="text-muted-foreground">
-            Gestión de servicios, VPN, CMS, Docker y publicidad.
+            Gestión de servicios, VPN, GenieACS, Docker y publicidad.
           </p>
         </div>
 
@@ -270,9 +266,9 @@ export default function VpsServices() {
               <Wifi className="h-4 w-4" />
               Mikhmon
             </TabsTrigger>
-            <TabsTrigger value="cms" className="gap-2">
+            <TabsTrigger value="acs" className="gap-2">
               <Monitor className="h-4 w-4" />
-              CMS C-Data
+              GenieACS
             </TabsTrigger>
             <TabsTrigger value="uisp" className="gap-2">
               <Radio className="h-4 w-4" />
@@ -306,8 +302,8 @@ export default function VpsServices() {
             <MikhmonPanel />
           </TabsContent>
 
-          <TabsContent value="cms">
-            <CmscdataPanel />
+          <TabsContent value="acs">
+            <GenieacsPanel />
           </TabsContent>
 
           <TabsContent value="uisp">

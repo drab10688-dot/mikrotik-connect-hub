@@ -13,8 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity, Upload, Send, Settings2 } from "lucide-react";
-// TR069Dashboard removed - replaced by CMS C-Data
 import SignalHistoryChart from "@/components/onu/SignalHistoryChart";
 import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 
@@ -296,11 +296,16 @@ export default function OnuManagement() {
               <FileText className="w-4 h-4 mr-2" />
               Plantillas ({templates.length})
             </TabsTrigger>
+            <TabsTrigger value="tr069">
+              <Wifi className="w-4 h-4 mr-2" />
+              TR-069 / ACS
+            </TabsTrigger>
             <TabsTrigger value="signal">
               <Activity className="w-4 h-4 mr-2" />
               Señal Óptica
             </TabsTrigger>
           </TabsList>
+
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
           <TabsContent value="devices" className="space-y-4">
@@ -618,10 +623,16 @@ export default function OnuManagement() {
 
           </TabsContent>
 
+          {/* ─── TR-069 Tab ───────────────────────────── */}
+          <TabsContent value="tr069">
+            <TR069Dashboard />
+          </TabsContent>
+
           {/* ─── Signal History Tab ───────────────────── */}
           <TabsContent value="signal">
             <SignalHistoryChart mikrotikId={mikrotikId} />
           </TabsContent>
+
         </Tabs>
 
         {/* ─── WiFi Change Dialog ─────────────────────── */}

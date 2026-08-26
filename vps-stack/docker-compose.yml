@@ -62,6 +62,7 @@ services:
       RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
       RADIUS_DB_NAME: radius
       RADIUS_PUBLIC_HOST: ${RADIUS_PUBLIC_HOST:-}
+      GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
     ports:
       - "3000:3000"
     volumes:
@@ -223,6 +224,48 @@ services:
     networks:
       - omnisync-net
 
+  # ============================================
+  # MongoDB - Base de datos para GenieACS (TR-069)
+  # ============================================
+  mongo:
+    image: mongo:6
+    container_name: omnisync-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - omnisync-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ============================================
+  # GenieACS - Servidor TR-069 multi-marca (ONUs)
+  # CWMP :7547 | NBI :7557 | FS :7567 | UI :3001
+  # ============================================
+  genieacs:
+    image: drumsergio/genieacs:latest
+    container_name: omnisync-genieacs
+    restart: unless-stopped
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo:27017/genieacs
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_JWT_SECRET:-changeme_genieacs_jwt_secret}
+      GENIEACS_CWMP_ACCESS_LOG_FILE: /dev/stdout
+      GENIEACS_NBI_ACCESS_LOG_FILE: /dev/stdout
+      GENIEACS_FS_ACCESS_LOG_FILE: /dev/stdout
+      GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
+      GENIEACS_EXT_DIR: /opt/genieacs/ext
+    ports:
+      - "7547:7547"   # CWMP (las ONUs se conectan aquí)
+      - "7567:7567"   # File Server (firmware/config)
+      - "3001:3000"   # UI GenieACS
+    depends_on:
+      - mongo
+    networks:
+      - omnisync-net
+
 volumes:
   postgres_data:
   mariadb_data:
@@ -233,6 +276,8 @@ volumes:
   nuxbill_themes:
   nuxbill_pages:
   wireguard_config:
+  mongo_data:
+
 
 networks:
   omnisync-net:

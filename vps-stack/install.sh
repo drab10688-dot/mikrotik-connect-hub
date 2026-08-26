@@ -410,9 +410,8 @@ is_truthy() {
 
 start_optional_services() {
   # Servicios opcionales:
-  # - CMS C-Data se instala/ejecuta en host con install-cms.sh
   # - Mikhmon y WireGuard se inician/detienen desde el panel de Servicios VPS
-  echo -e "${CYAN}Servicios opcionales: CMS (host), Mikhmon (Docker), WireGuard (Docker)${NC}"
+  echo -e "${CYAN}Servicios opcionales: Mikhmon (Docker), WireGuard (Docker)${NC}"
 }
 
 # Validate existing installation lifecycle actions (reinstall/update/uninstall)
@@ -506,25 +505,6 @@ MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
 NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
 RADIUS_SECRET=$(openssl rand -hex 16)
-CMS_AUTOSTART=0
-
-# ─── Preguntar si instalar CMS C-Data en el host ───
-echo ""
-echo -e "${YELLOW}¿Deseas instalar CMS C-Data (gestión OLT/ONU) en este servidor?${NC}"
-echo -e "  Se instala directamente en el host (no en Docker de OmniSync)"
-read -p "Instalar CMS C-Data? [y/n] (n): " INSTALL_CMS < /dev/tty
-INSTALL_CMS=${INSTALL_CMS:-n}
-CMS_TENANT_TYPE="isp"
-
-if is_truthy "$INSTALL_CMS"; then
-  read -p "Tipo de tenant CMS [isp/multi] (isp): " CMS_TENANT_TYPE < /dev/tty
-  CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-isp}
-
-  if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
-    echo -e "${RED}Opción inválida para CMS. Usa 'multi' o 'isp'${NC}"
-    exit 1
-  fi
-fi
 echo ""
 echo -e "${YELLOW}Configuración MikroTik (opcional, se puede configurar desde el panel):${NC}"
 read -p "Host/IP del MikroTik (Enter para omitir): " MIKROTIK_HOST < /dev/tty
@@ -563,7 +543,7 @@ MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
 NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
 NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
-CMS_AUTOSTART=${CMS_AUTOSTART}
+GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 TZ=America/Bogota
 EOF
 
@@ -600,9 +580,11 @@ if command -v ufw &> /dev/null; then
   ufw allow 443/tcp >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
-  ufw allow 18080/tcp >/dev/null 2>&1  # CMS C-Data UI
+  ufw allow 7547/tcp >/dev/null 2>&1   # GenieACS CWMP (TR-069)
+  ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
+  ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
   ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 18080, 51820/udp) ✓${NC}"
+  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547, 7567, 3001, 51820/udp) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
@@ -614,14 +596,14 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
 # Limpiar contenedores huérfanos o en conflicto antes de levantar
 echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
 docker compose down --remove-orphans 2>/dev/null || true
-for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-cms-cdata omnisync-wireguard; do
+for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-genieacs omnisync-mongo omnisync-wireguard; do
   docker rm -f "$cname" 2>/dev/null || true
 done
 echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
-# Build only custom images (api + phpnuxbill) — CMS C-Data se instala aparte en el host
+# Build only custom images (api + phpnuxbill)
 docker compose build --no-cache api phpnuxbill
 
 # Start core services (optional services use restart: "no" and are managed from UI)
@@ -680,20 +662,6 @@ sleep 5
 start_optional_services
 sleep 5
 
-# ─── Instalar CMS C-Data en el host si el usuario lo solicitó ───
-if is_truthy "$INSTALL_CMS"; then
-  echo ""
-  echo -e "${CYAN}═══ Instalando CMS C-Data en el host ═══${NC}"
-  if [ -f "$INSTALL_DIR/install-cms.sh" ]; then
-    if ! CMS_SKIP_TENANT_PROMPT=1 CMS_TENANT_TYPE_DEFAULT="$CMS_TENANT_TYPE" CMS_INSTALL_TIMEOUT=1200 bash "$INSTALL_DIR/install-cms.sh"; then
-      echo -e "${YELLOW}⚠ La instalación de CMS no finalizó correctamente, OmniSync seguirá activo.${NC}"
-      echo -e "${YELLOW}  Reintentar manualmente: CMS_TENANT_TYPE_DEFAULT=$CMS_TENANT_TYPE bash $INSTALL_DIR/install-cms.sh${NC}"
-    fi
-  else
-    echo -e "${RED}Script install-cms.sh no encontrado en $INSTALL_DIR${NC}"
-    echo -e "${YELLOW}Puedes instalarlo después con: bash $INSTALL_DIR/install-cms.sh${NC}"
-  fi
-fi
 
 # ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
 setup_wireguard_networking() {
@@ -781,10 +749,10 @@ echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC
 # Check optional services (informational only)
 echo ""
 echo -e "${CYAN}Servicios opcionales:${NC}"
-if ss -lntp | grep -q ":18080"; then
-  echo -e "  ${GREEN}✓ CMS C-Data (ONUs) — activo en puerto 18080${NC}"
+if docker ps --format '{{.Names}}' | grep -q '^omnisync-genieacs$'; then
+  echo -e "  ${GREEN}✓ GenieACS (ONUs TR-069) — UI :3001 | CWMP :7547${NC}"
 else
-  echo -e "  ${YELLOW}ℹ CMS C-Data (ONUs) — no instalado. Ejecutar: bash $INSTALL_DIR/install-cms.sh${NC}"
+  echo -e "  ${YELLOW}ℹ GenieACS — iniciar con: docker compose up -d mongo genieacs${NC}"
 fi
 echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
 echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
@@ -874,7 +842,7 @@ echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
 echo "║                                                          ║"
 echo "║  📡 SERVICIOS OPCIONALES                                  ║"
 echo "║  ─────────────────────────────────────────────           ║"
-echo "║  CMS C-Data (host): bash /opt/omnisync/install-cms.sh   ║"
+echo "║  GenieACS (ONUs):  http://$VPS_IP:3001 | ACS :7547      "
 echo "║  Mikhmon y WireGuard: Servicios VPS → Docker            ║"
 echo "║                                                          ║"
 echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
