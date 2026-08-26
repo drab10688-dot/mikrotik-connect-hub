@@ -13,9 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { TR069Dashboard } from "@/components/tr069/TR069Dashboard";
+import TR069Dashboard from "@/components/tr069/TR069Dashboard";
 import { Plus, Wifi, Trash2, Edit, FileText, Router, Eye, EyeOff, Copy, RotateCcw, Signal, Power, Loader2, Link, LinkIcon, Unlink, Download, Activity, Upload, Send, Settings2 } from "lucide-react";
-// TR069Dashboard removed - replaced by CMS C-Data
 import SignalHistoryChart from "@/components/onu/SignalHistoryChart";
 import { useValidatedDevice } from "@/hooks/useValidatedDevice";
 
