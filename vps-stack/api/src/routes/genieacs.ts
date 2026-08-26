@@ -1571,3 +1571,221 @@ genieacsRouter.delete('/signal-history/cleanup', async (req: AuthRequest, res: R
     res.status(500).json({ error: err.message });
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// ONU MONITOR AVANZADO: radios WiFi (dual band), CATV, uptime
+// ═══════════════════════════════════════════════════════════
+
+const WLAN_ROOTS = [
+  'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
+  'Device.WiFi.SSID',
+];
+
+const CATV_PATHS = [
+  'InternetGatewayDevice.X_CATV.Enable',
+  'InternetGatewayDevice.Services.X_CATV.Enable',
+  'InternetGatewayDevice.X_HW_CATV.Enable',
+  'InternetGatewayDevice.X_HW_CATVConfig.Enable',
+  'InternetGatewayDevice.WANDevice.1.X_CATV_Config.Enable',
+  'InternetGatewayDevice.X_ZTE-COM_CATV.Enable',
+  'InternetGatewayDevice.X_CT-COM_CATV.Enable',
+  'InternetGatewayDevice.X_ZYXEL_CATV.Enable',
+  'Device.Optical.Interface.1.X_CATV_Enable',
+];
+
+function nodeAt(device: any, path: string): any {
+  const parts = path.split('.');
+  let cur = device;
+  for (const p of parts) {
+    if (!cur || typeof cur !== 'object') return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+function val(node: any): any {
+  return node?._value !== undefined ? node._value : undefined;
+}
+
+// Detecta la banda de una radio a partir del canal / estándar / nombre
+function detectBand(wc: any): '2.4g' | '5g' | 'unknown' {
+  const channel = Number(val(wc?.Channel));
+  const std = String(val(wc?.Standard) || val(wc?.X_Standard) || '').toLowerCase();
+  const ssid = String(val(wc?.SSID) || '').toLowerCase();
+  const freq = String(val(wc?.X_ZYXEL_Band) || val(wc?.OperatingFrequencyBand) || val(wc?.X_HW_Band) || '').toLowerCase();
+  if (freq.includes('5')) return '5g';
+  if (freq.includes('2.4') || freq.includes('2_4')) return '2.4g';
+  if (!Number.isNaN(channel) && channel > 0) return channel > 14 ? '5g' : '2.4g';
+  if (std.includes('ac') || std.includes('ax')) return '5g';
+  if (std.includes('b') || std.includes('g') || std.includes('n')) return '2.4g';
+  if (ssid.includes('5g')) return '5g';
+  return 'unknown';
+}
+
+function collectWlans(device: any) {
+  const radios: any[] = [];
+  for (const root of WLAN_ROOTS) {
+    const container = nodeAt(device, root);
+    if (!container || typeof container !== 'object') continue;
+    for (const key of Object.keys(container)) {
+      if (key.startsWith('_')) continue;
+      const wc = container[key];
+      if (!wc || typeof wc !== 'object') continue;
+      const ssid = val(wc.SSID);
+      if (ssid === undefined && val(wc.Enable) === undefined) continue;
+      const clients = wc.AssociatedDevice
+        ? Object.keys(wc.AssociatedDevice).filter(k => !k.startsWith('_')).length
+        : 0;
+      radios.push({
+        root,
+        index: key,
+        path: `${root}.${key}`,
+        band: detectBand(wc),
+        ssid: ssid ?? null,
+        enabled: val(wc.Enable) ?? null,
+        channel: val(wc.Channel) ?? null,
+        autoChannel: val(wc.AutoChannelEnable) ?? null,
+        bandwidth: val(wc.OperatingChannelBandwidth) ?? null,
+        standard: val(wc.Standard) ?? null,
+        hidden: val(wc.SSIDAdvertisementEnabled) !== undefined ? !val(wc.SSIDAdvertisementEnabled) : null,
+        password: val(wc.KeyPassphrase) ?? val(wc?.PreSharedKey?.['1']?.KeyPassphrase) ?? null,
+        clients,
+      });
+    }
+  }
+  return radios;
+}
+
+function findCatv(device: any) {
+  for (const p of CATV_PATHS) {
+    const v = getParam(device, p);
+    if (v !== undefined) return { path: p, enabled: v === true || v === 'true' || v === 1 || v === '1' };
+  }
+  return { path: null as string | null, enabled: null as boolean | null };
+}
+
+// ─── Estado completo de la ONU (radios + CATV + uptime + señal) ──
+genieacsRouter.get('/devices/:deviceId/onu-status', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+    const igd = device?.InternetGatewayDevice || {};
+    const di = igd?.DeviceInfo || device?.Device?.DeviceInfo || {};
+    const catv = findCatv(device);
+
+    res.json({
+      success: true,
+      data: {
+        deviceId,
+        manufacturer: val(di.Manufacturer) || 'Desconocido',
+        model: val(di.ModelName) || val(di.ProductClass) || '-',
+        serial: val(di.SerialNumber) || '-',
+        uptime: val(di.UpTime) ?? null,
+        softwareVersion: val(di.SoftwareVersion) || '-',
+        lastInform: device?._lastInform || null,
+        radios: collectWlans(device),
+        catv,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Editar una radio concreta (2.4G / 5G / cualquiera) ──
+genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { path, ssid, password, enable, channel, bandwidth, hidden } = req.body;
+
+    if (!path || typeof path !== 'string' || !/^(InternetGatewayDevice|Device)\./.test(path)) {
+      return res.status(400).json({ error: 'path de la radio inválido' });
+    }
+
+    const parameterValues: [string, any, string][] = [];
+    if (ssid) parameterValues.push([`${path}.SSID`, ssid, 'xsd:string']);
+    if (password) {
+      parameterValues.push(
+        [`${path}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'],
+        [`${path}.PreSharedKey.1.KeyPassphrase`, password, 'xsd:string'],
+        [`${path}.KeyPassphrase`, password, 'xsd:string'],
+      );
+    }
+    if (enable !== undefined) parameterValues.push([`${path}.Enable`, !!enable, 'xsd:boolean']);
+    if (hidden !== undefined) parameterValues.push([`${path}.SSIDAdvertisementEnabled`, !hidden, 'xsd:boolean']);
+    if (channel !== undefined && channel !== null && channel !== '') {
+      parameterValues.push([`${path}.AutoChannelEnable`, false, 'xsd:boolean']);
+      parameterValues.push([`${path}.Channel`, Number(channel), 'xsd:unsignedInt']);
+    }
+    if (bandwidth) parameterValues.push([`${path}.OperatingChannelBandwidth`, bandwidth, 'xsd:string']);
+
+    if (parameterValues.length === 0) {
+      return res.status(400).json({ error: 'No hay cambios que enviar' });
+    }
+
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      { method: 'POST', body: JSON.stringify({ name: 'setParameterValues', parameterValues }) }
+    );
+    res.json({ success: true, message: 'Configuración WiFi enviada a la ONU', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Activar / desactivar CATV ──────────────────────────
+genieacsRouter.post('/devices/:deviceId/catv', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const { enable, path } = req.body;
+
+    let targetPath = path as string | undefined;
+    if (!targetPath) {
+      const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+      targetPath = findCatv(device).path || undefined;
+    }
+    if (!targetPath) {
+      return res.status(400).json({
+        error: 'Esta ONU no expone un parámetro CATV por TR-069. Refresque los parámetros o el modelo no lo soporta.',
+      });
+    }
+
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'setParameterValues',
+          parameterValues: [[targetPath, !!enable, 'xsd:boolean']],
+        }),
+      }
+    );
+    res.json({ success: true, message: `CATV ${enable ? 'activado' : 'desactivado'}`, data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Refrescar árbol WiFi / CATV / DeviceInfo desde la ONU ──
+genieacsRouter.post('/devices/:deviceId/refresh-onu', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const tasks = [
+      { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
+      { name: 'refreshObject', objectName: 'InternetGatewayDevice.DeviceInfo' },
+      { name: 'refreshObject', objectName: 'InternetGatewayDevice.WANDevice.1' },
+    ];
+    for (const t of tasks) {
+      await genieFetch(
+        `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+        { method: 'POST', body: JSON.stringify(t) }
+      ).catch(() => {});
+    }
+    res.json({
+      success: true,
+      message: 'Lectura solicitada. Si la ONU está tras NAT se aplicará en el próximo Inform.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
