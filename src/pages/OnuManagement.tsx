@@ -283,7 +283,7 @@ export default function OnuManagement() {
           </div>
         )}
 
-        <Tabs defaultValue={noMikrotik ? "tr069" : "devices"} className="space-y-4">
+        <Tabs defaultValue="tr069" className="w-full min-w-0 space-y-4">
           <TabsList>
             <TabsTrigger value="devices">
               <Router className="w-4 h-4 mr-2" />
