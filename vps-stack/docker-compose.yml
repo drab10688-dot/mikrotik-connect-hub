@@ -250,6 +250,7 @@ services:
     image: drumsergio/genieacs:latest
     container_name: omnisync-genieacs
     restart: unless-stopped
+    profiles: ["builtin-acs"]
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo:27017/genieacs
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_JWT_SECRET:-changeme_genieacs_jwt_secret}
