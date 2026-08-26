@@ -18,7 +18,7 @@ import {
   Wifi, RotateCcw, Signal, Power, Loader2, Router, Activity,
   Thermometer, Cpu, Clock, Globe, Upload, Download, Terminal,
   AlertTriangle, Zap, Settings, Eye, ChevronDown, ChevronUp, Trash2,
-  Radio, Network, HardDrive
+  Radio, Network, HardDrive, KeyRound
 } from "lucide-react";
 
 interface DeviceMonitor {
@@ -540,10 +540,7 @@ export default function TR069Dashboard() {
 
                 return (
                   <Card key={deviceId} className="overflow-hidden">
-                    <div
-                      className="flex flex-wrap items-center justify-between gap-3 p-4 cursor-pointer bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10 transition-colors"
-                      onClick={() => selectDevice(device)}
-                    >
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gradient-to-r from-primary/5 to-transparent">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="rounded-lg bg-primary/10 p-2">
                           <Router className="w-5 h-5 text-primary" />
@@ -565,7 +562,14 @@ export default function TR069Dashboard() {
                         <Badge variant="secondary" className="text-xs">FW {info.softwareVersion}</Badge>
                         <Badge variant="secondary" className="text-xs">Uptime {info.uptime}</Badge>
                         <Button
-                          size="sm" variant="ghost" className="h-7 px-2"
+                          size="sm" variant="outline" className="h-8"
+                          onClick={() => selectDevice(device)}
+                        >
+                          <KeyRound className="w-3 h-3 mr-1" />
+                          {isExpanded ? "Ocultar credenciales" : "Ver WiFi y credenciales"}
+                        </Button>
+                        <Button
+                          size="sm" variant="ghost" className="h-8 px-2"
                           disabled={actionLoading === `signal-${deviceId}`}
                           onClick={(e) => { e.stopPropagation(); refreshDeviceSignal(deviceId); }}
                         >
@@ -573,7 +577,9 @@ export default function TR069Dashboard() {
                             ? <Loader2 className="w-3 h-3 animate-spin" />
                             : <RotateCcw className="w-3 h-3" />}
                         </Button>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => selectDevice(device)} title={isExpanded ? "Contraer" : "Desplegar ONU"}>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
                       </div>
                     </div>
 

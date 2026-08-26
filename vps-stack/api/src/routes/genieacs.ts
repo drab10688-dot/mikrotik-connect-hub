@@ -1662,7 +1662,11 @@ function collectWlans(device: any) {
         bandwidth: val(wc.OperatingChannelBandwidth) ?? null,
         standard: val(wc.Standard) ?? null,
         hidden: val(wc.SSIDAdvertisementEnabled) !== undefined ? !val(wc.SSIDAdvertisementEnabled) : null,
-        password: val(wc.KeyPassphrase) ?? val(wc?.PreSharedKey?.['1']?.KeyPassphrase) ?? null,
+        password: val(wc.KeyPassphrase)
+          ?? val(wc?.PreSharedKey?.['1']?.PreSharedKey)
+          ?? val(wc?.PreSharedKey?.['1']?.KeyPassphrase)
+          ?? val(wc?.Security?.KeyPassphrase)
+          ?? null,
         clients,
       });
     }

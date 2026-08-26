@@ -104,6 +104,7 @@ export default function OnuManagement() {
   const [uploadForm, setUploadForm] = useState({ fileName: "", oui: "", productClass: "", version: "", content: "" });
   const [uploadingFile, setUploadingFile] = useState(false);
   const [pushingConfig, setPushingConfig] = useState(false);
+  const [activeTab, setActiveTab] = useState("tr069");
 
   // Form state
   const [form, setForm] = useState({
@@ -283,25 +284,32 @@ export default function OnuManagement() {
           </div>
         )}
 
-        <Tabs defaultValue="tr069" className="w-full min-w-0 space-y-4">
-          <TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full min-w-0 space-y-4">
+          <div className="w-full overflow-x-auto pb-1">
+          <TabsList className="min-w-max">
+            <TabsTrigger value="tr069">
+              <Wifi className="w-4 h-4 mr-2" />
+              ONUs conectadas
+            </TabsTrigger>
             <TabsTrigger value="devices">
               <Router className="w-4 h-4 mr-2" />
-              ONUs ({onus.length})
+              Registro local ({onus.length})
             </TabsTrigger>
             <TabsTrigger value="templates">
               <FileText className="w-4 h-4 mr-2" />
               Plantillas ({templates.length})
-            </TabsTrigger>
-            <TabsTrigger value="tr069">
-              <Wifi className="w-4 h-4 mr-2" />
-              TR-069 / ACS
             </TabsTrigger>
             <TabsTrigger value="signal">
               <Activity className="w-4 h-4 mr-2" />
               Señal Óptica
             </TabsTrigger>
           </TabsList>
+          </div>
+
+          {/* ─── ONUs conectadas automáticamente a GenieACS ─── */}
+          <TabsContent value="tr069">
+            <TR069Dashboard />
+          </TabsContent>
 
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
@@ -618,11 +626,6 @@ export default function OnuManagement() {
               </div>
             )}
 
-          </TabsContent>
-
-          {/* ─── TR-069 Tab ───────────────────────────── */}
-          <TabsContent value="tr069">
-            <TR069Dashboard />
           </TabsContent>
 
           {/* ─── Signal History Tab ───────────────────── */}
