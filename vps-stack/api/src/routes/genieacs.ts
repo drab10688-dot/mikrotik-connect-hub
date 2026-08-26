@@ -360,10 +360,13 @@ genieacsRouter.post('/devices/:deviceId/refresh', async (req: AuthRequest, res: 
   try {
     const { deviceId } = req.params;
     const { parameterPath } = req.body;
+    // refreshObject evita faults "Invalid parameter path" en ONUs que no exponen
+    // todo el árbol (getParameterValues sobre un nodo parcial suele fallar).
     const task = {
-      name: 'getParameterValues',
-      parameterNames: [parameterPath || 'InternetGatewayDevice'],
+      name: 'refreshObject',
+      objectName: parameterPath || 'InternetGatewayDevice',
     };
+
     const result = await genieFetch(
       `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
       { method: 'POST', body: JSON.stringify(task) }
