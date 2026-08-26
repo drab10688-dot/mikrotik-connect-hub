@@ -589,6 +589,10 @@ export default function TR069Dashboard() {
 
                     {isExpanded && (
                       <div className="border-t p-4 space-y-4">
+                        {/* WiFi (SSID/clave), radios y CATV — siempre disponible,
+                            aunque el monitoreo completo del ACS falle. */}
+                        <OnuRadiosPanel deviceId={deviceId} />
+
                         {monitorLoading ? (
                           <div className="flex items-center justify-center p-8">
                             <Loader2 className="w-6 h-6 animate-spin" />
