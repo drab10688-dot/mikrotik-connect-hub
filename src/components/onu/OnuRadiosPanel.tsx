@@ -178,10 +178,24 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
       <CardContent className="p-3 space-y-3">
         {loading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" /></div>
+        ) : error ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-2">
+            <p className="text-xs text-destructive">{error}</p>
+            <Button size="sm" variant="outline" onClick={load}>
+              <RotateCcw className="w-3 h-3 mr-1" /> Reintentar
+            </Button>
+          </div>
         ) : !status || status.radios.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            No se detectaron radios WiFi. Pulse "Leer de la ONU" y espere el próximo Inform.
-          </p>
+          <div className="rounded-md border border-dashed p-3 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              No se detectaron radios WiFi en el árbol TR-069 de esta ONU.
+              Pulse "Leer de la ONU" y espere unos segundos (o el próximo Inform periódico).
+            </p>
+            <Button size="sm" variant="outline" onClick={refreshFromOnu} disabled={busy === "refresh"}>
+              {busy === "refresh" ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RotateCcw className="w-3 h-3 mr-1" />}
+              Leer de la ONU ahora
+            </Button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {status.radios.map((radio) => {
