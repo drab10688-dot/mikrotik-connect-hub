@@ -62,6 +62,7 @@ services:
       RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
       RADIUS_DB_NAME: radius
       RADIUS_PUBLIC_HOST: ${RADIUS_PUBLIC_HOST:-}
+      GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
     ports:
       - "3000:3000"
     volumes:
