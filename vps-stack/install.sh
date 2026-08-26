@@ -123,7 +123,8 @@ handle_existing_installation() {
         generate_nuxbill_sql
 
         docker compose build --no-cache api phpnuxbill
-        docker compose up -d --build $(acs_profile_arg)
+        setup_acs_profile
+        docker compose up -d --build
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
@@ -159,12 +160,14 @@ handle_existing_installation() {
 # Determina si se usa el GenieACS interno (perfil builtin-acs) o uno externo.
 # Si GENIEACS_NBI_URL apunta a una instancia externa (no al servicio interno),
 # no se arrancan omnisync-mongo/omnisync-genieacs para evitar conflictos de puerto.
-acs_profile_arg() {
+# Usa COMPOSE_PROFILES (compatible con todas las versiones de compose v2);
+# el flag --profile no existe en versiones antiguas del plugin.
+setup_acs_profile() {
   local nbi="${GENIEACS_NBI_URL:-}"
   if [ -n "$nbi" ] && [ "$nbi" != "http://genieacs:7557" ] && [ "$nbi" != "http://genieacs-nbi:7557" ]; then
-    echo ""
+    unset COMPOSE_PROFILES
   else
-    echo "--profile builtin-acs"
+    export COMPOSE_PROFILES=builtin-acs
   fi
 }
 
@@ -664,7 +667,8 @@ docker compose build --no-cache api phpnuxbill
 # Start core services (optional services use restart: "no" and are managed from UI)
 # GenieACS interno solo se arranca si no hay un ACS externo configurado
 source "$INSTALL_DIR/.env" 2>/dev/null || true
-docker compose up -d $(acs_profile_arg) 2>&1 | tail -5
+setup_acs_profile
+docker compose up -d 2>&1 | tail -5
 
 # Wait for services to stabilize
 echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
