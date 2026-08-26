@@ -260,9 +260,11 @@ services:
       GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_EXT_DIR: /opt/genieacs/ext
     ports:
-      - "7547:7547"   # CWMP (las ONUs se conectan aquí)
-      - "7567:7567"   # File Server (firmware/config)
-      - "3001:3000"   # UI GenieACS
+      - "7547:7547"          # CWMP (las ONUs se conectan aquí)
+      - "7567:7567"          # File Server (firmware/config)
+      - "127.0.0.1:7557:7557" # NBI (API interna, solo local: onu-ctl.sh)
+      - "3001:3000"          # UI GenieACS
+
     depends_on:
       - mongo
     networks:
