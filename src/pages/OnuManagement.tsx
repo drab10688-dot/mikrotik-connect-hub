@@ -264,16 +264,7 @@ export default function OnuManagement() {
     );
   }
 
-  if (!hasValidDevice || !mikrotikId) {
-    return (
-      <div className="flex h-screen bg-background">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-muted-foreground">Seleccione un dispositivo MikroTik primero</p>
-        </div>
-      </div>
-    );
-  }
+  const noMikrotik = !hasValidDevice || !mikrotikId;
 
   return (
     <div className="flex h-screen w-full bg-background">
@@ -286,7 +277,13 @@ export default function OnuManagement() {
           </div>
         </div>
 
-        <Tabs defaultValue="devices" className="space-y-4">
+        {noMikrotik && (
+          <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+            No hay un dispositivo MikroTik seleccionado. Las pestañas <strong>ONUs</strong>, <strong>Plantillas</strong> y <strong>Señal Óptica</strong> requieren un MikroTik, pero la pestaña <strong>TR-069 / ACS</strong> funciona con GenieACS sin MikroTik.
+          </div>
+        )}
+
+        <Tabs defaultValue={noMikrotik ? "tr069" : "devices"} className="space-y-4">
           <TabsList>
             <TabsTrigger value="devices">
               <Router className="w-4 h-4 mr-2" />
