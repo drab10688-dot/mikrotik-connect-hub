@@ -785,7 +785,7 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
 genieacsRouter.get('/devices/:deviceId/traffic', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
 
     const igd = device?.InternetGatewayDevice || device?.Device || {};
     const wanStats = igd?.WANDevice?.['1']?.WANCommonInterfaceConfig || {};
@@ -1248,7 +1248,7 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
 
     for (const onu of onuResult.rows) {
       try {
-        const device = await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`);
+        const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`));
         const igd = device?.InternetGatewayDevice || device?.Device || {};
 
         // Extract optical power (multi-vendor paths)
@@ -1690,7 +1690,7 @@ function findCatv(device: any) {
 genieacsRouter.get('/devices/:deviceId/onu-status', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+    const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
     const igd = device?.InternetGatewayDevice || {};
     const di = igd?.DeviceInfo || device?.Device?.DeviceInfo || {};
     const catv = findCatv(device);
@@ -1763,7 +1763,7 @@ genieacsRouter.post('/devices/:deviceId/catv', async (req: AuthRequest, res: Res
 
     let targetPath = path as string | undefined;
     if (!targetPath) {
-      const device = await genieFetch(`/devices/${encodeURIComponent(deviceId)}`);
+      const device = asDevice(await genieFetch(`/devices/${encodeURIComponent(deviceId)}`));
       targetPath = findCatv(device).path || undefined;
     }
     if (!targetPath) {
