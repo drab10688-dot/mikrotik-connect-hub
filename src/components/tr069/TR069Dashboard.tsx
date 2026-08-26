@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
+
 import {
   Wifi, RotateCcw, Signal, Power, Loader2, Router, Activity,
   Thermometer, Cpu, Clock, Globe, Upload, Download, Terminal,
