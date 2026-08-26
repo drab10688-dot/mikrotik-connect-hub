@@ -41,7 +41,7 @@ function getParam(device: any, path: string): any {
 // ─── Health check ─────────────────────────────────────────
 genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
   try {
-    await genieFetch('/devices/?projection=DeviceID&limit=1');
+    await genieFetch('/devices/?projection=_id&limit=1');
     res.json({ success: true, status: 'online', message: 'GenieACS está funcionando' });
   } catch (err: any) {
     res.json({ success: false, status: 'offline', message: err.message });
@@ -52,7 +52,7 @@ genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
 genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
     const query = (req.query.query as string) || '';
-    const projection = (req.query.projection as string) || '';
+    const projection = (req.query.projection as string) || '_id,_deviceId,_lastInform,InternetGatewayDevice.DeviceInfo,Device.DeviceInfo';
     const params: string[] = [];
     // Una proyección vacía hace que el NBI devuelva error/lista vacía: se omite.
     if (projection) params.push(`projection=${encodeURIComponent(projection)}`);
@@ -63,7 +63,7 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
       data = await genieFetch(url);
     } catch {
       // Fallback: al menos devolver identificadores e info básica
-      data = await genieFetch('/devices/?projection=_id,_lastInform,InternetGatewayDevice.DeviceInfo,Device.DeviceInfo');
+       data = await genieFetch('/devices/?projection=_id,_deviceId,_lastInform,InternetGatewayDevice.DeviceInfo,Device.DeviceInfo');
     }
     res.json({ success: true, data: Array.isArray(data) ? data : [] });
   } catch (err: any) {
@@ -705,7 +705,7 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
   try {
-    const devices = await genieFetch('/devices/?projection=InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,_lastInform');
+    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,_lastInform');
 
     const overview = (devices || []).map((device: any) => {
       const igd = device?.InternetGatewayDevice || device?.Device || {};
@@ -754,11 +754,16 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
       const rxNorm = normalizePower(rxPower);
       const txNorm = normalizePower(txPower);
 
+      const idParts = String(device?._id || '').split('-');
+      const serialFromId = idParts.length >= 3 ? idParts.slice(2).join('-') : null;
+      const modelFromId = idParts.length >= 3 ? idParts[1] : null;
+      const metadata = device?._deviceId || {};
+
       return {
         deviceId: device._id,
-        manufacturer: di?.Manufacturer?._value || 'Desconocido',
-        model: di?.ModelName?._value || di?.ProductClass?._value || '-',
-        serial: di?.SerialNumber?._value || '-',
+        manufacturer: di?.Manufacturer?._value || metadata?._Manufacturer || idParts[0] || 'Desconocido',
+        model: di?.ModelName?._value || di?.ProductClass?._value || metadata?._ProductClass || modelFromId || '-',
+        serial: di?.SerialNumber?._value || metadata?._SerialNumber || serialFromId || '-',
         rxPower: rxNorm,
         txPower: txNorm,
         quality: quality(rxNorm),
