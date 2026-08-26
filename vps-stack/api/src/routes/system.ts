@@ -204,7 +204,8 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
       'omnisync-mariadb': 'mariadb',
       phpnuxbill: 'phpnuxbill',
       'omnisync-phpnuxbill': 'phpnuxbill',
-      'omnisync-cms-cdata': 'cms-cdata',
+      'omnisync-genieacs': 'genieacs',
+      'omnisync-mongo': 'mongo',
       'omnisync-mikhmon': 'mikhmon',
       'omnisync-wireguard': 'wireguard',
     };
