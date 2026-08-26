@@ -180,10 +180,11 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
             {status.radios.map((radio) => {
               const form = forms[radio.path] || { ssid: "", password: "", channel: "" };
               return (
-                <Card key={radio.path} className="bg-muted/30">
-                  <CardHeader className="p-3 pb-1">
+                <Card key={radio.path} className="bg-muted/30 overflow-hidden">
+                  <CardHeader className={`p-3 pb-2 ${radio.band === "5g" ? "bg-gradient-to-r from-chart-4/15 to-transparent" : "bg-gradient-to-r from-primary/10 to-transparent"}`}>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-xs flex items-center gap-2">
+                        <Wifi className={`w-4 h-4 ${radio.band === "5g" ? "text-chart-4" : "text-primary"}`} />
                         {bandLabel[radio.band]}
                         <Badge variant="secondary" className="text-[10px]">#{radio.index}</Badge>
                         {radio.clients > 0 && (
@@ -199,7 +200,20 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                       />
                     </div>
                   </CardHeader>
-                  <CardContent className="p-3 pt-1 space-y-2">
+                  <CardContent className="p-3 pt-2 space-y-2">
+                    <div className="rounded-md border bg-background/60 p-2 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Nombre WiFi</span>
+                        <span className="text-xs font-semibold truncate">{radio.ssid || "—"}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Contraseña</span>
+                        <span className="text-xs font-mono truncate">
+                          {radio.password ? (showPass[radio.path] ? radio.password : "••••••••") : "—"}
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="space-y-1">
                       <Label className="text-xs">SSID</Label>
                       <Input
