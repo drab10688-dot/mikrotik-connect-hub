@@ -18,7 +18,7 @@ import {
   Wifi, RotateCcw, Signal, Power, Loader2, Router, Activity,
   Thermometer, Cpu, Clock, Globe, Upload, Download, Terminal,
   AlertTriangle, Zap, Settings, Eye, ChevronDown, ChevronUp, Trash2,
-  Radio, Network, HardDrive
+  Radio, Network, HardDrive, KeyRound
 } from "lucide-react";
 
 interface DeviceMonitor {
@@ -127,8 +127,6 @@ export default function TR069Dashboard() {
         "_id",
         "_deviceId",
         "_lastInform",
-        "InternetGatewayDevice.DeviceInfo",
-        "Device.DeviceInfo",
       ].join(",");
       const [healthRes, devicesRes] = await Promise.all([
         api("/genieacs/health").catch(() => ({ success: false })),
@@ -137,14 +135,14 @@ export default function TR069Dashboard() {
         api(`/genieacs/devices?projection=${encodeURIComponent(deviceProjection)}`).catch(() => ({ data: [] })),
       ]);
       setHealth(healthRes.success ? "online" : "offline");
-      let list: any[] = devicesRes.data || [];
+      let list: any[] = Array.isArray(devicesRes) ? devicesRes : (devicesRes.data || []);
 
       // Fallback: si /devices no devuelve nada (proyección vacía o error del NBI),
       // reconstruimos la lista desde signal-overview para no dejar el panel vacío.
       if (list.length === 0) {
         try {
           const ov = await api("/genieacs/signal-overview");
-          const entries: SignalEntry[] = ov.data || [];
+          const entries: SignalEntry[] = Array.isArray(ov) ? ov : (ov.data || []);
           setSignalOverview(entries);
           list = entries.map((e) => ({
             _id: e.deviceId,
@@ -170,11 +168,16 @@ export default function TR069Dashboard() {
 
   useEffect(() => { loadDevices(); }, [loadDevices]);
 
+  useEffect(() => {
+    const refreshTimer = window.setInterval(loadDevices, 30000);
+    return () => window.clearInterval(refreshTimer);
+  }, [loadDevices]);
+
   const loadSignalOverview = useCallback(async () => {
     setSignalLoading(true);
     try {
       const res = await api("/genieacs/signal-overview");
-      setSignalOverview(res.data || []);
+      setSignalOverview(Array.isArray(res) ? res : (res.data || []));
     } catch {
       // silently fail
     } finally {
@@ -540,10 +543,7 @@ export default function TR069Dashboard() {
 
                 return (
                   <Card key={deviceId} className="overflow-hidden">
-                    <div
-                      className="flex flex-wrap items-center justify-between gap-3 p-4 cursor-pointer bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10 transition-colors"
-                      onClick={() => selectDevice(device)}
-                    >
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gradient-to-r from-primary/5 to-transparent">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="rounded-lg bg-primary/10 p-2">
                           <Router className="w-5 h-5 text-primary" />
@@ -565,7 +565,14 @@ export default function TR069Dashboard() {
                         <Badge variant="secondary" className="text-xs">FW {info.softwareVersion}</Badge>
                         <Badge variant="secondary" className="text-xs">Uptime {info.uptime}</Badge>
                         <Button
-                          size="sm" variant="ghost" className="h-7 px-2"
+                          size="sm" variant="outline" className="h-8"
+                          onClick={() => selectDevice(device)}
+                        >
+                          <KeyRound className="w-3 h-3 mr-1" />
+                          {isExpanded ? "Ocultar credenciales" : "Ver WiFi y credenciales"}
+                        </Button>
+                        <Button
+                          size="sm" variant="ghost" className="h-8 px-2"
                           disabled={actionLoading === `signal-${deviceId}`}
                           onClick={(e) => { e.stopPropagation(); refreshDeviceSignal(deviceId); }}
                         >
@@ -573,7 +580,9 @@ export default function TR069Dashboard() {
                             ? <Loader2 className="w-3 h-3 animate-spin" />
                             : <RotateCcw className="w-3 h-3" />}
                         </Button>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => selectDevice(device)} title={isExpanded ? "Contraer" : "Desplegar ONU"}>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
                       </div>
                     </div>
 

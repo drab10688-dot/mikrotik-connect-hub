@@ -61,7 +61,10 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     setLoading(true);
     try {
       const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
-      const data: OnuStatus = res.data;
+      const data: OnuStatus = res.data || res;
+      if (!data || !Array.isArray(data.radios)) {
+        throw new Error("La respuesta del ACS no contiene información de radios WiFi");
+      }
       setStatus(data);
       const next: Record<string, { ssid: string; password: string; channel: string }> = {};
       (data.radios || []).forEach((r) => {

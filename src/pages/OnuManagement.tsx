@@ -104,6 +104,7 @@ export default function OnuManagement() {
   const [uploadForm, setUploadForm] = useState({ fileName: "", oui: "", productClass: "", version: "", content: "" });
   const [uploadingFile, setUploadingFile] = useState(false);
   const [pushingConfig, setPushingConfig] = useState(false);
+  const [activeTab, setActiveTab] = useState("tr069");
 
   // Form state
   const [form, setForm] = useState({
@@ -120,7 +121,14 @@ export default function OnuManagement() {
   });
 
   const loadData = async () => {
-    if (!mikrotikId) return;
+    if (!mikrotikId) {
+      setOnus([]);
+      setTemplates([]);
+      setClients([]);
+      setProfiles([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [onuRes, templatesRes, clientsRes] = await Promise.all([
@@ -128,14 +136,15 @@ export default function OnuManagement() {
         api(`/onu/${mikrotikId}/templates/list`),
         api(`/clients/${mikrotikId}`).catch(() => ({ data: [] })),
       ]);
-      setOnus(onuRes.data || []);
-      setTemplates(templatesRes.data || []);
-      setClients(clientsRes.data || []);
+      setOnus(Array.isArray(onuRes) ? onuRes : (onuRes.data || []));
+      setTemplates(Array.isArray(templatesRes) ? templatesRes : (templatesRes.data || []));
+      setClients(Array.isArray(clientsRes) ? clientsRes : (clientsRes.data || []));
 
       // Load PPPoE profiles
       try {
         const profilesRes = await api(`/pppoe/${mikrotikId}/profiles`);
-        setProfiles((profilesRes.data || []).map((p: any) => p.name));
+        const profileRows = Array.isArray(profilesRes) ? profilesRes : (profilesRes.data || []);
+        setProfiles(profileRows.map((p: any) => p.name));
       } catch { setProfiles([]); }
 
       // GenieACS files loading removed
@@ -279,29 +288,36 @@ export default function OnuManagement() {
 
         {noMikrotik && (
           <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-            No hay un dispositivo MikroTik seleccionado. Las pestañas <strong>ONUs</strong>, <strong>Plantillas</strong> y <strong>Señal Óptica</strong> requieren un MikroTik, pero la pestaña <strong>TR-069 / ACS</strong> funciona con GenieACS sin MikroTik.
+            No hay un dispositivo MikroTik seleccionado. <strong>ONUs conectadas</strong> funciona directamente con GenieACS; el registro local, las plantillas y el historial óptico requieren un MikroTik.
           </div>
         )}
 
-        <Tabs defaultValue="tr069" className="w-full min-w-0 space-y-4">
-          <TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full min-w-0 space-y-4">
+          <div className="w-full overflow-x-auto pb-1">
+          <TabsList className="min-w-max">
+            <TabsTrigger value="tr069">
+              <Wifi className="w-4 h-4 mr-2" />
+              ONUs conectadas
+            </TabsTrigger>
             <TabsTrigger value="devices">
               <Router className="w-4 h-4 mr-2" />
-              ONUs ({onus.length})
+              Registro local ({onus.length})
             </TabsTrigger>
             <TabsTrigger value="templates">
               <FileText className="w-4 h-4 mr-2" />
               Plantillas ({templates.length})
-            </TabsTrigger>
-            <TabsTrigger value="tr069">
-              <Wifi className="w-4 h-4 mr-2" />
-              TR-069 / ACS
             </TabsTrigger>
             <TabsTrigger value="signal">
               <Activity className="w-4 h-4 mr-2" />
               Señal Óptica
             </TabsTrigger>
           </TabsList>
+          </div>
+
+          {/* ─── ONUs conectadas automáticamente a GenieACS ─── */}
+          <TabsContent value="tr069">
+            <TR069Dashboard />
+          </TabsContent>
 
 
           {/* ─── ONUs Tab ─────────────────────────────── */}
@@ -618,11 +634,6 @@ export default function OnuManagement() {
               </div>
             )}
 
-          </TabsContent>
-
-          {/* ─── TR-069 Tab ───────────────────────────── */}
-          <TabsContent value="tr069">
-            <TR069Dashboard />
           </TabsContent>
 
           {/* ─── Signal History Tab ───────────────────── */}
