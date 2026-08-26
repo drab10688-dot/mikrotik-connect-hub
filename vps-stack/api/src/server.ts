@@ -21,6 +21,7 @@ import { usersRouter } from './routes/users';
 import { contractsRouter } from './routes/contracts';
 import { serviceOptionsRouter } from './routes/service-options';
 import { messagingRouter } from './routes/messaging';
+import { telegramBotRouter } from './routes/telegram-bot';
 import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
@@ -51,6 +52,11 @@ app.get('/api/health', (_, res) => {
 // Public routes
 app.use('/api/auth', authRouter);
 app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need auth via route-level check
+// Bot de técnicos: /webhook/* es público (Telegram no envía JWT), el resto requiere auth
+app.use('/api/telegram-bot', (req, res, next) => {
+  if (req.path.startsWith('/webhook/')) return next();
+  return authMiddleware(req, res, next);
+}, telegramBotRouter);
 app.use('/api/portal-ads', (req, res, next) => {
   // Public routes don't need auth
   if (req.path.startsWith('/public/')) return next();
