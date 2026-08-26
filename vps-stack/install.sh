@@ -622,6 +622,20 @@ for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omni
 done
 echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
+# ── Liberar puertos de GenieACS si hay una instalación standalone previa ──
+if [ -f /opt/genieacs/docker-compose.yml ]; then
+  echo -e "${YELLOW}Detectado GenieACS standalone en /opt/genieacs — deteniéndolo (OmniSync trae el suyo integrado)...${NC}"
+  (cd /opt/genieacs && docker compose down 2>/dev/null) || true
+fi
+for gport in 7547 7557 7567 3001; do
+  conflict=$(docker ps --format '{{.Names}}\t{{.Ports}}' | grep ":${gport}->" | grep -v '^omnisync-' | cut -f1 || true)
+  if [ -n "$conflict" ]; then
+    echo -e "${YELLOW}Puerto ${gport} ocupado por: ${conflict} — deteniendo${NC}"
+    docker stop $conflict >/dev/null 2>&1 || true
+  fi
+done
+
+
 echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
 
 # Build only custom images (api + phpnuxbill)
