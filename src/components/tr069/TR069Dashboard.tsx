@@ -128,7 +128,30 @@ export default function TR069Dashboard() {
         api("/genieacs/devices").catch(() => ({ data: [] })),
       ]);
       setHealth(healthRes.success ? "online" : "offline");
-      setDevices(devicesRes.data || []);
+      let list: any[] = devicesRes.data || [];
+
+      // Fallback: si /devices no devuelve nada (proyección vacía o error del NBI),
+      // reconstruimos la lista desde signal-overview para no dejar el panel vacío.
+      if (list.length === 0) {
+        try {
+          const ov = await api("/genieacs/signal-overview");
+          const entries: SignalEntry[] = ov.data || [];
+          setSignalOverview(entries);
+          list = entries.map((e) => ({
+            _id: e.deviceId,
+            InternetGatewayDevice: {
+              DeviceInfo: {
+                Manufacturer: { _value: e.manufacturer },
+                ModelName: { _value: e.model },
+                SerialNumber: { _value: e.serial },
+              },
+            },
+          }));
+        } catch {
+          // ignore
+        }
+      }
+      setDevices(list);
     } catch {
       setHealth("offline");
     } finally {
