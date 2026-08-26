@@ -116,7 +116,7 @@ handle_existing_installation() {
         generate_nuxbill_sql
 
         docker compose build --no-cache api phpnuxbill
-        docker compose up -d --build
+        docker compose up -d --build $(acs_profile_arg)
         sleep 10
         if ! ensure_mariadb_accounts; then
           echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
