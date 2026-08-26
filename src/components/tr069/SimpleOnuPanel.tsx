@@ -224,7 +224,7 @@ export default function SimpleOnuPanel() {
                     <Button size="sm" variant="ghost" onClick={() => refreshSignal(d._id)} disabled={busy === `sig-${d._id}`}>
                       {busy === `sig-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Signal className="w-3 h-3" />}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setExpanded(isOpen ? null : d._id)}>
+                    <Button size="sm" variant="outline" onClick={() => toggleExpand(d._id)}>
                       {isOpen ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
                       Configurar
                     </Button>
@@ -240,33 +240,87 @@ export default function SimpleOnuPanel() {
                   {/* PPPoE */}
                   <Card className="bg-muted/30">
                     <CardHeader className="p-3 pb-1">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Network className="w-4 h-4" /> PPPoE
+                      <CardTitle className="text-sm flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2"><Network className="w-4 h-4" /> PPPoE</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => refreshPppoe(d._id)}
+                          disabled={busy === `rpppoe-${d._id}`}
+                        >
+                          {busy === `rpppoe-${d._id}`
+                            ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            : <RotateCcw className="w-3 h-3 mr-1" />}
+                          Leer de la ONU
+                        </Button>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-3 pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Usuario</Label>
-                        <Input
-                          className="h-8 text-xs"
-                          value={form.username}
-                          onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, username: e.target.value } }))}
-                        />
+                    <CardContent className="p-3 pt-2 space-y-3">
+                      {(pppoeCurrent[d._id] || []).length > 0 ? (
+                        <div className="rounded-md border bg-background/60 p-2 space-y-1 text-xs">
+                          {(pppoeCurrent[d._id] || []).map((c) => (
+                            <div key={c.path} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                              <span>
+                                <span className="text-muted-foreground mr-1">Usuario:</span>
+                                <span className="font-mono">{c.username || "—"}</span>
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span className="text-muted-foreground">Clave:</span>
+                                <span className="font-mono">
+                                  {c.password ? (showPppoePass[d._id] ? c.password : "••••••••") : "—"}
+                                </span>
+                                {c.password && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 px-1 text-[10px]"
+                                    onClick={() => setShowPppoePass((s) => ({ ...s, [d._id]: !s[d._id] }))}
+                                  >
+                                    {showPppoePass[d._id] ? "ocultar" : "ver"}
+                                  </Button>
+                                )}
+                              </span>
+                              <Badge variant={c.status === "Connected" ? "default" : "secondary"} className="text-[10px]">
+                                {c.status || "—"}
+                              </Badge>
+                              {c.ip && <span className="font-mono text-muted-foreground">{c.ip}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Sin datos PPPoE leídos. Use “Leer de la ONU”. Muchas ONUs no reportan la contraseña PPPoE por TR-069.
+                        </p>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Usuario</Label>
+                          <Input
+                            className="h-8 text-xs"
+                            value={form.username}
+                            onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, username: e.target.value } }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Contraseña</Label>
+                          <Input
+                            className="h-8 text-xs"
+                            value={form.password}
+                            onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
+                          />
+                        </div>
+                        <Button size="sm" onClick={() => savePppoe(d._id)} disabled={busy === `pppoe-${d._id}`}>
+                          {busy === `pppoe-${d._id}` && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                          Aplicar PPPoE
+                        </Button>
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Contraseña</Label>
-                        <Input
-                          className="h-8 text-xs"
-                          value={form.password}
-                          onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
-                        />
-                      </div>
-                      <Button size="sm" onClick={() => savePppoe(d._id)} disabled={busy === `pppoe-${d._id}`}>
-                        {busy === `pppoe-${d._id}` && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
-                        Aplicar PPPoE
-                      </Button>
                     </CardContent>
                   </Card>
+                </CardContent>
+              )}
+
                 </CardContent>
               )}
             </Card>
