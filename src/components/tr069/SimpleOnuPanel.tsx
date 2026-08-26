@@ -45,6 +45,9 @@ export default function SimpleOnuPanel() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pppoe, setPppoe] = useState<Record<string, { username: string; password: string }>>({});
+  const [pppoeCurrent, setPppoeCurrent] = useState<Record<string, any[]>>({});
+  const [showPppoePass, setShowPppoePass] = useState<Record<string, boolean>>({});
+
 
   const loadSignals = useCallback(async () => {
     try {
