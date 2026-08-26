@@ -267,9 +267,9 @@ export default function OnuManagement() {
   const noMikrotik = !hasValidDevice || !mikrotikId;
 
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="flex h-screen w-full bg-background overflow-hidden">
       <Sidebar />
-      <div className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 md:p-6">
+      <div className="flex-1 min-w-0 md:ml-64 overflow-x-hidden overflow-y-auto p-4 md:p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Gestión de ONUs</h1>
