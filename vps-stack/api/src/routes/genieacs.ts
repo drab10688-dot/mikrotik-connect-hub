@@ -360,10 +360,13 @@ genieacsRouter.post('/devices/:deviceId/refresh', async (req: AuthRequest, res: 
   try {
     const { deviceId } = req.params;
     const { parameterPath } = req.body;
+    // refreshObject evita faults "Invalid parameter path" en ONUs que no exponen
+    // todo el árbol (getParameterValues sobre un nodo parcial suele fallar).
     const task = {
-      name: 'getParameterValues',
-      parameterNames: [parameterPath || 'InternetGatewayDevice'],
+      name: 'refreshObject',
+      objectName: parameterPath || 'InternetGatewayDevice',
     };
+
     const result = await genieFetch(
       `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
       { method: 'POST', body: JSON.stringify(task) }
@@ -672,39 +675,99 @@ genieacsRouter.get('/devices/:deviceId/diagnostics/:type', async (req: AuthReque
   }
 });
 
-// ─── Force refresh optical signal parameters via GetParameterValues ──
-genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest, res: Response) => {
+// ─── Limpiar faults acumulados de un dispositivo ─────────
+async function clearFaults(deviceId: string) {
   try {
-    const { deviceId } = req.params;
+    await genieFetch(`/faults/${encodeURIComponent(deviceId)}:default`, { method: 'DELETE' });
+  } catch { /* sin faults */ }
+  try {
+    const tasks = await genieFetch(`/tasks/?query=${encodeURIComponent(JSON.stringify({ device: deviceId, fault: { $exists: true } }))}`);
+    if (Array.isArray(tasks)) {
+      for (const t of tasks) {
+        if (t?._id) {
+          try { await genieFetch(`/tasks/${encodeURIComponent(t._id)}`, { method: 'DELETE' }); } catch { /* ignore */ }
+        }
+      }
+    }
+  } catch { /* ignore */ }
+}
 
-    // Request all known optical parameter paths across vendors
-    const opticalPaths = [
-      'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.',
-      'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.',
-      'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.',
-      'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.',
-      'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.',
-      'InternetGatewayDevice.X_HW_PONInfo.',
-      'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.',
-      'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.',
-      'Device.Optical.Interface.1.',
-    ];
-
-    const task = {
-      name: 'getParameterValues',
-      parameterNames: opticalPaths,
-    };
-
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify(task) }
-    );
-
-    res.json({ success: true, message: 'Solicitud de lectura de señal óptica enviada', data: result });
+genieacsRouter.delete('/devices/:deviceId/faults', async (req: AuthRequest, res: Response) => {
+  try {
+    await clearFaults(req.params.deviceId);
+    res.json({ success: true, message: 'Faults eliminados' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Force refresh optical signal parameters via refreshObject ──
+genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+
+    // Candidatos por fabricante: SOLO se piden los que existen en el árbol del equipo,
+    // pedir rutas inexistentes genera faults "Invalid parameter path" en GenieACS.
+    const candidates = [
+      'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig',
+      'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig',
+      'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig',
+      'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
+      'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig',
+      'InternetGatewayDevice.X_HW_PONInfo',
+      'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig',
+      'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig',
+      'Device.Optical.Interface.1',
+    ];
+
+    // Limpiar faults previos para que las tareas nuevas no queden bloqueadas
+    await clearFaults(deviceId);
+
+    let existing: string[] = [];
+    try {
+      const payload = await genieFetch(
+        `/devices/?query=${encodeURIComponent(JSON.stringify({ _id: deviceId }))}&projection=${encodeURIComponent(candidates.join(','))}`
+      );
+      const device = asDevice(payload) || {};
+      existing = candidates.filter((p) => {
+        const parts = p.split('.');
+        let cur: any = device;
+        for (const part of parts) {
+          if (!cur || typeof cur !== 'object') return false;
+          cur = cur[part];
+        }
+        return cur !== undefined;
+      });
+    } catch { /* si falla la consulta, usamos el fallback */ }
+
+    // Fallback seguro: refrescar el nodo WAN completo (siempre existe en TR-069 IGD)
+    const targets = existing.length ? existing : ['InternetGatewayDevice.WANDevice'];
+
+    const results: any[] = [];
+    for (const objectName of targets) {
+      try {
+        const r = await genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify({ name: 'refreshObject', objectName }) }
+        );
+        results.push({ objectName, ok: true, r });
+      } catch (e: any) {
+        results.push({ objectName, ok: false, error: e.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: existing.length
+        ? 'Solicitud de lectura de señal óptica enviada'
+        : 'No se detectaron parámetros ópticos; se refrescó el árbol WAN',
+      data: results,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
