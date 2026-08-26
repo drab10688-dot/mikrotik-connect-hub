@@ -228,7 +228,9 @@ services:
   # MongoDB - Base de datos para GenieACS (TR-069)
   # ============================================
   mongo:
-    image: mongo:6
+    # GenieACS 1.2.16 de esta imagen fue validado con MongoDB 4.4.
+    # No subir esta versión sin validar primero el registro CWMP de una ONU real.
+    image: mongo:4.4
     container_name: omnisync-mongo
     restart: unless-stopped
     profiles: ["builtin-acs"]
@@ -237,7 +239,7 @@ services:
     networks:
       - omnisync-net
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -258,11 +260,10 @@ services:
       GENIEACS_NBI_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_FS_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
-      GENIEACS_EXT_DIR: /opt/genieacs/ext
     ports:
       - "7547:7547"          # CWMP (las ONUs se conectan aquí)
       - "7567:7567"          # File Server (firmware/config)
-      - "127.0.0.1:7557:7557" # NBI (API interna, solo local: onu-ctl.sh)
+      - "7557:7557"          # NBI (API GenieACS y onu-ctl.sh)
       - "3001:3000"          # UI GenieACS
 
     depends_on:

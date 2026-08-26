@@ -812,6 +812,27 @@ fi
 if [ "$GENIEACS_EXTERNAL" = "0" ]; then
   check_service "MongoDB (ACS)" "omnisync-mongo"
   check_service "GenieACS TR-069" "omnisync-genieacs"
+
+  # No basta con que el contenedor figure como running: valida los servicios
+  # que usa la ONU y el panel. CWMP responde 405 a GET cuando está sano.
+  ACS_CWMP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7547 2>/dev/null || true)
+  if [ "$ACS_CWMP_STATUS" = "405" ]; then
+    echo -e "  ${GREEN}✓ GenieACS CWMP responde en :7547${NC}"
+  else
+    echo -e "  ${RED}✗ GenieACS CWMP no responde correctamente (HTTP ${ACS_CWMP_STATUS:-000})${NC}"
+    docker logs omnisync-genieacs --tail 10 2>/dev/null | sed 's/^/    /'
+    TOTAL_FAIL=$((TOTAL_FAIL + 1))
+    FAILED_SERVICES="$FAILED_SERVICES GenieACS-CWMP"
+  fi
+
+  ACS_NBI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7557/devices/?projection=_id 2>/dev/null || true)
+  if [ "$ACS_NBI_STATUS" = "200" ]; then
+    echo -e "  ${GREEN}✓ GenieACS NBI responde en :7557${NC}"
+  else
+    echo -e "  ${RED}✗ GenieACS NBI no responde correctamente (HTTP ${ACS_NBI_STATUS:-000})${NC}"
+    TOTAL_FAIL=$((TOTAL_FAIL + 1))
+    FAILED_SERVICES="$FAILED_SERVICES GenieACS-NBI"
+  fi
 fi
 
 echo ""
