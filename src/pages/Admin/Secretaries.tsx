@@ -401,7 +401,7 @@ export default function Secretaries() {
                   </TableBody>
                 </Table>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No hay secretarias asignadas a este dispositivo</div>
+                <div className="text-center py-8 text-muted-foreground">No hay asistentes asignados</div>
               )}
             </CardContent>
           </Card>
