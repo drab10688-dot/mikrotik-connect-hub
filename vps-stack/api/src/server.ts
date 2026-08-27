@@ -29,7 +29,7 @@ import { vpnRouter } from './routes/vpn';
 import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
 import { radiusRouter } from './routes/radius';
-import { authMiddleware } from './middleware/auth';
+import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
