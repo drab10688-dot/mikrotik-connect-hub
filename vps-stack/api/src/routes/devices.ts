@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { connect as netConnect } from 'net';
 import { pool } from '../lib/db';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, requireRole } from '../middleware/auth';
 import { mikrotikRequest, mikrotikRequestWithFallback, testNativeApiLogin, isNativeApiPort } from '../lib/mikrotik';
 
 export const devicesRouter = Router();
@@ -385,8 +385,8 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
   }
 });
 
-// Add device
-devicesRouter.post('/', async (req: AuthRequest, res: Response) => {
+// Add device (asistentes y resellers no pueden registrar dispositivos)
+devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, host, port, username, password, version, latitude, longitude, hotspot_url } = req.body;
     const { rows } = await pool.query(
@@ -553,7 +553,7 @@ devicesRouter.get('/:id/resellers', async (req: AuthRequest, res: Response) => {
   }
 });
 
-devicesRouter.post('/:id/resellers', async (req: AuthRequest, res: Response) => {
+devicesRouter.post('/:id/resellers', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { reseller_id, commission_percentage } = req.body;
@@ -569,7 +569,7 @@ devicesRouter.post('/:id/resellers', async (req: AuthRequest, res: Response) => 
   }
 });
 
-devicesRouter.put('/resellers/:assignmentId', async (req: AuthRequest, res: Response) => {
+devicesRouter.put('/resellers/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { assignmentId } = req.params;
     const { commission_percentage } = req.body;
@@ -583,7 +583,7 @@ devicesRouter.put('/resellers/:assignmentId', async (req: AuthRequest, res: Resp
   }
 });
 
-devicesRouter.delete('/resellers/:assignmentId', async (req: AuthRequest, res: Response) => {
+devicesRouter.delete('/resellers/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { assignmentId } = req.params;
     await pool.query('DELETE FROM reseller_assignments WHERE id = $1', [assignmentId]);
@@ -614,17 +614,22 @@ devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Res
   }
 });
 
-devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) => {
+devicesRouter.get('/:id/secretaries', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const isSuper = req.userRole === 'super_admin';
 
     if (id === 'all') {
       const { rows } = await pool.query(
-        `SELECT sa.*, u.email, u.full_name
-         FROM secretary_assignments sa
-         LEFT JOIN users u ON u.id = sa.secretary_id
-         WHERE sa.assigned_by = $1`,
-        [req.userId]
+        isSuper
+          ? `SELECT sa.*, u.email, u.full_name
+             FROM secretary_assignments sa
+             LEFT JOIN users u ON u.id = sa.secretary_id`
+          : `SELECT sa.*, u.email, u.full_name
+             FROM secretary_assignments sa
+             LEFT JOIN users u ON u.id = sa.secretary_id
+             WHERE sa.assigned_by = $1`,
+        isSuper ? [] : [req.userId]
       );
       return res.json({ data: rows });
     }
@@ -645,17 +650,31 @@ devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) =>
   }
 });
 
-devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
+devicesRouter.post('/:id/secretaries', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { secretary_id, ...rest } = req.body || {};
     if (!secretary_id) return res.status(400).json({ error: 'secretary_id requerido' });
 
+    // El usuario asignado debe tener rol de asistente (evita escalar privilegios)
+    const { rows: roleRows } = await pool.query(
+      `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'secretary'::app_role LIMIT 1`,
+      [secretary_id]
+    );
+    if (roleRows.length === 0) {
+      return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de asistente' });
+    }
+
     const mikrotikId = !id || id === 'all' || id === 'null' ? null : id;
 
-    const permKeys = Object.keys(rest).filter((k) => k.startsWith('can_'));
+    if (mikrotikId) {
+      const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
+      if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
+    }
+
+    const permKeys = Object.keys(rest).filter((k) => /^can_[a-z0-9_]+$/.test(k));
     const columns = ['secretary_id', 'mikrotik_id', 'assigned_by', ...permKeys];
-    const values: any[] = [secretary_id, mikrotikId, req.userId, ...permKeys.map((k) => rest[k] ?? true)];
+    const values: any[] = [secretary_id, mikrotikId, req.userId, ...permKeys.map((k) => rest[k] === true)];
     const placeholders = values.map((_, i) => `$${i + 1}`).join(',');
 
     const { rows } = await pool.query(
@@ -669,18 +688,28 @@ devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) =
 });
 
 
-devicesRouter.put('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
+devicesRouter.put('/secretaries/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { assignmentId } = req.params;
     const fields = req.body;
+
+    const { rows: owner } = await pool.query(
+      'SELECT assigned_by FROM secretary_assignments WHERE id = $1',
+      [assignmentId]
+    );
+    if (!owner[0]) return res.status(404).json({ error: 'Asignación no encontrada' });
+    if (req.userRole !== 'super_admin' && owner[0].assigned_by !== req.userId) {
+      return res.status(403).json({ error: 'No puedes modificar esta asignación' });
+    }
+
     const setClauses: string[] = [];
     const values: any[] = [];
     let i = 1;
 
     for (const [key, value] of Object.entries(fields)) {
-      if (key.startsWith('can_')) {
+      if (/^can_[a-z0-9_]+$/.test(key)) {
         setClauses.push(`${key} = $${i}`);
-        values.push(value);
+        values.push(value === true);
         i++;
       }
     }
@@ -698,12 +727,21 @@ devicesRouter.put('/secretaries/:assignmentId', async (req: AuthRequest, res: Re
   }
 });
 
-devicesRouter.delete('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
+devicesRouter.delete('/secretaries/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { assignmentId } = req.params;
+    const { rows: owner } = await pool.query(
+      'SELECT assigned_by FROM secretary_assignments WHERE id = $1',
+      [assignmentId]
+    );
+    if (!owner[0]) return res.json({ success: true });
+    if (req.userRole !== 'super_admin' && owner[0].assigned_by !== req.userId) {
+      return res.status(403).json({ error: 'No puedes eliminar esta asignación' });
+    }
     await pool.query('DELETE FROM secretary_assignments WHERE id = $1', [assignmentId]);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
+

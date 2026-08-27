@@ -43,7 +43,7 @@ const menuItems = [
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut, isSecretary } = useAuth();
+  const { signOut, isSecretary, isReseller } = useAuth();
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const host = localStorage.getItem("mikrotik_host") || "";
@@ -113,7 +113,7 @@ export const Sidebar = () => {
         if (item.path === '/dashboard') return true;
         if (!currentPerms) return false;
         const permKey = secretaryPermMap[item.path];
-        if (permKey) return currentPerms?.[permKey] !== false;
+        if (permKey) return currentPerms?.[permKey] === true;
         return false;
       })
     : menuItems;
@@ -203,7 +203,7 @@ export const Sidebar = () => {
 
 
 
-            {!isSecretary && (
+            {!isSecretary && !isReseller && (
               <div className="pt-4 mt-4 border-t border-sidebar-border">
                 <AdminMenu />
               </div>

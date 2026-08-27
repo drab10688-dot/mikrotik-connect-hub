@@ -28,11 +28,14 @@ usersRouter.get('/', async (req: AuthRequest, res: Response) => {
 // Create user (super_admin only)
 usersRouter.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede crear usuarios' });
-    }
-
     const { email, password, full_name, role } = req.body;
+
+    // Un admin solo puede crear asistentes; super_admin puede crear cualquier rol
+    if (req.userRole !== 'super_admin') {
+      if (req.userRole !== 'admin' || role !== 'secretary') {
+        return res.status(403).json({ error: 'Solo puedes crear usuarios con rol de asistente' });
+      }
+    }
     if (!email || !password) {
       return res.status(400).json({ error: 'Email y contraseña son requeridos' });
     }

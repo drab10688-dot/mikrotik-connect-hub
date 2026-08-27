@@ -32,6 +32,9 @@ const Dashboard = () => {
 
   const hasDeviceAccess = availableDevices && availableDevices.length > 0;
   const canEnterWithoutDevice = isSecretary && (assignments?.length || 0) > 0;
+  const canUseVpsServices = isSecretary
+    ? (assignments || []).some((a: any) => a?.can_manage_vps_services === true)
+    : true;
 
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
@@ -140,14 +143,16 @@ const Dashboard = () => {
                   </div>
                 </>
               )}
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate("/vps-services")}
-              >
-                <Server className="w-4 h-4 mr-2" />
-                Servicios VPS / WireGuard
-              </Button>
+              {canUseVpsServices && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate("/vps-services")}
+                >
+                  <Server className="w-4 h-4 mr-2" />
+                  Servicios VPS / WireGuard
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>

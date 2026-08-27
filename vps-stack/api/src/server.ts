@@ -29,7 +29,7 @@ import { vpnRouter } from './routes/vpn';
 import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
 import { radiusRouter } from './routes/radius';
-import { authMiddleware } from './middleware/auth';
+import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
@@ -67,29 +67,30 @@ app.use('/api/portal-ads', (req, res, next) => {
 // Protected routes
 app.use('/api/devices', authMiddleware, devicesRouter);
 // IMPORTANT: register specific /api/clients sub-routes before generic /api/clients
-app.use('/api/clients/contracts', authMiddleware, contractsRouter);
-app.use('/api/clients/service-options', authMiddleware, serviceOptionsRouter);
+app.use('/api/clients/contracts', authMiddleware, requirePermission('can_manage_clients'), contractsRouter);
+app.use('/api/clients/service-options', authMiddleware, requirePermission('can_manage_clients'), serviceOptionsRouter);
 // Stable alias to avoid route collisions with /api/clients/:mikrotikId in older deployments
-app.use('/api/service-options', authMiddleware, serviceOptionsRouter);
-app.use('/api/clients', authMiddleware, clientsRouter);
-app.use('/api/pppoe', authMiddleware, pppoeRouter);
-app.use('/api/queues', authMiddleware, queuesRouter);
+app.use('/api/service-options', authMiddleware, requirePermission('can_manage_clients'), serviceOptionsRouter);
+app.use('/api/clients', authMiddleware, requirePermission('can_manage_clients'), clientsRouter);
+app.use('/api/pppoe', authMiddleware, requirePermission('can_manage_pppoe'), pppoeRouter);
+app.use('/api/queues', authMiddleware, requirePermission('can_manage_queues'), queuesRouter);
 // IMPORTANT: register /api/vouchers/presets BEFORE /api/vouchers to avoid route collision
-app.use('/api/vouchers/presets', authMiddleware, voucherPresetsRouter);
-app.use('/api/vouchers', authMiddleware, vouchersRouter);
-app.use('/api/billing', authMiddleware, billingRouter);
-app.use('/api/invoices', authMiddleware, invoicesRouter);
-app.use('/api/address-list', authMiddleware, addressListRouter);
+app.use('/api/vouchers/presets', authMiddleware, requirePermission('can_manage_hotspot', true), voucherPresetsRouter);
+app.use('/api/vouchers', authMiddleware, requirePermission('can_manage_hotspot', true), vouchersRouter);
+app.use('/api/billing', authMiddleware, requirePermission('can_manage_billing'), billingRouter);
+app.use('/api/invoices', authMiddleware, requirePermission('can_manage_billing'), invoicesRouter);
+app.use('/api/address-list', authMiddleware, requirePermission('can_manage_address_list'), addressListRouter);
 app.use('/api/system', authMiddleware, systemRouter);
-app.use('/api/backups', authMiddleware, backupRouter);
-app.use('/api/auth/users', authMiddleware, usersRouter);
-app.use('/api/messaging', authMiddleware, messagingRouter);
-app.use('/api/onu', authMiddleware, onuRouter);
-app.use('/api/genieacs', authMiddleware, genieacsRouter);
-app.use('/api/vpn', authMiddleware, vpnRouter);
-app.use('/api/ubiquiti', authMiddleware, ubiquitiRouter);
-app.use('/api/antennas', authMiddleware, antennasRouter);
-app.use('/api/radius', authMiddleware, radiusRouter);
+app.use('/api/backups', authMiddleware, requirePermission('can_manage_backup'), backupRouter);
+app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
+app.use('/api/messaging', authMiddleware, requirePermission('can_manage_clients'), messagingRouter);
+app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), onuRouter);
+app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), genieacsRouter);
+app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
+app.use('/api/ubiquiti', authMiddleware, requirePermission('can_manage_onu'), ubiquitiRouter);
+app.use('/api/antennas', authMiddleware, requirePermission('can_manage_onu'), antennasRouter);
+app.use('/api/radius', authMiddleware, requirePermission('can_manage_radius'), radiusRouter);
+
 
 // Aliases for frontend compatibility
 app.use('/api/mikrotik', authMiddleware, (req, res, next) => {

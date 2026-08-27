@@ -335,6 +335,33 @@ CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
 CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
 " 2>/dev/null && echo "  ✓ portal_ads OK" || echo "  ⚠ portal_ads skip"
 
+# Migrate assistant (secretary) permission columns — todas por defecto en FALSE
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+ALTER TABLE secretary_assignments
+  ADD COLUMN IF NOT EXISTS can_manage_radius BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_onu BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_settings BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_diagnostics BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_vps_services BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_payments BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_reports BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_hotspot BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_address_list BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_backup BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_clients BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_billing BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_pppoe BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS can_manage_queues BOOLEAN DEFAULT false;
+UPDATE secretary_assignments SET
+  can_manage_radius = COALESCE(can_manage_radius, false),
+  can_manage_onu = COALESCE(can_manage_onu, false),
+  can_manage_settings = COALESCE(can_manage_settings, false),
+  can_manage_diagnostics = COALESCE(can_manage_diagnostics, false),
+  can_manage_vps_services = COALESCE(can_manage_vps_services, false);
+" 2>/dev/null && echo "  ✓ permisos asistente OK" || echo "  ⚠ permisos asistente skip"
+
+
+
 # Migrate VPN peers table
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
 CREATE TABLE IF NOT EXISTS vpn_peers (

@@ -55,33 +55,33 @@ const App = () => (
           <Route path="/pay" element={<ClientPaymentPortal />} />
           <Route path="/portal" element={<CaptivePortal />} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/vps-services" element={<ProtectedRoute><VpsServices /></ProtectedRoute>} />
-          <Route path="/hotspot-monitor" element={<ProtectedRoute><HotspotMonitor /></ProtectedRoute>} />
-          <Route path="/isp-registry" element={<ProtectedRoute><IspRegistry /></ProtectedRoute>} />
-          <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-          <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
-          <Route path="/ppp" element={<ProtectedRoute><Ppp /></ProtectedRoute>} />
+          <Route path="/vps-services" element={<ProtectedRoute permission="can_manage_vps_services"><VpsServices /></ProtectedRoute>} />
+          <Route path="/hotspot-monitor" element={<ProtectedRoute permission="can_manage_hotspot"><HotspotMonitor /></ProtectedRoute>} />
+          <Route path="/isp-registry" element={<ProtectedRoute permission="can_manage_clients"><IspRegistry /></ProtectedRoute>} />
+          <Route path="/clients" element={<ProtectedRoute permission="can_manage_clients"><Clients /></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute permission="can_manage_hotspot"><Users /></ProtectedRoute>} />
+          <Route path="/ppp" element={<ProtectedRoute permission="can_manage_pppoe"><Ppp /></ProtectedRoute>} />
           <Route path="/vouchers" element={<Navigate to="/hotspot-monitor?section=usuarios" replace />} />
           <Route path="/voucher-inventory" element={<Navigate to="/hotspot-monitor?section=usuarios" replace />} />
-          <Route path="/hotspot-profiles" element={<ProtectedRoute><HotspotProfiles /></ProtectedRoute>} />
-          <Route path="/profiles" element={<ProtectedRoute><Profiles /></ProtectedRoute>} />
-          <Route path="/address-list" element={<ProtectedRoute><AddressList /></ProtectedRoute>} />
-          <Route path="/simple-queues" element={<ProtectedRoute><SimpleQueues /></ProtectedRoute>} />
-          <Route path="/traffic" element={<ProtectedRoute><Traffic /></ProtectedRoute>} />
-          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+          <Route path="/hotspot-profiles" element={<ProtectedRoute permission="can_manage_hotspot"><HotspotProfiles /></ProtectedRoute>} />
+          <Route path="/profiles" element={<ProtectedRoute permission="can_manage_pppoe"><Profiles /></ProtectedRoute>} />
+          <Route path="/address-list" element={<ProtectedRoute permission="can_manage_address_list"><AddressList /></ProtectedRoute>} />
+          <Route path="/simple-queues" element={<ProtectedRoute permission="can_manage_queues"><SimpleQueues /></ProtectedRoute>} />
+          <Route path="/traffic" element={<ProtectedRoute permission="can_manage_reports"><Traffic /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute permission="can_manage_reports"><Reports /></ProtectedRoute>} />
           <Route path="/accounting" element={<Navigate to="/hotspot-monitor?section=contabilidad" replace />} />
-          <Route path="/backup" element={<ProtectedRoute><Backup /></ProtectedRoute>} />
-          <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
-          <Route path="/payment-manager" element={<ProtectedRoute><PaymentManager /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
+          <Route path="/backup" element={<ProtectedRoute permission="can_manage_backup"><Backup /></ProtectedRoute>} />
+          <Route path="/payments" element={<ProtectedRoute permission="can_manage_billing"><Payments /></ProtectedRoute>} />
+          <Route path="/payment-manager" element={<ProtectedRoute permission="can_manage_payments"><PaymentManager /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings"><Settings /></ProtectedRoute>} />
+          <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics"><Diagnostics /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
-          <Route path="/admin/mikrotik-devices" element={<ProtectedRoute><MikrotikDevices /></ProtectedRoute>} />
+          <Route path="/admin/mikrotik-devices" element={<ProtectedRoute denyRoles={["secretary", "reseller"]}><MikrotikDevices /></ProtectedRoute>} />
           <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />
-          <Route path="/admin/secretaries" element={<ProtectedRoute><Secretaries /></ProtectedRoute>} />
-          <Route path="/onu-management" element={<ProtectedRoute><OnuManagement /></ProtectedRoute>} />
-          <Route path="/radius" element={<ProtectedRoute><RadiusManager /></ProtectedRoute>} />
+          <Route path="/admin/secretaries" element={<ProtectedRoute requireAdmin><Secretaries /></ProtectedRoute>} />
+          <Route path="/onu-management" element={<ProtectedRoute permission="can_manage_onu"><OnuManagement /></ProtectedRoute>} />
+          <Route path="/radius" element={<ProtectedRoute permission="can_manage_radius"><RadiusManager /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

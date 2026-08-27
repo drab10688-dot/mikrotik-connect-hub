@@ -1,27 +1,35 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useSecretaryPermissions } from '@/hooks/useSecretaryPermissions';
 
 interface ProtectedRouteProps {
   children: ReactNode;
   requireSuperAdmin?: boolean;
   requireAdmin?: boolean;
+  /** Permiso requerido para asistentes (ej: can_manage_clients) */
+  permission?: string;
+  /** Roles que NO pueden entrar a esta ruta */
+  denyRoles?: Array<'secretary' | 'reseller' | 'user'>;
 }
 
-export const ProtectedRoute = ({ 
-  children, 
-  requireSuperAdmin = false,
-  requireAdmin = false 
-}: ProtectedRouteProps) => {
-  const { user, role, loading } = useAuth();
+const Loader = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+  </div>
+);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+export const ProtectedRoute = ({
+  children,
+  requireSuperAdmin = false,
+  requireAdmin = false,
+  permission,
+  denyRoles,
+}: ProtectedRouteProps) => {
+  const { user, role, loading, isSecretary } = useAuth();
+  const { assignments, isLoading: loadingPerms } = useSecretaryPermissions();
+
+  if (loading) return <Loader />;
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -33,6 +41,17 @@ export const ProtectedRoute = ({
 
   if (requireAdmin && role !== 'admin' && role !== 'super_admin') {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (denyRoles && role && denyRoles.includes(role as any)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Los asistentes solo entran a los módulos habilitados en su asignación
+  if (isSecretary && permission) {
+    if (loadingPerms) return <Loader />;
+    const allowed = (assignments || []).some((a: any) => a?.[permission] === true);
+    if (!allowed) return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
