@@ -58,8 +58,7 @@ export default function Settings() {
     queryKey: ['mikrotik-devices-select', user?.id, isSecretary],
     queryFn: async () => {
       if (isSecretary) {
-        const assignments = await secretariesApi.myAssignments();
-        return assignments.map((a: any) => a.mikrotik_devices || a.device).filter((d: any) => d && d.status === 'active');
+        return await devicesApi.list();
       }
       const allDevices = await devicesApi.list();
       if (isSuperAdmin) return allDevices.filter((d: any) => d.status === 'active');

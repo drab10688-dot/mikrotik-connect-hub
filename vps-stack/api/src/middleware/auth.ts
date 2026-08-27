@@ -79,8 +79,18 @@ export async function verifyDeviceAccess(
   const { rows } = await pool.query(
     `SELECT id FROM user_mikrotik_access WHERE user_id = $1 AND mikrotik_id = $2
      UNION
-     SELECT id FROM secretary_assignments
-     WHERE secretary_id = $1 AND (mikrotik_id = $2 OR mikrotik_id IS NULL)
+     SELECT sa.id FROM secretary_assignments sa
+     WHERE sa.secretary_id = $1
+       AND (
+         sa.mikrotik_id = $2
+         OR (
+           sa.mikrotik_id IS NULL
+           AND EXISTS (
+             SELECT 1 FROM mikrotik_devices md
+             WHERE md.id = $2 AND md.created_by = sa.assigned_by
+           )
+         )
+       )
      UNION
      SELECT id FROM reseller_assignments WHERE reseller_id = $1 AND mikrotik_id = $2
      LIMIT 1`,

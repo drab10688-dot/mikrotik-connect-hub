@@ -13,7 +13,7 @@ import omnisyncSphere from '@/assets/omnisync-sphere.png';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { isSecretary, isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -26,7 +26,7 @@ export default function Login() {
     if (isAuthenticated && !authLoading) {
       navigate('/dashboard');
     }
-  }, [isAuthenticated, isSecretary, authLoading, navigate]);
+  }, [isAuthenticated, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
