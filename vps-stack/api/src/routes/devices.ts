@@ -116,6 +116,11 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
         WHERE sa.secretary_id = $1 AND md.status = 'active'::device_status
         UNION
         SELECT md.* FROM mikrotik_devices md
+        INNER JOIN secretary_assignments sa ON sa.assigned_by = md.created_by
+        WHERE sa.secretary_id = $1 AND sa.mikrotik_id IS NULL
+          AND md.status = 'active'::device_status
+        UNION
+        SELECT md.* FROM mikrotik_devices md
         INNER JOIN reseller_assignments ra ON ra.mikrotik_id = md.id
         WHERE ra.reseller_id = $1 AND md.status = 'active'::device_status
         ORDER BY name`;
@@ -618,7 +623,7 @@ devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) =>
         `SELECT sa.*, u.email, u.full_name
          FROM secretary_assignments sa
          LEFT JOIN users u ON u.id = sa.secretary_id
-         WHERE sa.mikrotik_id IS NULL AND sa.assigned_by = $1`,
+         WHERE sa.assigned_by = $1`,
         [req.userId]
       );
       return res.json({ data: rows });

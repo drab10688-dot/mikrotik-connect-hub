@@ -45,7 +45,7 @@ export const Sidebar = () => {
   const location = useLocation();
   const { signOut, isSecretary } = useAuth();
   const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
-  const { assignments: secretaryAssignments } = useSecretaryPermissions();
+  const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const host = localStorage.getItem("mikrotik_host") || "";
   const { data: systemInfo } = useSystemResources();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +111,7 @@ export const Sidebar = () => {
     ? menuItems.filter(item => {
         // Always show dashboard
         if (item.path === '/dashboard') return true;
+        if (!currentPerms) return false;
         const permKey = secretaryPermMap[item.path];
         if (permKey) return currentPerms?.[permKey] !== false;
         return false;
@@ -165,11 +166,11 @@ export const Sidebar = () => {
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {loadingAccess ? (
+        {loadingAccess || (isSecretary && loadingPermissions) ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           </div>
-        ) : !hasDeviceAccess ? (
+        ) : !hasDeviceAccess && !isSecretary ? (
           <div className="px-4 py-6 space-y-3">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Shield className="w-5 h-5" />

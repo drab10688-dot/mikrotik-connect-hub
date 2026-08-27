@@ -15,12 +15,13 @@ export const useSecretaryPermissions = () => {
   });
 
   const getPermissionsForDevice = (mikrotikId: string) => {
-    const assignment = assignments?.find((a: any) => a.mikrotik_id === mikrotikId);
+    const assignment = assignments?.find((a: any) => a.mikrotik_id === mikrotikId)
+      || assignments?.find((a: any) => !a.mikrotik_id);
     return assignment || null;
   };
 
   const hasAnyAccess = assignments && assignments.length > 0;
-  const assignedDeviceIds = assignments?.map((a: any) => a.mikrotik_id) || [];
+  const assignedDeviceIds = assignments?.map((a: any) => a.mikrotik_id).filter(Boolean) || [];
   const assignedDevices = assignments?.map((a: any) => a.mikrotik_devices || a.device).filter(Boolean) || [];
 
   return {

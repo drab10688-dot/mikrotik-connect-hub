@@ -5,7 +5,7 @@ import { useAuth } from './useAuth';
 
 interface AssignSecretaryParams {
   secretaryId: string;
-  mikrotikId: string;
+  mikrotikId?: string;
   [key: string]: any; // All permission keys are dynamic
 }
 
@@ -25,7 +25,7 @@ export const useSecretaries = (mikrotikId?: string) => {
   const assignSecretaryMutation = useMutation({
     mutationFn: async (params: AssignSecretaryParams) => {
       const { secretaryId, mikrotikId, ...permData } = params;
-      return await secretariesApi.assign(mikrotikId, {
+      return await secretariesApi.assign(mikrotikId || 'all', {
         secretary_id: secretaryId,
         ...permData,
       });
@@ -69,7 +69,7 @@ export const useSecretaries = (mikrotikId?: string) => {
   return {
     assignments,
     isLoading,
-    assignSecretary: assignSecretaryMutation.mutate,
+    assignSecretary: assignSecretaryMutation.mutateAsync,
     isAssigning: assignSecretaryMutation.isPending,
     removeSecretary: removeSecretaryMutation.mutate,
     isRemoving: removeSecretaryMutation.isPending,

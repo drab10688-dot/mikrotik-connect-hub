@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { devicesApi, secretariesApi } from "@/lib/api-client";
+import { devicesApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -58,8 +58,7 @@ export default function Settings() {
     queryKey: ['mikrotik-devices-select', user?.id, isSecretary],
     queryFn: async () => {
       if (isSecretary) {
-        const assignments = await secretariesApi.myAssignments();
-        return assignments.map((a: any) => a.mikrotik_devices || a.device).filter((d: any) => d && d.status === 'active');
+        return await devicesApi.list();
       }
       const allDevices = await devicesApi.list();
       if (isSuperAdmin) return allDevices.filter((d: any) => d.status === 'active');
