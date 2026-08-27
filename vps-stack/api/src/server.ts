@@ -82,7 +82,7 @@ app.use('/api/invoices', authMiddleware, requirePermission('can_manage_billing')
 app.use('/api/address-list', authMiddleware, requirePermission('can_manage_address_list'), addressListRouter);
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/backups', authMiddleware, requirePermission('can_manage_backup'), backupRouter);
-app.use('/api/auth/users', authMiddleware, requireRole('super_admin'), usersRouter);
+app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
 app.use('/api/messaging', authMiddleware, requirePermission('can_manage_clients'), messagingRouter);
 app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), onuRouter);
 app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), genieacsRouter);
