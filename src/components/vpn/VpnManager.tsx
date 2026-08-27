@@ -534,6 +534,42 @@ export function VpnManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit remote networks dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Redes remotas</DialogTitle>
+            <DialogDescription>
+              Subredes detrás de este túnel (ONUs/PPPoE/MikroTiks) que GenieACS y el VPS deben alcanzar directamente. Separa varias con comas, ej. <code className="bg-muted px-1 rounded">10.82.0.0/21, 192.168.88.0/24</code>.
+            </DialogDescription>
+          </DialogHeader>
+          {editPeer && (
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                Peer: <span className="font-medium text-foreground">{editPeer.name}</span> ({editPeer.peer_address})
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-networks">Redes remotas (CIDR)</Label>
+                <Input
+                  id="edit-networks"
+                  placeholder="10.82.0.0/21"
+                  value={editNetworks}
+                  onChange={(e) => setEditNetworks(e.target.value)}
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Al guardar, el servidor WG agrega estas redes a <span className="font-mono">AllowedIPs</span> y el VPS crea rutas host hacia ellas por el túnel. Los cambios de GenieACS (WiFi/clave) se aplican al instante, sin esperar el Inform periódico.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveNetworks}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
