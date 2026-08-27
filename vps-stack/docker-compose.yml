@@ -260,6 +260,10 @@ services:
       GENIEACS_NBI_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_FS_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
+      # STUN/UDP Connection Request: GenieACS envía el UDP ConnReq desde el
+      # mismo puerto (3478) que usa coturn, para que el NAT del cliente acepte
+      # el paquete (full-cone / port-restricted NAT).
+      GENIEACS_UDP_CONNECTION_REQUEST_PORT: "3478"
     ports:
       - "7547:7547"          # CWMP TCP (las ONUs se conectan aquí)
       - "7547:7547/udp"      # CWMP UDP / STUN (Connection Request NAT traversal)
@@ -271,6 +275,31 @@ services:
       - mongo
     networks:
       - omnisync-net
+
+  # ============================================
+  # coturn - Servidor STUN (NAT traversal para
+  # UDP Connection Request de GenieACS)
+  # STUN :3478 (udp+tcp) | credenciales fijas
+  # ============================================
+  coturn:
+    image: coturn/coturn:latest
+    container_name: omnisync-coturn
+    restart: unless-stopped
+    profiles: ["builtin-acs"]
+    network_mode: host
+    command:
+      - --listening-port=3478
+      - --realm=omnisync
+      - --lt-cred-mech
+      - --user=acs:acs
+      - --no-dynamic-ip-list
+      - --no-tls
+      - --no-dtls
+      - --no-cli
+      - --min-port=49152
+      - --max-port=49200
+    logging:
+      driver: "none"
 
 volumes:
   postgres_data:

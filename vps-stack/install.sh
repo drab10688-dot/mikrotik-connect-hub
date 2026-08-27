@@ -626,10 +626,12 @@ if command -v ufw &> /dev/null; then
   ufw allow 1813/udp >/dev/null 2>&1
   ufw allow 7547/tcp >/dev/null 2>&1   # GenieACS CWMP (TR-069)
   ufw allow 7547/udp >/dev/null 2>&1   # GenieACS STUN/UDP Connection Request
+  ufw allow 3478/tcp >/dev/null 2>&1   # coturn STUN (TCP)
+  ufw allow 3478/udp >/dev/null 2>&1   # coturn STUN (UDP) - NAT traversal
   ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
   ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
   ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547 tcp+udp, 7567, 3001, 51820/udp) ✓${NC}"
+  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547 tcp+udp, 7567, 3001, 3478 tcp+udp, 51820/udp) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
@@ -651,7 +653,7 @@ if [ -f /opt/genieacs/docker-compose.yml ]; then
   echo -e "${YELLOW}Detectado GenieACS standalone en /opt/genieacs — deteniéndolo (OmniSync trae el suyo integrado)...${NC}"
   (cd /opt/genieacs && docker compose down 2>/dev/null) || true
 fi
-for gport in 7547 7557 7567 3001; do
+for gport in 7547 7557 7567 3001 3478; do
   conflict=$(docker ps --format '{{.Names}}\t{{.Ports}}' | grep ":${gport}->" | grep -v '^omnisync-' | cut -f1 || true)
   if [ -n "$conflict" ]; then
     echo -e "${YELLOW}Puerto ${gport} ocupado por: ${conflict} — deteniendo${NC}"
@@ -813,6 +815,7 @@ fi
 if [ "$GENIEACS_EXTERNAL" = "0" ]; then
   check_service "MongoDB (ACS)" "omnisync-mongo"
   check_service "GenieACS TR-069" "omnisync-genieacs"
+  check_service "coturn (STUN)" "omnisync-coturn"
 
   # No basta con que el contenedor figure como running: valida los servicios
   # que usa la ONU y el panel. CWMP responde 405 a GET cuando está sano.
@@ -846,6 +849,7 @@ if [ "$GENIEACS_EXTERNAL" = "1" ]; then
 else
   echo -e "  ${GREEN}✓ GenieACS integrado — UI: http://$VPS_IP:3001 (admin/admin)${NC}"
   echo -e "  ${GREEN}  ACS URL para las ONUs: http://$VPS_IP:7547${NC}"
+  echo -e "  ${GREEN}  STUN (coturn) p/ Connection Request: $VPS_IP:3478 (acs/acs)${NC}"
   echo -e "  ${GREEN}  Panel gráfico OmniSync: http://$VPS_IP/onu-management${NC}"
 fi
 
