@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Shield, Plus, Trash2, Download, Copy, RefreshCw, Wifi, WifiOff, Monitor, Network, Server } from "lucide-react";
+import { Shield, Plus, Trash2, Download, Copy, RefreshCw, Wifi, WifiOff, Monitor, Network, Server, Pencil, Globe } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
 import { copyToClipboard as copyTextToClipboard } from "@/lib/clipboard";
 
