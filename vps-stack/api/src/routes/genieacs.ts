@@ -895,12 +895,16 @@ const FAST_PROJECTION = [
 ].join(',');
 
 function sanitizePower(val: any): number | null {
-  const num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
+  let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
   if (!Number.isFinite(num)) return null;
   // Valores centinela de ONUs sin lectura óptica (p.ej. -2147483648, 65535)
-  if (num <= -100 || num >= 65535) return null;
-  if (num > 100) return parseFloat((10 * Math.log10(num / 10000)).toFixed(2));
-  return parseFloat(num.toFixed(2));
+  if (num >= 65535 || num === -2147483648) return null;
+  // Muchos vendors reportan en unidades de 0.01 dBm (ej: -2245 = -22.45 dBm)
+  if (num < -100 && num > -100000) num = num / 100;
+  // Unidades de 0.0001 mW → convertir a dBm
+  if (num > 100) num = 10 * Math.log10(num / 10000);
+  if (num <= -90 || num > 20) return null;
+  return Math.round(num);
 }
 
 function firstPppoeUsername(device: any): string | null {
