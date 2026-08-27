@@ -883,7 +883,7 @@ setup_wireguard_networking() {
 # Reaplica rutas host hacia la subred VPN y redes remotas (remote_networks)
 # via el contenedor WireGuard. Idempotente (ip route replace).
 WG_IP=$(docker inspect omnisync-wireguard --format '{{range $k,$v := .NetworkSettings.Networks}}{{if eq $k "omnisync_omnisync-net"}}{{$v.IPAddress}}{{end}}{{end}}' 2>/dev/null)
-[ -z "$WG_IP" ] && WG_IP=$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}' 2>/dev/null | awk '{print $NF}')
+[ -z "$WG_IP" ] && WG_IP=$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $NF}')
 [ -z "$WG_IP" ] && exit 0
 # Subred VPN base
 ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null

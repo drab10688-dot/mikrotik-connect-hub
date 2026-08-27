@@ -131,6 +131,14 @@ ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_diagnostic
 docker compose restart api nginx >/dev/null
 sleep 5
 
+echo "[8/8] Restaurando enrutamiento VPN (WireGuard)..."
+if [ -x "$APP_DIR/restore-vpn-routes.sh" ]; then
+  APP_DIR="$APP_DIR" bash "$APP_DIR/restore-vpn-routes.sh" || echo "  ⚠ VPN no restaurada automáticamente"
+else
+  echo "  ⚠ restore-vpn-routes.sh no encontrado"
+fi
+
+
 failed=0
 for container in omnisync-postgres omnisync-mariadb omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   if docker ps --format '{{.Names}}' | grep -qx "$container"; then
