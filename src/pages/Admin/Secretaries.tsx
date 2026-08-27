@@ -105,7 +105,71 @@ const PERM_GROUPS = [
       ['can_manage_vps_docker', 'Gestionar Docker/Servicios'],
     ],
   },
+  {
+    id: 'onu', label: 'Permisos ONU / TR-069', masterKey: 'can_manage_onu',
+    subs: [
+      ['can_view_onu', 'Ver ONUs y señal'],
+      ['can_configure_onu_wifi', 'Configurar WiFi de ONU'],
+      ['can_reboot_onu', 'Reiniciar ONU'],
+      ['can_delete_onu', 'Eliminar ONU'],
+    ],
+  },
+  {
+    id: 'radius', label: 'Permisos RADIUS', masterKey: 'can_manage_radius',
+    subs: [
+      ['can_view_radius_sessions', 'Ver sesiones RADIUS'],
+      ['can_manage_radius_users', 'Gestionar usuarios RADIUS'],
+      ['can_disconnect_radius', 'Desconectar sesiones'],
+    ],
+  },
+  {
+    id: 'vpn', label: 'Permisos VPN / WireGuard', masterKey: 'can_manage_vpn',
+    subs: [
+      ['can_create_vpn_peers', 'Crear peers VPN'],
+      ['can_delete_vpn_peers', 'Eliminar peers VPN'],
+    ],
+  },
+  {
+    id: 'contracts', label: 'Permisos Contratos', masterKey: 'can_manage_contracts',
+    subs: [
+      ['can_create_contracts', 'Crear contratos'],
+      ['can_sign_contracts', 'Firmar contratos'],
+      ['can_delete_contracts', 'Eliminar contratos'],
+    ],
+  },
+  {
+    id: 'messaging', label: 'Permisos Mensajería', masterKey: 'can_manage_messaging',
+    subs: [
+      ['can_send_telegram', 'Enviar Telegram'],
+      ['can_send_whatsapp', 'Enviar WhatsApp'],
+      ['can_config_messaging', 'Configurar bots/APIs'],
+    ],
+  },
+  {
+    id: 'portal', label: 'Permisos Portal Cautivo', masterKey: 'can_manage_portal',
+    subs: [
+      ['can_edit_portal_templates', 'Editar plantillas del portal'],
+      ['can_manage_portal_ads', 'Gestionar publicidad'],
+    ],
+  },
+  {
+    id: 'monitoring', label: 'Permisos Monitoreo', masterKey: 'can_manage_monitoring',
+    subs: [
+      ['can_view_dashboard', 'Ver dashboard'],
+      ['can_view_traffic', 'Ver tráfico'],
+      ['can_run_diagnostics', 'Ejecutar diagnósticos'],
+      ['can_view_map', 'Ver mapa de red'],
+    ],
+  },
+  {
+    id: 'devices', label: 'Permisos Dispositivos', masterKey: 'can_manage_devices',
+    subs: [
+      ['can_view_devices', 'Ver dispositivos MikroTik'],
+      ['can_edit_devices', 'Editar dispositivos'],
+    ],
+  },
 ];
+
 
 // Get all sub-permission keys
 const ALL_SUB_KEYS = PERM_GROUPS.flatMap(g => g.subs.map(s => s[0]));
