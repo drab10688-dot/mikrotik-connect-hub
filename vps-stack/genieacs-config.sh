@@ -66,16 +66,30 @@ put('ui.index.8.parameter', 'VirtualParameters.PonTx');
 put('ui.index.9.label', '"IP WAN"');
 put('ui.index.9.parameter', 'VirtualParameters.WanIP');
 
-put('ui.index.10.label', '"Uptime"');
-put('ui.index.10.parameter', 'VirtualParameters.Uptime');
+put('ui.index.9.label', '"Clave 2.4G"');
+put('ui.index.9.parameter', 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase');
+put('ui.index.9.writable', 'true');
 
-put('ui.index.11.label', '"Último inform"');
-put('ui.index.11.parameter', 'Events.Inform');
-put('ui.index.11.type', '"timestamp"');
+put('ui.index.10.label', '"Clave 5G"');
+put('ui.index.10.parameter', 'VirtualParameters.Key5G');
 
-put('ui.index.12.label', '"Etiquetas"');
-put('ui.index.12.parameter', 'Tags');
-put('ui.index.12.type', '"tags"');
+put('ui.index.11.label', '"Usuario PPPoE"');
+put('ui.index.11.parameter', 'VirtualParameters.PppoeUser');
+
+put('ui.index.12.label', '"Estado PPPoE"');
+put('ui.index.12.parameter', 'VirtualParameters.PppoeStatus');
+
+put('ui.index.13.label', '"Uptime"');
+put('ui.index.13.parameter', 'VirtualParameters.Uptime');
+
+put('ui.index.14.label', '"Último inform"');
+put('ui.index.14.parameter', 'Events.Inform');
+put('ui.index.14.type', '"timestamp"');
+
+put('ui.index.15.label', '"Etiquetas"');
+put('ui.index.15.parameter', 'Tags');
+put('ui.index.15.type', '"tags"');
+
 
 // ---------- Página de detalle: resumen superior ----------
 put('ui.device.0.type', '"parameter-list"');
