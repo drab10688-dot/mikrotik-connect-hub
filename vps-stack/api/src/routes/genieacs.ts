@@ -1019,12 +1019,7 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
         ?? null;
 
       // Normalize: some ONUs report in mW (positive values), convert to dBm
-      const normalizePower = (val: number | null): number | null => {
-        if (val === null) return null;
-        // If value is positive and > 1, likely in mW * 10000 or similar vendor scale
-        if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
-        return val;
-      };
+      const normalizePower = (val: number | null): number | null => sanitizePower(val);
 
       const quality = (rx: number | null): string => {
         if (rx === null) return 'unknown';
