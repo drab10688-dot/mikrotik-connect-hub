@@ -567,6 +567,16 @@ fi
 
 VPS_IP=$(hostname -I | awk '{print $1}')
 
+# Public IP (used for WireGuard endpoint) - never a private/container IP
+VPS_PUBLIC_IP=$(curl -s -4 --max-time 5 ifconfig.me || true)
+if ! echo "$VPS_PUBLIC_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  VPS_PUBLIC_IP=$(curl -s -4 --max-time 5 api.ipify.org || true)
+fi
+if ! echo "$VPS_PUBLIC_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  VPS_PUBLIC_IP="$VPS_IP"
+fi
+echo -e "${CYAN}→ IP pública detectada: ${VPS_PUBLIC_IP}${NC}"
+
 # Create .env with actual passwords
 cat > .env << EOF
 # Auto-generated - $(date)
