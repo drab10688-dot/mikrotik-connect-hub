@@ -22,7 +22,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     };
 
     const { rows } = await pool.query(
-      `SELECT u.is_active,
+      `SELECT u.is_active, u.company_id,
               COALESCE(
                 (
                   SELECT ur.role
