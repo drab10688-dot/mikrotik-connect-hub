@@ -5,6 +5,7 @@ import { pool } from '../lib/db';
 export interface AuthRequest extends Request {
   userId?: string;
   userRole?: string;
+  companyId?: string | null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
