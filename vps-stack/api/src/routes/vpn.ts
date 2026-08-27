@@ -328,6 +328,7 @@ function generateMikrotikScript(
 
 # 5) Firewall: permitir acceso API desde el VPS por el túnel
 :do { /ip firewall filter remove [find where comment="omnisync-vpn-api"] } on-error={}
+:do { /ip firewall filter remove [find where comment="omnisync-vpn-forward"] } on-error={}
 /ip firewall filter add \\
   chain=input \\
   src-address=${WG_SUBNET}.0/24 \\
@@ -337,7 +338,21 @@ function generateMikrotikScript(
   comment="omnisync-vpn-api" \\
   place-before=0
 
-# 6) Verificar conectividad (esperar 5s)
+# 6) Firewall: permitir reenviar tráfico del túnel hacia las ONUs/PPPoE (GenieACS)
+/ip firewall filter add \\
+  chain=forward \\
+  in-interface=wg-omnisync \\
+  action=accept \\
+  comment="omnisync-vpn-forward" \\
+  place-before=0
+/ip firewall filter add \\
+  chain=forward \\
+  out-interface=wg-omnisync \\
+  action=accept \\
+  comment="omnisync-vpn-forward" \\
+  place-before=0
+
+# 7) Verificar conectividad (esperar 5s)
 :delay 5s
 :do { /ping ${WG_SUBNET}.1 count=3 } on-error={ :log warning "WireGuard: no se pudo hacer ping al servidor VPS" }
 
