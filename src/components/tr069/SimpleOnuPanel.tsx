@@ -281,6 +281,8 @@ export default function SimpleOnuPanel() {
         devices.map((d) => {
           const info = deviceInfo(d);
           const sig = signals[d._id];
+          const offline = isOffline(sig?.lastInform);
+
           const isOpen = expanded === d._id;
           const form = pppoe[d._id] || { username: "", password: "" };
           const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username || pppoeNames[d._id];
