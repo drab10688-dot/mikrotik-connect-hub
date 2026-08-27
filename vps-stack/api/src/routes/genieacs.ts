@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { AuthRequest, authMiddleware } from '../middleware/auth';
+import { AuthRequest } from '../middleware/auth';
 import { pool } from '../lib/db';
 import {
   ensureAcsSignalTables,
@@ -8,7 +8,6 @@ import {
 } from '../lib/acs-signal';
 
 export const genieacsRouter = Router();
-genieacsRouter.use(authMiddleware);
 
 const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
 
