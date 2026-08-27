@@ -27,6 +27,26 @@ function signalColor(dbm: number | null) {
   return "text-destructive";
 }
 
+const OFFLINE_AFTER_MS = 5 * 60 * 1000;
+
+function isOffline(lastInform: string | null | undefined) {
+  if (!lastInform) return true;
+  const t = new Date(lastInform).getTime();
+  if (!Number.isFinite(t)) return true;
+  return Date.now() - t > OFFLINE_AFTER_MS;
+}
+
+function sinceLabel(lastInform: string | null | undefined) {
+  if (!lastInform) return "sin reportes";
+  const diff = Date.now() - new Date(lastInform).getTime();
+  if (!Number.isFinite(diff)) return "sin reportes";
+  const min = Math.floor(diff / 60000);
+  if (min < 60) return `hace ${Math.max(min, 1)} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  return `hace ${Math.floor(h / 24)} d`;
+}
+
 function deviceInfo(device: any) {
   const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
   const meta = device?._deviceId || {};
@@ -37,6 +57,7 @@ function deviceInfo(device: any) {
     serial: di?.SerialNumber?._value || meta?._SerialNumber || (parts.length >= 3 ? parts.slice(2).join("-") : "-"),
   };
 }
+
 
 export default function SimpleOnuPanel() {
   const [devices, setDevices] = useState<any[]>([]);
@@ -52,6 +73,8 @@ export default function SimpleOnuPanel() {
   const [pppoeNames, setPppoeNames] = useState<Record<string, string>>({});
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
   const [aliasDraft, setAliasDraft] = useState("");
+  const [, setTick] = useState(0);
+
 
   const loadAliases = useCallback(async () => {
     try {
@@ -155,9 +178,15 @@ export default function SimpleOnuPanel() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(() => load(false), 60000);
+    const t = window.setInterval(() => load(false), 30000);
     return () => window.clearInterval(t);
   }, [load]);
+  // Refresca el cálculo de "en línea / desconectada" sin recargar datos
+  useEffect(() => {
+    const t = window.setInterval(() => setTick((n) => n + 1), 30000);
+    return () => window.clearInterval(t);
+  }, []);
+
 
   const refreshSignal = async (deviceId: string) => {
     setBusy(`sig-${deviceId}`);
@@ -232,7 +261,10 @@ export default function SimpleOnuPanel() {
           <Badge variant={health === "online" ? "default" : "secondary"}>
             {health === "online" ? "ACS Online" : "Conectando..."}
           </Badge>
-          <span className="text-sm text-muted-foreground">{devices.length} ONU(s)</span>
+          <span className="text-sm text-muted-foreground">
+            {devices.filter((d) => !isOffline(signals[d._id]?.lastInform)).length} en línea / {devices.length} ONU(s)
+          </span>
+
         </div>
         <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
           <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Actualizar
@@ -249,6 +281,8 @@ export default function SimpleOnuPanel() {
         devices.map((d) => {
           const info = deviceInfo(d);
           const sig = signals[d._id];
+          const offline = isOffline(sig?.lastInform);
+
           const isOpen = expanded === d._id;
           const form = pppoe[d._id] || { username: "", password: "" };
           const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username || pppoeNames[d._id];
@@ -291,17 +325,25 @@ export default function SimpleOnuPanel() {
                         </span>
                       )}
                     </CardTitle>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground min-w-0">
+
                       {(pppoeName || aliases[d._id]) && (
                         <span className="flex items-center gap-1 truncate">
                           <Tag className="w-3 h-3" />{info.manufacturer} {info.model}
                         </span>
                       )}
                       <span className="font-mono truncate">{info.serial}</span>
+                      <Badge variant={offline ? "destructive" : "default"} className="text-[10px]">
+                        {offline ? "Desconectada" : "En línea"}
+                      </Badge>
+                      <span>{sinceLabel(sig?.lastInform)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <SignalGauge rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} />
+                    <div className={offline ? "opacity-40 grayscale" : ""}>
+                      <SignalGauge rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} />
+                    </div>
+
                     <Button size="sm" variant="ghost" onClick={() => refreshSignal(d._id)} disabled={busy === `sig-${d._id}`}>
                       {busy === `sig-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Signal className="w-3 h-3" />}
                     </Button>
