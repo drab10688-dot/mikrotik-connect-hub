@@ -10,7 +10,7 @@ import {
 export const genieacsRouter = Router();
 genieacsRouter.use(authMiddleware);
 
-const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
+const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs:7557';
 
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
 async function genieFetch(path: string, options: RequestInit = {}) {

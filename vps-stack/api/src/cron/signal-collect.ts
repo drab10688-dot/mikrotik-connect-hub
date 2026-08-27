@@ -41,7 +41,7 @@ export async function runSignalCollectCron(pool: Pool) {
 }
 
 async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
-  const GENIEACS_NBI_URL = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
+  const GENIEACS_NBI_URL = process.env.GENIEACS_NBI_URL || 'http://genieacs:7557';
 
   const genieFetch = async (path: string, options: any = {}) => {
     const resp = await fetch(`${GENIEACS_NBI_URL}${path}`, {
