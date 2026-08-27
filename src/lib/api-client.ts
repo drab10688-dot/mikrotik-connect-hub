@@ -388,11 +388,16 @@ export const resellersApi = {
 // ─── Secretary API ────────────────────────────────────────
 export const secretariesApi = {
   myAssignments: async () => unwrapArray(await apiGet<any>('/devices/my-secretary-assignments')),
+  allAssignments: async () => unwrapArray(await apiGet<any>('/devices/secretaries')),
   assignments: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/devices/${mikrotikId}/secretaries`)),
-  assign: (mikrotikId: string, data: any) => apiPost(`/devices/${mikrotikId}/secretaries`, data),
+  assign: (mikrotikId: string | null, data: any) =>
+    mikrotikId
+      ? apiPost(`/devices/${mikrotikId}/secretaries`, data)
+      : apiPost('/devices/secretaries', { ...data, mikrotik_id: null }),
   update: (assignmentId: string, permissions: any) => apiPut(`/devices/secretaries/${assignmentId}`, permissions),
   remove: (assignmentId: string) => apiDelete(`/devices/secretaries/${assignmentId}`),
 };
+
 
 // ─── Contracts API ────────────────────────────────────────
 export const contractsApi = {
