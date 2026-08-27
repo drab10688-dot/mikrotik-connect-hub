@@ -105,7 +105,30 @@ const PERM_GROUPS = [
       ['can_manage_vps_docker', 'Gestionar Docker/Servicios'],
     ],
   },
+  {
+    id: 'radius', label: 'Permisos RADIUS Manager', masterKey: 'can_manage_radius',
+    subs: [
+      ['can_manage_radius_users', 'Gestionar usuarios RADIUS'],
+      ['can_view_radius_stats', 'Ver estadísticas y sesiones'],
+    ],
+  },
+  {
+    id: 'onu', label: 'Permisos Gestión ONU', masterKey: 'can_manage_onu',
+    subs: [
+      ['can_configure_onu_wifi', 'Configurar WiFi de ONUs'],
+      ['can_reboot_onu', 'Reiniciar ONUs'],
+    ],
+  },
+  {
+    id: 'settings', label: 'Permisos Configuración', masterKey: 'can_manage_settings',
+    subs: [],
+  },
+  {
+    id: 'diagnostics', label: 'Permisos Diagnóstico API', masterKey: 'can_manage_diagnostics',
+    subs: [],
+  },
 ];
+
 
 // Get all sub-permission keys
 const ALL_SUB_KEYS = PERM_GROUPS.flatMap(g => g.subs.map(s => s[0]));
