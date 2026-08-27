@@ -66,16 +66,30 @@ put('ui.index.8.parameter', 'VirtualParameters.PonTx');
 put('ui.index.9.label', '"IP WAN"');
 put('ui.index.9.parameter', 'VirtualParameters.WanIP');
 
-put('ui.index.10.label', '"Uptime"');
-put('ui.index.10.parameter', 'VirtualParameters.Uptime');
+put('ui.index.9.label', '"Clave 2.4G"');
+put('ui.index.9.parameter', 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase');
+put('ui.index.9.writable', 'true');
 
-put('ui.index.11.label', '"Último inform"');
-put('ui.index.11.parameter', 'Events.Inform');
-put('ui.index.11.type', '"timestamp"');
+put('ui.index.10.label', '"Clave 5G"');
+put('ui.index.10.parameter', 'VirtualParameters.Key5G');
 
-put('ui.index.12.label', '"Etiquetas"');
-put('ui.index.12.parameter', 'Tags');
-put('ui.index.12.type', '"tags"');
+put('ui.index.11.label', '"Usuario PPPoE"');
+put('ui.index.11.parameter', 'VirtualParameters.PppoeUser');
+
+put('ui.index.12.label', '"Estado PPPoE"');
+put('ui.index.12.parameter', 'VirtualParameters.PppoeStatus');
+
+put('ui.index.13.label', '"Uptime"');
+put('ui.index.13.parameter', 'VirtualParameters.Uptime');
+
+put('ui.index.14.label', '"Último inform"');
+put('ui.index.14.parameter', 'Events.Inform');
+put('ui.index.14.type', '"timestamp"');
+
+put('ui.index.15.label', '"Etiquetas"');
+put('ui.index.15.parameter', 'Tags');
+put('ui.index.15.type', '"tags"');
+
 
 // ---------- Página de detalle: resumen superior ----------
 put('ui.device.0.type', '"parameter-list"');
@@ -99,6 +113,15 @@ put('ui.device.1.parameters.1.label', '"PON Tx (dBm)"');
 put('ui.device.1.parameters.1.parameter', 'VirtualParameters.PonTx');
 put('ui.device.1.parameters.2.label', '"IP WAN"');
 put('ui.device.1.parameters.2.parameter', 'VirtualParameters.WanIP');
+put('ui.device.1.parameters.3.label', '"Usuario PPPoE"');
+put('ui.device.1.parameters.3.parameter', 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username');
+put('ui.device.1.parameters.3.writable', 'true');
+put('ui.device.1.parameters.4.label', '"Clave PPPoE"');
+put('ui.device.1.parameters.4.parameter', 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password');
+put('ui.device.1.parameters.4.writable', 'true');
+put('ui.device.1.parameters.5.label', '"Estado PPPoE"');
+put('ui.device.1.parameters.5.parameter', 'VirtualParameters.PppoeStatus');
+
 
 put('ui.device.2.type', '"parameter-list"');
 put('ui.device.2.label', '"\'WiFi 2.4 GHz\'"');
@@ -231,6 +254,22 @@ vparam Uptime  "$VP_UPTIME"
 vparam WanIP   "$VP_WANIP"
 vparam SSID5G  "$VP_SSID5G"
 vparam Key5G   "$VP_KEY5G"
+
+read -r -d '' VP_PPPOEUSER <<'EOF' || true
+const d = declare("InternetGatewayDevice.WANDevice.*.WANConnectionDevice.*.WANPPPConnection.*.Username", {value: Date.now() - 300000});
+for (const x of d) { if (x.value && x.value[0]) return {writable: false, value: [x.value[0], "string"]}; }
+return {writable: false, value: ["", "string"]};
+EOF
+
+read -r -d '' VP_PPPOESTATUS <<'EOF' || true
+const d = declare("InternetGatewayDevice.WANDevice.*.WANConnectionDevice.*.WANPPPConnection.*.ConnectionStatus", {value: Date.now() - 300000});
+for (const x of d) { if (x.value && x.value[0]) return {writable: false, value: [x.value[0], "string"]}; }
+return {writable: false, value: ["", "string"]};
+EOF
+
+vparam PppoeUser   "$VP_PPPOEUSER"
+vparam PppoeStatus "$VP_PPPOESTATUS"
+
 
 # ---------------- Preset de refresco periódico ----------------
 read -r -d '' PROV <<'EOF' || true
