@@ -597,6 +597,7 @@ NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
 NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
 GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
+VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
 
 TZ=America/Bogota
 EOF
