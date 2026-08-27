@@ -1985,6 +1985,15 @@ genieacsRouter.get('/devices/:deviceId/onu-status', async (req: AuthRequest, res
   }
 });
 
+// Devuelve el nodo de un path dentro del árbol del dispositivo (o undefined)
+function getNodeAt(device: any, path: string): any {
+  return path.split('.').reduce((acc: any, key: string) => (acc == null ? acc : acc[key]), device);
+}
+function paramExists(device: any, path: string): boolean {
+  const node = getNodeAt(device, path);
+  return node !== undefined && node !== null && typeof node === 'object' && '_value' in node;
+}
+
 // ─── Editar una radio concreta (2.4G / 5G / cualquiera) ──
 genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Response) => {
   try {
@@ -1995,36 +2004,87 @@ genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Res
       return res.status(400).json({ error: 'path de la radio inválido' });
     }
 
+    // Leemos el árbol real para enviar SOLO parámetros existentes.
+    // GenieACS rechaza la tarea completa (fault 9003 "Invalid arguments")
+    // si uno solo de los parámetros no existe en la ONU.
+    let device: any = null;
+    try { device = await fetchDevice(deviceId); } catch { /* seguimos sin validar */ }
+    const exists = (p: string) => (device ? paramExists(device, p) : true);
+
     const parameterValues: [string, any, string][] = [];
-    if (ssid) parameterValues.push([`${path}.SSID`, ssid, 'xsd:string']);
+    if (ssid && exists(`${path}.SSID`)) parameterValues.push([`${path}.SSID`, ssid, 'xsd:string']);
+
     if (password) {
-      parameterValues.push(
-        [`${path}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'],
-        [`${path}.PreSharedKey.1.KeyPassphrase`, password, 'xsd:string'],
-        [`${path}.KeyPassphrase`, password, 'xsd:string'],
-      );
+      const pwCandidates = [
+        `${path}.PreSharedKey.1.KeyPassphrase`,
+        `${path}.PreSharedKey.1.PreSharedKey`,
+        `${path}.KeyPassphrase`,
+        `${path}.X_HW_WPAKey`,
+        `${path}.WPAKey`,
+      ];
+      const found = pwCandidates.filter(exists);
+      // Si no detectamos ninguno (árbol incompleto), probamos los estándar
+      const chosen = found.length ? found : [`${path}.PreSharedKey.1.KeyPassphrase`, `${path}.KeyPassphrase`];
+      for (const p of chosen) parameterValues.push([p, password, 'xsd:string']);
     }
-    if (enable !== undefined) parameterValues.push([`${path}.Enable`, !!enable, 'xsd:boolean']);
-    if (hidden !== undefined) parameterValues.push([`${path}.SSIDAdvertisementEnabled`, !hidden, 'xsd:boolean']);
+
+    if (enable !== undefined && exists(`${path}.Enable`)) {
+      parameterValues.push([`${path}.Enable`, !!enable, 'xsd:boolean']);
+    }
+    if (hidden !== undefined && exists(`${path}.SSIDAdvertisementEnabled`)) {
+      parameterValues.push([`${path}.SSIDAdvertisementEnabled`, !hidden, 'xsd:boolean']);
+    }
     if (channel !== undefined && channel !== null && channel !== '') {
-      parameterValues.push([`${path}.AutoChannelEnable`, false, 'xsd:boolean']);
-      parameterValues.push([`${path}.Channel`, Number(channel), 'xsd:unsignedInt']);
+      if (exists(`${path}.AutoChannelEnable`)) parameterValues.push([`${path}.AutoChannelEnable`, false, 'xsd:boolean']);
+      if (exists(`${path}.Channel`)) parameterValues.push([`${path}.Channel`, Number(channel), 'xsd:unsignedInt']);
     }
-    if (bandwidth) parameterValues.push([`${path}.OperatingChannelBandwidth`, bandwidth, 'xsd:string']);
+    if (bandwidth && exists(`${path}.OperatingChannelBandwidth`)) {
+      parameterValues.push([`${path}.OperatingChannelBandwidth`, bandwidth, 'xsd:string']);
+    }
 
     if (parameterValues.length === 0) {
-      return res.status(400).json({ error: 'No hay cambios que enviar' });
+      return res.status(400).json({ error: 'No hay cambios que enviar (la ONU no expone esos parámetros)' });
     }
 
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify({ name: 'setParameterValues', parameterValues }) }
-    );
-    res.json({ success: true, message: 'Configuración WiFi enviada a la ONU', data: result });
+    // Enviamos cada parámetro como tarea independiente: si la ONU rechaza uno
+    // (p. ej. una variante de clave), el resto sí se aplica.
+    const results: any[] = [];
+    const failed: string[] = [];
+    let applied = 0;
+    for (let i = 0; i < parameterValues.length; i++) {
+      const pv = parameterValues[i];
+      try {
+        const r = await genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify({ name: 'setParameterValues', parameterValues: [pv] }) }
+        );
+        results.push(r);
+        applied++;
+      } catch (e: any) {
+        failed.push(`${pv[0]}: ${e?.message || 'error'}`);
+      }
+    }
+
+    if (applied === 0) {
+      return res.status(502).json({
+        error: 'La ONU rechazó todos los parámetros enviados',
+        details: failed,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: failed.length
+        ? `Configuración aplicada (${applied}/${parameterValues.length} parámetros; algunos no soportados)`
+        : 'Configuración WiFi enviada a la ONU',
+      data: results,
+      skipped: failed,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── Activar / desactivar CATV ──────────────────────────
 genieacsRouter.post('/devices/:deviceId/catv', async (req: AuthRequest, res: Response) => {
