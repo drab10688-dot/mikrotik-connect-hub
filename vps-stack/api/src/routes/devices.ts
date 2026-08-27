@@ -404,6 +404,18 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
       [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
     );
 
+    // Multi-ISP: hereda el ISP del usuario que lo crea (si aplica).
+    if (req.tenantId) {
+      try {
+        await pool.query('UPDATE mikrotik_devices SET tenant_id = $1 WHERE id = $2', [req.tenantId, rows[0].id]);
+        rows[0].tenant_id = req.tenantId;
+      } catch {
+        /* instalación sin columna tenant_id: se ignora */
+      }
+    }
+
+
+
     // Auto-assign access
     await pool.query(
       'INSERT INTO user_mikrotik_access (user_id, mikrotik_id, granted_by) VALUES ($1, $2, $1)',
