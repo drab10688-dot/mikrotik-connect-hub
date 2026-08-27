@@ -150,7 +150,7 @@ export async function secretaryHasPermission(userId: string, permKey: string): P
     return rows.length > 0;
   } catch (error) {
     console.error(`⚠️ Auth: no se pudo verificar ${permKey}:`, error);
-    return true; // columna inexistente en esquemas viejos → no bloquear
+    return false; // ante la duda, denegar
   }
 }
 
