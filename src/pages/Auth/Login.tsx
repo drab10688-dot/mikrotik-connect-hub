@@ -24,11 +24,7 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
-      if (isSecretary) {
-        navigate('/ppp');
-      } else {
-        navigate('/dashboard');
-      }
+      navigate('/dashboard');
     }
   }, [isAuthenticated, isSecretary, authLoading, navigate]);
 

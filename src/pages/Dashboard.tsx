@@ -31,6 +31,7 @@ const Dashboard = () => {
   const systemData = (systemInfo as any[])?.[0];
 
   const hasDeviceAccess = availableDevices && availableDevices.length > 0;
+  const canEnterWithoutDevice = isSecretary && (assignments?.length || 0) > 0;
 
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
@@ -102,7 +103,7 @@ const Dashboard = () => {
     );
   }
 
-  if (!hasDeviceAccess) {
+  if (!hasDeviceAccess && !canEnterWithoutDevice) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />

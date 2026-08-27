@@ -169,7 +169,7 @@ export const Sidebar = () => {
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           </div>
-        ) : !hasDeviceAccess ? (
+        ) : !hasDeviceAccess && !isSecretary ? (
           <div className="px-4 py-6 space-y-3">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Shield className="w-5 h-5" />

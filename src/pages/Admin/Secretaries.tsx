@@ -159,7 +159,7 @@ export default function Secretaries() {
     queryFn: () => devicesApi.list(),
     enabled: !!user,
   });
-  const { assignments, isLoading, assignSecretary, removeSecretary, updateSecretary } = useSecretaries(viewMikrotik);
+  const { assignments, isLoading, assignSecretary, removeSecretary, updateSecretary, isAssigning } = useSecretaries(viewMikrotik || 'all');
 
   const setPerm = (key: string, val: boolean) => setPerms(prev => ({ ...prev, [key]: val }));
 
@@ -179,7 +179,7 @@ export default function Secretaries() {
       const userId = createdUser?.id;
       if (!userId) throw new Error('No se pudo obtener el ID del usuario creado');
 
-      assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik || 'all', ...perms });
+      await assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik || 'all', ...perms });
       setIsDialogOpen(false);
       setDialogMikrotik(''); setSecretaryEmail(''); setSecretaryPassword(''); setSecretaryFullName('');
       setPerms(getDefaultPerms());
@@ -268,14 +268,16 @@ export default function Secretaries() {
 
                         {renderPermAccordion(perms, setPerm)}
 
-                        <Button onClick={handleAssignSecretary} className="w-full">Asignar Asistente</Button>
+                        <Button onClick={handleAssignSecretary} className="w-full" disabled={isAssigning}>
+                          {isAssigning ? 'Asignando…' : 'Asignar Asistente'}
+                        </Button>
                       </div>
                     </DialogContent>
                   </Dialog>
                 </div>
                 <div>
                   <Label>Seleccionar Dispositivo</Label>
-                  <Select value={viewMikrotik} onValueChange={setViewMikrotik}>
+                  <Select value={viewMikrotik || 'all'} onValueChange={setViewMikrotik}>
                     <SelectTrigger className="w-full max-w-md"><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos los dispositivos (globales)</SelectItem>
@@ -286,10 +288,7 @@ export default function Secretaries() {
               </div>
             </CardHeader>
             <CardContent>
-              {!viewMikrotik ? (
-                <div className="text-center py-8 text-muted-foreground">Selecciona un dispositivo para ver los asistentes asignados</div>
-
-              ) : isLoading ? (
+              {isLoading ? (
                 <div className="text-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div></div>
               ) : assignments && assignments.length > 0 ? (
                 <Table>
