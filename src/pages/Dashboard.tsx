@@ -32,6 +32,9 @@ const Dashboard = () => {
 
   const hasDeviceAccess = availableDevices && availableDevices.length > 0;
   const canEnterWithoutDevice = isSecretary && (assignments?.length || 0) > 0;
+  const canUseVpsServices = isSecretary
+    ? (assignments || []).some((a: any) => a?.can_manage_vps_services === true)
+    : true;
 
   useEffect(() => {
     const isConnected = localStorage.getItem("mikrotik_connected");
