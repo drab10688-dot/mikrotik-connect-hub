@@ -27,6 +27,26 @@ function signalColor(dbm: number | null) {
   return "text-destructive";
 }
 
+const OFFLINE_AFTER_MS = 5 * 60 * 1000;
+
+function isOffline(lastInform: string | null | undefined) {
+  if (!lastInform) return true;
+  const t = new Date(lastInform).getTime();
+  if (!Number.isFinite(t)) return true;
+  return Date.now() - t > OFFLINE_AFTER_MS;
+}
+
+function sinceLabel(lastInform: string | null | undefined) {
+  if (!lastInform) return "sin reportes";
+  const diff = Date.now() - new Date(lastInform).getTime();
+  if (!Number.isFinite(diff)) return "sin reportes";
+  const min = Math.floor(diff / 60000);
+  if (min < 60) return `hace ${Math.max(min, 1)} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  return `hace ${Math.floor(h / 24)} d`;
+}
+
 function deviceInfo(device: any) {
   const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
   const meta = device?._deviceId || {};
@@ -37,6 +57,7 @@ function deviceInfo(device: any) {
     serial: di?.SerialNumber?._value || meta?._SerialNumber || (parts.length >= 3 ? parts.slice(2).join("-") : "-"),
   };
 }
+
 
 export default function SimpleOnuPanel() {
   const [devices, setDevices] = useState<any[]>([]);
