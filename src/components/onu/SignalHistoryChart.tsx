@@ -11,41 +11,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart } from "recharts";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Activity, TrendingDown, TrendingUp, Minus, RefreshCcw, Loader2, Signal, Thermometer, ArrowLeft, Bell, BellOff, AlertTriangle, CheckCircle, XCircle, Settings2, Globe } from "lucide-react";
+import { Activity, TrendingDown, TrendingUp, Minus, RefreshCcw, Loader2, Signal, Thermometer, ArrowLeft, Bell, AlertTriangle, CheckCircle, XCircle, Settings2, Globe } from "lucide-react";
 
 interface SignalReading {
   rx_power: number | null;
   tx_power: number | null;
   quality: string;
   temperature: number | null;
-  cpu_usage: number | null;
   wan_status: string | null;
   recorded_at: string;
 }
 
 interface SignalStats {
   totalReadings: number;
-  rxPower: {
-    min: number;
-    max: number;
-    avg: number;
-    current: number;
-    trend: string;
-  } | null;
-  txPower: {
-    min: number;
-    max: number;
-    avg: number;
-    current: number;
-  } | null;
+  rxPower: { min: number; max: number; avg: number; current: number; trend: string } | null;
+  txPower: { min: number; max: number; avg: number; current: number } | null;
 }
 
 interface OverviewEntry {
-  onu_id: string;
-  serial_number: string;
-  brand: string;
+  device_id: string;
+  name: string;
+  serial: string | null;
+  manufacturer: string | null;
   model: string | null;
-  client_name: string | null;
   rx_power: number | null;
   tx_power: number | null;
   quality: string;
@@ -57,31 +45,22 @@ interface OverviewEntry {
 
 interface SignalAlert {
   id: string;
-  onu_id: string;
-  serial_number: string;
-  brand: string;
-  model: string | null;
-  client_name: string | null;
-  rx_power: number;
-  threshold: number;
-  alert_type: string;
+  device_id: string;
+  serial: string | null;
+  alias: string | null;
+  rx_power: string | number;
+  threshold: string | number;
   sent_successfully: boolean;
   error_message: string | null;
   created_at: string;
 }
 
 interface GlobalSignalConfig {
-  id?: string;
-  mikrotik_id: string;
   alerts_enabled: boolean;
   default_threshold: number;
   default_chat_id: string | null;
   cooldown_minutes: number;
   auto_cleanup_days: number;
-}
-
-interface SignalHistoryChartProps {
-  mikrotikId: string;
 }
 
 const qualityColors: Record<string, string> = {
@@ -113,26 +92,25 @@ const trendLabels: Record<string, string> = {
   insufficient: "Sin suficientes datos",
 };
 
-export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartProps) {
+const num = (v: string | number | null | undefined) =>
+  v === null || v === undefined ? null : typeof v === "number" ? v : parseFloat(v);
+
+export default function SignalHistoryChart() {
   const [overview, setOverview] = useState<OverviewEntry[]>([]);
-  const [selectedOnu, setSelectedOnu] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [history, setHistory] = useState<SignalReading[]>([]);
   const [stats, setStats] = useState<SignalStats | null>(null);
   const [alerts, setAlerts] = useState<SignalAlert[]>([]);
   const [showAlerts, setShowAlerts] = useState(false);
-  const [showAlertConfig, setShowAlertConfig] = useState(false);
-  const [showGlobalConfig, setShowGlobalConfig] = useState(false);
-  const [alertConfigOnu, setAlertConfigOnu] = useState<OverviewEntry | null>(null);
-  const [alertForm, setAlertForm] = useState({ enabled: false, threshold: "-30", chatId: "" });
-  const [globalConfig, setGlobalConfig] = useState<GlobalSignalConfig>({
-    mikrotik_id: mikrotikId,
+  const [showConfig, setShowConfig] = useState(false);
+  const [config, setConfig] = useState<GlobalSignalConfig>({
     alerts_enabled: false,
-    default_threshold: -30,
+    default_threshold: -28,
     default_chat_id: null,
     cooldown_minutes: 60,
     auto_cleanup_days: 90,
   });
-  const [savingGlobal, setSavingGlobal] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [hours, setHours] = useState("168");
@@ -140,19 +118,19 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
   const loadOverview = async () => {
     setLoading(true);
     try {
-      const res = await api(`/genieacs/signal-overview-history/${mikrotikId}`);
+      const res = await api(`/genieacs/acs-signal/overview`);
       setOverview(res.data || []);
     } catch (err: any) {
-      toast.error("Error cargando overview: " + err.message);
+      toast.error("Error cargando señal: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadHistory = async (onuId: string) => {
+  const loadHistory = async (deviceId: string) => {
     setLoading(true);
     try {
-      const res = await api(`/genieacs/signal-history/${onuId}?hours=${hours}`);
+      const res = await api(`/genieacs/acs-signal/history/${encodeURIComponent(deviceId)}?hours=${hours}`);
       setHistory(res.data || []);
       setStats(res.stats || null);
     } catch (err: any) {
@@ -165,10 +143,10 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
   const handleCollect = async () => {
     setCollecting(true);
     try {
-      const res = await api(`/genieacs/signal-collect/${mikrotikId}`, { method: "POST" });
-      toast.success(res.message);
-      if (selectedOnu) loadHistory(selectedOnu);
-      else loadOverview();
+      const res = await api(`/genieacs/acs-signal/collect`, { method: "POST" });
+      toast.success(res.message || "Recolección completada");
+      if (selected) loadHistory(selected);
+      loadOverview();
     } catch (err: any) {
       toast.error("Error recolectando: " + err.message);
     } finally {
@@ -178,61 +156,42 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
 
   const loadAlerts = async () => {
     try {
-      const res = await api(`/genieacs/signal-alerts/${mikrotikId}`);
+      const res = await api(`/genieacs/acs-signal/alerts`);
       setAlerts(res.data || []);
     } catch { /* ignore */ }
   };
 
-  const loadGlobalConfig = async () => {
+  const loadConfig = async () => {
     try {
-      const res = await api(`/genieacs/signal-config/${mikrotikId}`);
+      const res = await api(`/genieacs/acs-signal/config`);
       if (res.data) {
-        setGlobalConfig(res.data);
+        setConfig({
+          alerts_enabled: !!res.data.alerts_enabled,
+          default_threshold: parseFloat(res.data.default_threshold ?? -28),
+          default_chat_id: res.data.default_chat_id ?? null,
+          cooldown_minutes: res.data.cooldown_minutes ?? 60,
+          auto_cleanup_days: res.data.auto_cleanup_days ?? 90,
+        });
       }
     } catch { /* ignore */ }
   };
 
-  const handleSaveGlobalConfig = async () => {
-    setSavingGlobal(true);
+  const handleSaveConfig = async () => {
+    setSavingConfig(true);
     try {
-      const res = await api(`/genieacs/signal-config/${mikrotikId}`, {
-        method: "PUT",
-        body: globalConfig,
-      });
-      setGlobalConfig(res.data);
-      toast.success("Configuración global de alertas guardada");
-      setShowGlobalConfig(false);
+      await api(`/genieacs/acs-signal/config`, { method: "PUT", body: config });
+      toast.success("Configuración de alertas guardada");
+      setShowConfig(false);
+      loadConfig();
     } catch (err: any) {
       toast.error("Error: " + err.message);
     } finally {
-      setSavingGlobal(false);
+      setSavingConfig(false);
     }
   };
 
-  const handleSaveAlertConfig = async () => {
-    if (!alertConfigOnu) return;
-    try {
-      await api(`/genieacs/signal-alerts/${alertConfigOnu.onu_id}`, {
-        method: "PUT",
-        body: {
-          enabled: alertForm.enabled,
-          threshold: parseFloat(alertForm.threshold),
-          chatId: alertForm.chatId,
-        },
-      });
-      toast.success("Configuración de alertas guardada");
-      setShowAlertConfig(false);
-      loadOverview();
-    } catch (err: any) {
-      toast.error("Error: " + err.message);
-    }
-  };
-
-  useEffect(() => { loadOverview(); loadGlobalConfig(); }, [mikrotikId]);
-
-  useEffect(() => {
-    if (selectedOnu) loadHistory(selectedOnu);
-  }, [selectedOnu, hours]);
+  useEffect(() => { loadOverview(); loadConfig(); }, []);
+  useEffect(() => { if (selected) loadHistory(selected); }, [selected, hours]);
 
   const chartData = history.map(r => ({
     time: new Date(r.recorded_at).toLocaleString("es", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
@@ -241,29 +200,27 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
     temp: r.temperature,
   }));
 
-  if (selectedOnu) {
-    const onuInfo = overview.find(o => o.onu_id === selectedOnu);
+  if (selected) {
+    const info = overview.find(o => o.device_id === selected);
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setSelectedOnu(null)}>
+            <Button variant="ghost" size="icon" onClick={() => setSelected(null)}>
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div>
               <h3 className="font-semibold text-foreground">
-                Historial de Señal — {onuInfo?.serial_number || selectedOnu}
+                Historial de Señal — {info?.name || selected}
               </h3>
               <p className="text-xs text-muted-foreground">
-                {onuInfo?.client_name || "Sin cliente"} · {onuInfo?.brand} {onuInfo?.model || ""}
+                {info?.manufacturer} {info?.model || ""} · SN {info?.serial || "—"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Select value={hours} onValueChange={setHours}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="24">24 horas</SelectItem>
                 <SelectItem value="72">3 días</SelectItem>
@@ -278,7 +235,6 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           </div>
         </div>
 
-        {/* Stats Cards */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
@@ -339,7 +295,6 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           </div>
         )}
 
-        {/* Chart */}
         <Card>
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-sm">Potencia Óptica (dBm)</CardTitle>
@@ -347,7 +302,7 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           <CardContent className="p-4 pt-0">
             {chartData.length === 0 ? (
               <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-                No hay datos de señal. Haga clic en recolectar para obtener la primera lectura.
+                Aún no hay lecturas en este período.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
@@ -384,7 +339,6 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
           </CardContent>
         </Card>
 
-        {/* Temperature chart if available */}
         {chartData.some(d => d.temp !== null) && (
           <Card>
             <CardHeader className="p-4 pb-2">
@@ -409,107 +363,93 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
     );
   }
 
-  // Overview mode
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="font-semibold text-foreground">Historial de Señal Óptica</h3>
           <p className="text-xs text-muted-foreground">
-            Monitoreo de potencia Rx/Tx para detectar degradación de fibra
+            Todas las ONUs conectadas al ACS. Se recolecta automáticamente cada 15 minutos.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => { loadGlobalConfig(); setShowGlobalConfig(true); }}>
-            <Globe className="w-4 h-4 mr-2" />
-            Config Global
+          <Button variant="outline" size="sm" onClick={() => { loadConfig(); setShowConfig(true); }}>
+            <Globe className="w-4 h-4 mr-2" /> Alertas
           </Button>
           <Button variant="outline" size="sm" onClick={() => { loadAlerts(); setShowAlerts(!showAlerts); }}>
-            <Bell className="w-4 h-4 mr-2" />
-            Alertas
+            <Bell className="w-4 h-4 mr-2" /> Historial de alertas
           </Button>
           <Button size="sm" onClick={handleCollect} disabled={collecting}>
             {collecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
-            Recolectar
+            Recolectar ahora
           </Button>
         </div>
       </div>
 
-      {/* Global Config Status Banner */}
-      {globalConfig.alerts_enabled && (
+      {config.alerts_enabled && (
         <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <CardContent className="p-3 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Globe className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-foreground">Alertas globales activas</span>
-              <Badge className="bg-primary/20 text-primary text-xs">
-                Umbral: {globalConfig.default_threshold} dBm
-              </Badge>
-              {globalConfig.default_chat_id && (
-                <Badge variant="outline" className="text-xs">
-                  Chat: {globalConfig.default_chat_id}
-                </Badge>
-              )}
-              <Badge variant="outline" className="text-xs">
-                Cooldown: {globalConfig.cooldown_minutes}min
-              </Badge>
+              <span className="text-sm font-medium text-foreground">Alertas activas</span>
+              <Badge className="bg-primary/20 text-primary text-xs">Umbral: {config.default_threshold} dBm</Badge>
+              {config.default_chat_id && <Badge variant="outline" className="text-xs">Chat: {config.default_chat_id}</Badge>}
+              <Badge variant="outline" className="text-xs">Cooldown: {config.cooldown_minutes} min</Badge>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => { loadGlobalConfig(); setShowGlobalConfig(true); }}>
+            <Button variant="ghost" size="sm" onClick={() => { loadConfig(); setShowConfig(true); }}>
               <Settings2 className="w-4 h-4" />
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Alert History */}
       {showAlerts && (
         <Card className="border-dashed border-primary/50">
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-destructive" />
-              Historial de Alertas
+              <AlertTriangle className="w-4 h-4 text-destructive" /> Historial de Alertas
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {alerts.length === 0 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">No hay alertas registradas</div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">ONU</TableHead>
-                    <TableHead className="text-xs">Cliente</TableHead>
-                    <TableHead className="text-xs text-center">Rx (dBm)</TableHead>
-                    <TableHead className="text-xs text-center">Umbral</TableHead>
-                    <TableHead className="text-xs text-center">Estado</TableHead>
-                    <TableHead className="text-xs">Fecha</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {alerts.map((alert) => (
-                    <TableRow key={alert.id}>
-                      <TableCell className="font-mono text-xs">{alert.serial_number}</TableCell>
-                      <TableCell className="text-xs">{alert.client_name || "—"}</TableCell>
-                      <TableCell className="text-center font-mono text-xs font-semibold text-destructive">
-                        {alert.rx_power.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-xs">{alert.threshold}</TableCell>
-                      <TableCell className="text-center">
-                        {alert.sent_successfully ? (
-                          <Badge className="bg-chart-2/20 text-chart-2 text-xs"><CheckCircle className="w-3 h-3 mr-1" />Enviada</Badge>
-                        ) : (
-                          <Badge className="bg-destructive/20 text-destructive text-xs" title={alert.error_message || ""}>
-                            <XCircle className="w-3 h-3 mr-1" />Falló
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(alert.created_at).toLocaleString("es")}
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">ONU</TableHead>
+                      <TableHead className="text-xs text-center">Rx (dBm)</TableHead>
+                      <TableHead className="text-xs text-center">Umbral</TableHead>
+                      <TableHead className="text-xs text-center">Estado</TableHead>
+                      <TableHead className="text-xs">Fecha</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {alerts.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell className="font-mono text-xs">{a.alias || a.serial || a.device_id}</TableCell>
+                        <TableCell className="text-center font-mono text-xs font-semibold text-destructive">
+                          {num(a.rx_power)?.toFixed(2) ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs">{num(a.threshold)?.toFixed(2) ?? "—"}</TableCell>
+                        <TableCell className="text-center">
+                          {a.sent_successfully ? (
+                            <Badge className="bg-chart-2/20 text-chart-2 text-xs"><CheckCircle className="w-3 h-3 mr-1" />Enviada</Badge>
+                          ) : (
+                            <Badge className="bg-destructive/20 text-destructive text-xs" title={a.error_message || ""}>
+                              <XCircle className="w-3 h-3 mr-1" />Falló
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(a.created_at).toLocaleString("es")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -521,38 +461,33 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <Signal className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>No hay datos de señal registrados.</p>
-            <p className="text-xs mt-1">Haga clic en "Recolectar" para obtener la primera lectura de las ONUs vinculadas al ACS.</p>
+            <p>Aún no hay lecturas guardadas.</p>
+            <p className="text-xs mt-1">Pulse "Recolectar ahora" para tomar la primera lectura de todas las ONUs del ACS.</p>
           </CardContent>
         </Card>
       ) : (
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>ONU</TableHead>
-                  <TableHead>Cliente</TableHead>
                   <TableHead className="text-center">Rx (dBm)</TableHead>
                   <TableHead className="text-center">Tx (dBm)</TableHead>
                   <TableHead className="text-center">Calidad</TableHead>
                   <TableHead className="text-center">Tendencia</TableHead>
-                  <TableHead className="text-center">Alerta</TableHead>
                   <TableHead className="text-xs">Última Lectura</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {overview.map((entry) => (
-                  <TableRow key={entry.onu_id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedOnu(entry.onu_id)}>
+                  <TableRow key={entry.device_id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelected(entry.device_id)}>
                     <TableCell>
                       <div>
-                        <span className="font-mono text-xs">{entry.serial_number}</span>
-                        <div className="text-xs text-muted-foreground capitalize">{entry.brand} {entry.model || ""}</div>
+                        <span className="text-sm font-medium">{entry.name}</span>
+                        <div className="text-xs text-muted-foreground">{entry.manufacturer} {entry.model || ""}</div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {entry.client_name || <span className="text-muted-foreground text-xs">Sin vincular</span>}
                     </TableCell>
                     <TableCell className="text-center font-mono text-sm font-semibold">
                       {entry.rx_power !== null ? entry.rx_power.toFixed(2) : "—"}
@@ -571,31 +506,11 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
                         <span className="text-xs">{trendLabels[entry.trend] || entry.trend}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        title="Configurar alertas individuales"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAlertConfigOnu(entry);
-                          setAlertForm({
-                            enabled: false,
-                            threshold: "-30",
-                            chatId: "",
-                          });
-                          setShowAlertConfig(true);
-                        }}
-                      >
-                        <Bell className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {new Date(entry.recorded_at).toLocaleString("es")}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedOnu(entry.onu_id); }}>
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelected(entry.device_id); }}>
                         <Activity className="w-4 h-4 mr-1" /> Ver
                       </Button>
                     </TableCell>
@@ -607,173 +522,66 @@ export default function SignalHistoryChart({ mikrotikId }: SignalHistoryChartPro
         </Card>
       )}
 
-      {/* Individual Alert Config Dialog */}
-      <Dialog open={showAlertConfig} onOpenChange={setShowAlertConfig}>
+      <Dialog open={showConfig} onOpenChange={setShowConfig}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5" />
-              Alertas Individuales — {alertConfigOnu?.serial_number}
+              <Globe className="w-5 h-5" /> Alertas de Señal Óptica
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-muted/50 p-3 rounded text-sm">
-              <p><span className="font-medium">ONU:</span> {alertConfigOnu?.serial_number}</p>
-              <p><span className="font-medium">Cliente:</span> {alertConfigOnu?.client_name || "Sin vincular"}</p>
-              <p><span className="font-medium">Rx Actual:</span> {alertConfigOnu?.rx_power !== null ? `${alertConfigOnu?.rx_power?.toFixed(2)} dBm` : "—"}</p>
-            </div>
-
-            {globalConfig.alerts_enabled && !alertForm.enabled && (
-              <div className="bg-primary/10 border border-primary/20 p-3 rounded text-sm flex items-center gap-2">
-                <Globe className="w-4 h-4 text-primary flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-foreground">Usando configuración global</p>
-                  <p className="text-xs text-muted-foreground">
-                    Umbral: {globalConfig.default_threshold} dBm · Chat: {globalConfig.default_chat_id || "No configurado"}
-                  </p>
-                </div>
-              </div>
-            )}
-
             <div className="flex items-center gap-3">
               <Switch
-                checked={alertForm.enabled}
-                onCheckedChange={(v) => setAlertForm(p => ({ ...p, enabled: v }))}
+                checked={config.alerts_enabled}
+                onCheckedChange={(v) => setConfig(p => ({ ...p, alerts_enabled: v }))}
               />
               <div>
-                <Label>Configuración individual</Label>
-                <p className="text-xs text-muted-foreground">Sobreescribir la configuración global para esta ONU</p>
+                <Label>Activar alertas por Telegram</Label>
+                <p className="text-xs text-muted-foreground">Se aplica a todas las ONUs del ACS</p>
               </div>
             </div>
 
-            {alertForm.enabled && (
-              <>
-                <div className="space-y-2">
-                  <Label>Umbral Rx (dBm)</Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={alertForm.threshold}
-                    onChange={(e) => setAlertForm(p => ({ ...p, threshold: e.target.value }))}
-                    placeholder="-30"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Se enviará alerta cuando Rx Power sea menor a este valor. Recomendado: -25 a -28 dBm
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Chat ID de Telegram</Label>
-                  <Input
-                    value={alertForm.chatId}
-                    onChange={(e) => setAlertForm(p => ({ ...p, chatId: e.target.value }))}
-                    placeholder="Ej: -1001234567890"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    ID del chat o grupo donde enviar las alertas. Use @userinfobot en Telegram para obtenerlo.
-                  </p>
-                </div>
-              </>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowAlertConfig(false)}>Cancelar</Button>
-              <Button onClick={handleSaveAlertConfig}>
-                {alertForm.enabled ? <Bell className="w-4 h-4 mr-2" /> : <BellOff className="w-4 h-4 mr-2" />}
-                Guardar
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Global Config Dialog */}
-      <Dialog open={showGlobalConfig} onOpenChange={setShowGlobalConfig}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Globe className="w-5 h-5 text-primary" />
-              Configuración Global de Alertas
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-muted/50 p-3 rounded text-sm text-muted-foreground">
-              Esta configuración aplica como <strong>valor por defecto</strong> a todas las ONUs que no tengan configuración individual.
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={globalConfig.alerts_enabled}
-                onCheckedChange={(v) => setGlobalConfig(p => ({ ...p, alerts_enabled: v }))}
-              />
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Alertas habilitadas</Label>
-                <p className="text-xs text-muted-foreground">Activar alertas automáticas para todas las ONUs</p>
+                <Label>Umbral Rx (dBm)</Label>
+                <Input
+                  type="number"
+                  value={config.default_threshold}
+                  onChange={(e) => setConfig(p => ({ ...p, default_threshold: parseFloat(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <Label>Cooldown (min)</Label>
+                <Input
+                  type="number"
+                  value={config.cooldown_minutes}
+                  onChange={(e) => setConfig(p => ({ ...p, cooldown_minutes: parseInt(e.target.value || "60", 10) }))}
+                />
               </div>
             </div>
 
-            {globalConfig.alerts_enabled && (
-              <>
-                <div className="space-y-2">
-                  <Label>Umbral Rx por defecto (dBm)</Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={globalConfig.default_threshold}
-                    onChange={(e) => setGlobalConfig(p => ({ ...p, default_threshold: parseFloat(e.target.value) || -30 }))}
-                    placeholder="-30"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Recomendado: -25 a -28 dBm para fibra GPON
-                  </p>
-                </div>
+            <div>
+              <Label>Chat ID de Telegram</Label>
+              <Input
+                value={config.default_chat_id || ""}
+                placeholder="Ej: 123456789"
+                onChange={(e) => setConfig(p => ({ ...p, default_chat_id: e.target.value }))}
+              />
+            </div>
 
-                <div className="space-y-2">
-                  <Label>Chat ID de Telegram</Label>
-                  <Input
-                    value={globalConfig.default_chat_id || ""}
-                    onChange={(e) => setGlobalConfig(p => ({ ...p, default_chat_id: e.target.value || null }))}
-                    placeholder="Ej: -1001234567890"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Chat o grupo de Telegram para todas las alertas
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Cooldown entre alertas (minutos)</Label>
-                  <Input
-                    type="number"
-                    min={5}
-                    value={globalConfig.cooldown_minutes}
-                    onChange={(e) => setGlobalConfig(p => ({ ...p, cooldown_minutes: parseInt(e.target.value) || 60 }))}
-                    placeholder="60"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Tiempo mínimo entre alertas para la misma ONU (evita spam)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Auto-limpieza de historial (días)</Label>
-                  <Input
-                    type="number"
-                    min={7}
-                    value={globalConfig.auto_cleanup_days}
-                    onChange={(e) => setGlobalConfig(p => ({ ...p, auto_cleanup_days: parseInt(e.target.value) || 90 }))}
-                    placeholder="90"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Eliminar registros de señal más antiguos que este valor
-                  </p>
-                </div>
-              </>
-            )}
+            <div>
+              <Label>Retención del historial (días)</Label>
+              <Input
+                type="number"
+                value={config.auto_cleanup_days}
+                onChange={(e) => setConfig(p => ({ ...p, auto_cleanup_days: parseInt(e.target.value || "90", 10) }))}
+              />
+            </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowGlobalConfig(false)}>Cancelar</Button>
-              <Button onClick={handleSaveGlobalConfig} disabled={savingGlobal}>
-                {savingGlobal ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Globe className="w-4 h-4 mr-2" />}
+              <Button variant="outline" onClick={() => setShowConfig(false)}>Cancelar</Button>
+              <Button onClick={handleSaveConfig} disabled={savingConfig}>
+                {savingConfig && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Guardar
               </Button>
             </div>
