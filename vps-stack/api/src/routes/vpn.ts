@@ -352,6 +352,15 @@ function generateMikrotikScript(
   comment="omnisync-vpn-forward" \\
   place-before=0
 
+# 6.1) NAT: enmascarar tráfico del túnel hacia las ONUs/PPPoE (GenieACS Connection Request)
+:do { /ip firewall nat remove [find where comment="omnisync-vpn-masq"] } on-error={}
+/ip firewall nat add \\
+  chain=srcnat \\
+  src-address=${WG_SUBNET}.0/24 \\
+  dst-address=10.0.0.0/8 \\
+  action=masquerade \\
+  comment="omnisync-vpn-masq"
+
 # 7) Verificar conectividad (esperar 5s)
 :delay 5s
 :do { /ping ${WG_SUBNET}.1 count=3 } on-error={ :log warning "WireGuard: no se pudo hacer ping al servidor VPS" }
