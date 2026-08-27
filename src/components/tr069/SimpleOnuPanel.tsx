@@ -241,6 +241,8 @@ export default function SimpleOnuPanel() {
           const sig = signals[d._id];
           const isOpen = expanded === d._id;
           const form = pppoe[d._id] || { username: "", password: "" };
+          const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username;
+          const displayName = pppoeName || aliases[d._id] || `${info.manufacturer} ${info.model}`;
           return (
             <Card key={d._id} className="overflow-hidden">
               <CardHeader className="p-3 pb-2">
