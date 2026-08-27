@@ -64,20 +64,23 @@ interface GlobalSignalConfig {
 }
 
 const qualityColors: Record<string, string> = {
-  excellent: "bg-chart-2/20 text-chart-2",
-  good: "bg-primary/20 text-primary",
-  fair: "bg-chart-4/20 text-chart-4",
-  critical: "bg-destructive/20 text-destructive",
+  excellent: "bg-emerald-500/15 text-emerald-500 border border-emerald-500/30",
+  good: "bg-green-500/15 text-green-500 border border-green-500/30",
+  fair: "bg-yellow-500/15 text-yellow-600 border border-yellow-500/30",
+  poor: "bg-orange-500/15 text-orange-500 border border-orange-500/30",
+  critical: "bg-destructive/15 text-destructive border border-destructive/30",
   unknown: "bg-muted text-muted-foreground",
 };
 
 const qualityLabels: Record<string, string> = {
   excellent: "Excelente",
   good: "Buena",
-  fair: "Regular",
+  fair: "Aceptable",
+  poor: "Regular",
   critical: "Crítica",
   unknown: "Sin datos",
 };
+
 
 const trendIcons: Record<string, React.ReactNode> = {
   improving: <TrendingUp className="w-4 h-4 text-chart-2" />,
