@@ -1959,3 +1959,46 @@ genieacsRouter.post('/devices/:deviceId/refresh-onu', async (req: AuthRequest, r
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── Alias / nombre de cliente por ONU ───────────────────
+async function ensureAliasTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS onu_aliases (
+      device_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+genieacsRouter.get('/aliases', async (_req: AuthRequest, res: Response) => {
+  try {
+    await ensureAliasTable();
+    const { rows } = await pool.query('SELECT device_id, name FROM onu_aliases');
+    const map: Record<string, string> = {};
+    rows.forEach((r: any) => { map[r.device_id] = r.name; });
+    res.json({ success: true, data: map });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+genieacsRouter.post('/devices/:deviceId/alias', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureAliasTable();
+    const { deviceId } = req.params;
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      await pool.query('DELETE FROM onu_aliases WHERE device_id = $1', [deviceId]);
+      return res.json({ success: true, message: 'Nombre eliminado' });
+    }
+    await pool.query(
+      `INSERT INTO onu_aliases (device_id, name) VALUES ($1, $2)
+       ON CONFLICT (device_id) DO UPDATE SET name = EXCLUDED.name, updated_at = now()`,
+      [deviceId, name]
+    );
+    res.json({ success: true, message: 'Nombre guardado' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
