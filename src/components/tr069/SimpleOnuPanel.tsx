@@ -261,7 +261,10 @@ export default function SimpleOnuPanel() {
           <Badge variant={health === "online" ? "default" : "secondary"}>
             {health === "online" ? "ACS Online" : "Conectando..."}
           </Badge>
-          <span className="text-sm text-muted-foreground">{devices.length} ONU(s)</span>
+          <span className="text-sm text-muted-foreground">
+            {devices.filter((d) => !isOffline(signals[d._id]?.lastInform)).length} en línea / {devices.length} ONU(s)
+          </span>
+
         </div>
         <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
           <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Actualizar
