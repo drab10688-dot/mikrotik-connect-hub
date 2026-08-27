@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { connect as netConnect } from 'net';
 import { pool } from '../lib/db';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, requireRole } from '../middleware/auth';
 import { mikrotikRequest, mikrotikRequestWithFallback, testNativeApiLogin, isNativeApiPort } from '../lib/mikrotik';
 
 export const devicesRouter = Router();
