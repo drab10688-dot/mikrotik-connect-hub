@@ -88,5 +88,22 @@ export async function verifyDeviceAccess(
     [userId, mikrotikId]
   );
 
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+
+  // El admin (dueño de empresa) accede a todos los dispositivos de SU empresa
+  if (role === 'admin') {
+    const { rows: companyRows } = await pool.query(
+      `SELECT 1
+       FROM mikrotik_devices d
+       JOIN users u ON u.id = $1
+       WHERE d.id = $2
+         AND d.company_id IS NOT NULL
+         AND d.company_id = u.company_id
+       LIMIT 1`,
+      [userId, mikrotikId]
+    );
+    return companyRows.length > 0;
+  }
+
+  return false;
 }
