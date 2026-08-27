@@ -98,6 +98,23 @@ export default function SimpleOnuPanel() {
     }
   }, []);
 
+  const loadPppoe = useCallback(async (deviceId: string) => {
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/pppoe`);
+      const list = Array.isArray(res) ? res : (res?.data || []);
+      setPppoeCurrent((p) => ({ ...p, [deviceId]: list }));
+      const first = list[0];
+      if (first) {
+        setPppoe((p) => ({
+          ...p,
+          [deviceId]: p[deviceId] || { username: first.username || "", password: first.password || "" },
+        }));
+      }
+    } catch {
+      setPppoeCurrent((p) => ({ ...p, [deviceId]: [] }));
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -119,10 +136,12 @@ export default function SimpleOnuPanel() {
         list = sig.map((e) => ({ _id: e.deviceId, _deviceId: { _Manufacturer: e.manufacturer, _ProductClass: e.model, _SerialNumber: e.serial } }));
       }
       setDevices(list);
+      // Cargar usuario PPPoE en segundo plano para usarlo como nombre de la ONU
+      list.forEach((d) => { if (d?._id) loadPppoe(d._id); });
     } finally {
       setLoading(false);
     }
-  }, [loadSignals]);
+  }, [loadSignals, loadPppoe]);
 
   useEffect(() => { load(); loadAliases(); }, [load, loadAliases]);
   useEffect(() => {
@@ -142,23 +161,6 @@ export default function SimpleOnuPanel() {
       setBusy(null);
     }
   };
-
-  const loadPppoe = useCallback(async (deviceId: string) => {
-    try {
-      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/pppoe`);
-      const list = Array.isArray(res) ? res : (res?.data || []);
-      setPppoeCurrent((p) => ({ ...p, [deviceId]: list }));
-      const first = list[0];
-      if (first) {
-        setPppoe((p) => ({
-          ...p,
-          [deviceId]: p[deviceId] || { username: first.username || "", password: first.password || "" },
-        }));
-      }
-    } catch {
-      setPppoeCurrent((p) => ({ ...p, [deviceId]: [] }));
-    }
-  }, []);
 
   const toggleExpand = (deviceId: string) => {
     const open = expanded === deviceId;
