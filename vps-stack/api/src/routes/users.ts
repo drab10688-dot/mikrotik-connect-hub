@@ -8,16 +8,25 @@ export const usersRouter = Router();
 // List all users (super_admin only)
 usersRouter.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede listar usuarios' });
+    const isSuper = req.userRole === 'super_admin';
+    if (!isSuper && req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Sin permiso para listar usuarios' });
     }
 
+    // super_admin ve todos (o filtra con ?company_id=); admin solo los de su empresa
+    const companyFilter = isSuper
+      ? (typeof req.query.company_id === 'string' ? req.query.company_id : null)
+      : req.companyId;
+
     const { rows } = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.is_active, u.created_at,
-              ur.role
+      `SELECT u.id, u.email, u.full_name, u.is_active, u.created_at, u.company_id,
+              c.name AS company_name, ur.role
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.id
-       ORDER BY u.created_at DESC`
+       LEFT JOIN companies c ON c.id = u.company_id
+       ${companyFilter ? 'WHERE u.company_id = $1' : ''}
+       ORDER BY u.created_at DESC`,
+      companyFilter ? [companyFilter] : []
     );
     res.json({ data: rows });
   } catch (error: any) {
@@ -28,8 +37,9 @@ usersRouter.get('/', async (req: AuthRequest, res: Response) => {
 // Create user (super_admin only)
 usersRouter.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede crear usuarios' });
+    const isSuper = req.userRole === 'super_admin';
+    if (!isSuper && req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Sin permiso para crear usuarios' });
     }
 
     const { email, password, full_name, role } = req.body;
@@ -37,13 +47,24 @@ usersRouter.post('/', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Email y contraseña son requeridos' });
     }
 
+    // El admin solo crea personal dentro de SU empresa y nunca con rol superior
+    const allowedForAdmin = ['secretary', 'reseller', 'user'];
+    if (!isSuper && !allowedForAdmin.includes(role || 'user')) {
+      return res.status(403).json({ error: 'Solo puedes crear asistentes, vendedores o usuarios' });
+    }
+
+    const companyId = isSuper ? (req.body.company_id || req.companyId || null) : req.companyId;
+    if (!isSuper && !companyId) {
+      return res.status(400).json({ error: 'Tu usuario no tiene empresa asignada' });
+    }
+
     const salt = await bcrypt.genSalt(12);
     const password_hash = await bcrypt.hash(password, salt);
 
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, full_name) 
-       VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at`,
-      [email.toLowerCase(), password_hash, full_name]
+      `INSERT INTO users (email, password_hash, full_name, company_id) 
+       VALUES ($1, $2, $3, $4) RETURNING id, email, full_name, company_id, created_at`,
+      [email.toLowerCase(), password_hash, full_name, companyId]
     );
 
     await pool.query(
@@ -63,12 +84,23 @@ usersRouter.post('/', async (req: AuthRequest, res: Response) => {
 // Update user role
 usersRouter.put('/:userId/role', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede cambiar roles' });
+    const isSuper = req.userRole === 'super_admin';
+    if (!isSuper && req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Sin permiso para cambiar roles' });
     }
 
     const { userId } = req.params;
     const { role } = req.body;
+
+    if (!isSuper) {
+      if (!['secretary', 'reseller', 'user'].includes(role)) {
+        return res.status(403).json({ error: 'Rol no permitido' });
+      }
+      const { rows: target } = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+      if (!target[0] || target[0].company_id !== req.companyId) {
+        return res.status(403).json({ error: 'El usuario no pertenece a tu empresa' });
+      }
+    }
 
     await pool.query(
       `INSERT INTO user_roles (user_id, role) VALUES ($1, $2::app_role)
@@ -91,11 +123,26 @@ usersRouter.put('/:userId/role', async (req: AuthRequest, res: Response) => {
 // Delete user
 usersRouter.delete('/:userId', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede eliminar usuarios' });
+    const isSuper = req.userRole === 'super_admin';
+    if (!isSuper && req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Sin permiso para eliminar usuarios' });
     }
 
     const { userId } = req.params;
+
+    if (!isSuper) {
+      const { rows: target } = await pool.query(
+        `SELECT u.company_id, (SELECT ur.role FROM user_roles ur WHERE ur.user_id = u.id LIMIT 1) AS role
+         FROM users u WHERE u.id = $1`,
+        [userId]
+      );
+      if (!target[0] || target[0].company_id !== req.companyId) {
+        return res.status(403).json({ error: 'El usuario no pertenece a tu empresa' });
+      }
+      if (['admin', 'super_admin'].includes(target[0].role)) {
+        return res.status(403).json({ error: 'No puedes eliminar administradores' });
+      }
+    }
 
     // Prevent self-delete
     if (userId === req.userId) {
