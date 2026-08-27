@@ -583,7 +583,7 @@ devicesRouter.put('/resellers/:assignmentId', requireRole('super_admin', 'admin'
   }
 });
 
-devicesRouter.delete('/resellers/:assignmentId', async (req: AuthRequest, res: Response) => {
+devicesRouter.delete('/resellers/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { assignmentId } = req.params;
     await pool.query('DELETE FROM reseller_assignments WHERE id = $1', [assignmentId]);
