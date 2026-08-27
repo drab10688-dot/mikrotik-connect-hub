@@ -113,6 +113,12 @@ handle_existing_installation() {
 
         # Regenerate radius configs from .env
         cd "$INSTALL_DIR"
+        # Asegurar VPS_PUBLIC_IP (endpoint WireGuard)
+        if ! grep -q '^VPS_PUBLIC_IP=' .env 2>/dev/null; then
+          DETECTED_IP=$(curl -s -4 --max-time 5 ifconfig.me || true)
+          echo "$DETECTED_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || DETECTED_IP=$(curl -s -4 --max-time 5 api.ipify.org || true)
+          echo "$DETECTED_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && echo "VPS_PUBLIC_IP=${DETECTED_IP}" >> .env
+        fi
         source .env 2>/dev/null || true
         sync_nuxbill_env_file "$INSTALL_DIR/.env"
         generate_radius_configs
@@ -567,6 +573,16 @@ fi
 
 VPS_IP=$(hostname -I | awk '{print $1}')
 
+# Public IP (used for WireGuard endpoint) - never a private/container IP
+VPS_PUBLIC_IP=$(curl -s -4 --max-time 5 ifconfig.me || true)
+if ! echo "$VPS_PUBLIC_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  VPS_PUBLIC_IP=$(curl -s -4 --max-time 5 api.ipify.org || true)
+fi
+if ! echo "$VPS_PUBLIC_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  VPS_PUBLIC_IP="$VPS_IP"
+fi
+echo -e "${CYAN}→ IP pública detectada: ${VPS_PUBLIC_IP}${NC}"
+
 # Create .env with actual passwords
 cat > .env << EOF
 # Auto-generated - $(date)
@@ -587,6 +603,7 @@ NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
 NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
 GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
+VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
 
 TZ=America/Bogota
 EOF
