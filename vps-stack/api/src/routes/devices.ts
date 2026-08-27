@@ -125,6 +125,17 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
         INNER JOIN secretary_assignments sa ON sa.mikrotik_id = md.id
         WHERE sa.secretary_id = $1 AND md.status = 'active'::device_status
         UNION
+        -- Asistente sin dispositivo asignado: ve los equipos de su empresa
+        SELECT md.* FROM mikrotik_devices md
+        JOIN users u ON u.id = $1
+        WHERE md.status = 'active'::device_status
+          AND md.company_id IS NOT NULL
+          AND md.company_id = u.company_id
+          AND EXISTS (
+            SELECT 1 FROM secretary_assignments sa2
+            WHERE sa2.secretary_id = $1 AND sa2.mikrotik_id IS NULL
+          )
+        UNION
         SELECT md.* FROM mikrotik_devices md
         INNER JOIN reseller_assignments ra ON ra.mikrotik_id = md.id
         WHERE ra.reseller_id = $1 AND md.status = 'active'::device_status
