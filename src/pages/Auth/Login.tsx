@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { authApi, setToken, setStoredUser, setApiBaseUrl } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,9 +10,12 @@ import { LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import omnisyncLogo from '@/assets/omnisync-logo.png';
 import omnisyncSphere from '@/assets/omnisync-sphere.png';
+import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { slug } = useParams();
+  const { tenant } = usePublicTenant(slug);
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -21,6 +24,13 @@ export default function Login() {
     password: '',
   });
   const [apiUrl] = useState('');
+
+  useEffect(() => {
+    if (slug) setStoredTenantSlug(slug);
+  }, [slug]);
+
+  const brandName = tenant?.name || 'Omnisync';
+  const brandLogo = tenant?.logo_url || null;
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
@@ -68,14 +78,15 @@ export default function Login() {
           <div className="mb-8 animate-fade-in">
              <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-1 hover:scale-105 transition-transform duration-500">
                <img 
-                 src={omnisyncSphere} 
-                 alt="Omnisync" 
+                 src={brandLogo || omnisyncSphere} 
+                 alt={brandName} 
                  className="w-full h-full object-cover rounded-full"
                />
              </div>
           </div>
           
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">{brandName}</h1>
             <p className="text-base md:text-lg text-slate-400 max-w-md">
               Tu plataforma integral de gestión de redes MikroTik
             </p>
@@ -135,8 +146,8 @@ export default function Login() {
          <div className="mb-6 animate-fade-in">
            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
              <img 
-               src={omnisyncLogo} 
-               alt="Omnisync" 
+               src={brandLogo || omnisyncLogo} 
+               alt={brandName} 
                className="w-full h-full object-cover rounded-full"
              />
            </div>

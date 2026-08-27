@@ -637,3 +637,23 @@ export const radiusApi = {
   monitorBlock: (username: string, blocked: boolean) =>
     apiPost(`/radius/monitor/${encodeURIComponent(username)}/block`, { blocked }),
 };
+
+// ─── Tenants (Multi-ISP) API ──────────────────────────────
+export const tenantsApi = {
+  publicBySlug: async (slug: string) => {
+    const res = await apiGet<any>(`/tenants/public/${slug}`, { noAuth: true });
+    return res?.data ?? res ?? null;
+  },
+  me: async () => {
+    const res = await apiGet<any>('/tenants/me');
+    return res?.data ?? null;
+  },
+  updateMine: async (data: any) => {
+    const res = await apiPut<any>('/tenants/me', data);
+    return res?.data ?? null;
+  },
+  list: async () => unwrapArray(await apiGet<any>('/tenants')),
+  create: (data: any) => apiPost('/tenants', data),
+  update: (id: string, data: any) => apiPut(`/tenants/${id}`, data),
+  remove: (id: string) => apiDelete(`/tenants/${id}`),
+};

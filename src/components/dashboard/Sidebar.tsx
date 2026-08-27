@@ -19,6 +19,7 @@ import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
+import { useMyTenant } from "@/hooks/useTenantBranding";
 
 
 const menuItems = [
@@ -52,6 +53,11 @@ export const Sidebar = () => {
 
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("Omnisync");
+  const { tenant } = useMyTenant();
+
+  // El branding del ISP (multi-empresa) tiene prioridad sobre el logo local.
+  const displayLogo = tenant?.logo_url || customLogo;
+  const displayName = tenant?.name || businessName;
 
   const systemData = (systemInfo as any[])?.[0];
   const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
@@ -135,16 +141,16 @@ export const Sidebar = () => {
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex justify-center">
           <div className="relative group">
-            {customLogo ? (
+            {displayLogo ? (
               <div className="w-28 h-28 rounded-full overflow-hidden relative bg-sidebar-accent/30 border-2 border-sidebar-border">
-                <img src={customLogo} alt="Logo" className="w-full h-full object-cover" />
+                <img src={displayLogo} alt={displayName} className="w-full h-full object-cover" />
                 <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-6 h-6 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
                   <X className="w-3 h-3 text-destructive-foreground" />
                 </button>
               </div>
             ) : (
               <div className="w-28 h-28 rounded-full overflow-hidden bg-sidebar-accent/30 border-2 border-sidebar-border flex items-center justify-center">
-                <img src={omnisyncLogo} alt="Omnisync" className="w-full h-full object-cover" />
+                <img src={omnisyncLogo} alt={displayName} className="w-full h-full object-cover" />
               </div>
             )}
             <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex">
@@ -153,7 +159,8 @@ export const Sidebar = () => {
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
           </div>
         </div>
-        <div className="mt-3 flex items-center justify-between">
+        <p className="mt-3 text-center text-sm font-semibold truncate">{displayName}</p>
+        <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70">
             <Router className="w-4 h-4" />
             <span>{host}</span>

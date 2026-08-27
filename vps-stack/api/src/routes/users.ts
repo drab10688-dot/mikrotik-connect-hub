@@ -13,7 +13,7 @@ usersRouter.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.is_active, u.created_at,
+      `SELECT u.id, u.email, u.full_name, u.is_active, u.created_at, u.tenant_id,
               ur.role
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.id
@@ -44,9 +44,9 @@ usersRouter.post('/', async (req: AuthRequest, res: Response) => {
     const password_hash = await bcrypt.hash(password, salt);
 
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, full_name) 
-       VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at`,
-      [email.toLowerCase(), password_hash, full_name]
+      `INSERT INTO users (email, password_hash, full_name, tenant_id) 
+       VALUES ($1, $2, $3, $4) RETURNING id, email, full_name, created_at`,
+      [email.toLowerCase(), password_hash, full_name, req.tenantId || null]
     );
 
     await pool.query(

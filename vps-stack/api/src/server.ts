@@ -29,6 +29,7 @@ import { vpnRouter } from './routes/vpn';
 import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
 import { radiusRouter } from './routes/radius';
+import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -52,6 +53,7 @@ app.get('/api/health', (_, res) => {
 
 // Public routes
 app.use('/api/auth', authRouter);
+app.use('/api/tenants/public', tenantsPublicRouter); // branding público por ISP
 app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need auth via route-level check
 // Bot de técnicos: /webhook/* es público (Telegram no envía JWT), el resto requiere auth
 app.use('/api/telegram-bot', (req, res, next) => {
@@ -65,6 +67,7 @@ app.use('/api/portal-ads', (req, res, next) => {
 }, portalAdsRouter);
 
 // Protected routes
+app.use('/api/tenants', authMiddleware, tenantsRouter);
 app.use('/api/devices', authMiddleware, devicesRouter);
 // IMPORTANT: register specific /api/clients sub-routes before generic /api/clients
 app.use('/api/clients/contracts', authMiddleware, requirePermission('can_manage_clients'), contractsRouter);

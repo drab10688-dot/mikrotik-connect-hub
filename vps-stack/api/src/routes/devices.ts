@@ -128,7 +128,16 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     const { rows } = await pool.query(query, params);
-    res.json({ data: rows });
+
+    // Aislamiento multi-ISP: si el usuario pertenece a un ISP, solo ve los
+    // dispositivos de ese ISP. Los equipos sin tenant (instalaciones previas)
+    // siguen siendo visibles para no romper nada.
+    const filtered = req.tenantId
+      ? rows.filter((d: any) => !d.tenant_id || d.tenant_id === req.tenantId)
+      : rows;
+
+    res.json({ data: filtered });
+
   } catch (error) {
     console.error('Error listing devices:', error);
     res.status(500).json({ error: 'Error al listar dispositivos' });
@@ -394,6 +403,18 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
       [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
     );
+
+    // Multi-ISP: hereda el ISP del usuario que lo crea (si aplica).
+    if (req.tenantId) {
+      try {
+        await pool.query('UPDATE mikrotik_devices SET tenant_id = $1 WHERE id = $2', [req.tenantId, rows[0].id]);
+        rows[0].tenant_id = req.tenantId;
+      } catch {
+        /* instalación sin columna tenant_id: se ignora */
+      }
+    }
+
+
 
     // Auto-assign access
     await pool.query(

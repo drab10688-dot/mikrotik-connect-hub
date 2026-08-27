@@ -416,6 +416,27 @@ CREATE INDEX IF NOT EXISTS idx_ubiquiti_devices_created_by ON ubiquiti_devices(c
 CREATE INDEX IF NOT EXISTS idx_ubiquiti_devices_client ON ubiquiti_devices(client_id);
 " 2>/dev/null && echo "  ✓ ubiquiti_devices OK" || echo "  ⚠ ubiquiti_devices skip"
 
+# ─── Multi-ISP (tenants) ───────────────────────────────────
+echo "🏢 Migrando multi-ISP (tenants)..."
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+CREATE TABLE IF NOT EXISTS tenants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  logo_url TEXT,
+  primary_color TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_mikrotik_devices_tenant ON mikrotik_devices(tenant_id);
+" 2>/dev/null && echo "  ✓ tenants OK" || echo "  ⚠ tenants skip"
+
+
+
 # Backfill roles (fix instalaciones antiguas sin super_admin asignado)
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
 -- Asignar super_admin al usuario admin@omnisync.local

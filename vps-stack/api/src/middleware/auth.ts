@@ -5,6 +5,8 @@ import { pool } from '../lib/db';
 export interface AuthRequest extends Request {
   userId?: string;
   userRole?: string;
+  /** ISP (tenant) al que pertenece el usuario. null = global / instalación antigua. */
+  tenantId?: string | null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -78,8 +80,23 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     console.error('⚠️ Auth: no se pudo verificar is_active, se continúa:', error);
   }
 
+  // tenant_id (multi-ISP). Si la columna todavía no existe, se continúa en
+  // modo global: el comportamiento es idéntico al de antes de multi-ISP.
+  req.tenantId = null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT tenant_id FROM users WHERE id = $1 LIMIT 1`,
+      [decoded.userId]
+    );
+    req.tenantId = rows[0]?.tenant_id || null;
+  } catch {
+    req.tenantId = null;
+  }
+
   return next();
 }
+
+
 
 
 function normalizeStringParam(value: string | string[] | undefined, paramName: string): string {
