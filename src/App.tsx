@@ -30,6 +30,7 @@ import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
 import RegisterUser from "./pages/Admin/RegisterUser";
 import Secretaries from "./pages/Admin/Secretaries";
+import TenantsAdmin from "./pages/Admin/Tenants";
 import NotFound from "./pages/NotFound";
 import CaptivePortal from "./pages/CaptivePortal";
 import HotspotMonitor from "./pages/HotspotMonitor";
@@ -50,6 +51,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/isp/:slug" element={<LoginPage />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/verify-contract" element={<VerifyContract />} />
           <Route path="/pay" element={<ClientPaymentPortal />} />
@@ -79,6 +81,7 @@ const App = () => (
           <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
           <Route path="/admin/mikrotik-devices" element={<ProtectedRoute denyRoles={["secretary", "reseller"]}><MikrotikDevices /></ProtectedRoute>} />
           <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />
+          <Route path="/admin/tenants" element={<ProtectedRoute requireSuperAdmin><TenantsAdmin /></ProtectedRoute>} />
           <Route path="/admin/secretaries" element={<ProtectedRoute requireAdmin><Secretaries /></ProtectedRoute>} />
           <Route path="/onu-management" element={<ProtectedRoute permission="can_manage_onu"><OnuManagement /></ProtectedRoute>} />
           <Route path="/radius" element={<ProtectedRoute permission="can_manage_radius"><RadiusManager /></ProtectedRoute>} />
