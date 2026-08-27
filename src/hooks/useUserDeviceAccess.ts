@@ -32,6 +32,7 @@ export const useUserDeviceAccess = () => {
   return {
     devices: devices || [],
     hasDeviceAccess,
+    isError,
     isLoading: isLoading || authLoading,
   };
 };
