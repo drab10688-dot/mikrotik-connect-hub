@@ -755,6 +755,7 @@ CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrot
 
 # Add missing columns to mikrotik_devices for existing installations
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS latitude TEXT;
 ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS longitude TEXT;
 " 2>/dev/null && echo -e "${GREEN}✓ Columnas mikrotik_devices actualizadas${NC}" || true
