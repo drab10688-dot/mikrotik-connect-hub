@@ -14,14 +14,21 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     return res.status(401).json({ error: 'Token requerido' });
   }
 
+  let decoded: { userId: string; role?: string };
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as {
+    decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as {
       userId: string;
       role?: string;
     };
+  } catch {
+    return res.status(401).json({ error: 'Token inválido o expirado' });
+  }
 
+  // La consulta a la base de datos NO debe convertirse en 401: si la BD falla
+  // (columna faltante, conexión caída) degradamos al rol del token.
+  try {
     const { rows } = await pool.query(
-      `SELECT u.is_active,
+      `SELECT COALESCE(u.is_active, true) AS is_active,
               COALESCE(
                 (
                   SELECT ur.role
@@ -48,18 +55,21 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       return res.status(401).json({ error: 'Usuario no encontrado' });
     }
 
-    if (!rows[0].is_active) {
+    if (rows[0].is_active === false) {
       return res.status(403).json({ error: 'Cuenta desactivada' });
     }
 
     req.userId = decoded.userId;
     req.userRole = rows[0].role || decoded.role || 'user';
-    console.log(`🔑 Auth: userId=${req.userId}, dbRole=${rows[0].role}, tokenRole=${decoded.role}, finalRole=${req.userRole}`);
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Token inválido o expirado' });
+    return next();
+  } catch (error) {
+    console.error('⚠️ Auth: fallo consultando rol en BD, usando rol del token:', error);
+    req.userId = decoded.userId;
+    req.userRole = decoded.role || 'user';
+    return next();
   }
 }
+
 
 function normalizeStringParam(value: string | string[] | undefined, paramName: string): string {
   if (typeof value === 'string') return value;
