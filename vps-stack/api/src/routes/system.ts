@@ -214,28 +214,30 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
       ? (serviceAliases[service] || service.replace(/^omnisync-/, ''))
       : '';
 
-    // No profiles needed - all services are in the default compose file
+    // Include the integrated ACS profile so GenieACS/Mongo are visible and
+    // manageable after updates or host restarts.
+    const compose = `COMPOSE_PROFILES=builtin-acs docker compose -f /opt/omnisync/docker-compose.yml`;
     const svcArg = resolvedService ? ` ${resolvedService}` : '';
 
     let cmd = '';
     switch (action) {
       case 'ps':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml ps 2>&1`;
+        cmd = `${compose} ps 2>&1`;
         break;
       case 'logs':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml logs --tail 80${svcArg} 2>&1`;
+        cmd = `${compose} logs --tail 80${svcArg} 2>&1`;
         break;
       case 'up':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml up -d${svcArg} 2>&1`;
+        cmd = `${compose} up -d${svcArg} 2>&1`;
         break;
       case 'down':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml down 2>&1`;
+        cmd = `${compose} down 2>&1`;
         break;
       case 'pull':
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml pull${svcArg} 2>&1`;
+        cmd = `${compose} pull${svcArg} 2>&1`;
         break;
       default:
-        cmd = `docker compose -f /opt/omnisync/docker-compose.yml ${action}${svcArg} 2>&1`;
+        cmd = `${compose} ${action}${svcArg} 2>&1`;
     }
 
     const output = execSync(cmd, { timeout: 120000 }).toString();
