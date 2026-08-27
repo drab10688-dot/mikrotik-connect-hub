@@ -639,6 +639,26 @@ devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Res
   }
 });
 
+// Lista todas las asignaciones de asistentes visibles para el usuario
+// (incluye las globales, sin dispositivo asignado)
+devicesRouter.get('/secretaries', async (req: AuthRequest, res: Response) => {
+  try {
+    const isSuper = req.userRole === 'super_admin';
+    const { rows } = await pool.query(
+      `SELECT sa.*, u.email, u.full_name, md.name AS device_name
+       FROM secretary_assignments sa
+       LEFT JOIN users u ON u.id = sa.secretary_id
+       LEFT JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
+       ${isSuper ? '' : 'WHERE u.company_id IS NOT DISTINCT FROM $1'}
+       ORDER BY sa.created_at DESC`,
+      isSuper ? [] : [req.companyId]
+    );
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -658,35 +678,59 @@ devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) =>
   }
 });
 
-devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
+async function createAssignment(req: AuthRequest, res: Response, mikrotikId: string | null) {
   try {
-    const { id } = req.params;
-    const {
-      secretary_id, can_manage_pppoe, can_create_pppoe, can_edit_pppoe,
-      can_delete_pppoe, can_disconnect_pppoe, can_toggle_pppoe,
-      can_manage_queues, can_create_queues, can_edit_queues,
-      can_delete_queues, can_toggle_queues, can_suspend_queues, can_reactivate_queues
-    } = req.body;
+    const { secretary_id } = req.body;
+    if (!secretary_id) return res.status(400).json({ error: 'secretary_id requerido' });
+
+    if (mikrotikId) {
+      const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
+      if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
+    }
+
+    // Solo columnas de permisos reales de la tabla
+    const { rows: cols } = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'secretary_assignments' AND column_name LIKE 'can\\_%'`
+    );
+    const valid = new Set(cols.map((c: any) => c.column_name));
+
+    const permCols: string[] = [];
+    const permVals: any[] = [];
+    for (const [key, value] of Object.entries(req.body)) {
+      if (valid.has(key)) {
+        permCols.push(key);
+        permVals.push(value !== false);
+      }
+    }
+
+    const columns = ['secretary_id', 'mikrotik_id', 'assigned_by', ...permCols];
+    const values = [secretary_id, mikrotikId, req.userId, ...permVals];
+    const placeholders = values.map((_, i) => `$${i + 1}`);
 
     const { rows } = await pool.query(
-      `INSERT INTO secretary_assignments (
-        secretary_id, mikrotik_id, assigned_by,
-        can_manage_pppoe, can_create_pppoe, can_edit_pppoe, can_delete_pppoe,
-        can_disconnect_pppoe, can_toggle_pppoe,
-        can_manage_queues, can_create_queues, can_edit_queues, can_delete_queues,
-        can_toggle_queues, can_suspend_queues, can_reactivate_queues
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [secretary_id, id, req.userId,
-       can_manage_pppoe ?? true, can_create_pppoe ?? true, can_edit_pppoe ?? true, can_delete_pppoe ?? true,
-       can_disconnect_pppoe ?? true, can_toggle_pppoe ?? true,
-       can_manage_queues ?? true, can_create_queues ?? true, can_edit_queues ?? true, can_delete_queues ?? true,
-       can_toggle_queues ?? true, can_suspend_queues ?? true, can_reactivate_queues ?? true]
+      `INSERT INTO secretary_assignments (${columns.map((c) => `"${c}"`).join(', ')})
+       VALUES (${placeholders.join(', ')}) RETURNING *`,
+      values
     );
     res.status(201).json({ data: rows[0] });
   } catch (error: any) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'El asistente ya tiene esta asignación' });
+    }
     res.status(500).json({ error: error.message });
   }
+}
+
+// Asignación global (sin dispositivo obligatorio)
+devicesRouter.post('/secretaries', async (req: AuthRequest, res: Response) => {
+  await createAssignment(req, res, req.body.mikrotik_id || null);
 });
+
+devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
+  await createAssignment(req, res, req.params.id);
+});
+
 
 devicesRouter.put('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
   try {
