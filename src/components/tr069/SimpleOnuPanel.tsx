@@ -176,9 +176,15 @@ export default function SimpleOnuPanel() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(() => load(false), 60000);
+    const t = window.setInterval(() => load(false), 30000);
     return () => window.clearInterval(t);
   }, [load]);
+  // Refresca el cálculo de "en línea / desconectada" sin recargar datos
+  useEffect(() => {
+    const t = window.setInterval(() => setTick((n) => n + 1), 30000);
+    return () => window.clearInterval(t);
+  }, []);
+
 
   const refreshSignal = async (deviceId: string) => {
     setBusy(`sig-${deviceId}`);
