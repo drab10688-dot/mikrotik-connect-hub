@@ -5,7 +5,7 @@ import { useAuth } from './useAuth';
 
 interface AssignSecretaryParams {
   secretaryId: string;
-  mikrotikId: string;
+  mikrotikId?: string | null;
   [key: string]: any; // All permission keys are dynamic
 }
 
@@ -14,28 +14,27 @@ export const useSecretaries = (mikrotikId?: string) => {
   const { user } = useAuth();
 
   const { data: assignments, isLoading } = useQuery({
-    queryKey: ['secretary-assignments', mikrotikId],
+    queryKey: ['secretary-assignments', mikrotikId || 'all'],
     queryFn: async () => {
-      if (!mikrotikId) return [];
+      if (!mikrotikId) return await secretariesApi.allAssignments();
       return await secretariesApi.assignments(mikrotikId);
     },
-    enabled: !!mikrotikId,
   });
 
   const assignSecretaryMutation = useMutation({
     mutationFn: async (params: AssignSecretaryParams) => {
       const { secretaryId, mikrotikId, ...permData } = params;
-      return await secretariesApi.assign(mikrotikId, {
+      return await secretariesApi.assign(mikrotikId || null, {
         secretary_id: secretaryId,
         ...permData,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });
-      toast.success('Secretaria asignada exitosamente');
+      toast.success('Asistente asignado exitosamente');
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Error al asignar secretaria');
+      toast.error(error.message || 'Error al asignar asistente');
     },
   });
 
@@ -45,12 +44,13 @@ export const useSecretaries = (mikrotikId?: string) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });
-      toast.success('Secretaria removida exitosamente');
+      toast.success('Asistente removido exitosamente');
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Error al remover secretaria');
+      toast.error(error.message || 'Error al remover asistente');
     },
   });
+
 
   const updateSecretaryMutation = useMutation({
     mutationFn: async (params: { assignmentId: string; [key: string]: any }) => {
