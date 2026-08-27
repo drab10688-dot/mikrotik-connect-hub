@@ -6,11 +6,13 @@ interface SignalGaugeProps {
 
 function quality(dbm: number | null) {
   if (dbm === null || dbm === undefined) return { label: "Sin dato", cls: "text-muted-foreground", stroke: "hsl(var(--muted-foreground))" };
-  if (dbm > -20) return { label: "Excelente", cls: "text-green-500", stroke: "hsl(142 71% 45%)" };
-  if (dbm > -25) return { label: "Buena", cls: "text-yellow-500", stroke: "hsl(45 93% 47%)" };
-  if (dbm > -28) return { label: "Regular", cls: "text-orange-500", stroke: "hsl(25 95% 53%)" };
+  if (dbm > -18) return { label: "Excelente", cls: "text-emerald-500", stroke: "hsl(160 84% 39%)" };
+  if (dbm > -24) return { label: "Buena", cls: "text-green-500", stroke: "hsl(142 71% 45%)" };
+  if (dbm > -27) return { label: "Aceptable", cls: "text-yellow-500", stroke: "hsl(45 93% 47%)" };
+  if (dbm > -30) return { label: "Regular", cls: "text-orange-500", stroke: "hsl(25 95% 53%)" };
   return { label: "Crítica", cls: "text-destructive", stroke: "hsl(var(--destructive))" };
 }
+
 
 // -8 dBm => 100% ; -32 dBm => 0%
 function toPercent(dbm: number | null) {
