@@ -150,7 +150,7 @@ export function deviceMeta(device: any) {
 async function sendTelegram(pool: Pool, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const { rows } = await pool.query(
-      'SELECT bot_token FROM telegram_config WHERE is_active = true ORDER BY updated_at DESC NULLS LAST LIMIT 1'
+      'SELECT bot_token FROM telegram_config WHERE is_active = true LIMIT 1'
     );
     if (!rows[0]) return { ok: false, error: 'Telegram no configurado' };
     const resp = await fetch(`https://api.telegram.org/bot${rows[0].bot_token}/sendMessage`, {
