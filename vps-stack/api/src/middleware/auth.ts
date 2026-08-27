@@ -5,6 +5,8 @@ import { pool } from '../lib/db';
 export interface AuthRequest extends Request {
   userId?: string;
   userRole?: string;
+  /** ISP (tenant) al que pertenece el usuario. null = global / instalación antigua. */
+  tenantId?: string | null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
