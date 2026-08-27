@@ -120,3 +120,56 @@ export async function verifyDeviceAccess(
 
   return rows.length > 0;
 }
+
+// ─── Autorización por rol ─────────────────────────────────
+export const ADMIN_ROLES = ['super_admin', 'admin'];
+
+export function requireRole(...roles: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.userRole || !roles.includes(req.userRole)) {
+      return res.status(403).json({ error: 'No tienes permiso para esta acción' });
+    }
+    return next();
+  };
+}
+
+/**
+ * Devuelve true si el asistente tiene el permiso solicitado en alguna de sus
+ * asignaciones (por dispositivo o global). Si la columna no existe todavía en
+ * instalaciones antiguas, no se bloquea el acceso.
+ */
+export async function secretaryHasPermission(userId: string, permKey: string): Promise<boolean> {
+  if (!/^can_[a-z0-9_]+$/.test(permKey)) return false;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM secretary_assignments
+       WHERE secretary_id = $1 AND COALESCE(${permKey}, false) = true
+       LIMIT 1`,
+      [userId]
+    );
+    return rows.length > 0;
+  } catch (error) {
+    console.error(`⚠️ Auth: no se pudo verificar ${permKey}:`, error);
+    return true; // columna inexistente en esquemas viejos → no bloquear
+  }
+}
+
+/**
+ * Middleware de módulo. super_admin/admin/user pasan siempre; el asistente
+ * necesita el permiso concreto; el reseller solo accede a lo que se le permita.
+ */
+export function requirePermission(permKey: string, allowReseller = false) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const role = req.userRole || 'user';
+    if (role === 'super_admin' || role === 'admin' || role === 'user') return next();
+    if (role === 'reseller') {
+      return allowReseller ? next() : res.status(403).json({ error: 'No tienes permiso para este módulo' });
+    }
+    if (role === 'secretary') {
+      const allowed = await secretaryHasPermission(req.userId!, permKey);
+      if (!allowed) return res.status(403).json({ error: 'No tienes permiso para este módulo' });
+      return next();
+    }
+    return res.status(403).json({ error: 'No tienes permiso para este módulo' });
+  };
+}
