@@ -1817,6 +1817,7 @@ function collectWlans(device: any) {
           ?? val(wc?.PreSharedKey?.['1']?.PreSharedKey)
           ?? val(wc?.PreSharedKey?.['1']?.KeyPassphrase)
           ?? val(wc?.Security?.KeyPassphrase)
+          ?? deepFindValue(wc, /(KeyPassphrase|PreSharedKey|WPAKey|WEPKey|Password|Passphrase)$/i, 3)
           ?? null,
         clients,
       });
