@@ -895,12 +895,16 @@ const FAST_PROJECTION = [
 ].join(',');
 
 function sanitizePower(val: any): number | null {
-  const num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
+  let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
   if (!Number.isFinite(num)) return null;
   // Valores centinela de ONUs sin lectura óptica (p.ej. -2147483648, 65535)
-  if (num <= -100 || num >= 65535) return null;
-  if (num > 100) return parseFloat((10 * Math.log10(num / 10000)).toFixed(2));
-  return parseFloat(num.toFixed(2));
+  if (num >= 65535 || num === -2147483648) return null;
+  // Muchos vendors reportan en unidades de 0.01 dBm (ej: -2245 = -22.45 dBm)
+  if (num < -100 && num > -100000) num = num / 100;
+  // Unidades de 0.0001 mW → convertir a dBm
+  if (num > 100) num = 10 * Math.log10(num / 10000);
+  if (num <= -90 || num > 20) return null;
+  return Math.round(num);
 }
 
 function firstPppoeUsername(device: any): string | null {
@@ -1015,12 +1019,7 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
         ?? null;
 
       // Normalize: some ONUs report in mW (positive values), convert to dBm
-      const normalizePower = (val: number | null): number | null => {
-        if (val === null) return null;
-        // If value is positive and > 1, likely in mW * 10000 or similar vendor scale
-        if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
-        return val;
-      };
+      const normalizePower = (val: number | null): number | null => sanitizePower(val);
 
       const quality = (rx: number | null): string => {
         if (rx === null) return 'unknown';
@@ -1551,12 +1550,8 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
           ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
           ?? null;
 
-        // Normalize mW to dBm
-        const normalizePower = (val: number | null): number | null => {
-          if (val === null) return null;
-          if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
-          return val;
-        };
+        // Normalizar a dBm entero (maneja 0.01 dBm, mW, centinelas)
+        const normalizePower = (val: number | null): number | null => sanitizePower(val);
 
         rxPower = normalizePower(rxPower);
         txPower = normalizePower(txPower);
@@ -1739,14 +1734,14 @@ genieacsRouter.get('/signal-history/:onuId', async (req: AuthRequest, res: Respo
         rxPower: rxValues.length > 0 ? {
           min: Math.min(...rxValues),
           max: Math.max(...rxValues),
-          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(2)),
+          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(0)),
           current: rxValues[rxValues.length - 1],
           trend: rxValues.length >= 2 ? (rxValues[rxValues.length - 1] - rxValues[0] > 0 ? 'improving' : rxValues[rxValues.length - 1] - rxValues[0] < -1 ? 'degrading' : 'stable') : 'insufficient',
         } : null,
         txPower: txValues.length > 0 ? {
           min: Math.min(...txValues),
           max: Math.max(...txValues),
-          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(2)),
+          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(0)),
           current: txValues[txValues.length - 1],
         } : null,
       };
@@ -2231,7 +2226,7 @@ genieacsRouter.get('/acs-signal/history/:deviceId', async (req: AuthRequest, res
         rxPower: rxValues.length ? {
           min: Math.min(...rxValues),
           max: Math.max(...rxValues),
-          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(2)),
+          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(0)),
           current: rxValues[rxValues.length - 1],
           trend: rxValues.length >= 2
             ? (rxValues[rxValues.length - 1] - rxValues[0] > 1 ? 'improving'
@@ -2241,7 +2236,7 @@ genieacsRouter.get('/acs-signal/history/:deviceId', async (req: AuthRequest, res
         txPower: txValues.length ? {
           min: Math.min(...txValues),
           max: Math.max(...txValues),
-          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(2)),
+          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(0)),
           current: txValues[txValues.length - 1],
         } : null,
       };

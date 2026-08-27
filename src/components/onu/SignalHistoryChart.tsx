@@ -430,9 +430,9 @@ export default function SignalHistoryChart() {
                       <TableRow key={a.id}>
                         <TableCell className="font-mono text-xs">{a.alias || a.serial || a.device_id}</TableCell>
                         <TableCell className="text-center font-mono text-xs font-semibold text-destructive">
-                          {num(a.rx_power)?.toFixed(2) ?? "—"}
+                          {num(a.rx_power)?.toFixed(0) ?? "—"}
                         </TableCell>
-                        <TableCell className="text-center font-mono text-xs">{num(a.threshold)?.toFixed(2) ?? "—"}</TableCell>
+                        <TableCell className="text-center font-mono text-xs">{num(a.threshold)?.toFixed(0) ?? "—"}</TableCell>
                         <TableCell className="text-center">
                           {a.sent_successfully ? (
                             <Badge className="bg-chart-2/20 text-chart-2 text-xs"><CheckCircle className="w-3 h-3 mr-1" />Enviada</Badge>
@@ -490,10 +490,10 @@ export default function SignalHistoryChart() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center font-mono text-sm font-semibold">
-                      {entry.rx_power !== null ? entry.rx_power.toFixed(2) : "—"}
+                      {entry.rx_power !== null ? Math.round(entry.rx_power) : "—"}
                     </TableCell>
                     <TableCell className="text-center font-mono text-sm">
-                      {entry.tx_power !== null ? entry.tx_power.toFixed(2) : "—"}
+                      {entry.tx_power !== null ? Math.round(entry.tx_power) : "—"}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge className={qualityColors[entry.quality] || qualityColors.unknown}>

@@ -45,7 +45,7 @@ export default function SignalGauge({ rx, tx, size = 84 }: SignalGaugeProps) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-          <span className={`text-sm font-bold ${q.cls}`}>{rx != null ? rx : "—"}</span>
+          <span className={`text-sm font-bold ${q.cls}`}>{rx != null ? Math.round(rx) : "—"}</span>
           <span className="text-[9px] text-muted-foreground mt-0.5">dBm Rx</span>
         </div>
       </div>
