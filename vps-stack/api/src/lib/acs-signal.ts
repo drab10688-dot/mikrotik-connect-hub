@@ -110,10 +110,12 @@ function normalizePower(val: any): number | null {
 
 export function signalQuality(rx: number | null): string {
   if (rx === null) return 'unknown';
-  if (rx > -20) return 'excellent';
-  if (rx > -25) return 'good';
-  if (rx > -28) return 'fair';
+  if (rx > -18) return 'excellent';
+  if (rx > -24) return 'good';
+  if (rx > -27) return 'fair';
+  if (rx > -30) return 'poor';
   return 'critical';
+
 }
 
 export function extractRx(device: any): number | null {
