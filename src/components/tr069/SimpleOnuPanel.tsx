@@ -73,6 +73,8 @@ export default function SimpleOnuPanel() {
   const [pppoeNames, setPppoeNames] = useState<Record<string, string>>({});
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
   const [aliasDraft, setAliasDraft] = useState("");
+  const [, setTick] = useState(0);
+
 
   const loadAliases = useCallback(async () => {
     try {
