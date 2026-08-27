@@ -63,6 +63,10 @@ else
   exit 1
 fi
 
+if docker ps --format '{{.Names}}' | grep -qx 'omnisync-mongo'; then
+  docker exec omnisync-mongo mongodump --archive > "$BACKUP_DIR/mongodb.archive"
+fi
+
 echo "[3/8] Respaldando volúmenes Docker..."
 for volume in postgres_data mariadb_data mongo_data wireguard_config backup_data nuxbill_uploads nuxbill_themes nuxbill_pages; do
   actual="omnisync_${volume}"
