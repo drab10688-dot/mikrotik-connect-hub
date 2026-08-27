@@ -283,6 +283,62 @@ genieacsRouter.post('/devices/:deviceId/wifi-channel', async (req: AuthRequest, 
   }
 });
 
+// ─── Leer PPPoE actual de la ONU ────────────────────────
+genieacsRouter.get('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const device = await fetchDevice(deviceId);
+    const igd = device?.InternetGatewayDevice || device?.Device || {};
+    const wanDevices = igd?.WANDevice || {};
+    const connections: any[] = [];
+
+    for (const wdKey of Object.keys(wanDevices)) {
+      if (wdKey.startsWith('_')) continue;
+      const wcds = wanDevices[wdKey]?.WANConnectionDevice || {};
+      for (const wcdKey of Object.keys(wcds)) {
+        if (wcdKey.startsWith('_')) continue;
+        const ppps = wcds[wcdKey]?.WANPPPConnection || {};
+        for (const pKey of Object.keys(ppps)) {
+          if (pKey.startsWith('_')) continue;
+          const c = ppps[pKey] || {};
+          connections.push({
+            path: `InternetGatewayDevice.WANDevice.${wdKey}.WANConnectionDevice.${wcdKey}.WANPPPConnection.${pKey}`,
+            username: c?.Username?._value ?? null,
+            password: c?.Password?._value ?? null,
+            status: c?.ConnectionStatus?._value ?? null,
+            ip: c?.ExternalIPAddress?._value ?? null,
+            enable: c?.Enable?._value ?? null,
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, data: connections });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Refrescar árbol WAN/PPPoE desde la ONU ─────────────
+genieacsRouter.post('/devices/:deviceId/refresh-pppoe', async (req: AuthRequest, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const result = await genieFetch(
+      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'refreshObject',
+          objectName: 'InternetGatewayDevice.WANDevice',
+        }),
+      }
+    );
+    res.json({ success: true, message: 'Leyendo configuración WAN/PPPoE de la ONU', data: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Configure PPPoE ────────────────────────────────────
 genieacsRouter.post('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Response) => {
   try {
