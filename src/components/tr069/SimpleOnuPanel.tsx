@@ -98,6 +98,23 @@ export default function SimpleOnuPanel() {
     }
   }, []);
 
+  const loadPppoe = useCallback(async (deviceId: string) => {
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/pppoe`);
+      const list = Array.isArray(res) ? res : (res?.data || []);
+      setPppoeCurrent((p) => ({ ...p, [deviceId]: list }));
+      const first = list[0];
+      if (first) {
+        setPppoe((p) => ({
+          ...p,
+          [deviceId]: p[deviceId] || { username: first.username || "", password: first.password || "" },
+        }));
+      }
+    } catch {
+      setPppoeCurrent((p) => ({ ...p, [deviceId]: [] }));
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -119,10 +136,12 @@ export default function SimpleOnuPanel() {
         list = sig.map((e) => ({ _id: e.deviceId, _deviceId: { _Manufacturer: e.manufacturer, _ProductClass: e.model, _SerialNumber: e.serial } }));
       }
       setDevices(list);
+      // Cargar usuario PPPoE en segundo plano para usarlo como nombre de la ONU
+      list.forEach((d) => { if (d?._id) loadPppoe(d._id); });
     } finally {
       setLoading(false);
     }
-  }, [loadSignals]);
+  }, [loadSignals, loadPppoe]);
 
   useEffect(() => { load(); loadAliases(); }, [load, loadAliases]);
   useEffect(() => {
@@ -142,23 +161,6 @@ export default function SimpleOnuPanel() {
       setBusy(null);
     }
   };
-
-  const loadPppoe = useCallback(async (deviceId: string) => {
-    try {
-      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/pppoe`);
-      const list = Array.isArray(res) ? res : (res?.data || []);
-      setPppoeCurrent((p) => ({ ...p, [deviceId]: list }));
-      const first = list[0];
-      if (first) {
-        setPppoe((p) => ({
-          ...p,
-          [deviceId]: p[deviceId] || { username: first.username || "", password: first.password || "" },
-        }));
-      }
-    } catch {
-      setPppoeCurrent((p) => ({ ...p, [deviceId]: [] }));
-    }
-  }, []);
 
   const toggleExpand = (deviceId: string) => {
     const open = expanded === deviceId;
@@ -239,6 +241,8 @@ export default function SimpleOnuPanel() {
           const sig = signals[d._id];
           const isOpen = expanded === d._id;
           const form = pppoe[d._id] || { username: "", password: "" };
+          const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username;
+          const displayName = pppoeName || aliases[d._id] || `${info.manufacturer} ${info.model}`;
           return (
             <Card key={d._id} className="overflow-hidden">
               <CardHeader className="p-3 pb-2">
@@ -265,18 +269,20 @@ export default function SimpleOnuPanel() {
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 min-w-0">
-                          <span className="truncate">{aliases[d._id] || `${info.manufacturer} ${info.model}`}</span>
-                          <Button
-                            size="sm" variant="ghost" className="h-6 px-1"
-                            onClick={() => { setEditingAlias(d._id); setAliasDraft(aliases[d._id] || ""); }}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
+                          <span className="truncate">{displayName}</span>
+                          {!pppoeName && (
+                            <Button
+                              size="sm" variant="ghost" className="h-6 px-1"
+                              onClick={() => { setEditingAlias(d._id); setAliasDraft(aliases[d._id] || ""); }}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                          )}
                         </span>
                       )}
                     </CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-                      {aliases[d._id] && (
+                      {(pppoeName || aliases[d._id]) && (
                         <span className="flex items-center gap-1 truncate">
                           <Tag className="w-3 h-3" />{info.manufacturer} {info.model}
                         </span>
