@@ -629,7 +629,7 @@ if command -v ufw &> /dev/null; then
   ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
   ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
   ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547, 7567, 3001, 51820/udp) ✓${NC}"
+  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547 tcp+udp, 7567, 3001, 51820/udp) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
