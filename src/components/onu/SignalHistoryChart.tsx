@@ -490,10 +490,10 @@ export default function SignalHistoryChart() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center font-mono text-sm font-semibold">
-                      {entry.rx_power !== null ? entry.Math.round(rx_power) : "—"}
+                      {entry.rx_power !== null ? Math.round(entry.rx_power) : "—"}
                     </TableCell>
                     <TableCell className="text-center font-mono text-sm">
-                      {entry.tx_power !== null ? entry.Math.round(tx_power) : "—"}
+                      {entry.tx_power !== null ? Math.round(entry.tx_power) : "—"}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge className={qualityColors[entry.quality] || qualityColors.unknown}>
