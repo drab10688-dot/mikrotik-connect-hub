@@ -326,16 +326,24 @@ export default function SimpleOnuPanel() {
                       )}
                     </CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground min-w-0">
                       {(pppoeName || aliases[d._id]) && (
                         <span className="flex items-center gap-1 truncate">
                           <Tag className="w-3 h-3" />{info.manufacturer} {info.model}
                         </span>
                       )}
                       <span className="font-mono truncate">{info.serial}</span>
+                      <Badge variant={offline ? "destructive" : "default"} className="text-[10px]">
+                        {offline ? "Desconectada" : "En línea"}
+                      </Badge>
+                      <span>{sinceLabel(sig?.lastInform)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <SignalGauge rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} />
+                    <div className={offline ? "opacity-40 grayscale" : ""}>
+                      <SignalGauge rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} />
+                    </div>
+
                     <Button size="sm" variant="ghost" onClick={() => refreshSignal(d._id)} disabled={busy === `sig-${d._id}`}>
                       {busy === `sig-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Signal className="w-3 h-3" />}
                     </Button>
