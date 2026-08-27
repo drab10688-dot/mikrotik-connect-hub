@@ -360,7 +360,7 @@ export default function Secretaries() {
                             <Dialog>
                               <DialogTrigger asChild><Button variant="ghost" size="sm" onClick={() => setEditingAssignment({...assignment})}><Settings className="h-4 w-4" /></Button></DialogTrigger>
                               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                                <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para esta secretaria</DialogDescription></DialogHeader>
+                                <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para este asistente</DialogDescription></DialogHeader>
                                 {editingAssignment && (
                                   <div className="space-y-4">
                                     {PERM_GROUPS.map(group => (
