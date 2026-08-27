@@ -366,25 +366,72 @@ genieacsRouter.post('/devices/:deviceId/refresh-pppoe', async (req: AuthRequest,
 genieacsRouter.post('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const { username, password } = req.body;
+    const { username, password, path } = req.body;
 
-    const basePath = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+    // Detectamos la ruta real de la conexión PPPoE: muchas ONUs no usan
+    // WANDevice.1/WANConnectionDevice.1 y GenieACS devuelve fault 9003.
+    let basePath: string | undefined = typeof path === 'string' && path ? path : undefined;
+    let device: any = null;
+    try { device = await fetchDevice(deviceId); } catch { /* sin validación */ }
+
+    if (!basePath && device) {
+      const wanDevices = device?.InternetGatewayDevice?.WANDevice || {};
+      outer:
+      for (const wdKey of Object.keys(wanDevices)) {
+        if (wdKey.startsWith('_')) continue;
+        const wcds = wanDevices[wdKey]?.WANConnectionDevice || {};
+        for (const wcdKey of Object.keys(wcds)) {
+          if (wcdKey.startsWith('_')) continue;
+          const ppps = wcds[wcdKey]?.WANPPPConnection || {};
+          for (const pKey of Object.keys(ppps)) {
+            if (pKey.startsWith('_')) continue;
+            basePath = `InternetGatewayDevice.WANDevice.${wdKey}.WANConnectionDevice.${wcdKey}.WANPPPConnection.${pKey}`;
+            break outer;
+          }
+        }
+      }
+    }
+    if (!basePath) basePath = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+
     const parameterValues: [string, string, string][] = [];
-
     if (username) parameterValues.push([`${basePath}.Username`, username, 'xsd:string']);
     if (password) parameterValues.push([`${basePath}.Password`, password, 'xsd:string']);
+    if (parameterValues.length === 0) {
+      return res.status(400).json({ error: 'No hay cambios que enviar' });
+    }
 
-    const task = { name: 'setParameterValues', parameterValues };
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify(task) }
-    );
+    // Una tarea por parámetro: si la ONU rechaza uno, el otro sí se aplica.
+    const results: any[] = [];
+    const failed: string[] = [];
+    for (const pv of parameterValues) {
+      try {
+        results.push(await genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify({ name: 'setParameterValues', parameterValues: [pv] }) }
+        ));
+      } catch (e: any) {
+        failed.push(`${pv[0]}: ${e?.message || 'error'}`);
+      }
+    }
 
-    res.json({ success: true, message: 'Configuración PPPoE enviada', data: result });
+    if (results.length === 0) {
+      return res.status(502).json({ error: 'La ONU rechazó la configuración PPPoE', details: failed, path: basePath });
+    }
+
+    res.json({
+      success: true,
+      message: failed.length
+        ? `PPPoE aplicado parcialmente (${results.length}/${parameterValues.length})`
+        : 'Configuración PPPoE enviada',
+      path: basePath,
+      data: results,
+      skipped: failed,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── Configure DNS, MTU, VLAN ───────────────────────────
 genieacsRouter.post('/devices/:deviceId/network', async (req: AuthRequest, res: Response) => {
