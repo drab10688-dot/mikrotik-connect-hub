@@ -103,8 +103,18 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
     let params: string[];
 
     if (req.userRole === 'super_admin') {
-      query = 'SELECT * FROM mikrotik_devices ORDER BY name';
-      params = [];
+      // El super_admin puede filtrar por empresa con ?company_id=
+      const companyFilter = typeof req.query.company_id === 'string' ? req.query.company_id : null;
+      query = companyFilter
+        ? 'SELECT * FROM mikrotik_devices WHERE company_id = $1 ORDER BY name'
+        : 'SELECT * FROM mikrotik_devices ORDER BY name';
+      params = companyFilter ? [companyFilter] : [];
+    } else if (req.userRole === 'admin' && req.companyId) {
+      // El admin ve todos los dispositivos de SU empresa
+      query = `SELECT * FROM mikrotik_devices
+               WHERE company_id = $1 AND status = 'active'::device_status
+               ORDER BY name`;
+      params = [req.companyId];
     } else {
       query = `
         SELECT md.* FROM mikrotik_devices md
