@@ -49,6 +49,7 @@ export default function SimpleOnuPanel() {
   const [pppoeCurrent, setPppoeCurrent] = useState<Record<string, any[]>>({});
   const [showPppoePass, setShowPppoePass] = useState<Record<string, boolean>>({});
   const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [pppoeNames, setPppoeNames] = useState<Record<string, string>>({});
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
   const [aliasDraft, setAliasDraft] = useState("");
 
@@ -218,7 +219,7 @@ export default function SimpleOnuPanel() {
           <p className="text-sm text-muted-foreground">
             Configure las ONUs con la URL del ACS: <code className="bg-muted px-2 py-1 rounded">http://[IP_DEL_VPS]:7547</code>
           </p>
-          <Button variant="outline" onClick={load}><RotateCcw className="w-4 h-4 mr-2" /> Reintentar</Button>
+          <Button variant="outline" onClick={() => load()}><RotateCcw className="w-4 h-4 mr-2" /> Reintentar</Button>
         </CardContent>
       </Card>
     );
@@ -233,7 +234,7 @@ export default function SimpleOnuPanel() {
           </Badge>
           <span className="text-sm text-muted-foreground">{devices.length} ONU(s)</span>
         </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+        <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
           <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Actualizar
         </Button>
       </div>
@@ -250,7 +251,7 @@ export default function SimpleOnuPanel() {
           const sig = signals[d._id];
           const isOpen = expanded === d._id;
           const form = pppoe[d._id] || { username: "", password: "" };
-          const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username;
+          const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username || pppoeNames[d._id];
           const displayName = pppoeName || aliases[d._id] || `${info.manufacturer} ${info.model}`;
           return (
             <Card key={d._id} className="overflow-hidden">
