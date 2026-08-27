@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Shield, Server, Users } from 'lucide-react';
+import { Shield, Server, Users, Building2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { PendingDevicesBadge } from '@/components/admin/PendingDevicesBadge';
 import { useRealtimePendingDevices } from '@/hooks/useRealtimePendingDevices';
