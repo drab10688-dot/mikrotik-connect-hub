@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Shield, Server, Users } from 'lucide-react';
+import { Shield, Server, Users, Building2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { PendingDevicesBadge } from '@/components/admin/PendingDevicesBadge';
 import { useRealtimePendingDevices } from '@/hooks/useRealtimePendingDevices';
@@ -35,6 +35,15 @@ export const AdminMenu = () => {
           <span>{isSuperAdmin ? 'Dispositivos' : 'Mis Dispositivos'}</span>
           <PendingDevicesBadge />
         </Link>
+        {isAdmin && (
+          <Link
+            to="/admin/companies"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
+          >
+            <Building2 className="h-4 w-4" />
+            <span>{isSuperAdmin ? 'Empresas' : 'Mi Empresa'}</span>
+          </Link>
+        )}
         {isAdmin && (
           <Link
             to="/admin/secretaries"

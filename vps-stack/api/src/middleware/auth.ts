@@ -5,6 +5,7 @@ import { pool } from '../lib/db';
 export interface AuthRequest extends Request {
   userId?: string;
   userRole?: string;
+  companyId?: string | null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -21,7 +22,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     };
 
     const { rows } = await pool.query(
-      `SELECT u.is_active,
+      `SELECT u.is_active, u.company_id,
               COALESCE(
                 (
                   SELECT ur.role
@@ -54,7 +55,8 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
     req.userId = decoded.userId;
     req.userRole = rows[0].role || decoded.role || 'user';
-    console.log(`🔑 Auth: userId=${req.userId}, dbRole=${rows[0].role}, tokenRole=${decoded.role}, finalRole=${req.userRole}`);
+    req.companyId = rows[0].company_id || null;
+    console.log(`🔑 Auth: userId=${req.userId}, role=${req.userRole}, companyId=${req.companyId}`);
     next();
   } catch {
     return res.status(401).json({ error: 'Token inválido o expirado' });
@@ -86,5 +88,22 @@ export async function verifyDeviceAccess(
     [userId, mikrotikId]
   );
 
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+
+  // El admin (dueño de empresa) accede a todos los dispositivos de SU empresa
+  if (role === 'admin') {
+    const { rows: companyRows } = await pool.query(
+      `SELECT 1
+       FROM mikrotik_devices d
+       JOIN users u ON u.id = $1
+       WHERE d.id = $2
+         AND d.company_id IS NOT NULL
+         AND d.company_id = u.company_id
+       LIMIT 1`,
+      [userId, mikrotikId]
+    );
+    return companyRows.length > 0;
+  }
+
+  return false;
 }
