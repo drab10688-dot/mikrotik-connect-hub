@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
 import SignalGauge from "@/components/onu/SignalGauge";
-import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Pencil, Check, X, Tag } from "lucide-react";
+import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag } from "lucide-react";
 
 interface SignalEntry {
   deviceId: string;
@@ -370,12 +370,20 @@ export default function SimpleOnuPanel() {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Contraseña</Label>
-                          <Input
-                            className="h-8 text-xs"
-                            type={showPppoePass[d._id] ? "text" : "password"}
-                            value={form.password}
-                            onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
-                          />
+                          <div className="flex gap-1">
+                            <Input
+                              className="h-8 text-xs"
+                              type={showPppoePass[d._id] ? "text" : "password"}
+                              value={form.password}
+                              onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
+                            />
+                            <Button
+                              size="sm" variant="ghost" className="h-8 px-2"
+                              onClick={() => setShowPppoePass((s) => ({ ...s, [d._id]: !s[d._id] }))}
+                            >
+                              {showPppoePass[d._id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </Button>
+                          </div>
                         </div>
                         <Button size="sm" onClick={() => savePppoe(d._id)} disabled={busy === `pppoe-${d._id}`}>
                           {busy === `pppoe-${d._id}` && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
