@@ -91,7 +91,7 @@ export default function SimpleOnuPanel() {
       const list: SignalEntry[] = Array.isArray(res) ? res : (res?.data || []);
       const map: Record<string, SignalEntry> = {};
       list.forEach((e) => { map[e.deviceId] = e; });
-      setSignals(map);
+      setSignals((s) => ({ ...s, ...map }));
       return list;
     } catch {
       return [];
@@ -115,37 +115,46 @@ export default function SimpleOnuPanel() {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Una sola llamada al backend: lista + señal + usuario PPPoE + alias
+  const load = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
-      const projection = [
-        "_id", "_deviceId", "_lastInform",
-        "InternetGatewayDevice.DeviceInfo.Manufacturer",
-        "InternetGatewayDevice.DeviceInfo.ModelName",
-        "InternetGatewayDevice.DeviceInfo.ProductClass",
-        "InternetGatewayDevice.DeviceInfo.SerialNumber",
-      ].join(",");
-      const [healthRes, devRes] = await Promise.all([
-        api("/genieacs/health").catch(() => ({ success: false })),
-        api(`/genieacs/devices?projection=${encodeURIComponent(projection)}`).catch(() => ({ data: [] })),
-      ]);
-      setHealth(healthRes?.success ? "online" : "offline");
-      let list: any[] = Array.isArray(devRes) ? devRes : (devRes?.data || []);
-      const sig = await loadSignals();
-      if (list.length === 0 && sig.length > 0) {
-        list = sig.map((e) => ({ _id: e.deviceId, _deviceId: { _Manufacturer: e.manufacturer, _ProductClass: e.model, _SerialNumber: e.serial } }));
-      }
-      setDevices(list);
-      // Cargar usuario PPPoE en segundo plano para usarlo como nombre de la ONU
-      list.forEach((d) => { if (d?._id) loadPppoe(d._id); });
+      const res = await api("/genieacs/overview");
+      const list: any[] = Array.isArray(res) ? res : (res?.data || []);
+      setHealth("online");
+      const sigMap: Record<string, SignalEntry> = {};
+      const aliasMap: Record<string, string> = {};
+      const nameMap: Record<string, string> = {};
+      list.forEach((e: any) => {
+        sigMap[e.deviceId] = {
+          deviceId: e.deviceId,
+          manufacturer: e.manufacturer,
+          model: e.model,
+          serial: e.serial,
+          rxPower: e.rxPower ?? null,
+          txPower: e.txPower ?? null,
+          lastInform: e.lastInform ?? null,
+        };
+        if (e.alias) aliasMap[e.deviceId] = e.alias;
+        if (e.pppoeUsername) nameMap[e.deviceId] = e.pppoeUsername;
+      });
+      setSignals(sigMap);
+      setAliases((a) => ({ ...a, ...aliasMap }));
+      setPppoeNames(nameMap);
+      setDevices(list.map((e: any) => ({
+        _id: e.deviceId,
+        _deviceId: { _Manufacturer: e.manufacturer, _ProductClass: e.model, _SerialNumber: e.serial },
+      })));
+    } catch {
+      setHealth("offline");
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
-  }, [loadSignals, loadPppoe]);
+  }, []);
 
-  useEffect(() => { load(); loadAliases(); }, [load, loadAliases]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(load, 30000);
+    const t = window.setInterval(() => load(false), 60000);
     return () => window.clearInterval(t);
   }, [load]);
 
