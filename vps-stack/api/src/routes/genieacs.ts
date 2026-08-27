@@ -52,6 +52,24 @@ function getParam(device: any, path: string): any {
   return current?._value ?? current;
 }
 
+// Busca en profundidad el primer valor cuya clave coincida (para claves vendor X_...)
+function deepFindValue(obj: any, keyMatch: RegExp, depth = 4): string | null {
+  if (!obj || typeof obj !== 'object' || depth < 0) return null;
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_')) continue;
+    if (keyMatch.test(k)) {
+      const val = v?._value ?? (typeof v === 'string' ? v : null);
+      if (val !== null && val !== undefined && String(val) !== '') return String(val);
+    }
+  }
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_') || !v || typeof v !== 'object') continue;
+    const found = deepFindValue(v, keyMatch, depth - 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 // ─── Health check ─────────────────────────────────────────
 genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
   try {
