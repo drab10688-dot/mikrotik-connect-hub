@@ -320,6 +320,7 @@ verify_nuxbill_config_write || true
 # ─── Migrate PostgreSQL (portal_ads) ──
 echo "[7/10] Migrando PostgreSQL..."
 docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+ALTER TABLE secretary_assignments ALTER COLUMN mikrotik_id DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS portal_ads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,

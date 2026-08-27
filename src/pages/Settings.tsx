@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { devicesApi, secretariesApi } from "@/lib/api-client";
+import { devicesApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

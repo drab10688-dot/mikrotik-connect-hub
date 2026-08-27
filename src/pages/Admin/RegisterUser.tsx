@@ -119,7 +119,7 @@ export default function RegisterUser() {
                     <SelectContent>
                       <SelectItem value="user">Usuario</SelectItem>
                       <SelectItem value="reseller">Revendedor</SelectItem>
-                      <SelectItem value="secretary">Secretaria</SelectItem>
+                      <SelectItem value="secretary">Asistente</SelectItem>
                       {isSuperAdmin && (
                         <>
                           <SelectItem value="admin">Administrador</SelectItem>
