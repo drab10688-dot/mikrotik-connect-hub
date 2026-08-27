@@ -322,7 +322,7 @@ genieacsRouter.get('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Res
           connections.push({
             path: `InternetGatewayDevice.WANDevice.${wdKey}.WANConnectionDevice.${wcdKey}.WANPPPConnection.${pKey}`,
             username: c?.Username?._value ?? null,
-            password: c?.Password?._value ?? null,
+            password: c?.Password?._value ?? deepFindValue(c, /(Password|Passphrase|Key)$/i, 2) ?? null,
             status: c?.ConnectionStatus?._value ?? null,
             ip: c?.ExternalIPAddress?._value ?? null,
             enable: c?.Enable?._value ?? null,
