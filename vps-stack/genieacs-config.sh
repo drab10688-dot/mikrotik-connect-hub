@@ -113,6 +113,15 @@ put('ui.device.1.parameters.1.label', '"PON Tx (dBm)"');
 put('ui.device.1.parameters.1.parameter', 'VirtualParameters.PonTx');
 put('ui.device.1.parameters.2.label', '"IP WAN"');
 put('ui.device.1.parameters.2.parameter', 'VirtualParameters.WanIP');
+put('ui.device.1.parameters.3.label', '"Usuario PPPoE"');
+put('ui.device.1.parameters.3.parameter', 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username');
+put('ui.device.1.parameters.3.writable', 'true');
+put('ui.device.1.parameters.4.label', '"Clave PPPoE"');
+put('ui.device.1.parameters.4.parameter', 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password');
+put('ui.device.1.parameters.4.writable', 'true');
+put('ui.device.1.parameters.5.label', '"Estado PPPoE"');
+put('ui.device.1.parameters.5.parameter', 'VirtualParameters.PppoeStatus');
+
 
 put('ui.device.2.type', '"parameter-list"');
 put('ui.device.2.label', '"\'WiFi 2.4 GHz\'"');
