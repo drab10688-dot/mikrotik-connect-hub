@@ -255,6 +255,22 @@ vparam WanIP   "$VP_WANIP"
 vparam SSID5G  "$VP_SSID5G"
 vparam Key5G   "$VP_KEY5G"
 
+read -r -d '' VP_PPPOEUSER <<'EOF' || true
+const d = declare("InternetGatewayDevice.WANDevice.*.WANConnectionDevice.*.WANPPPConnection.*.Username", {value: Date.now() - 300000});
+for (const x of d) { if (x.value && x.value[0]) return {writable: false, value: [x.value[0], "string"]}; }
+return {writable: false, value: ["", "string"]};
+EOF
+
+read -r -d '' VP_PPPOESTATUS <<'EOF' || true
+const d = declare("InternetGatewayDevice.WANDevice.*.WANConnectionDevice.*.WANPPPConnection.*.ConnectionStatus", {value: Date.now() - 300000});
+for (const x of d) { if (x.value && x.value[0]) return {writable: false, value: [x.value[0], "string"]}; }
+return {writable: false, value: ["", "string"]};
+EOF
+
+vparam PppoeUser   "$VP_PPPOEUSER"
+vparam PppoeStatus "$VP_PPPOESTATUS"
+
+
 # ---------------- Preset de refresco periódico ----------------
 read -r -d '' PROV <<'EOF' || true
 declare("InternetGatewayDevice.DeviceInfo.*", {value: Date.now() - 300000});
