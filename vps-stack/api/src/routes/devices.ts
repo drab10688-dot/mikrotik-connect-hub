@@ -385,8 +385,8 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
   }
 });
 
-// Add device
-devicesRouter.post('/', async (req: AuthRequest, res: Response) => {
+// Add device (asistentes y resellers no pueden registrar dispositivos)
+devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, host, port, username, password, version, latitude, longitude, hotspot_url } = req.body;
     const { rows } = await pool.query(
