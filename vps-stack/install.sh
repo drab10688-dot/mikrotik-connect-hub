@@ -16,6 +16,27 @@ NC='\033[0m'
 REPO_URL="https://github.com/drab10688-dot/mikrotik-connect-hub.git"
 INSTALL_DIR="/opt/omnisync"
 
+is_public_ipv4() {
+  local ip="$1"
+  echo "$ip" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || return 1
+  case "$ip" in
+    10.*|127.*|169.254.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) return 1 ;;
+  esac
+  return 0
+}
+
+detect_public_ip() {
+  local detected=""
+  for provider in ifconfig.me api.ipify.org icanhazip.com; do
+    detected=$(curl -s -4 --max-time 5 "$provider" 2>/dev/null | tr -d '[:space:]' || true)
+    if is_public_ipv4 "$detected"; then
+      echo "$detected"
+      return 0
+    fi
+  done
+  return 1
+}
+
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
 echo "║       OmniSync ISP Manager Installer         ║"
@@ -113,11 +134,18 @@ handle_existing_installation() {
 
         # Regenerate radius configs from .env
         cd "$INSTALL_DIR"
-        # Asegurar VPS_PUBLIC_IP (endpoint WireGuard)
-        if ! grep -q '^VPS_PUBLIC_IP=' .env 2>/dev/null; then
-          DETECTED_IP=$(curl -s -4 --max-time 5 ifconfig.me || true)
-          echo "$DETECTED_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || DETECTED_IP=$(curl -s -4 --max-time 5 api.ipify.org || true)
-          echo "$DETECTED_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && echo "VPS_PUBLIC_IP=${DETECTED_IP}" >> .env
+        # Asegurar una IP pública real para el endpoint WireGuard.
+        # Reemplaza también valores antiguos 172.x/10.x/192.168.x de Docker/LAN.
+        CURRENT_PUBLIC_IP=$(sed -n 's/^VPS_PUBLIC_IP=//p' .env 2>/dev/null | tail -1 | tr -d '[:space:]')
+        if ! is_public_ipv4 "$CURRENT_PUBLIC_IP"; then
+          DETECTED_IP=$(detect_public_ip || true)
+          if ! is_public_ipv4 "$DETECTED_IP"; then
+            echo -e "${RED}✗ No se pudo detectar la IP pública del VPS.${NC}"
+            echo -e "${YELLOW}Configura VPS_PUBLIC_IP manualmente en $INSTALL_DIR/.env y ejecuta la actualización otra vez.${NC}"
+            exit 1
+          fi
+          sed -i '/^VPS_PUBLIC_IP=/d' .env
+          echo "VPS_PUBLIC_IP=${DETECTED_IP}" >> .env
         fi
         source .env 2>/dev/null || true
         sync_nuxbill_env_file "$INSTALL_DIR/.env"
@@ -571,15 +599,12 @@ else
   echo -e "${CYAN}→ Podrás agregar dispositivos MikroTik desde el panel web${NC}"
 fi
 
-VPS_IP=$(hostname -I | awk '{print $1}')
-
-# Public IP (used for WireGuard endpoint) - never a private/container IP
-VPS_PUBLIC_IP=$(curl -s -4 --max-time 5 ifconfig.me || true)
-if ! echo "$VPS_PUBLIC_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-  VPS_PUBLIC_IP=$(curl -s -4 --max-time 5 api.ipify.org || true)
-fi
-if ! echo "$VPS_PUBLIC_IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-  VPS_PUBLIC_IP="$VPS_IP"
+# Public IP used for WireGuard endpoint; never fall back to Docker/LAN addresses.
+VPS_PUBLIC_IP=$(detect_public_ip || true)
+if ! is_public_ipv4 "$VPS_PUBLIC_IP"; then
+  echo -e "${RED}✗ No se pudo detectar una IP pública válida para WireGuard.${NC}"
+  echo -e "${YELLOW}Verifica la salida a Internet/DNS del VPS y vuelve a ejecutar el instalador.${NC}"
+  exit 1
 fi
 echo -e "${CYAN}→ IP pública detectada: ${VPS_PUBLIC_IP}${NC}"
 
