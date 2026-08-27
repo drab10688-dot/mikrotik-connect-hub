@@ -1550,12 +1550,8 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
           ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
           ?? null;
 
-        // Normalize mW to dBm
-        const normalizePower = (val: number | null): number | null => {
-          if (val === null) return null;
-          if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
-          return val;
-        };
+        // Normalizar a dBm entero (maneja 0.01 dBm, mW, centinelas)
+        const normalizePower = (val: number | null): number | null => sanitizePower(val);
 
         rxPower = normalizePower(rxPower);
         txPower = normalizePower(txPower);
