@@ -17,6 +17,20 @@ CREATE TYPE connection_type AS ENUM ('pppoe', 'hotspot', 'static', 'dhcp');
 CREATE TYPE device_status AS ENUM ('active', 'pending', 'inactive');
 
 -- ============================================
+-- Multi-ISP (tenants)
+-- ============================================
+CREATE TABLE IF NOT EXISTS tenants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  logo_url TEXT,
+  primary_color TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================
 -- Users & Auth
 -- ============================================
 CREATE TABLE users (
@@ -25,6 +39,7 @@ CREATE TABLE users (
   password_hash TEXT NOT NULL,
   full_name TEXT,
   is_active BOOLEAN DEFAULT true,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -53,6 +68,7 @@ CREATE TABLE mikrotik_devices (
   latitude TEXT,
   longitude TEXT,
   created_by UUID NOT NULL REFERENCES users(id),
+  tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
