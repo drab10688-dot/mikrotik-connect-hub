@@ -625,6 +625,7 @@ if command -v ufw &> /dev/null; then
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
   ufw allow 7547/tcp >/dev/null 2>&1   # GenieACS CWMP (TR-069)
+  ufw allow 7547/udp >/dev/null 2>&1   # GenieACS STUN/UDP Connection Request
   ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
   ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
   ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
