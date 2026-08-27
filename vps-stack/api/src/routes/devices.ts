@@ -394,10 +394,30 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
 devicesRouter.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const { name, host, port, username, password, version, latitude, longitude, hotspot_url } = req.body;
+
+    // La empresa se toma del usuario; el super_admin puede indicarla explícitamente
+    let companyId: string | null = req.companyId ?? null;
+    if (req.userRole === 'super_admin' && req.body.company_id) {
+      companyId = req.body.company_id;
+    }
+
+    // Límite de dispositivos por plan de la empresa
+    if (companyId) {
+      const { rows: limitRows } = await pool.query(
+        `SELECT c.max_devices, (SELECT COUNT(*)::int FROM mikrotik_devices d WHERE d.company_id = c.id) AS total
+         FROM companies c WHERE c.id = $1`,
+        [companyId]
+      );
+      const limit = limitRows[0];
+      if (limit && limit.max_devices > 0 && limit.total >= limit.max_devices) {
+        return res.status(403).json({ error: `La empresa alcanzó su límite de ${limit.max_devices} dispositivos` });
+      }
+    }
+
     const { rows } = await pool.query(
-      `INSERT INTO mikrotik_devices (name, host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
-      [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
+      `INSERT INTO mikrotik_devices (name, host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10, $11) RETURNING *`,
+      [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null, companyId]
     );
 
     // Auto-assign access
