@@ -164,8 +164,8 @@ export default function Secretaries() {
   const setPerm = (key: string, val: boolean) => setPerms(prev => ({ ...prev, [key]: val }));
 
   const handleAssignSecretary = async () => {
-    if (!secretaryEmail || !secretaryPassword || !dialogMikrotik) {
-      toast.error('Completa todos los campos requeridos'); return;
+    if (!secretaryEmail || !secretaryPassword) {
+      toast.error('Completa el email y la contraseña'); return;
     }
     if (secretaryPassword.length < 6) {
       toast.error('La contraseña debe tener al menos 6 caracteres'); return;
@@ -179,15 +179,16 @@ export default function Secretaries() {
       const userId = createdUser?.id;
       if (!userId) throw new Error('No se pudo obtener el ID del usuario creado');
 
-      assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik, ...perms });
+      assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik || 'all', ...perms });
       setIsDialogOpen(false);
       setDialogMikrotik(''); setSecretaryEmail(''); setSecretaryPassword(''); setSecretaryFullName('');
       setPerms(getDefaultPerms());
-      toast.success('Secretaria asignada exitosamente');
+      toast.success('Asistente asignado exitosamente');
     } catch (error: any) {
       toast.error('Error: ' + error.message);
     }
   };
+
 
   const handleUpdatePermissions = (assignment: any, updates: any) => {
     updateSecretary({ assignmentId: assignment.id, ...updates });
