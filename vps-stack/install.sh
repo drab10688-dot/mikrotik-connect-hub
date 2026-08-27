@@ -759,6 +759,46 @@ ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS latitude TEXT;
 ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS longitude TEXT;
 " 2>/dev/null && echo -e "${GREEN}✓ Columnas mikrotik_devices actualizadas${NC}" || true
 
+# Asistentes: dispositivo opcional (NULL = todos) + permisos granulares nuevos
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
+ALTER TABLE secretary_assignments ALTER COLUMN mikrotik_id DROP NOT NULL;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_clients BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_edit_clients BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_clients BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_record_payments BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_payment_history BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_reactivate_services BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_invoices BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_edit_invoices BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_invoices BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_send_invoices BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_reports_dashboard BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_export_reports BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_hotspot_users BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_edit_hotspot_users BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_hotspot_users BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_vouchers BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_sell_vouchers BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_print_vouchers BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_hotspot_accounting BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_hotspot_reports BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_address_list BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_address_list BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_backup BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_restore_backup BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_vps BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_vps_docker BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_radius BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_radius_users BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_radius_stats BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_onu BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_configure_onu_wifi BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_reboot_onu BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_settings BOOLEAN DEFAULT true;
+ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_diagnostics BOOLEAN DEFAULT true;
+" 2>/dev/null && echo -e "${GREEN}✓ Permisos de asistentes actualizados${NC}" || true
+
+
 # Reiniciar PHPNuxBill y FreeRADIUS para que tomen las tablas recién creadas
 echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius

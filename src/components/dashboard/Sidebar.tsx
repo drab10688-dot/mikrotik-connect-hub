@@ -84,33 +84,39 @@ export const Sidebar = () => {
     toast.info("Logo eliminado");
   };
 
-  // Get current device's secretary permissions
+  // Get current device's secretary permissions (device-specific or global assignment)
   const currentDeviceId = localStorage.getItem("mikrotik_device_id") || "";
-  const currentPerms = secretaryAssignments?.find((a: any) => a.mikrotik_id === currentDeviceId);
+  const currentPerms =
+    secretaryAssignments?.find((a: any) => a.mikrotik_id === currentDeviceId) ||
+    secretaryAssignments?.find((a: any) => !a.mikrotik_id);
 
   const secretaryPermMap: Record<string, string> = {
     '/clients': 'can_manage_clients',
+    '/ppp': 'can_manage_pppoe',
+    '/simple-queues': 'can_manage_queues',
     '/payment-manager': 'can_manage_payments',
     '/payments': 'can_manage_billing',
     '/reports': 'can_manage_reports',
     '/address-list': 'can_manage_address_list',
     '/backup': 'can_manage_backup',
     '/vps-services': 'can_manage_vps_services',
+    '/hotspot-monitor': 'can_manage_hotspot',
+    '/radius': 'can_manage_radius',
+    '/onu-management': 'can_manage_onu',
+    '/settings': 'can_manage_settings',
+    '/diagnostics': 'can_manage_diagnostics',
   };
 
   const filteredMenuItems = isSecretary
     ? menuItems.filter(item => {
         // Always show dashboard
         if (item.path === '/dashboard') return true;
-        // PPPoE and Queues controlled by their own flags
-        if (item.path === '/ppp') return currentPerms?.can_manage_pppoe !== false;
-        if (item.path === '/simple-queues') return currentPerms?.can_manage_queues !== false;
-        // Module permissions
         const permKey = secretaryPermMap[item.path];
         if (permKey) return currentPerms?.[permKey] !== false;
         return false;
       })
     : menuItems;
+
 
   const handleLogout = async () => {
     await signOut();
