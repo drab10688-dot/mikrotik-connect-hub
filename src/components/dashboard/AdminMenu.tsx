@@ -37,6 +37,15 @@ export const AdminMenu = () => {
         </Link>
         {isAdmin && (
           <Link
+            to="/admin/companies"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
+          >
+            <Building2 className="h-4 w-4" />
+            <span>{isSuperAdmin ? 'Empresas' : 'Mi Empresa'}</span>
+          </Link>
+        )}
+        {isAdmin && (
+          <Link
             to="/admin/secretaries"
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
           >
