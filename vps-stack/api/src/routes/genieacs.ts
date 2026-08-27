@@ -1734,14 +1734,14 @@ genieacsRouter.get('/signal-history/:onuId', async (req: AuthRequest, res: Respo
         rxPower: rxValues.length > 0 ? {
           min: Math.min(...rxValues),
           max: Math.max(...rxValues),
-          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(2)),
+          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(0)),
           current: rxValues[rxValues.length - 1],
           trend: rxValues.length >= 2 ? (rxValues[rxValues.length - 1] - rxValues[0] > 0 ? 'improving' : rxValues[rxValues.length - 1] - rxValues[0] < -1 ? 'degrading' : 'stable') : 'insufficient',
         } : null,
         txPower: txValues.length > 0 ? {
           min: Math.min(...txValues),
           max: Math.max(...txValues),
-          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(2)),
+          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(0)),
           current: txValues[txValues.length - 1],
         } : null,
       };
@@ -2226,7 +2226,7 @@ genieacsRouter.get('/acs-signal/history/:deviceId', async (req: AuthRequest, res
         rxPower: rxValues.length ? {
           min: Math.min(...rxValues),
           max: Math.max(...rxValues),
-          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(2)),
+          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(0)),
           current: rxValues[rxValues.length - 1],
           trend: rxValues.length >= 2
             ? (rxValues[rxValues.length - 1] - rxValues[0] > 1 ? 'improving'
@@ -2236,7 +2236,7 @@ genieacsRouter.get('/acs-signal/history/:deviceId', async (req: AuthRequest, res
         txPower: txValues.length ? {
           min: Math.min(...txValues),
           max: Math.max(...txValues),
-          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(2)),
+          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(0)),
           current: txValues[txValues.length - 1],
         } : null,
       };
