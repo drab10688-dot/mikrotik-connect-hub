@@ -90,6 +90,25 @@ export async function verifyDeviceAccess(
 
   if (rows.length > 0) return true;
 
+  // Asistente con asignación global: accede a los equipos de su empresa
+  if (role === 'secretary') {
+    const { rows: globalRows } = await pool.query(
+      `SELECT 1
+       FROM mikrotik_devices d
+       JOIN users u ON u.id = $1
+       WHERE d.id = $2
+         AND d.company_id IS NOT NULL
+         AND d.company_id = u.company_id
+         AND EXISTS (
+           SELECT 1 FROM secretary_assignments sa
+           WHERE sa.secretary_id = $1 AND sa.mikrotik_id IS NULL
+         )
+       LIMIT 1`,
+      [userId, mikrotikId]
+    );
+    if (globalRows.length > 0) return true;
+  }
+
   // El admin (dueño de empresa) accede a todos los dispositivos de SU empresa
   if (role === 'admin') {
     const { rows: companyRows } = await pool.query(

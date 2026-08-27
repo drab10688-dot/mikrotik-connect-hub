@@ -105,7 +105,71 @@ const PERM_GROUPS = [
       ['can_manage_vps_docker', 'Gestionar Docker/Servicios'],
     ],
   },
+  {
+    id: 'onu', label: 'Permisos ONU / TR-069', masterKey: 'can_manage_onu',
+    subs: [
+      ['can_view_onu', 'Ver ONUs y señal'],
+      ['can_configure_onu_wifi', 'Configurar WiFi de ONU'],
+      ['can_reboot_onu', 'Reiniciar ONU'],
+      ['can_delete_onu', 'Eliminar ONU'],
+    ],
+  },
+  {
+    id: 'radius', label: 'Permisos RADIUS', masterKey: 'can_manage_radius',
+    subs: [
+      ['can_view_radius_sessions', 'Ver sesiones RADIUS'],
+      ['can_manage_radius_users', 'Gestionar usuarios RADIUS'],
+      ['can_disconnect_radius', 'Desconectar sesiones'],
+    ],
+  },
+  {
+    id: 'vpn', label: 'Permisos VPN / WireGuard', masterKey: 'can_manage_vpn',
+    subs: [
+      ['can_create_vpn_peers', 'Crear peers VPN'],
+      ['can_delete_vpn_peers', 'Eliminar peers VPN'],
+    ],
+  },
+  {
+    id: 'contracts', label: 'Permisos Contratos', masterKey: 'can_manage_contracts',
+    subs: [
+      ['can_create_contracts', 'Crear contratos'],
+      ['can_sign_contracts', 'Firmar contratos'],
+      ['can_delete_contracts', 'Eliminar contratos'],
+    ],
+  },
+  {
+    id: 'messaging', label: 'Permisos Mensajería', masterKey: 'can_manage_messaging',
+    subs: [
+      ['can_send_telegram', 'Enviar Telegram'],
+      ['can_send_whatsapp', 'Enviar WhatsApp'],
+      ['can_config_messaging', 'Configurar bots/APIs'],
+    ],
+  },
+  {
+    id: 'portal', label: 'Permisos Portal Cautivo', masterKey: 'can_manage_portal',
+    subs: [
+      ['can_edit_portal_templates', 'Editar plantillas del portal'],
+      ['can_manage_portal_ads', 'Gestionar publicidad'],
+    ],
+  },
+  {
+    id: 'monitoring', label: 'Permisos Monitoreo', masterKey: 'can_manage_monitoring',
+    subs: [
+      ['can_view_dashboard', 'Ver dashboard'],
+      ['can_view_traffic', 'Ver tráfico'],
+      ['can_run_diagnostics', 'Ejecutar diagnósticos'],
+      ['can_view_map', 'Ver mapa de red'],
+    ],
+  },
+  {
+    id: 'devices', label: 'Permisos Dispositivos', masterKey: 'can_manage_devices',
+    subs: [
+      ['can_view_devices', 'Ver dispositivos MikroTik'],
+      ['can_edit_devices', 'Editar dispositivos'],
+    ],
+  },
 ];
+
 
 // Get all sub-permission keys
 const ALL_SUB_KEYS = PERM_GROUPS.flatMap(g => g.subs.map(s => s[0]));
@@ -141,7 +205,7 @@ export default function Secretaries() {
   const setPerm = (key: string, val: boolean) => setPerms(prev => ({ ...prev, [key]: val }));
 
   const handleAssignSecretary = async () => {
-    if (!secretaryEmail || !secretaryPassword || !dialogMikrotik) {
+    if (!secretaryEmail || !secretaryPassword) {
       toast.error('Completa todos los campos requeridos'); return;
     }
     if (secretaryPassword.length < 6) {
@@ -156,15 +220,15 @@ export default function Secretaries() {
       const userId = createdUser?.id;
       if (!userId) throw new Error('No se pudo obtener el ID del usuario creado');
 
-      assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik, ...perms });
+      assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik || null, ...perms });
       setIsDialogOpen(false);
       setDialogMikrotik(''); setSecretaryEmail(''); setSecretaryPassword(''); setSecretaryFullName('');
       setPerms(getDefaultPerms());
-      toast.success('Secretaria asignada exitosamente');
     } catch (error: any) {
       toast.error('Error: ' + error.message);
     }
   };
+
 
   const handleUpdatePermissions = (assignment: any, updates: any) => {
     updateSecretary({ assignmentId: assignment.id, ...updates });
@@ -214,55 +278,61 @@ export default function Secretaries() {
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Secretarias Asignadas</CardTitle>
-                    <CardDescription>Administra los permisos de tus secretarias</CardDescription>
+                    <CardTitle>Asistentes Asignados</CardTitle>
+                    <CardDescription>Administra los permisos de tus asistentes</CardDescription>
                   </div>
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button><Plus className="h-4 w-4 mr-2" />Asignar Secretaria</Button>
+                      <Button><Plus className="h-4 w-4 mr-2" />Asignar Asistente</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
-                        <DialogTitle>Asignar Nueva Secretaria</DialogTitle>
-                        <DialogDescription>Configura los permisos específicos para la secretaria</DialogDescription>
+                        <DialogTitle>Asignar Nuevo Asistente</DialogTitle>
+                        <DialogDescription>Configura los permisos específicos para el asistente</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div>
-                          <Label>Dispositivo MikroTik</Label>
-                          <Select value={dialogMikrotik} onValueChange={setDialogMikrotik}>
-                            <SelectTrigger><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
-                            <SelectContent>{devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}</SelectContent>
+                          <Label>Dispositivo MikroTik (opcional)</Label>
+                          <Select value={dialogMikrotik || 'all'} onValueChange={(v) => setDialogMikrotik(v === 'all' ? '' : v)}>
+                            <SelectTrigger><SelectValue placeholder="Todos los dispositivos" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todos los dispositivos de la empresa</SelectItem>
+                              {devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}
+                            </SelectContent>
                           </Select>
+                          <p className="text-xs text-muted-foreground mt-1">Si no eliges uno, el asistente accede a todos los equipos de tu empresa.</p>
                         </div>
-                        <div><Label>Nombre Completo</Label><Input type="text" value={secretaryFullName} onChange={(e) => setSecretaryFullName(e.target.value)} placeholder="Nombre de la secretaria" /></div>
-                        <div><Label>Email de la Secretaria</Label><Input type="email" value={secretaryEmail} onChange={(e) => setSecretaryEmail(e.target.value)} placeholder="secretaria@ejemplo.com" required /></div>
+                        <div><Label>Nombre Completo</Label><Input type="text" value={secretaryFullName} onChange={(e) => setSecretaryFullName(e.target.value)} placeholder="Nombre del asistente" /></div>
+                        <div><Label>Email del Asistente</Label><Input type="email" value={secretaryEmail} onChange={(e) => setSecretaryEmail(e.target.value)} placeholder="asistente@ejemplo.com" required /></div>
                         <div><Label>Contraseña</Label><Input type="password" value={secretaryPassword} onChange={(e) => setSecretaryPassword(e.target.value)} placeholder="••••••••" required minLength={6} /><p className="text-xs text-muted-foreground mt-1">Mínimo 6 caracteres</p></div>
 
                         {renderPermAccordion(perms, setPerm)}
 
-                        <Button onClick={handleAssignSecretary} className="w-full">Asignar Secretaria</Button>
+                        <Button onClick={handleAssignSecretary} className="w-full">Asignar Asistente</Button>
                       </div>
                     </DialogContent>
                   </Dialog>
                 </div>
                 <div>
-                  <Label>Seleccionar Dispositivo</Label>
-                  <Select value={viewMikrotik} onValueChange={setViewMikrotik}>
-                    <SelectTrigger className="w-full max-w-md"><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
-                    <SelectContent>{devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}</SelectContent>
+                  <Label>Filtrar por Dispositivo (opcional)</Label>
+                  <Select value={viewMikrotik || 'all'} onValueChange={(v) => setViewMikrotik(v === 'all' ? '' : v)}>
+                    <SelectTrigger className="w-full max-w-md"><SelectValue placeholder="Todos los asistentes" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los asistentes</SelectItem>
+                      {devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              {!viewMikrotik ? (
-                <div className="text-center py-8 text-muted-foreground">Selecciona un dispositivo para ver las secretarias asignadas</div>
-              ) : isLoading ? (
+              {isLoading ? (
                 <div className="text-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div></div>
               ) : assignments && assignments.length > 0 ? (
                 <Table>
                   <TableHeader><TableRow>
-                    <TableHead>Secretaria</TableHead>
+                    <TableHead>Asistente</TableHead>
+                    <TableHead>Dispositivo</TableHead>
                     <TableHead>PPPoE</TableHead>
                     <TableHead>Queues</TableHead>
                     <TableHead>Hotspot</TableHead>
@@ -276,6 +346,8 @@ export default function Secretaries() {
                     {assignments.map((assignment: any) => (
                       <TableRow key={assignment.id}>
                         <TableCell><div><p className="font-medium text-sm">{assignment.secretary_name || assignment.full_name || 'Sin nombre'}</p><p className="text-xs text-muted-foreground">{assignment.secretary_email || assignment.email || assignment.secretary_id}</p></div></TableCell>
+                        <TableCell className="text-xs">{assignment.device_name || 'Todos'}</TableCell>
+
                         <TableCell><Switch checked={assignment.can_manage_pppoe !== false} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_pppoe: checked })} /></TableCell>
                         <TableCell><Switch checked={assignment.can_manage_queues !== false} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_queues: checked })} /></TableCell>
                         <TableCell><Switch checked={assignment.can_manage_hotspot !== false} onCheckedChange={(checked) => handleUpdatePermissions(assignment, { can_manage_hotspot: checked })} /></TableCell>
@@ -288,7 +360,7 @@ export default function Secretaries() {
                             <Dialog>
                               <DialogTrigger asChild><Button variant="ghost" size="sm" onClick={() => setEditingAssignment({...assignment})}><Settings className="h-4 w-4" /></Button></DialogTrigger>
                               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                                <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para esta secretaria</DialogDescription></DialogHeader>
+                                <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para este asistente</DialogDescription></DialogHeader>
                                 {editingAssignment && (
                                   <div className="space-y-4">
                                     {PERM_GROUPS.map(group => (
@@ -329,7 +401,7 @@ export default function Secretaries() {
                   </TableBody>
                 </Table>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No hay secretarias asignadas a este dispositivo</div>
+                <div className="text-center py-8 text-muted-foreground">No hay asistentes asignados</div>
               )}
             </CardContent>
           </Card>
