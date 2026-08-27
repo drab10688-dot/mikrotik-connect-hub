@@ -32,6 +32,7 @@ import { radiusRouter } from './routes/radius';
 import { authMiddleware } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
+import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
 
 // Re-export pool for backward compatibility with cron jobs
 export { pool };
@@ -117,12 +118,20 @@ cron.schedule('0 6 * * *', () => {
 // Cron: recolección de señal óptica cada 15 minutos
 cron.schedule('*/15 * * * *', () => {
   console.log('[CRON] Running optical signal collection...');
+  // ACS-driven: todas las ONUs conectadas a GenieACS (no requiere registro local)
+  collectAcsSignals(pool)
+    .then(r => console.log(`[CRON] ACS signal: ${r.collected}/${r.total} ONUs, ${r.alertsSent} alertas`))
+    .catch(e => console.error('[CRON] ACS signal error:', e.message));
+  // Legacy: ONUs registradas localmente y vinculadas a un MikroTik
   runSignalCollectCron(pool);
 });
 
 // Cron: limpieza de historial de señal óptica cada día a las 3:00 AM
 cron.schedule('0 3 * * *', () => {
   console.log('[CRON] Running signal history cleanup...');
+  cleanupAcsSignals(pool)
+    .then(n => console.log(`[CRON] ACS signal cleanup: ${n} registros`))
+    .catch(e => console.error('[CRON] ACS cleanup error:', e.message));
   runSignalCleanupCron(pool);
 });
 

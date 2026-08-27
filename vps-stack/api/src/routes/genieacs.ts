@@ -1,6 +1,11 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
 import { pool } from '../lib/db';
+import {
+  ensureAcsSignalTables,
+  collectAcsSignals,
+  cleanupAcsSignals,
+} from '../lib/acs-signal';
 
 export const genieacsRouter = Router();
 genieacsRouter.use(authMiddleware);
@@ -1998,6 +2003,196 @@ genieacsRouter.post('/devices/:deviceId/alias', async (req: AuthRequest, res: Re
       [deviceId, name]
     );
     res.json({ success: true, message: 'Nombre guardado' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Señal óptica ACS-driven: sin registro local ni MikroTik.
+// Todas las ONUs que informan a GenieACS entran automáticamente.
+// ═══════════════════════════════════════════════════════════
+
+// Recolectar ahora (manual)
+genieacsRouter.post('/acs-signal/collect', async (_req: AuthRequest, res: Response) => {
+  try {
+    const result = await collectAcsSignals(pool);
+    res.json({
+      success: true,
+      ...result,
+      message: `Señal recolectada de ${result.collected}/${result.total} ONUs${result.alertsSent ? `. ${result.alertsSent} alertas enviadas` : ''}`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Resumen: última lectura por ONU + tendencia 24h
+genieacsRouter.get('/acs-signal/overview', async (_req: AuthRequest, res: Response) => {
+  try {
+    await ensureAcsSignalTables(pool);
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (h.device_id)
+        h.device_id, h.serial, h.manufacturer, h.model,
+        h.rx_power, h.tx_power, h.quality, h.temperature, h.wan_status, h.recorded_at,
+        a.name AS alias,
+        (SELECT p.rx_power FROM acs_signal_history p
+          WHERE p.device_id = h.device_id AND p.recorded_at >= NOW() - INTERVAL '24 hours'
+          ORDER BY p.recorded_at ASC LIMIT 1) AS rx_24h_ago
+      FROM acs_signal_history h
+      LEFT JOIN onu_aliases a ON a.device_id = h.device_id
+      ORDER BY h.device_id, h.recorded_at DESC
+    `);
+
+    const data = rows.map((r: any) => {
+      const rx = r.rx_power !== null ? parseFloat(r.rx_power) : null;
+      const old = r.rx_24h_ago !== null && r.rx_24h_ago !== undefined ? parseFloat(r.rx_24h_ago) : null;
+      let trend = 'stable';
+      if (rx !== null && old !== null) {
+        const diff = rx - old;
+        if (diff < -1) trend = 'degrading';
+        else if (diff > 1) trend = 'improving';
+      }
+      return {
+        device_id: r.device_id,
+        name: r.alias || r.serial || r.device_id,
+        serial: r.serial,
+        manufacturer: r.manufacturer,
+        model: r.model,
+        rx_power: rx,
+        tx_power: r.tx_power !== null ? parseFloat(r.tx_power) : null,
+        quality: r.quality,
+        temperature: r.temperature !== null ? parseFloat(r.temperature) : null,
+        wan_status: r.wan_status,
+        recorded_at: r.recorded_at,
+        trend,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Historial de una ONU del ACS
+genieacsRouter.get('/acs-signal/history/:deviceId', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureAcsSignalTables(pool);
+    const { deviceId } = req.params;
+    const hours = parseInt((req.query.hours as string) || '168', 10);
+
+    const { rows } = await pool.query(
+      `SELECT rx_power, tx_power, quality, temperature, wan_status, recorded_at
+       FROM acs_signal_history
+       WHERE device_id = $1 AND recorded_at >= NOW() - INTERVAL '1 hour' * $2
+       ORDER BY recorded_at ASC`,
+      [deviceId, hours]
+    );
+
+    const readings = rows.map((r: any) => ({
+      rx_power: r.rx_power !== null ? parseFloat(r.rx_power) : null,
+      tx_power: r.tx_power !== null ? parseFloat(r.tx_power) : null,
+      quality: r.quality,
+      temperature: r.temperature !== null ? parseFloat(r.temperature) : null,
+      wan_status: r.wan_status,
+      recorded_at: r.recorded_at,
+    }));
+
+    let stats: any = null;
+    if (readings.length > 0) {
+      const rxValues = readings.filter(r => r.rx_power !== null).map(r => r.rx_power as number);
+      const txValues = readings.filter(r => r.tx_power !== null).map(r => r.tx_power as number);
+      stats = {
+        totalReadings: readings.length,
+        rxPower: rxValues.length ? {
+          min: Math.min(...rxValues),
+          max: Math.max(...rxValues),
+          avg: parseFloat((rxValues.reduce((a, b) => a + b, 0) / rxValues.length).toFixed(2)),
+          current: rxValues[rxValues.length - 1],
+          trend: rxValues.length >= 2
+            ? (rxValues[rxValues.length - 1] - rxValues[0] > 1 ? 'improving'
+              : rxValues[rxValues.length - 1] - rxValues[0] < -1 ? 'degrading' : 'stable')
+            : 'insufficient',
+        } : null,
+        txPower: txValues.length ? {
+          min: Math.min(...txValues),
+          max: Math.max(...txValues),
+          avg: parseFloat((txValues.reduce((a, b) => a + b, 0) / txValues.length).toFixed(2)),
+          current: txValues[txValues.length - 1],
+        } : null,
+      };
+    }
+
+    res.json({ success: true, data: readings, stats });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Configuración global de alertas (fila única)
+genieacsRouter.get('/acs-signal/config', async (_req: AuthRequest, res: Response) => {
+  try {
+    await ensureAcsSignalTables(pool);
+    const { rows } = await pool.query('SELECT * FROM acs_signal_config WHERE id = 1');
+    res.json({ success: true, data: rows[0] || null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+genieacsRouter.put('/acs-signal/config', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureAcsSignalTables(pool);
+    const { alerts_enabled, default_threshold, default_chat_id, cooldown_minutes, auto_cleanup_days } = req.body || {};
+    const { rows } = await pool.query(
+      `INSERT INTO acs_signal_config (id, alerts_enabled, default_threshold, default_chat_id, cooldown_minutes, auto_cleanup_days)
+       VALUES (1, COALESCE($1,false), COALESCE($2,-28), $3, COALESCE($4,60), COALESCE($5,90))
+       ON CONFLICT (id) DO UPDATE SET
+         alerts_enabled = COALESCE($1, acs_signal_config.alerts_enabled),
+         default_threshold = COALESCE($2, acs_signal_config.default_threshold),
+         default_chat_id = $3,
+         cooldown_minutes = COALESCE($4, acs_signal_config.cooldown_minutes),
+         auto_cleanup_days = COALESCE($5, acs_signal_config.auto_cleanup_days),
+         updated_at = now()
+       RETURNING *`,
+      [
+        alerts_enabled ?? null,
+        default_threshold ?? null,
+        default_chat_id || null,
+        cooldown_minutes ?? null,
+        auto_cleanup_days ?? null,
+      ]
+    );
+    res.json({ success: true, data: rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Historial de alertas enviadas
+genieacsRouter.get('/acs-signal/alerts', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureAcsSignalTables(pool);
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const { rows } = await pool.query(
+      `SELECT a.*, al.name AS alias
+       FROM acs_signal_alerts a
+       LEFT JOIN onu_aliases al ON al.device_id = a.device_id
+       ORDER BY a.created_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Limpieza manual
+genieacsRouter.delete('/acs-signal/cleanup', async (_req: AuthRequest, res: Response) => {
+  try {
+    const deleted = await cleanupAcsSignals(pool);
+    res.json({ success: true, deleted, message: `${deleted} registros eliminados` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -288,7 +288,7 @@ export default function OnuManagement() {
 
         {noMikrotik && (
           <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-            No hay un dispositivo MikroTik seleccionado. <strong>ONUs conectadas</strong> funciona directamente con GenieACS; el registro local, las plantillas y el historial óptico requieren un MikroTik.
+            No hay un dispositivo MikroTik seleccionado. <strong>ONUs conectadas</strong> y <strong>Señal Óptica</strong> funcionan directamente con GenieACS; el registro local y las plantillas requieren un MikroTik.
           </div>
         )}
 
@@ -638,7 +638,7 @@ export default function OnuManagement() {
 
           {/* ─── Signal History Tab ───────────────────── */}
           <TabsContent value="signal">
-            <SignalHistoryChart mikrotikId={mikrotikId} />
+            <SignalHistoryChart />
           </TabsContent>
 
         </Tabs>
