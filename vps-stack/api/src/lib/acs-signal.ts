@@ -22,6 +22,13 @@ const PROJECTION = [
 
 export async function ensureAcsSignalTables(pool: Pool) {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS onu_aliases (
+      device_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS acs_signal_history (
       id BIGSERIAL PRIMARY KEY,
       device_id TEXT NOT NULL,
