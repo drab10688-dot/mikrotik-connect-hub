@@ -8,7 +8,10 @@ export interface AuthRequest extends Request {
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const authorization = req.headers.authorization;
+  const token = authorization?.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length).trim()
+    : undefined;
 
   if (!token) {
     return res.status(401).json({ error: 'Token requerido' });
@@ -21,6 +24,10 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       role?: string;
     };
   } catch {
+    return res.status(401).json({ error: 'Token inválido o expirado' });
+  }
+
+  if (!decoded.userId) {
     return res.status(401).json({ error: 'Token inválido o expirado' });
   }
 
@@ -58,7 +65,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
   }
 
   // is_active se consulta aparte: si la columna no existe en instalaciones
-  // antiguas, jamás debe bloquear la sesión.
+  // antiguas, jamás debe convertir un error de esquema en un 401.
   try {
     const { rows } = await pool.query(
       `SELECT COALESCE(is_active, true) AS is_active FROM users WHERE id = $1 LIMIT 1`,
