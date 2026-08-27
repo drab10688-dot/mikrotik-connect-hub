@@ -261,7 +261,8 @@ services:
       GENIEACS_FS_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
     ports:
-      - "7547:7547"          # CWMP (las ONUs se conectan aquí)
+      - "7547:7547"          # CWMP TCP (las ONUs se conectan aquí)
+      - "7547:7547/udp"      # CWMP UDP / STUN (Connection Request NAT traversal)
       - "7567:7567"          # File Server (firmware/config)
       - "7557:7557"          # NBI (API GenieACS y onu-ctl.sh)
       - "3001:3000"          # UI GenieACS
