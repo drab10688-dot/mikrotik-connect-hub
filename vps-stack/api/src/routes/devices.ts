@@ -594,12 +594,12 @@ devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Res
     const { rows } = await pool.query(
       `SELECT sa.*,
               md.id as "device_id", md.name as device_name, md.host, md.port, md.version, md.status as device_status,
-              json_build_object(
+              CASE WHEN md.id IS NULL THEN NULL ELSE json_build_object(
                 'id', md.id, 'name', md.name, 'host', md.host,
                 'port', md.port, 'version', md.version, 'status', md.status
-              ) as mikrotik_devices
+              ) END as mikrotik_devices
        FROM secretary_assignments sa
-       INNER JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
+       LEFT JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
        WHERE sa.secretary_id = $1`,
       [req.userId]
     );
@@ -612,6 +612,18 @@ devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Res
 devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+
+    if (id === 'all') {
+      const { rows } = await pool.query(
+        `SELECT sa.*, u.email, u.full_name
+         FROM secretary_assignments sa
+         LEFT JOIN users u ON u.id = sa.secretary_id
+         WHERE sa.mikrotik_id IS NULL AND sa.assigned_by = $1`,
+        [req.userId]
+      );
+      return res.json({ data: rows });
+    }
+
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
@@ -619,8 +631,8 @@ devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) =>
       `SELECT sa.*, u.email, u.full_name
        FROM secretary_assignments sa
        LEFT JOIN users u ON u.id = sa.secretary_id
-       WHERE sa.mikrotik_id = $1`,
-      [id]
+       WHERE sa.mikrotik_id = $1 OR (sa.mikrotik_id IS NULL AND sa.assigned_by = $2)`,
+      [id, req.userId]
     );
     res.json({ data: rows });
   } catch (error: any) {
@@ -631,32 +643,26 @@ devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) =>
 devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const {
-      secretary_id, can_manage_pppoe, can_create_pppoe, can_edit_pppoe,
-      can_delete_pppoe, can_disconnect_pppoe, can_toggle_pppoe,
-      can_manage_queues, can_create_queues, can_edit_queues,
-      can_delete_queues, can_toggle_queues, can_suspend_queues, can_reactivate_queues
-    } = req.body;
+    const { secretary_id, ...rest } = req.body || {};
+    if (!secretary_id) return res.status(400).json({ error: 'secretary_id requerido' });
+
+    const mikrotikId = !id || id === 'all' || id === 'null' ? null : id;
+
+    const permKeys = Object.keys(rest).filter((k) => k.startsWith('can_'));
+    const columns = ['secretary_id', 'mikrotik_id', 'assigned_by', ...permKeys];
+    const values: any[] = [secretary_id, mikrotikId, req.userId, ...permKeys.map((k) => rest[k] ?? true)];
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(',');
 
     const { rows } = await pool.query(
-      `INSERT INTO secretary_assignments (
-        secretary_id, mikrotik_id, assigned_by,
-        can_manage_pppoe, can_create_pppoe, can_edit_pppoe, can_delete_pppoe,
-        can_disconnect_pppoe, can_toggle_pppoe,
-        can_manage_queues, can_create_queues, can_edit_queues, can_delete_queues,
-        can_toggle_queues, can_suspend_queues, can_reactivate_queues
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [secretary_id, id, req.userId,
-       can_manage_pppoe ?? true, can_create_pppoe ?? true, can_edit_pppoe ?? true, can_delete_pppoe ?? true,
-       can_disconnect_pppoe ?? true, can_toggle_pppoe ?? true,
-       can_manage_queues ?? true, can_create_queues ?? true, can_edit_queues ?? true, can_delete_queues ?? true,
-       can_toggle_queues ?? true, can_suspend_queues ?? true, can_reactivate_queues ?? true]
+      `INSERT INTO secretary_assignments (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+      values
     );
     res.status(201).json({ data: rows[0] });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 devicesRouter.put('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
   try {
