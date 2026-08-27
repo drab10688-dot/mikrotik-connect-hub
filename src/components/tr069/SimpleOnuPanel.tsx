@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
-import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network } from "lucide-react";
+import SignalGauge from "@/components/onu/SignalGauge";
+import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag } from "lucide-react";
 
 interface SignalEntry {
   deviceId: string;
@@ -47,6 +48,41 @@ export default function SimpleOnuPanel() {
   const [pppoe, setPppoe] = useState<Record<string, { username: string; password: string }>>({});
   const [pppoeCurrent, setPppoeCurrent] = useState<Record<string, any[]>>({});
   const [showPppoePass, setShowPppoePass] = useState<Record<string, boolean>>({});
+  const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [editingAlias, setEditingAlias] = useState<string | null>(null);
+  const [aliasDraft, setAliasDraft] = useState("");
+
+  const loadAliases = useCallback(async () => {
+    try {
+      const res = await api("/genieacs/aliases");
+      const map = res?.data ?? res;
+      if (map && typeof map === "object") setAliases(map as Record<string, string>);
+    } catch {
+      /* opcional */
+    }
+  }, []);
+
+  const saveAlias = async (deviceId: string) => {
+    const name = aliasDraft.trim();
+    setBusy(`alias-${deviceId}`);
+    try {
+      await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/alias`, {
+        method: "POST",
+        body: { name },
+      });
+      setAliases((a) => {
+        const next = { ...a };
+        if (name) next[deviceId] = name; else delete next[deviceId];
+        return next;
+      });
+      setEditingAlias(null);
+      toast.success(name ? "Nombre guardado" : "Nombre eliminado");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
 
   const loadSignals = useCallback(async () => {
@@ -88,7 +124,7 @@ export default function SimpleOnuPanel() {
     }
   }, [loadSignals]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadAliases(); }, [load, loadAliases]);
   useEffect(() => {
     const t = window.setInterval(load, 30000);
     return () => window.clearInterval(t);
@@ -207,20 +243,49 @@ export default function SimpleOnuPanel() {
             <Card key={d._id} className="overflow-hidden">
               <CardHeader className="p-3 pb-2">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <CardTitle className="text-sm flex items-center gap-2 min-w-0">
-                    <Router className="w-4 h-4 text-primary shrink-0" />
-                    <span className="truncate">{info.manufacturer} {info.model}</span>
-                    <span className="text-xs font-mono text-muted-foreground truncate">{info.serial}</span>
-                  </CardTitle>
-                  <div className="flex items-center gap-3">
-                    <div className="text-xs">
-                      <span className="text-muted-foreground mr-1">Rx</span>
-                      <span className={`font-semibold ${signalColor(sig?.rxPower ?? null)}`}>
-                        {sig?.rxPower != null ? `${sig.rxPower} dBm` : "—"}
-                      </span>
-                      <span className="text-muted-foreground mx-1">/ Tx</span>
-                      <span className="font-semibold">{sig?.txPower != null ? `${sig.txPower} dBm` : "—"}</span>
+                  <div className="min-w-0 space-y-1">
+                    <CardTitle className="text-sm flex items-center gap-2 min-w-0">
+                      <Router className="w-4 h-4 text-primary shrink-0" />
+                      {editingAlias === d._id ? (
+                        <span className="flex items-center gap-1">
+                          <Input
+                            autoFocus
+                            className="h-7 text-xs w-48"
+                            placeholder="Nombre del cliente"
+                            value={aliasDraft}
+                            onChange={(e) => setAliasDraft(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveAlias(d._id); if (e.key === "Escape") setEditingAlias(null); }}
+                          />
+                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => saveAlias(d._id)} disabled={busy === `alias-${d._id}`}>
+                            {busy === `alias-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingAlias(null)}>
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 min-w-0">
+                          <span className="truncate">{aliases[d._id] || `${info.manufacturer} ${info.model}`}</span>
+                          <Button
+                            size="sm" variant="ghost" className="h-6 px-1"
+                            onClick={() => { setEditingAlias(d._id); setAliasDraft(aliases[d._id] || ""); }}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                        </span>
+                      )}
+                    </CardTitle>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                      {aliases[d._id] && (
+                        <span className="flex items-center gap-1 truncate">
+                          <Tag className="w-3 h-3" />{info.manufacturer} {info.model}
+                        </span>
+                      )}
+                      <span className="font-mono truncate">{info.serial}</span>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <SignalGauge rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} />
                     <Button size="sm" variant="ghost" onClick={() => refreshSignal(d._id)} disabled={busy === `sig-${d._id}`}>
                       {busy === `sig-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Signal className="w-3 h-3" />}
                     </Button>
@@ -305,11 +370,20 @@ export default function SimpleOnuPanel() {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Contraseña</Label>
-                          <Input
-                            className="h-8 text-xs"
-                            value={form.password}
-                            onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
-                          />
+                          <div className="flex gap-1">
+                            <Input
+                              className="h-8 text-xs"
+                              type={showPppoePass[d._id] ? "text" : "password"}
+                              value={form.password}
+                              onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
+                            />
+                            <Button
+                              size="sm" variant="ghost" className="h-8 px-2"
+                              onClick={() => setShowPppoePass((s) => ({ ...s, [d._id]: !s[d._id] }))}
+                            >
+                              {showPppoePass[d._id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </Button>
+                          </div>
                         </div>
                         <Button size="sm" onClick={() => savePppoe(d._id)} disabled={busy === `pppoe-${d._id}`}>
                           {busy === `pppoe-${d._id}` && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}

@@ -52,6 +52,24 @@ function getParam(device: any, path: string): any {
   return current?._value ?? current;
 }
 
+// Busca en profundidad el primer valor cuya clave coincida (para claves vendor X_...)
+function deepFindValue(obj: any, keyMatch: RegExp, depth = 4): string | null {
+  if (!obj || typeof obj !== 'object' || depth < 0) return null;
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_')) continue;
+    if (keyMatch.test(k)) {
+      const val = v?._value ?? (typeof v === 'string' ? v : null);
+      if (val !== null && val !== undefined && String(val) !== '') return String(val);
+    }
+  }
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_') || !v || typeof v !== 'object') continue;
+    const found = deepFindValue(v, keyMatch, depth - 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 // ─── Health check ─────────────────────────────────────────
 genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
   try {
@@ -304,7 +322,7 @@ genieacsRouter.get('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Res
           connections.push({
             path: `InternetGatewayDevice.WANDevice.${wdKey}.WANConnectionDevice.${wcdKey}.WANPPPConnection.${pKey}`,
             username: c?.Username?._value ?? null,
-            password: c?.Password?._value ?? null,
+            password: c?.Password?._value ?? deepFindValue(c, /(Password|Passphrase|Key)$/i, 2) ?? null,
             status: c?.ConnectionStatus?._value ?? null,
             ip: c?.ExternalIPAddress?._value ?? null,
             enable: c?.Enable?._value ?? null,
@@ -1799,6 +1817,7 @@ function collectWlans(device: any) {
           ?? val(wc?.PreSharedKey?.['1']?.PreSharedKey)
           ?? val(wc?.PreSharedKey?.['1']?.KeyPassphrase)
           ?? val(wc?.Security?.KeyPassphrase)
+          ?? deepFindValue(wc, /(KeyPassphrase|PreSharedKey|WPAKey|WEPKey|Password|Passphrase)$/i, 3)
           ?? null,
         clients,
       });
@@ -1936,6 +1955,49 @@ genieacsRouter.post('/devices/:deviceId/refresh-onu', async (req: AuthRequest, r
       success: true,
       message: 'Lectura solicitada. Si la ONU está tras NAT se aplicará en el próximo Inform.',
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Alias / nombre de cliente por ONU ───────────────────
+async function ensureAliasTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS onu_aliases (
+      device_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+genieacsRouter.get('/aliases', async (_req: AuthRequest, res: Response) => {
+  try {
+    await ensureAliasTable();
+    const { rows } = await pool.query('SELECT device_id, name FROM onu_aliases');
+    const map: Record<string, string> = {};
+    rows.forEach((r: any) => { map[r.device_id] = r.name; });
+    res.json({ success: true, data: map });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+genieacsRouter.post('/devices/:deviceId/alias', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureAliasTable();
+    const { deviceId } = req.params;
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      await pool.query('DELETE FROM onu_aliases WHERE device_id = $1', [deviceId]);
+      return res.json({ success: true, message: 'Nombre eliminado' });
+    }
+    await pool.query(
+      `INSERT INTO onu_aliases (device_id, name) VALUES ($1, $2)
+       ON CONFLICT (device_id) DO UPDATE SET name = EXCLUDED.name, updated_at = now()`,
+      [deviceId, name]
+    );
+    res.json({ success: true, message: 'Nombre guardado' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

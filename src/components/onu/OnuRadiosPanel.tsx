@@ -56,6 +56,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [forms, setForms] = useState<Record<string, { ssid: string; password: string; channel: string }>>({});
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
+  const [showDisabled, setShowDisabled] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -197,8 +198,25 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
             </Button>
           </div>
         ) : (
+          <div className="space-y-3">
+          {(() => {
+            const activeRadios = status.radios.filter((r) => r.enabled === true);
+            const disabledRadios = status.radios.filter((r) => r.enabled !== true);
+            const visible = showDisabled ? status.radios : (activeRadios.length > 0 ? activeRadios : status.radios);
+            return (
+          <>
+          {disabledRadios.length > 0 && activeRadios.length > 0 && (
+            <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
+              <span className="text-xs text-muted-foreground">
+                {activeRadios.length} radio(s) activa(s) · {disabledRadios.length} desactivada(s)
+              </span>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowDisabled((v) => !v)}>
+                {showDisabled ? "Ocultar desactivadas" : "Mostrar desactivadas"}
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {status.radios.map((radio) => {
+            {visible.map((radio) => {
               const form = forms[radio.path] || { ssid: "", password: "", channel: "" };
               return (
                 <Card key={radio.path} className="bg-muted/30 overflow-hidden">
@@ -229,8 +247,18 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Contraseña</span>
-                        <span className="text-xs font-mono truncate">
-                          {radio.password ? (showPass[radio.path] ? radio.password : "••••••••") : "—"}
+                        <span className="text-xs font-mono truncate flex items-center gap-1">
+                          {radio.password && (
+                            <Button
+                              size="sm" variant="ghost" className="h-5 px-1"
+                              onClick={() => setShowPass((s) => ({ ...s, [radio.path]: !s[radio.path] }))}
+                            >
+                              {showPass[radio.path] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </Button>
+                          )}
+                          {radio.password
+                            ? (showPass[radio.path] ? radio.password : "••••••••")
+                            : "no reportada"}
                         </span>
                       </div>
                     </div>
@@ -286,6 +314,10 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                 </Card>
               );
             })}
+          </div>
+          </>
+            );
+          })()}
           </div>
         )}
 
