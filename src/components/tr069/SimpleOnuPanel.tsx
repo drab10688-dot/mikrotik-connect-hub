@@ -325,8 +325,8 @@ export default function SimpleOnuPanel() {
                         </span>
                       )}
                     </CardTitle>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground min-w-0">
+
                       {(pppoeName || aliases[d._id]) && (
                         <span className="flex items-center gap-1 truncate">
                           <Tag className="w-3 h-3" />{info.manufacturer} {info.model}
