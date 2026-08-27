@@ -294,7 +294,7 @@ export default function Secretaries() {
               ) : assignments && assignments.length > 0 ? (
                 <Table>
                   <TableHeader><TableRow>
-                    <TableHead>Secretaria</TableHead>
+                    <TableHead>Asistente</TableHead>
                     <TableHead>PPPoE</TableHead>
                     <TableHead>Queues</TableHead>
                     <TableHead>Hotspot</TableHead>
@@ -320,7 +320,7 @@ export default function Secretaries() {
                             <Dialog>
                               <DialogTrigger asChild><Button variant="ghost" size="sm" onClick={() => setEditingAssignment({...assignment})}><Settings className="h-4 w-4" /></Button></DialogTrigger>
                               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                                <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para esta secretaria</DialogDescription></DialogHeader>
+                                <DialogHeader><DialogTitle>Permisos Detallados</DialogTitle><DialogDescription>Configura permisos específicos para este asistente</DialogDescription></DialogHeader>
                                 {editingAssignment && (
                                   <div className="space-y-4">
                                     {PERM_GROUPS.map(group => (
@@ -361,7 +361,7 @@ export default function Secretaries() {
                   </TableBody>
                 </Table>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No hay secretarias asignadas a este dispositivo</div>
+                <div className="text-center py-8 text-muted-foreground">No hay asistentes asignados a este dispositivo</div>
               )}
             </CardContent>
           </Card>

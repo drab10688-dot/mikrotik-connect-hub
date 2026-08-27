@@ -32,10 +32,10 @@ export const useSecretaries = (mikrotikId?: string) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });
-      toast.success('Secretaria asignada exitosamente');
+      toast.success('Asistente asignado exitosamente');
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Error al asignar secretaria');
+      toast.error(error.message || 'Error al asignar asistente');
     },
   });
 
@@ -45,10 +45,10 @@ export const useSecretaries = (mikrotikId?: string) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['secretary-assignments'] });
-      toast.success('Secretaria removida exitosamente');
+      toast.success('Asistente removido exitosamente');
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Error al remover secretaria');
+      toast.error(error.message || 'Error al remover asistente');
     },
   });
 
