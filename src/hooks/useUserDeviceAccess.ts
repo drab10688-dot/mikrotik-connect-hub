@@ -5,7 +5,8 @@ import { useAuth } from "./useAuth";
 export const useUserDeviceAccess = () => {
   const { user, isSuperAdmin, isAdmin, isSecretary, loading: authLoading } = useAuth();
 
-  const { data: devices, isLoading } = useQuery({
+  const { data: devices, isLoading, isError } = useQuery({
+    retry: false,
     queryKey: ['user-device-access', user?.id, isSecretary, isAdmin, isSuperAdmin],
     queryFn: async () => {
       if (!user) return [];
@@ -31,6 +32,7 @@ export const useUserDeviceAccess = () => {
   return {
     devices: devices || [],
     hasDeviceAccess,
+    isError,
     isLoading: isLoading || authLoading,
   };
 };

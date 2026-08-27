@@ -26,24 +26,23 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
   // La consulta a la base de datos NO debe convertirse en 401: si la BD falla
   // (columna faltante, conexión caída) degradamos al rol del token.
+  req.userId = decoded.userId;
+  req.userRole = decoded.role || 'user';
+
   try {
     const { rows } = await pool.query(
-      `SELECT COALESCE(u.is_active, true) AS is_active,
-              COALESCE(
-                (
-                  SELECT ur.role
-                  FROM user_roles ur
-                  WHERE ur.user_id = u.id
-                  ORDER BY CASE ur.role
-                    WHEN 'super_admin' THEN 1
-                    WHEN 'admin' THEN 2
-                    WHEN 'secretary' THEN 3
-                    WHEN 'reseller' THEN 4
-                    ELSE 5
-                  END
-                  LIMIT 1
-                ),
-                'user'::app_role
+      `SELECT (
+                SELECT ur.role::text
+                FROM user_roles ur
+                WHERE ur.user_id = u.id
+                ORDER BY CASE ur.role::text
+                  WHEN 'super_admin' THEN 1
+                  WHEN 'admin' THEN 2
+                  WHEN 'secretary' THEN 3
+                  WHEN 'reseller' THEN 4
+                  ELSE 5
+                END
+                LIMIT 1
               ) AS role
        FROM users u
        WHERE u.id = $1
@@ -51,23 +50,28 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       [decoded.userId]
     );
 
-    if (!rows[0]) {
-      return res.status(401).json({ error: 'Usuario no encontrado' });
+    if (rows[0]?.role) {
+      req.userRole = rows[0].role;
     }
-
-    if (rows[0].is_active === false) {
-      return res.status(403).json({ error: 'Cuenta desactivada' });
-    }
-
-    req.userId = decoded.userId;
-    req.userRole = rows[0].role || decoded.role || 'user';
-    return next();
   } catch (error) {
     console.error('⚠️ Auth: fallo consultando rol en BD, usando rol del token:', error);
-    req.userId = decoded.userId;
-    req.userRole = decoded.role || 'user';
-    return next();
   }
+
+  // is_active se consulta aparte: si la columna no existe en instalaciones
+  // antiguas, jamás debe bloquear la sesión.
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(is_active, true) AS is_active FROM users WHERE id = $1 LIMIT 1`,
+      [decoded.userId]
+    );
+    if (rows[0] && rows[0].is_active === false) {
+      return res.status(403).json({ error: 'Cuenta desactivada' });
+    }
+  } catch (error) {
+    console.error('⚠️ Auth: no se pudo verificar is_active, se continúa:', error);
+  }
+
+  return next();
 }
 
 
