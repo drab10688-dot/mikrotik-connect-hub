@@ -144,7 +144,25 @@ export function VpnManager() {
     }
   };
 
-  const handleTogglePeer = async (peer: VpnPeer) => {
+  const openEditNetworks = (peer: VpnPeer) => {
+    setEditPeer(peer);
+    setEditNetworks(peer.remote_networks || "");
+    setEditOpen(true);
+  };
+
+  const handleSaveNetworks = async () => {
+    if (!editPeer) return;
+    try {
+      await apiPut(`/vpn/peers/${editPeer.id}`, { remote_networks: editNetworks.trim() || null });
+      toast.success("Redes remotas actualizadas");
+      setEditOpen(false);
+      setEditPeer(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
     try {
       await apiPut(`/vpn/peers/${peer.id}`, { is_active: !peer.is_active });
       toast.success(peer.is_active ? "Peer desactivado" : "Peer activado");
