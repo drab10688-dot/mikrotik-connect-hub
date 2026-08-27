@@ -2175,20 +2175,28 @@ genieacsRouter.post('/devices/:deviceId/refresh-onu', async (req: AuthRequest, r
       { name: 'refreshObject', objectName: 'InternetGatewayDevice.DeviceInfo' },
       { name: 'refreshObject', objectName: 'InternetGatewayDevice.WANDevice.1' },
     ];
-    for (const t of tasks) {
-      await genieFetch(
-        `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-        { method: 'POST', body: JSON.stringify(t) }
-      ).catch(() => {});
-    }
+
+    // Responder de inmediato: encolar tareas en segundo plano.
+    // Con connection_request GenieACS puede bloquear hasta 30s por tarea si la
+    // ONU está tras NAT, lo que provocaba timeouts en el panel.
     res.json({
       success: true,
-      message: 'Lectura solicitada. Si la ONU está tras NAT se aplicará en el próximo Inform.',
+      message: 'Lectura solicitada. Se aplicará en cuanto la ONU responda (o en el próximo Inform).',
     });
+
+    void Promise.allSettled(
+      tasks.map((t) =>
+        genieFetch(
+          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
+          { method: 'POST', body: JSON.stringify(t), signal: AbortSignal.timeout(25000) }
+        )
+      )
+    ).catch(() => {});
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── Alias / nombre de cliente por ONU ───────────────────
 async function ensureAliasTable() {
