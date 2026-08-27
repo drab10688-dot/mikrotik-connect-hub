@@ -26,6 +26,7 @@ import PaymentManager from "./pages/PaymentManager";
 import Clients from "./pages/Clients";
 import ClientPaymentPortal from "./pages/ClientPaymentPortal";
 import UsersAdmin from "./pages/Admin/Users";
+import Companies from "./pages/Admin/Companies";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
 import RegisterUser from "./pages/Admin/RegisterUser";
