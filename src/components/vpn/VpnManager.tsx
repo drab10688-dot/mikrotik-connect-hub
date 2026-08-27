@@ -395,6 +395,9 @@ export function VpnManager() {
                               checked={peer.is_active}
                               onCheckedChange={() => handleTogglePeer(peer)}
                             />
+                            <Button size="icon" variant="ghost" onClick={() => openEditNetworks(peer)} title="Redes remotas (ONUs/MikroTiks detrás del túnel)">
+                              <Globe className="h-4 w-4" />
+                            </Button>
                             <Button size="icon" variant="ghost" onClick={() => handleShowConfig(peer)} title="Ver configuración">
                               <Download className="h-4 w-4" />
                             </Button>
