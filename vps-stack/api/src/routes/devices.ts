@@ -128,7 +128,16 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
     }
 
     const { rows } = await pool.query(query, params);
-    res.json({ data: rows });
+
+    // Aislamiento multi-ISP: si el usuario pertenece a un ISP, solo ve los
+    // dispositivos de ese ISP. Los equipos sin tenant (instalaciones previas)
+    // siguen siendo visibles para no romper nada.
+    const filtered = req.tenantId
+      ? rows.filter((d: any) => !d.tenant_id || d.tenant_id === req.tenantId)
+      : rows;
+
+    res.json({ data: filtered });
+
   } catch (error) {
     console.error('Error listing devices:', error);
     res.status(500).json({ error: 'Error al listar dispositivos' });
