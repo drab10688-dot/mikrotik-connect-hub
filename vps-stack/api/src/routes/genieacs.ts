@@ -858,6 +858,129 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
 });
 
 
+// ─── Overview rápido: una sola consulta al ACS (lista + señal + PPPoE) ──
+const FAST_PROJECTION = [
+  '_id', '_deviceId', '_lastInform',
+  'InternetGatewayDevice.DeviceInfo.Manufacturer',
+  'InternetGatewayDevice.DeviceInfo.ModelName',
+  'InternetGatewayDevice.DeviceInfo.ProductClass',
+  'InternetGatewayDevice.DeviceInfo.SerialNumber',
+  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower',
+  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower',
+  'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower',
+  'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower',
+  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower',
+  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower',
+  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower',
+  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower',
+  'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower',
+  'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower',
+  'InternetGatewayDevice.X_HW_PONInfo.RXPower',
+  'InternetGatewayDevice.X_HW_PONInfo.TXPower',
+  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower',
+  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower',
+  'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower',
+  'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower',
+  'Device.Optical.Interface.1.Stats.SignalStrength',
+  'Device.Optical.Interface.1.Stats.TransmitPower',
+  'Device.Optical.Interface.1.RxPower',
+  'Device.Optical.Interface.1.TxPower',
+  'Device.DeviceInfo.Manufacturer',
+  'Device.DeviceInfo.ModelName',
+  'Device.DeviceInfo.SerialNumber',
+  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username',
+  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ConnectionStatus',
+  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANPPPConnection.1.Username',
+  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.WANPPPConnection.1.Username',
+].join(',');
+
+function sanitizePower(val: any): number | null {
+  const num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
+  if (!Number.isFinite(num)) return null;
+  // Valores centinela de ONUs sin lectura óptica (p.ej. -2147483648, 65535)
+  if (num <= -100 || num >= 65535) return null;
+  if (num > 100) return parseFloat((10 * Math.log10(num / 10000)).toFixed(2));
+  return parseFloat(num.toFixed(2));
+}
+
+function firstPppoeUsername(device: any): string | null {
+  const wanDevices = device?.InternetGatewayDevice?.WANDevice || {};
+  for (const wdKey of Object.keys(wanDevices)) {
+    if (wdKey.startsWith('_')) continue;
+    const wcds = wanDevices[wdKey]?.WANConnectionDevice || {};
+    for (const wcdKey of Object.keys(wcds)) {
+      if (wcdKey.startsWith('_')) continue;
+      const ppps = wcds[wcdKey]?.WANPPPConnection || {};
+      for (const pKey of Object.keys(ppps)) {
+        if (pKey.startsWith('_')) continue;
+        const u = ppps[pKey]?.Username?._value;
+        if (u) return String(u);
+      }
+    }
+  }
+  return null;
+}
+
+genieacsRouter.get('/overview', async (_req: AuthRequest, res: Response) => {
+  try {
+    const devices: any[] = (await genieFetch(`/devices/?projection=${encodeURIComponent(FAST_PROJECTION)}`)) || [];
+
+    let aliases: Record<string, string> = {};
+    try {
+      const { rows } = await pool.query('SELECT device_id, name FROM onu_aliases');
+      rows.forEach((r: any) => { aliases[r.device_id] = r.name; });
+    } catch { /* tabla opcional */ }
+
+    const data = devices.map((device: any) => {
+      const igd = device?.InternetGatewayDevice || device?.Device || {};
+      const di = igd?.DeviceInfo || {};
+      const idParts = String(device?._id || '').split('-');
+      const meta = device?._deviceId || {};
+
+      const rx = sanitizePower(
+        getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
+        ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
+        ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
+      );
+      const tx = sanitizePower(
+        getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
+        ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
+        ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
+      );
+
+      return {
+        deviceId: device._id,
+        manufacturer: di?.Manufacturer?._value || meta?._Manufacturer || idParts[0] || 'ONU',
+        model: di?.ModelName?._value || di?.ProductClass?._value || meta?._ProductClass || idParts[1] || '-',
+        serial: di?.SerialNumber?._value || meta?._SerialNumber || (idParts.length >= 3 ? idParts.slice(2).join('-') : '-'),
+        rxPower: rx,
+        txPower: tx,
+        pppoeUsername: firstPppoeUsername(device),
+        alias: aliases[device._id] || null,
+        lastInform: device?._lastInform || null,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
   try {

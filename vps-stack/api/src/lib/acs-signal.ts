@@ -98,6 +98,7 @@ function getParam(device: any, path: string): any {
 function normalizePower(val: any): number | null {
   const num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
   if (!Number.isFinite(num)) return null;
+  if (num <= -100 || num >= 65535) return null;
   if (num > 100) return parseFloat((10 * Math.log10(num / 10000)).toFixed(2));
   return parseFloat(num.toFixed(2));
 }
