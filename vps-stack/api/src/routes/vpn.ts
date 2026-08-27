@@ -37,38 +37,54 @@ function getRequestHost(req: Request): string {
   return hostHeader.replace(/^https?:\/\//, '').split(':')[0];
 }
 
-async function getPublicIp(fallbackHost = ''): Promise<string> {
-  if (cachedPublicIp) return cachedPublicIp;
+function isPrivateIpv4(ip: string): boolean {
+  return (
+    ip.startsWith('10.') ||
+    ip.startsWith('192.168.') ||
+    ip.startsWith('127.') ||
+    ip.startsWith('169.254.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+  );
+}
 
+async function getPublicIp(fallbackHost = ''): Promise<string> {
+  if (cachedPublicIp && !isPrivateIpv4(cachedPublicIp)) return cachedPublicIp;
+
+  // 1) Env override has top priority (memory: Public IP Detection)
+  const envIp = process.env.VPS_PUBLIC_IP?.trim() || '';
+  if (envIp && isValidIpv4(envIp) && !isPrivateIpv4(envIp)) {
+    cachedPublicIp = envIp;
+    return envIp;
+  }
+
+  // 2) External providers (only accept public IPs — never container/LAN IPs)
   const commands = [
     'curl -s -4 --max-time 5 ifconfig.me',
     'curl -s -4 --max-time 5 api.ipify.org',
     'curl -s -4 --max-time 5 icanhazip.com',
     'curl -s -4 --max-time 5 ipecho.net/plain',
-    "ip route get 1.1.1.1 | awk '{print $7; exit}'",
-    'hostname -i',
   ];
 
   for (const cmd of commands) {
     try {
       const { stdout } = await execAsync(cmd);
       const ip = extractIpv4(stdout.trim());
-      if (ip) {
+      if (ip && !isPrivateIpv4(ip)) {
         cachedPublicIp = ip;
         return ip;
       }
     } catch {}
   }
 
-  const envIp = process.env.VPS_PUBLIC_IP?.trim() || '';
+  const normalizedFallback = fallbackHost.trim();
+  if (normalizedFallback && !isPrivateIpv4(normalizedFallback)) {
+    return normalizedFallback;
+  }
+
+  // 3) Last resort: private env IP (lab setups) — never guess from hostname/container IPs
   if (envIp && isValidIpv4(envIp)) {
     cachedPublicIp = envIp;
     return envIp;
-  }
-
-  const normalizedFallback = fallbackHost.trim();
-  if (normalizedFallback) {
-    return normalizedFallback;
   }
 
   return '';
