@@ -238,33 +238,37 @@ export default function Secretaries() {
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Secretarias Asignadas</CardTitle>
-                    <CardDescription>Administra los permisos de tus secretarias</CardDescription>
+                    <CardTitle>Asistentes Asignados</CardTitle>
+                    <CardDescription>Administra los permisos de tus asistentes</CardDescription>
                   </div>
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button><Plus className="h-4 w-4 mr-2" />Asignar Secretaria</Button>
+                      <Button><Plus className="h-4 w-4 mr-2" />Asignar Asistente</Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
-                        <DialogTitle>Asignar Nueva Secretaria</DialogTitle>
-                        <DialogDescription>Configura los permisos específicos para la secretaria</DialogDescription>
+                        <DialogTitle>Asignar Nuevo Asistente</DialogTitle>
+                        <DialogDescription>Configura los permisos específicos para el asistente</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div>
-                          <Label>Dispositivo MikroTik</Label>
-                          <Select value={dialogMikrotik} onValueChange={setDialogMikrotik}>
-                            <SelectTrigger><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
-                            <SelectContent>{devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}</SelectContent>
+                          <Label>Dispositivo MikroTik (opcional)</Label>
+                          <Select value={dialogMikrotik || 'all'} onValueChange={(v) => setDialogMikrotik(v === 'all' ? '' : v)}>
+                            <SelectTrigger><SelectValue placeholder="Todos los dispositivos de la empresa" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todos los dispositivos de la empresa</SelectItem>
+                              {devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}
+                            </SelectContent>
                           </Select>
+                          <p className="text-xs text-muted-foreground mt-1">Si no eliges uno, el asistente accede a todos los equipos de tu empresa.</p>
                         </div>
-                        <div><Label>Nombre Completo</Label><Input type="text" value={secretaryFullName} onChange={(e) => setSecretaryFullName(e.target.value)} placeholder="Nombre de la secretaria" /></div>
-                        <div><Label>Email de la Secretaria</Label><Input type="email" value={secretaryEmail} onChange={(e) => setSecretaryEmail(e.target.value)} placeholder="secretaria@ejemplo.com" required /></div>
+                        <div><Label>Nombre Completo</Label><Input type="text" value={secretaryFullName} onChange={(e) => setSecretaryFullName(e.target.value)} placeholder="Nombre del asistente" /></div>
+                        <div><Label>Email del Asistente</Label><Input type="email" value={secretaryEmail} onChange={(e) => setSecretaryEmail(e.target.value)} placeholder="asistente@ejemplo.com" required /></div>
                         <div><Label>Contraseña</Label><Input type="password" value={secretaryPassword} onChange={(e) => setSecretaryPassword(e.target.value)} placeholder="••••••••" required minLength={6} /><p className="text-xs text-muted-foreground mt-1">Mínimo 6 caracteres</p></div>
 
                         {renderPermAccordion(perms, setPerm)}
 
-                        <Button onClick={handleAssignSecretary} className="w-full">Asignar Secretaria</Button>
+                        <Button onClick={handleAssignSecretary} className="w-full">Asignar Asistente</Button>
                       </div>
                     </DialogContent>
                   </Dialog>
@@ -273,14 +277,18 @@ export default function Secretaries() {
                   <Label>Seleccionar Dispositivo</Label>
                   <Select value={viewMikrotik} onValueChange={setViewMikrotik}>
                     <SelectTrigger className="w-full max-w-md"><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
-                    <SelectContent>{devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los dispositivos (globales)</SelectItem>
+                      {devices?.map((device: any) => (<SelectItem key={device.id} value={device.id}>{device.name}</SelectItem>))}
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               {!viewMikrotik ? (
-                <div className="text-center py-8 text-muted-foreground">Selecciona un dispositivo para ver las secretarias asignadas</div>
+                <div className="text-center py-8 text-muted-foreground">Selecciona un dispositivo para ver los asistentes asignados</div>
+
               ) : isLoading ? (
                 <div className="text-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div></div>
               ) : assignments && assignments.length > 0 ? (
