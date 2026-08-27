@@ -360,18 +360,8 @@ export const invoicesApi = {
 };
 
 // ─── Users/Admin API ──────────────────────────────────────
-// ─── Companies (multi-empresa) API ────────────────────────
-export const companiesApi = {
-  list: async () => unwrapArray(await apiGet<any>('/companies')),
-  create: (data: any) => apiPost('/companies', data),
-  update: (id: string, data: any) => apiPut(`/companies/${id}`, data),
-  delete: (id: string) => apiDelete(`/companies/${id}`),
-  assignUser: (companyId: string, userId: string) => apiPut(`/companies/${companyId}/users/${userId}`),
-};
-
 export const usersApi = {
-  list: async (companyId?: string) =>
-    unwrapArray(await apiGet<any>(companyId ? `/auth/users?company_id=${companyId}` : '/auth/users')),
+  list: async () => unwrapArray(await apiGet<any>('/auth/users')),
   updateRole: (userId: string, role: string) => apiPut(`/auth/users/${userId}/role`, { role }),
   delete: (userId: string) => apiDelete(`/auth/users/${userId}`),
   createUser: async (data: any) => apiPost('/auth/users', data),
@@ -388,16 +378,11 @@ export const resellersApi = {
 // ─── Secretary API ────────────────────────────────────────
 export const secretariesApi = {
   myAssignments: async () => unwrapArray(await apiGet<any>('/devices/my-secretary-assignments')),
-  allAssignments: async () => unwrapArray(await apiGet<any>('/devices/secretaries')),
   assignments: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/devices/${mikrotikId}/secretaries`)),
-  assign: (mikrotikId: string | null, data: any) =>
-    mikrotikId
-      ? apiPost(`/devices/${mikrotikId}/secretaries`, data)
-      : apiPost('/devices/secretaries', { ...data, mikrotik_id: null }),
+  assign: (mikrotikId: string, data: any) => apiPost(`/devices/${mikrotikId}/secretaries`, data),
   update: (assignmentId: string, permissions: any) => apiPut(`/devices/secretaries/${assignmentId}`, permissions),
   remove: (assignmentId: string) => apiDelete(`/devices/secretaries/${assignmentId}`),
 };
-
 
 // ─── Contracts API ────────────────────────────────────────
 export const contractsApi = {

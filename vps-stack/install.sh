@@ -759,19 +759,6 @@ ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS latitude TEXT;
 ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS longitude TEXT;
 " 2>/dev/null && echo -e "${GREEN}✓ Columnas mikrotik_devices actualizadas${NC}" || true
 
-# ── Migraciones versionadas (db/migrations/*.sql) ──
-if [ -d "$INSTALL_DIR/db/migrations" ]; then
-  for mig in "$INSTALL_DIR"/db/migrations/*.sql; do
-    [ -f "$mig" ] || continue
-    echo -e "${YELLOW}Aplicando migración $(basename "$mig")...${NC}"
-    if docker exec -i omnisync-postgres psql -v ON_ERROR_STOP=1 -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" < "$mig" >/dev/null 2>&1; then
-      echo -e "${GREEN}✓ $(basename "$mig") aplicada${NC}"
-    else
-      echo -e "${YELLOW}⚠ $(basename "$mig") no se pudo aplicar completamente${NC}"
-    fi
-  done
-fi
-
 # Reiniciar PHPNuxBill y FreeRADIUS para que tomen las tablas recién creadas
 echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
 docker compose restart phpnuxbill freeradius

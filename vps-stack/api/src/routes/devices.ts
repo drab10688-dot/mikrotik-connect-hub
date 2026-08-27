@@ -103,18 +103,8 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
     let params: string[];
 
     if (req.userRole === 'super_admin') {
-      // El super_admin puede filtrar por empresa con ?company_id=
-      const companyFilter = typeof req.query.company_id === 'string' ? req.query.company_id : null;
-      query = companyFilter
-        ? 'SELECT * FROM mikrotik_devices WHERE company_id = $1 ORDER BY name'
-        : 'SELECT * FROM mikrotik_devices ORDER BY name';
-      params = companyFilter ? [companyFilter] : [];
-    } else if (req.userRole === 'admin' && req.companyId) {
-      // El admin ve todos los dispositivos de SU empresa
-      query = `SELECT * FROM mikrotik_devices
-               WHERE company_id = $1 AND status = 'active'::device_status
-               ORDER BY name`;
-      params = [req.companyId];
+      query = 'SELECT * FROM mikrotik_devices ORDER BY name';
+      params = [];
     } else {
       query = `
         SELECT md.* FROM mikrotik_devices md
@@ -124,17 +114,6 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
         SELECT md.* FROM mikrotik_devices md
         INNER JOIN secretary_assignments sa ON sa.mikrotik_id = md.id
         WHERE sa.secretary_id = $1 AND md.status = 'active'::device_status
-        UNION
-        -- Asistente sin dispositivo asignado: ve los equipos de su empresa
-        SELECT md.* FROM mikrotik_devices md
-        JOIN users u ON u.id = $1
-        WHERE md.status = 'active'::device_status
-          AND md.company_id IS NOT NULL
-          AND md.company_id = u.company_id
-          AND EXISTS (
-            SELECT 1 FROM secretary_assignments sa2
-            WHERE sa2.secretary_id = $1 AND sa2.mikrotik_id IS NULL
-          )
         UNION
         SELECT md.* FROM mikrotik_devices md
         INNER JOIN reseller_assignments ra ON ra.mikrotik_id = md.id
@@ -405,30 +384,10 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
 devicesRouter.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const { name, host, port, username, password, version, latitude, longitude, hotspot_url } = req.body;
-
-    // La empresa se toma del usuario; el super_admin puede indicarla explícitamente
-    let companyId: string | null = req.companyId ?? null;
-    if (req.userRole === 'super_admin' && req.body.company_id) {
-      companyId = req.body.company_id;
-    }
-
-    // Límite de dispositivos por plan de la empresa
-    if (companyId) {
-      const { rows: limitRows } = await pool.query(
-        `SELECT c.max_devices, (SELECT COUNT(*)::int FROM mikrotik_devices d WHERE d.company_id = c.id) AS total
-         FROM companies c WHERE c.id = $1`,
-        [companyId]
-      );
-      const limit = limitRows[0];
-      if (limit && limit.max_devices > 0 && limit.total >= limit.max_devices) {
-        return res.status(403).json({ error: `La empresa alcanzó su límite de ${limit.max_devices} dispositivos` });
-      }
-    }
-
     const { rows } = await pool.query(
-      `INSERT INTO mikrotik_devices (name, host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10, $11) RETURNING *`,
-      [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null, companyId]
+      `INSERT INTO mikrotik_devices (name, host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
+      [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
     );
 
     // Auto-assign access
@@ -635,34 +594,14 @@ devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Res
     const { rows } = await pool.query(
       `SELECT sa.*,
               md.id as "device_id", md.name as device_name, md.host, md.port, md.version, md.status as device_status,
-              CASE WHEN md.id IS NULL THEN NULL ELSE json_build_object(
+              json_build_object(
                 'id', md.id, 'name', md.name, 'host', md.host,
                 'port', md.port, 'version', md.version, 'status', md.status
-              ) END as mikrotik_devices
+              ) as mikrotik_devices
        FROM secretary_assignments sa
-       LEFT JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
+       INNER JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
        WHERE sa.secretary_id = $1`,
       [req.userId]
-    );
-    res.json({ data: rows });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Lista todas las asignaciones de asistentes visibles para el usuario
-// (incluye las globales, sin dispositivo asignado)
-devicesRouter.get('/secretaries', async (req: AuthRequest, res: Response) => {
-  try {
-    const isSuper = req.userRole === 'super_admin';
-    const { rows } = await pool.query(
-      `SELECT sa.*, u.email, u.full_name, md.name AS device_name
-       FROM secretary_assignments sa
-       LEFT JOIN users u ON u.id = sa.secretary_id
-       LEFT JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
-       ${isSuper ? '' : 'WHERE u.company_id IS NOT DISTINCT FROM $1'}
-       ORDER BY sa.created_at DESC`,
-      isSuper ? [] : [req.companyId]
     );
     res.json({ data: rows });
   } catch (error: any) {
@@ -689,59 +628,35 @@ devicesRouter.get('/:id/secretaries', async (req: AuthRequest, res: Response) =>
   }
 });
 
-async function createAssignment(req: AuthRequest, res: Response, mikrotikId: string | null) {
+devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
   try {
-    const { secretary_id } = req.body;
-    if (!secretary_id) return res.status(400).json({ error: 'secretary_id requerido' });
-
-    if (mikrotikId) {
-      const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
-      if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
-    }
-
-    // Solo columnas de permisos reales de la tabla
-    const { rows: cols } = await pool.query(
-      `SELECT column_name FROM information_schema.columns
-       WHERE table_name = 'secretary_assignments' AND column_name LIKE 'can\\_%'`
-    );
-    const valid = new Set(cols.map((c: any) => c.column_name));
-
-    const permCols: string[] = [];
-    const permVals: any[] = [];
-    for (const [key, value] of Object.entries(req.body)) {
-      if (valid.has(key)) {
-        permCols.push(key);
-        permVals.push(value !== false);
-      }
-    }
-
-    const columns = ['secretary_id', 'mikrotik_id', 'assigned_by', ...permCols];
-    const values = [secretary_id, mikrotikId, req.userId, ...permVals];
-    const placeholders = values.map((_, i) => `$${i + 1}`);
+    const { id } = req.params;
+    const {
+      secretary_id, can_manage_pppoe, can_create_pppoe, can_edit_pppoe,
+      can_delete_pppoe, can_disconnect_pppoe, can_toggle_pppoe,
+      can_manage_queues, can_create_queues, can_edit_queues,
+      can_delete_queues, can_toggle_queues, can_suspend_queues, can_reactivate_queues
+    } = req.body;
 
     const { rows } = await pool.query(
-      `INSERT INTO secretary_assignments (${columns.map((c) => `"${c}"`).join(', ')})
-       VALUES (${placeholders.join(', ')}) RETURNING *`,
-      values
+      `INSERT INTO secretary_assignments (
+        secretary_id, mikrotik_id, assigned_by,
+        can_manage_pppoe, can_create_pppoe, can_edit_pppoe, can_delete_pppoe,
+        can_disconnect_pppoe, can_toggle_pppoe,
+        can_manage_queues, can_create_queues, can_edit_queues, can_delete_queues,
+        can_toggle_queues, can_suspend_queues, can_reactivate_queues
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [secretary_id, id, req.userId,
+       can_manage_pppoe ?? true, can_create_pppoe ?? true, can_edit_pppoe ?? true, can_delete_pppoe ?? true,
+       can_disconnect_pppoe ?? true, can_toggle_pppoe ?? true,
+       can_manage_queues ?? true, can_create_queues ?? true, can_edit_queues ?? true, can_delete_queues ?? true,
+       can_toggle_queues ?? true, can_suspend_queues ?? true, can_reactivate_queues ?? true]
     );
     res.status(201).json({ data: rows[0] });
   } catch (error: any) {
-    if (error.code === '23505') {
-      return res.status(409).json({ error: 'El asistente ya tiene esta asignación' });
-    }
     res.status(500).json({ error: error.message });
   }
-}
-
-// Asignación global (sin dispositivo obligatorio)
-devicesRouter.post('/secretaries', async (req: AuthRequest, res: Response) => {
-  await createAssignment(req, res, req.body.mikrotik_id || null);
 });
-
-devicesRouter.post('/:id/secretaries', async (req: AuthRequest, res: Response) => {
-  await createAssignment(req, res, req.params.id);
-});
-
 
 devicesRouter.put('/secretaries/:assignmentId', async (req: AuthRequest, res: Response) => {
   try {

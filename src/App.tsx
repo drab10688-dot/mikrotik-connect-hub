@@ -26,7 +26,6 @@ import PaymentManager from "./pages/PaymentManager";
 import Clients from "./pages/Clients";
 import ClientPaymentPortal from "./pages/ClientPaymentPortal";
 import UsersAdmin from "./pages/Admin/Users";
-import Companies from "./pages/Admin/Companies";
 import MikrotikDevices from "./pages/Admin/MikrotikDevices";
 import AssignDevices from "./pages/Admin/AssignDevices";
 import RegisterUser from "./pages/Admin/RegisterUser";
@@ -77,7 +76,6 @@ const App = () => (
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/diagnostics" element={<ProtectedRoute><Diagnostics /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
-          <Route path="/admin/companies" element={<ProtectedRoute requireAdmin><Companies /></ProtectedRoute>} />
           <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
           <Route path="/admin/mikrotik-devices" element={<ProtectedRoute><MikrotikDevices /></ProtectedRoute>} />
           <Route path="/admin/assign-devices" element={<ProtectedRoute requireSuperAdmin><AssignDevices /></ProtectedRoute>} />

@@ -6,7 +6,7 @@ import { Pool } from 'pg';
  * todas las ONUs que informan al ACS entran automáticamente al historial.
  */
 
-const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs:7557';
+const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
 
 const PROJECTION = [
   '_id',

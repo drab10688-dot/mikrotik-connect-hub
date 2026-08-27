@@ -15,8 +15,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./db/migrations/001_multi_tenant.sql:/docker-entrypoint-initdb.d/02-multi-tenant.sql
-      - ./db/migrations/002_assistant_permissions.sql:/docker-entrypoint-initdb.d/03-assistant-permissions.sql
     ports:
       - "5432:5432"
     networks:

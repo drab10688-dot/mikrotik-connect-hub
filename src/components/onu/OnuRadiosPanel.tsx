@@ -148,19 +148,15 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
   const refreshFromOnu = async () => {
     setBusy("refresh");
     try {
-      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-onu`, {
-        method: "POST",
-        timeoutMs: 60000,
-      });
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-onu`, { method: "POST" });
       toast.success(res.message);
-      [5000, 12000, 25000].forEach((ms) => setTimeout(() => load(), ms));
+      setTimeout(load, 4000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setBusy(null);
     }
   };
-
 
   return (
     <Card>

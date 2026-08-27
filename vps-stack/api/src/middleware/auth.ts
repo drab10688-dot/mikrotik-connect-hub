@@ -5,7 +5,6 @@ import { pool } from '../lib/db';
 export interface AuthRequest extends Request {
   userId?: string;
   userRole?: string;
-  companyId?: string | null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -22,7 +21,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     };
 
     const { rows } = await pool.query(
-      `SELECT u.is_active, u.company_id,
+      `SELECT u.is_active,
               COALESCE(
                 (
                   SELECT ur.role
@@ -55,8 +54,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
     req.userId = decoded.userId;
     req.userRole = rows[0].role || decoded.role || 'user';
-    req.companyId = rows[0].company_id || null;
-    console.log(`🔑 Auth: userId=${req.userId}, role=${req.userRole}, companyId=${req.companyId}`);
+    console.log(`🔑 Auth: userId=${req.userId}, dbRole=${rows[0].role}, tokenRole=${decoded.role}, finalRole=${req.userRole}`);
     next();
   } catch {
     return res.status(401).json({ error: 'Token inválido o expirado' });
@@ -88,41 +86,5 @@ export async function verifyDeviceAccess(
     [userId, mikrotikId]
   );
 
-  if (rows.length > 0) return true;
-
-  // Asistente con asignación global: accede a los equipos de su empresa
-  if (role === 'secretary') {
-    const { rows: globalRows } = await pool.query(
-      `SELECT 1
-       FROM mikrotik_devices d
-       JOIN users u ON u.id = $1
-       WHERE d.id = $2
-         AND d.company_id IS NOT NULL
-         AND d.company_id = u.company_id
-         AND EXISTS (
-           SELECT 1 FROM secretary_assignments sa
-           WHERE sa.secretary_id = $1 AND sa.mikrotik_id IS NULL
-         )
-       LIMIT 1`,
-      [userId, mikrotikId]
-    );
-    if (globalRows.length > 0) return true;
-  }
-
-  // El admin (dueño de empresa) accede a todos los dispositivos de SU empresa
-  if (role === 'admin') {
-    const { rows: companyRows } = await pool.query(
-      `SELECT 1
-       FROM mikrotik_devices d
-       JOIN users u ON u.id = $1
-       WHERE d.id = $2
-         AND d.company_id IS NOT NULL
-         AND d.company_id = u.company_id
-       LIMIT 1`,
-      [userId, mikrotikId]
-    );
-    return companyRows.length > 0;
-  }
-
-  return false;
+  return rows.length > 0;
 }
