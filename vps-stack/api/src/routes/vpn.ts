@@ -352,12 +352,12 @@ function generateMikrotikScript(
   comment="omnisync-vpn-forward" \\
   place-before=0
 
-# 6.1) NAT: enmascarar tráfico del túnel hacia las ONUs/PPPoE (GenieACS Connection Request)
+# 6.1) NAT: enmascarar tráfico del túnel hacia ONUs/PPPoE/LAN (GenieACS Connection Request)
+#     Sin dst-address: cubre 10.82.0.0/21, 192.168.20.0/24 y cualquier red remota agregada.
 :do { /ip firewall nat remove [find where comment="omnisync-vpn-masq"] } on-error={}
 /ip firewall nat add \\
   chain=srcnat \\
   src-address=${WG_SUBNET}.0/24 \\
-  dst-address=10.0.0.0/8 \\
   action=masquerade \\
   comment="omnisync-vpn-masq"
 
