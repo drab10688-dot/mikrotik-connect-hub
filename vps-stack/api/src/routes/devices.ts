@@ -569,7 +569,7 @@ devicesRouter.post('/:id/resellers', requireRole('super_admin', 'admin'), async 
   }
 });
 
-devicesRouter.put('/resellers/:assignmentId', async (req: AuthRequest, res: Response) => {
+devicesRouter.put('/resellers/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { assignmentId } = req.params;
     const { commission_percentage } = req.body;
