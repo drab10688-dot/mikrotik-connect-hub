@@ -9,8 +9,12 @@ export const ispPublicRouter = Router();
 export const SECTIONS = ['onus', 'wifi', 'pppoe', 'red', 'firmware', 'vpn', 'usuarios'] as const;
 export type Section = (typeof SECTIONS)[number];
 
-const PUBLIC_HOST = process.env.PUBLIC_HOST || process.env.VPS_PUBLIC_IP || '';
-const VPN_SERVER_IP = process.env.VPN_SERVER_IP || '10.13.13.1';
+const PUBLIC_HOST = process.env.PUBLIC_HOST || process.env.VPS_PUBLIC_IP || process.env.L2TP_HOST || '';
+// VPN principal: L2TP/IPsec. El VPS es la IP local del túnel.
+const VPN_SERVER_IP = process.env.VPN_SERVER_IP || '192.168.42.1';
+const L2TP_TUNNEL_NET = process.env.L2TP_TUNNEL_NET || '192.168.42.0/24';
+const L2TP_IPSEC_PSK = process.env.L2TP_IPSEC_PSK || '';
+
 
 // ─── Helpers ────────────────────────────────────────────────
 async function getTenant(tenantId: string) {
