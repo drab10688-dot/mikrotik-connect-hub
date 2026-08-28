@@ -224,7 +224,11 @@ echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC}"
 echo -e "${CYAN}║${NC}  MySQL:  ${GREEN}puerto 3307${NC}"
 echo -e "${CYAN}║${NC}  Redis:  ${GREEN}puerto 6380${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
+echo -e "${CYAN}║${NC}  TR-069: ${GREEN}http://${ACS_HOST}:9909/v1/acs${NC} (WireGuard)"
+echo -e "${CYAN}║${NC}  MQTT:   ${GREEN}${ACS_HOST}:1883${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
+echo -e "${YELLOW}Configura las ONUs/OLT con ACS URL http://${ACS_HOST}:9909/v1/acs${NC}"
+echo -e "${YELLOW}(la ruta va por el túnel WireGuard, no por la IP pública)${NC}"
 
 if [ "$INSTALL_EXIT" -ne 0 ]; then
   echo -e "${YELLOW}⚠ Revisa /tmp/cms_install.log si hay problemas${NC}"
