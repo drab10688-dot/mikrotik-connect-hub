@@ -9,7 +9,7 @@ import {
 
 export const genieacsRouter = Router();
 
-const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
+const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs:7557';
 
 // Credenciales del Connection Request. El usuario es fijo (omnisync) y la
 // contraseña es el token ACS del ISP dueño de la ONU.
