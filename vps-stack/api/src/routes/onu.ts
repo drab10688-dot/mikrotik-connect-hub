@@ -26,8 +26,9 @@ onuRouter.get('/:mikrotikId', async (req: AuthRequest, res: Response) => {
        FROM onu_devices o
        LEFT JOIN isp_clients c ON c.id = o.client_id
        WHERE o.mikrotik_id = $1
+         AND ($2::uuid IS NULL OR o.tenant_id IS NULL OR o.tenant_id = $2::uuid)
        ORDER BY o.created_at DESC`,
-      [mikrotikId]
+      [mikrotikId, req.tenantId || null]
     );
     res.json({ success: true, data: result.rows });
   } catch (err: any) {
@@ -46,8 +47,9 @@ onuRouter.get('/:mikrotikId/:onuId', async (req: AuthRequest, res: Response) => 
       `SELECT o.*, c.client_name, c.username as client_username, c.plan_or_speed
        FROM onu_devices o
        LEFT JOIN isp_clients c ON c.id = o.client_id
-       WHERE o.id = $1 AND o.mikrotik_id = $2`,
-      [onuId, mikrotikId]
+       WHERE o.id = $1 AND o.mikrotik_id = $2
+         AND ($3::uuid IS NULL OR o.tenant_id IS NULL OR o.tenant_id = $3::uuid)`,
+      [onuId, mikrotikId, req.tenantId || null]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'ONU no encontrada' });
     res.json({ success: true, data: result.rows[0] });
@@ -78,15 +80,16 @@ onuRouter.post('/:mikrotikId', async (req: AuthRequest, res: Response) => {
       `INSERT INTO onu_devices (
         mikrotik_id, client_id, created_by, serial_number, mac_address,
         brand, model, management_ip, olt_port, wifi_ssid, wifi_password,
-        pppoe_username, pppoe_password, pppoe_profile, notes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        pppoe_username, pppoe_password, pppoe_profile, notes, tenant_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+        COALESCE($16::uuid, (SELECT tenant_id FROM mikrotik_devices WHERE id = $1)))
       RETURNING *`,
       [
         mikrotikId, client_id || null, req.userId, serial_number, mac_address || null,
         brand, model || null, management_ip || null, olt_port || null,
         wifi_ssid || null, wifi_password || null,
         pppoe_username || null, pppoe_password || null, pppoe_profile || null,
-        notes || null
+        notes || null, req.tenantId || null
       ]
     );
 

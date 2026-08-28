@@ -302,8 +302,10 @@ declare("InternetGatewayDevice.ManagementServer.URL", {value: Date.now()}, {valu
 declare("Device.ManagementServer.URL", {value: Date.now()}, {value: "http://${ACS_HOST}:${ACS_PORT}/"});
 declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
 declare("InternetGatewayDevice.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
+// El usuario del Connection Request es fijo; la contraseña la sincroniza el
+// backend con el token ACS de cada ISP (no se fuerza aquí para no pisarla).
 declare("InternetGatewayDevice.ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "omnisync"});
-declare("InternetGatewayDevice.ManagementServer.ConnectionRequestPassword", {value: Date.now()}, {value: "omnisync"});
+declare("Device.ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "omnisync"});
 // Sin NAT dentro del túnel: STUN no es necesario
 declare("InternetGatewayDevice.ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
 EOF
