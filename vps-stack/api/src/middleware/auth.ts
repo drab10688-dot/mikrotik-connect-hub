@@ -138,6 +138,40 @@ export async function verifyDeviceAccess(
   return rows.length > 0;
 }
 
+/**
+ * Devuelve los IDs de MikroTik visibles para el usuario, respetando el
+ * aislamiento multi-ISP. super_admin sin ISP ve todo (null = sin límite).
+ */
+export async function getAccessibleDeviceIds(
+  req: AuthRequest
+): Promise<string[] | null> {
+  const role = req.userRole || 'user';
+
+  if (role === 'super_admin' && !req.tenantId) return null;
+
+  if (role === 'super_admin') {
+    const { rows } = await pool.query(
+      `SELECT id FROM mikrotik_devices WHERE tenant_id = $1`,
+      [req.tenantId]
+    );
+    return rows.map((r: any) => r.id);
+  }
+
+  const { rows } = await pool.query(
+    `SELECT DISTINCT md.id, md.tenant_id
+       FROM mikrotik_devices md
+      WHERE md.created_by = $1
+         OR EXISTS (SELECT 1 FROM user_mikrotik_access uma WHERE uma.mikrotik_id = md.id AND uma.user_id = $1)
+         OR EXISTS (SELECT 1 FROM secretary_assignments sa WHERE sa.secretary_id = $1 AND (sa.mikrotik_id = md.id OR (sa.mikrotik_id IS NULL AND sa.assigned_by = md.created_by)))
+         OR EXISTS (SELECT 1 FROM reseller_assignments ra WHERE ra.reseller_id = $1 AND ra.mikrotik_id = md.id)`,
+    [req.userId]
+  );
+
+  return rows
+    .filter((r: any) => (req.tenantId ? r.tenant_id === req.tenantId : !r.tenant_id))
+    .map((r: any) => r.id);
+}
+
 // ─── Autorización por rol ─────────────────────────────────
 export const ADMIN_ROLES = ['super_admin', 'admin'];
 

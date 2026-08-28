@@ -1,5 +1,5 @@
-import { Router, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
+import { Router, Response, NextFunction } from 'express';
+import { AuthRequest, getAccessibleDeviceIds } from '../middleware/auth';
 import { pool } from '../lib/db';
 import {
   ensureAcsSignalTables,
@@ -74,6 +74,93 @@ function deepFindValue(obj: any, keyMatch: RegExp, depth = 4): string | null {
   return null;
 }
 
+// ─── Aislamiento multi-ISP para las ONUs del ACS ─────────
+interface AcsScope {
+  unrestricted: boolean;
+  ids: Set<string>;
+  serials: Set<string>;
+  usernames: Set<string>;
+}
+
+async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
+  const empty: AcsScope = {
+    unrestricted: false,
+    ids: new Set(),
+    serials: new Set(),
+    usernames: new Set(),
+  };
+
+  const deviceIds = await getAccessibleDeviceIds(req);
+  if (deviceIds === null) return { ...empty, unrestricted: true };
+  if (!deviceIds.length) return empty;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT acs_device_id, serial_number FROM onu_devices WHERE mikrotik_id = ANY($1::uuid[])`,
+      [deviceIds]
+    );
+    rows.forEach((r: any) => {
+      if (r.acs_device_id) empty.ids.add(String(r.acs_device_id));
+      if (r.serial_number) empty.serials.add(String(r.serial_number).toUpperCase());
+    });
+  } catch { /* tabla opcional */ }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT username FROM isp_clients WHERE mikrotik_id = ANY($1::uuid[]) AND username IS NOT NULL`,
+      [deviceIds]
+    );
+    rows.forEach((r: any) => empty.usernames.add(String(r.username).toLowerCase()));
+  } catch { /* tabla opcional */ }
+
+  return empty;
+}
+
+function acsAllows(
+  scope: AcsScope,
+  info: { deviceId?: string | null; serial?: string | null; pppoe?: string | null }
+): boolean {
+  if (scope.unrestricted) return true;
+  const id = String(info.deviceId || '');
+  if (id && scope.ids.has(id)) return true;
+  const upperId = id.toUpperCase();
+  for (const serial of scope.serials) {
+    if (serial && (upperId.includes(serial) || String(info.serial || '').toUpperCase() === serial)) return true;
+  }
+  const user = String(info.pppoe || '').toLowerCase();
+  if (user && scope.usernames.has(user)) return true;
+  return false;
+}
+
+async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<boolean> {
+  const scope = await getAcsScope(req);
+  if (scope.unrestricted) return true;
+  if (acsAllows(scope, { deviceId })) return true;
+  try {
+    const device = await fetchDevice(deviceId, 'InternetGatewayDevice.DeviceInfo.SerialNumber,InternetGatewayDevice.WANDevice,_deviceId');
+    const serial =
+      getParam(device, 'InternetGatewayDevice.DeviceInfo.SerialNumber') ||
+      device?._deviceId?._SerialNumber ||
+      null;
+    return acsAllows(scope, { deviceId, serial, pppoe: firstPppoeUsername(device) });
+  } catch {
+    return false;
+  }
+}
+
+// Bloquea el acceso a ONUs que no pertenecen al ISP del usuario
+async function guardAcsDevice(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const deviceId = req.params.deviceId;
+    if (!deviceId) return next();
+    const allowed = await isAcsDeviceAllowed(req, deviceId);
+    if (!allowed) return res.status(403).json({ error: 'Sin acceso a esta ONU' });
+    return next();
+  } catch {
+    return res.status(403).json({ error: 'Sin acceso a esta ONU' });
+  }
+}
+
 // ─── Health check ─────────────────────────────────────────
 genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
   try {
@@ -101,11 +188,26 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
       // Fallback: al menos devolver identificadores e info básica
        data = await genieFetch('/devices/?projection=_id');
     }
-    res.json({ success: true, data: Array.isArray(data) ? data : [] });
+    const list = Array.isArray(data) ? data : [];
+    const scope = await getAcsScope(req);
+    const visible = scope.unrestricted
+      ? list
+      : list.filter((d: any) =>
+          acsAllows(scope, {
+            deviceId: d?._id,
+            serial: d?._deviceId?._SerialNumber,
+            pppoe: firstPppoeUsername(d),
+          })
+        );
+    res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+// Todas las rutas por ONU pasan por el guard multi-ISP
+genieacsRouter.use('/devices/:deviceId', guardAcsDevice);
 
 // ─── Get single device (full tree) ──────────────────────
 genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response) => {
@@ -971,7 +1073,7 @@ function firstPppoeUsername(device: any): string | null {
   return null;
 }
 
-genieacsRouter.get('/overview', async (_req: AuthRequest, res: Response) => {
+genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
   try {
     const devices: any[] = (await genieFetch(`/devices/?projection=${encodeURIComponent(FAST_PROJECTION)}`)) || [];
 
@@ -1025,7 +1127,14 @@ genieacsRouter.get('/overview', async (_req: AuthRequest, res: Response) => {
       };
     });
 
-    res.json({ success: true, data });
+    const scope = await getAcsScope(req);
+    const visible = scope.unrestricted
+      ? data
+      : data.filter((d: any) =>
+          acsAllows(scope, { deviceId: d.deviceId, serial: d.serial, pppoe: d.pppoeUsername })
+        );
+
+    res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1095,7 +1204,14 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
       };
     });
 
-    res.json({ success: true, data: overview });
+    const scope = await getAcsScope(req);
+    const visibleOverview = scope.unrestricted
+      ? overview
+      : overview.filter((d: any) =>
+          acsAllows(scope, { deviceId: d.deviceId || d.device_id, serial: d.serial })
+        );
+
+    res.json({ success: true, data: visibleOverview });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2252,7 +2368,7 @@ genieacsRouter.post('/acs-signal/collect', async (_req: AuthRequest, res: Respon
 });
 
 // Resumen: última lectura por ONU + tendencia 24h
-genieacsRouter.get('/acs-signal/overview', async (_req: AuthRequest, res: Response) => {
+genieacsRouter.get('/acs-signal/overview', async (req: AuthRequest, res: Response) => {
   try {
     await ensureAcsSignalTables(pool);
     const { rows } = await pool.query(`
@@ -2293,7 +2409,12 @@ genieacsRouter.get('/acs-signal/overview', async (_req: AuthRequest, res: Respon
       };
     });
 
-    res.json({ success: true, data });
+    const scope = await getAcsScope(req);
+    const visible = scope.unrestricted
+      ? data
+      : data.filter((d: any) => acsAllows(scope, { deviceId: d.device_id, serial: d.serial }));
+
+    res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

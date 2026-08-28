@@ -19,7 +19,8 @@ import { toast } from "sonner";
 
 export default function Clients() {
   const { device, availableDevices, isValidating } = useValidatedDevice();
-  const mikrotikId = getSelectedDeviceId();
+  // El dispositivo validado manda: en un ISP nuevo aún no hay selección guardada.
+  const mikrotikId = device?.id ?? getSelectedDeviceId();
 
   // State for registration
   const [useStandardPassword, setUseStandardPassword] = useState(true);
