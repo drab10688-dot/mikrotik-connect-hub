@@ -121,23 +121,21 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
           {stats.map((s) => (
-            <Card key={s.label}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs md:text-sm font-medium text-muted-foreground">{s.label}</p>
-                    <h3 className="text-2xl md:text-3xl font-bold mt-2">{loading ? "…" : s.value}</h3>
-                  </div>
-                  <div className={`w-11 h-11 rounded-full flex items-center justify-center ${s.tone}`}>
-                    <s.icon className="w-5 h-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <KpiCard
+              key={s.label}
+              label={s.label}
+              value={s.value}
+              icon={s.icon}
+              tone={s.tone}
+              hint={s.hint}
+              loading={loading}
+              onClick={() => navigate("/onus")}
+            />
           ))}
         </div>
+
 
         <Card className="mb-8">
           <CardHeader>
