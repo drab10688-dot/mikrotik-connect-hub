@@ -925,6 +925,18 @@ ROUTE_EOF
 
 setup_wireguard_networking
 
+# ── VPN principal: L2TP/IPsec (WireGuard queda como alternativa) ──
+if [ "${SKIP_L2TP:-0}" != "1" ]; then
+  echo ""
+  echo -e "${CYAN}═══ VPN principal: L2TP/IPsec ═══${NC}"
+  if VPS_PUBLIC_IP="$VPS_IP" bash "$INSTALL_DIR/vps-stack/install-l2tp.sh" --onu-nets "${ONU_NETS:-10.82.0.0/21}"; then
+    echo -e "${GREEN}✓ VPN L2TP/IPsec lista — script MikroTik en /opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC}"
+  else
+    echo -e "${YELLOW}⚠ No se pudo levantar L2TP; puedes reintentar: bash $INSTALL_DIR/vps-stack/install-l2tp.sh${NC}"
+  fi
+fi
+
+
 # ═══════════════════════════════════════════════════
 # FASE 5: Verificación de servicios
 # ═══════════════════════════════════════════════════
