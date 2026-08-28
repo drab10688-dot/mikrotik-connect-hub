@@ -50,6 +50,8 @@ services:
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       BACKUP_DIR: /opt/omnisync/backups
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
+      # ISP único: todas las ONUs del ACS visibles sin token multi-ISP
+      ACS_SINGLE_ISP: ${ACS_SINGLE_ISP:-true}
       VPS_PUBLIC_IP: ${VPS_PUBLIC_IP:-}
       L2TP_HOST: ${L2TP_HOST:-}
       L2TP_IPSEC_PSK: ${L2TP_IPSEC_PSK:-}
