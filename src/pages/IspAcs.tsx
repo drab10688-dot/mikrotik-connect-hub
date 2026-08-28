@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Copy, Download, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, RefreshCw, Router as RouterIcon, Satellite, Save, ShieldCheck, Trash2 } from "lucide-react";
 
 interface AcsInfo {
   tenant: { id: string; name: string; slug: string };
