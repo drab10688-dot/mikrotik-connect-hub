@@ -200,10 +200,24 @@ const IspAcs = () => {
                 Con VPN usa la URL del túnel; sin VPN (ONU tras NAT) usa la URL pública con STUN.
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={() => rotate.mutate()} disabled={rotate.isPending}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Rotar enlace
-            </Button>
+            {acs && (
+              editing ? (
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => setEditing(false)} disabled={saveCreds.isPending}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={() => saveCreds.mutate()} disabled={saveCreds.isPending}>
+                    <Save className="h-4 w-4 mr-2" />
+                    {saveCreds.isPending ? "Guardando…" : "Guardar"}
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" onClick={startEdit}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Editar credenciales
+                </Button>
+              )
+            )}
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             {isLoading ? (
