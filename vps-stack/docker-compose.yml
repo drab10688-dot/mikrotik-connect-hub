@@ -64,6 +64,11 @@ services:
       RADIUS_PUBLIC_HOST: ${RADIUS_PUBLIC_HOST:-}
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
       VPS_PUBLIC_IP: ${VPS_PUBLIC_IP:-}
+      L2TP_HOST: ${L2TP_HOST:-}
+      L2TP_IPSEC_PSK: ${L2TP_IPSEC_PSK:-}
+      L2TP_TUNNEL_NET: ${L2TP_TUNNEL_NET:-192.168.42.0/24}
+      VPN_SERVER_IP: ${VPN_SERVER_IP:-192.168.42.1}
+
     ports:
       - "3000:3000"
     volumes:
