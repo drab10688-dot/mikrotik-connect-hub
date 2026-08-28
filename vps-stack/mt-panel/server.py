@@ -18,6 +18,8 @@ Variables de entorno:
 """
 
 import base64
+import hmac
+import ipaddress
 import json
 import os
 import re
@@ -35,6 +37,9 @@ PANEL_USER = os.environ.get("PANEL_USER", "admin")
 PANEL_PASS = os.environ.get("PANEL_PASS", WG_PASSWORD)
 MT_IFACE = os.environ.get("MT_IFACE", "wg-omnisync")
 MT_LISTEN_PORT = os.environ.get("MT_LISTEN_PORT", "13231")
+CMS_VPN_IP = os.environ.get("CMS_VPN_IP", f"{SUBNET}.1")
+CMS_ACS_PORT = os.environ.get("CMS_ACS_PORT", "9909")
+CMS_ACS_PATH = os.environ.get("CMS_ACS_PATH", "/v1/acs")
 
 _opener = urllib.request.build_opener(
     urllib.request.HTTPCookieProcessor(CookieJar())
@@ -87,6 +92,14 @@ def create_client(name):
     return _try(["/api/wireguard/client", "/api/client"], "POST", {"name": name})
 
 
+def client_action(cid, action):
+    login()
+    if action == "delete":
+        return _try([f"/api/wireguard/client/{cid}", f"/api/client/{cid}"], "DELETE")
+    return _try([f"/api/wireguard/client/{cid}/{action}",
+                 f"/api/client/{cid}/{action}"], "POST")
+
+
 def client_conf(cid):
     login()
     for p in (f"/api/wireguard/client/{cid}/configuration",
@@ -119,7 +132,15 @@ def routeros_script(conf, extra_nets=""):
         raise RuntimeError("Configuración de peer incompleta")
 
     psk_line = f'  preshared-key="{psk}" \\\n' if psk else ""
-    nets = [f"{SUBNET}.0/24"] + [n.strip() for n in extra_nets.split(",") if n.strip()]
+    nets = [f"{SUBNET}.0/24"]
+    for raw_net in extra_nets.split(","):
+        raw_net = raw_net.strip()
+        if not raw_net:
+            continue
+        try:
+            nets.append(str(ipaddress.ip_network(raw_net, strict=False)))
+        except ValueError as exc:
+            raise RuntimeError(f"Red inválida: {raw_net}") from exc
     allowed = ",".join(nets)
 
     return f"""# ============================================
@@ -164,10 +185,10 @@ def routeros_script(conf, extra_nets=""):
 /ip firewall nat add chain=srcnat src-address={SUBNET}.0/24 action=masquerade \\
   comment="omnisync-vpn-masq"
 
-# 7) NAT de las ONUs hacia el CMS/ACS por el tunel
-:do {{ /ip firewall nat remove [find where comment="omnisync-acs-masq"] }} on-error={{}}
+# 7) NAT de salida de las ONUs hacia servicios por el tunel
+:do {{ /ip firewall nat remove [find where comment="omnisync-vpn-services"] }} on-error={{}}
 /ip firewall nat add chain=srcnat out-interface={MT_IFACE} action=masquerade \\
-  comment="omnisync-acs-masq"
+  comment="omnisync-vpn-services"
 
 # 8) Verificar
 :delay 5s
@@ -209,7 +230,7 @@ PAGE = """<!DOCTYPE html>
 </style></head><body>
 <header>
  <h1><span>OmniSync</span> · Generador WireGuard para MikroTik</h1>
- <p class="sub">Crea el peer y copia el script RouterOS con todas las reglas (firewall + NAT + TR-069).</p>
+  <p class="sub">Crea peers y copia el script RouterOS completo para acceso remoto por VPN.</p>
 </header>
 <main>
  <div class="card">
@@ -223,7 +244,12 @@ PAGE = """<!DOCTYPE html>
   <table><thead><tr><th>Peer</th><th>IP VPN</th><th>Estado</th><th></th></tr></thead>
   <tbody id="tb"><tr><td colspan="4" class="muted">Cargando…</td></tr></tbody></table>
  </div>
- <div class="card" id="out" style="display:none">
+  <div class="card">
+   <strong>Enlace posterior con CMS</strong>
+   <p class="muted">Cuando instales el CMS, configura las ONUs con esta URL TR-069:</p>
+   <pre>http://CMS_VPN_IP:CMS_ACS_PORTCMS_ACS_PATH</pre>
+  </div>
+  <div class="card" id="out" style="display:none">
   <div class="row" style="justify-content:space-between">
    <strong id="outTitle">Script RouterOS</strong>
    <div class="row">
@@ -233,8 +259,7 @@ PAGE = """<!DOCTYPE html>
    </div>
   </div>
   <pre id="script"></pre>
-  <p class="muted">Pégalo en Winbox → New Terminal. Luego la ONU apunta su TR-069 a
-   <b>http://SUBNET.1:9909/v1/acs</b>.</p>
+   <p class="muted">Pégalo completo en Winbox → New Terminal.</p>
  </div>
 </main>
 <script>
@@ -242,23 +267,29 @@ let actual=null;
 async function cargar(){
  const tb=document.getElementById('tb');
  try{
-  const r=await fetch('/api/peers'); const d=await r.json();
+   const r=await fetch('/api/peers'); if(!r.ok) throw new Error(await r.text()); const d=await r.json();
   if(!d.length){tb.innerHTML='<tr><td colspan="4" class="muted">Sin peers todavía.</td></tr>';return}
-  tb.innerHTML=d.map(c=>`<tr>
-   <td>${c.name}</td><td>${c.address||''}</td>
+   tb.innerHTML=d.map(c=>`<tr>
+    <td>${esc(c.name)}</td><td>${esc(c.address||'')}</td>
    <td><span class="dot" style="background:${c.enabled===false?'#f87171':'#34d399'}"></span>${c.enabled===false?'Deshabilitado':'Activo'}</td>
    <td style="text-align:right">
-     <button class="sec" onclick="gen('${c.id}','${c.name}')">Script MikroTik</button>
+      <button class="sec" onclick='gen(${JSON.stringify(c.id)},${JSON.stringify(c.name)})'>Script MikroTik</button>
      <button class="sec" onclick="location.href='/api/conf?id=${c.id}'">.conf</button>
+      <button class="sec" onclick='estado(${JSON.stringify(c.id)},${c.enabled===false?'"enable"':'"disable"'})'>${c.enabled===false?'Activar':'Pausar'}</button>
+      <button class="sec" onclick='borrar(${JSON.stringify(c.id)},${JSON.stringify(c.name)})'>Eliminar</button>
    </td></tr>`).join('');
  }catch(e){tb.innerHTML='<tr><td colspan="4" class="muted">Error: '+e+'</td></tr>'}
 }
 async function crear(){
  const n=document.getElementById('name').value.trim(); if(!n)return;
- await fetch('/api/peers',{method:'POST',headers:{'Content-Type':'application/json'},
+  const r=await fetch('/api/peers',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({name:n})});
+  if(!r.ok){alert(await r.text());return}
  document.getElementById('name').value=''; cargar();
 }
+function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML}
+async function estado(id,action){const r=await fetch('/api/peers?id='+encodeURIComponent(id)+'&action='+action,{method:'PATCH'});if(!r.ok)alert(await r.text());cargar()}
+async function borrar(id,name){if(!confirm('¿Eliminar el peer '+name+'?'))return;const r=await fetch('/api/peers?id='+encodeURIComponent(id),{method:'DELETE'});if(!r.ok)alert(await r.text());cargar()}
 async function gen(id,name){
  actual={id,name};
  const nets=document.getElementById('nets').value.trim();
@@ -291,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
             user, _, pw = base64.b64decode(h[6:]).decode().partition(":")
         except Exception:  # noqa: BLE001
             return False
-        return user == PANEL_USER and pw == PANEL_PASS
+        return hmac.compare_digest(user, PANEL_USER) and hmac.compare_digest(pw, PANEL_PASS)
 
     def _deny(self):
         self.send_response(401)
@@ -318,7 +349,10 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         try:
             if path == "/":
-                return self._send(200, PAGE.replace("SUBNET", SUBNET),
+                page = (PAGE.replace("CMS_VPN_IP", CMS_VPN_IP)
+                        .replace("CMS_ACS_PORT", CMS_ACS_PORT)
+                        .replace("CMS_ACS_PATH", CMS_ACS_PATH))
+                return self._send(200, page,
                                   "text/html; charset=utf-8")
             if path == "/api/peers":
                 out = [{"id": c.get("id"), "name": c.get("name"),
@@ -346,7 +380,36 @@ class Handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(n) or b"{}")
-            create_client((body.get("name") or "peer").strip())
+            name = (body.get("name") or "").strip()
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name):
+                return self._send(400, "Usa de 1 a 64 caracteres: letras, números, punto, guion o guion bajo")
+            create_client(name)
+            self._send(200, json.dumps({"ok": True}), "application/json")
+        except Exception as e:  # noqa: BLE001
+            self._send(500, f"Error: {e}")
+
+    def do_PATCH(self):  # noqa: N802
+        if not self._auth_ok():
+            return self._deny()
+        if self.path.split("?")[0] != "/api/peers":
+            return self._send(404, "no encontrado")
+        try:
+            q = self._query()
+            action = q.get("action", "")
+            if action not in ("enable", "disable"):
+                return self._send(400, "acción inválida")
+            client_action(q.get("id", ""), action)
+            self._send(200, json.dumps({"ok": True}), "application/json")
+        except Exception as e:  # noqa: BLE001
+            self._send(500, f"Error: {e}")
+
+    def do_DELETE(self):  # noqa: N802
+        if not self._auth_ok():
+            return self._deny()
+        if self.path.split("?")[0] != "/api/peers":
+            return self._send(404, "no encontrado")
+        try:
+            client_action(self._query().get("id", ""), "delete")
             self._send(200, json.dumps({"ok": True}), "application/json")
         except Exception as e:  # noqa: BLE001
             self._send(500, f"Error: {e}")
