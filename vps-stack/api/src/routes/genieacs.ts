@@ -148,6 +148,11 @@ interface AcsScope {
   usernames: Set<string>;
 }
 
+// Modo ISP único: todas las ONUs del ACS son visibles para cualquier
+// usuario autenticado (sin aislamiento por tenant). Desactivar con
+// ACS_SINGLE_ISP=false para volver al aislamiento multi-ISP.
+const SINGLE_ISP = (process.env.ACS_SINGLE_ISP ?? 'true') !== 'false';
+
 async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   const empty: AcsScope = {
     unrestricted: false,
@@ -155,6 +160,8 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     serials: new Set(),
     usernames: new Set(),
   };
+
+  if (SINGLE_ISP) return { ...empty, unrestricted: true };
 
   const deviceIds = await getAccessibleDeviceIds(req);
   if (deviceIds === null) return { ...empty, unrestricted: true };
