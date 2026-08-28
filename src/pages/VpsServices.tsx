@@ -274,9 +274,9 @@ export default function VpsServices() {
               <Monitor className="h-4 w-4" />
               GenieACS
             </TabsTrigger>
-            <TabsTrigger value="uisp" className="gap-2">
+            <TabsTrigger value="cms" className="gap-2">
               <Radio className="h-4 w-4" />
-              UISP
+              CMS C-Data
             </TabsTrigger>
             <TabsTrigger value="docker" className="gap-2">
               <Container className="h-4 w-4" />
@@ -310,8 +310,8 @@ export default function VpsServices() {
             <GenieacsPanel />
           </TabsContent>
 
-          <TabsContent value="uisp">
-            <UispPanel />
+          <TabsContent value="cms">
+            <CmsPanel />
           </TabsContent>
 
           <TabsContent value="docker">
