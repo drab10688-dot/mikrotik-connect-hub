@@ -203,6 +203,36 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
   const name: string = (req.body?.name || 'mikrotik-1').toString().replace(/[^a-zA-Z0-9_-]/g, '');
   const onuNetworks: string = (req.body?.onu_networks || '10.82.0.0/21').toString();
   const serverHost = PUBLIC_HOST || req.get('host')?.split(':')[0] || 'IP_DEL_VPS';
+  const mode: string = (req.body?.mode || 'vpn').toString();
+
+  // ── Modo sin VPN: la ONU llega al ACS por IP pública + STUN (tras NAT) ──
+  if (mode === 'nat') {
+    const acsNat = acsUrls(tenant, req);
+    const natScript = `# ============================================================
+# OmniACS — ${tenant.name}
+# Modo SIN VPN: la ONU se conecta al ACS por IP pública (tras NAT)
+# No requiere túnel. Configura estos datos en el TR-069 de cada ONU.
+# ============================================================
+#
+#   ACS URL           : ${acsNat.nat_url}
+#   Usuario / clave   : ${acsNat.acs_username} / ${acsNat.acs_password}
+#   Connection Req.   : ${acsNat.connection_request_username} / ${acsNat.connection_request_password}
+#   Inform periódico  : ${acsNat.inform_interval}s
+#   STUN              : habilitado
+#     Servidor STUN   : ${acsNat.stun_host}
+#     Puerto STUN     : ${acsNat.stun_port}
+#     Usuario / clave : ${acsNat.stun_username} / ${acsNat.stun_password}
+#
+# Opcional en la MikroTik: permitir la salida al ACS y al STUN
+/ip firewall filter
+add chain=forward action=accept protocol=tcp dst-address=${serverHost} dst-port=7547 comment="OmniACS TR-069"
+add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=3478 comment="OmniACS STUN"
+:put "OmniACS: modo sin VPN (NAT + STUN) hacia ${serverHost}"
+`;
+    return res.json({ data: { mode: 'nat', peer: null, acs: acsNat, script: natScript } });
+  }
+
+
 
   // Credenciales persistentes: si el peer ya existe, se reutilizan.
   const existing = await pool.query(
