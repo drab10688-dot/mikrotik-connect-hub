@@ -129,12 +129,15 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
 
     const { rows } = await pool.query(query, params);
 
-    // Aislamiento multi-ISP: si el usuario pertenece a un ISP, solo ve los
-    // dispositivos de ese ISP. Los equipos sin tenant (instalaciones previas)
-    // siguen siendo visibles para no romper nada.
-    const filtered = req.tenantId
-      ? rows.filter((d: any) => !d.tenant_id || d.tenant_id === req.tenantId)
-      : rows;
+    // Aislamiento multi-ISP estricto: un usuario de un ISP solo ve equipos de
+    // su ISP; los usuarios globales solo ven equipos sin ISP asignado.
+    const isGlobalSuperAdmin = req.userRole === 'super_admin' && !req.tenantId;
+    const filtered = isGlobalSuperAdmin
+      ? rows
+      : rows.filter((d: any) =>
+          req.tenantId ? d.tenant_id === req.tenantId : !d.tenant_id
+        );
+
 
     res.json({ data: filtered });
 
