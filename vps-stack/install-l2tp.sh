@@ -63,15 +63,15 @@ PUBIP="${VPS_PUBLIC_IP:-$(curl -4 -s --max-time 8 https://ifconfig.me || curl -4
 MT="$DIR/mikrotik-l2tp.rsc"
 cat > "$MT" <<EOF
 # ============================================
-# OmniACS L2TP/IPsec — RouterOS v6/v7
+# OmniACS L2TP (sin IPsec) — RouterOS v6/v7
 # Pegar completo en la terminal de la MikroTik
 # ============================================
 
-# 1) Túnel L2TP/IPsec hacia el VPS
+# 1) Túnel L2TP hacia el VPS (sin IPsec)
 /interface l2tp-client
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
-    profile=default-encryption use-ipsec=yes ipsec-secret="$VPN_IPSEC_PSK" \\
+    profile=default-encryption use-ipsec=no \\
     add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel

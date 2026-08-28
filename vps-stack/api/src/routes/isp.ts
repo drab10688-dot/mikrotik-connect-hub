@@ -233,20 +233,20 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
     peer = rows[0];
   }
 
-  // El servidor L2TP usa un único IPsec PSK compartido para todos los routers.
-  const psk = L2TP_IPSEC_PSK || peer.psk;
+  // L2TP sin IPsec (plain L2TP en UDP 1701): más simple y evita problemas
+  // de IKE/ESP en MikroTik detrás de NAT.
   const acs = acsUrls(tenant, req);
   const script = `# ============================================================
 # OmniACS — ${tenant.name}
-# VPN L2TP/IPsec + ruta hacia el ACS + NAT hacia las ONUs
+# VPN L2TP (sin IPsec) + ruta hacia el ACS + NAT hacia las ONUs
 # Pegar completo en la terminal de RouterOS v6/v7
 # ============================================================
 
-# 1) Túnel L2TP/IPsec hacia el VPS
+# 1) Túnel L2TP hacia el VPS (sin IPsec)
 /interface l2tp-client
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=${serverHost} user="${peer.username}" password="${peer.password}" \\
-    profile=default-encryption use-ipsec=yes ipsec-secret="${psk}" \\
+    profile=default-encryption use-ipsec=no \\
     add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
