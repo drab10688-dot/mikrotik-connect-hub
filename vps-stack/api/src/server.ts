@@ -6,34 +6,16 @@ import { pool } from './lib/db';
 import cron from 'node-cron';
 import { authRouter } from './routes/auth';
 import { devicesRouter } from './routes/devices';
-import { clientsRouter } from './routes/clients';
 import { pppoeRouter } from './routes/pppoe';
-import { hotspotRouter } from './routes/hotspot';
-import { queuesRouter } from './routes/queues';
-import { vouchersRouter } from './routes/vouchers';
-import { portalAdsRouter } from './routes/portal-ads';
-import { billingRouter } from './routes/billing';
-import { invoicesRouter } from './routes/invoices';
-import { addressListRouter } from './routes/address-list';
 import { systemRouter } from './routes/system';
-import { backupRouter } from './routes/backup';
 import { usersRouter } from './routes/users';
-import { contractsRouter } from './routes/contracts';
-import { serviceOptionsRouter } from './routes/service-options';
-import { messagingRouter } from './routes/messaging';
-import { telegramBotRouter } from './routes/telegram-bot';
-import { voucherPresetsRouter } from './routes/voucher-presets';
 import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
-import { ubiquitiRouter } from './routes/ubiquiti';
-import { antennasRouter } from './routes/antennas';
-import { radiusRouter } from './routes/radius';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection } from './routes/isp';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
-import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
 
@@ -57,46 +39,19 @@ app.get('/api/health', (_, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/tenants/public', tenantsPublicRouter); // branding público por ISP
 app.use('/api/public', ispPublicRouter); // resolución del token TR-069 por ISP
-app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need auth via route-level check
-// Bot de técnicos: /webhook/* es público (Telegram no envía JWT), el resto requiere auth
-app.use('/api/telegram-bot', (req, res, next) => {
-  if (req.path.startsWith('/webhook/')) return next();
-  return authMiddleware(req, res, next);
-}, telegramBotRouter);
-app.use('/api/portal-ads', (req, res, next) => {
-  // Public routes don't need auth
-  if (req.path.startsWith('/public/')) return next();
-  return authMiddleware(req, res, next);
-}, portalAdsRouter);
+
+
 
 // Protected routes
 app.use('/api/tenants', authMiddleware, tenantsRouter);
 app.use('/api/isp', authMiddleware, ispRouter);
 app.use('/api/devices', authMiddleware, devicesRouter);
-// IMPORTANT: register specific /api/clients sub-routes before generic /api/clients
-app.use('/api/clients/contracts', authMiddleware, requirePermission('can_manage_clients'), contractsRouter);
-app.use('/api/clients/service-options', authMiddleware, requirePermission('can_manage_clients'), serviceOptionsRouter);
-// Stable alias to avoid route collisions with /api/clients/:mikrotikId in older deployments
-app.use('/api/service-options', authMiddleware, requirePermission('can_manage_clients'), serviceOptionsRouter);
-app.use('/api/clients', authMiddleware, requirePermission('can_manage_clients'), clientsRouter);
 app.use('/api/pppoe', authMiddleware, requirePermission('can_manage_pppoe'), pppoeRouter);
-app.use('/api/queues', authMiddleware, requirePermission('can_manage_queues'), queuesRouter);
-// IMPORTANT: register /api/vouchers/presets BEFORE /api/vouchers to avoid route collision
-app.use('/api/vouchers/presets', authMiddleware, requirePermission('can_manage_hotspot', true), voucherPresetsRouter);
-app.use('/api/vouchers', authMiddleware, requirePermission('can_manage_hotspot', true), vouchersRouter);
-app.use('/api/billing', authMiddleware, requirePermission('can_manage_billing'), billingRouter);
-app.use('/api/invoices', authMiddleware, requirePermission('can_manage_billing'), invoicesRouter);
-app.use('/api/address-list', authMiddleware, requirePermission('can_manage_address_list'), addressListRouter);
 app.use('/api/system', authMiddleware, systemRouter);
-app.use('/api/backups', authMiddleware, requirePermission('can_manage_backup'), backupRouter);
 app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
-app.use('/api/messaging', authMiddleware, requirePermission('can_manage_clients'), messagingRouter);
 app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), onuRouter);
 app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), genieacsRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
-app.use('/api/ubiquiti', authMiddleware, requirePermission('can_manage_onu'), ubiquitiRouter);
-app.use('/api/antennas', authMiddleware, requirePermission('can_manage_onu'), antennasRouter);
-app.use('/api/radius', authMiddleware, requirePermission('can_manage_radius'), radiusRouter);
 
 
 // Aliases for frontend compatibility
@@ -108,20 +63,7 @@ app.use('/api/mikrotik', authMiddleware, (req, res, next) => {
   }
   next();
 });
-app.use('/api/accounting', authMiddleware, (req, res, next) => {
-  // Forward /api/accounting/summary to /api/system/accounting/summary
-  if (req.path === '/summary' && req.method === 'GET') {
-    req.url = '/accounting/summary';
-    return systemRouter(req, res, next);
-  }
-  next();
-});
 
-// Cron: billing diario 6:00 AM
-cron.schedule('0 6 * * *', () => {
-  console.log('[CRON] Running daily billing tasks...');
-  runBillingCron(pool);
-});
 
 // Cron: recolección de señal óptica cada 15 minutos
 cron.schedule('*/15 * * * *', () => {
