@@ -676,19 +676,16 @@ if command -v ufw &> /dev/null; then
   ufw allow 443/tcp >/dev/null 2>&1
   ufw allow 1812/udp >/dev/null 2>&1
   ufw allow 1813/udp >/dev/null 2>&1
-  ufw allow 7547/tcp >/dev/null 2>&1   # GenieACS CWMP (TR-069)
-  ufw allow 7547/udp >/dev/null 2>&1   # GenieACS STUN/UDP Connection Request
-  ufw allow 3478/tcp >/dev/null 2>&1   # coturn STUN (TCP)
-  ufw allow 3478/udp >/dev/null 2>&1   # coturn STUN (UDP) - NAT traversal
-  ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
-  ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
-  ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
-  ufw allow 18080/tcp >/dev/null 2>&1  # CMS C-Data (web)
-  # TR-069 / MQTT del CMS: solo por el túnel WireGuard (más rápido y privado)
-  ufw allow in on wg0 to any port 9909 proto tcp >/dev/null 2>&1 || true
-  ufw allow in on wg0 to any port 1883 proto tcp >/dev/null 2>&1 || true
-  ufw allow in on wg0 to any port 7547 >/dev/null 2>&1 || true
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547 tcp+udp, 7567, 3001, 3478 tcp+udp, 51820/udp, 18080) ✓${NC}"
+   ufw allow 7547/tcp >/dev/null 2>&1   # GenieACS CWMP (TR-069)
+   ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
+   ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
+   ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
+   ufw allow 18080/tcp >/dev/null 2>&1  # CMS C-Data (web)
+   # TR-069 / MQTT del CMS: solo por el túnel WireGuard (más rápido y privado)
+   ufw allow in on wg0 to any port 9909 proto tcp >/dev/null 2>&1 || true
+   ufw allow in on wg0 to any port 1883 proto tcp >/dev/null 2>&1 || true
+   ufw allow in on wg0 to any port 7547 >/dev/null 2>&1 || true
+   echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547 tcp, 7567, 3001, 51820/udp, 18080) ✓${NC}"
 fi
 
 # ═══════════════════════════════════════════════════
