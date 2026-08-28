@@ -991,7 +991,7 @@ else
   echo -e "  ${GREEN}✓ GenieACS integrado — UI: http://$VPS_IP:3001 (admin/admin)${NC}"
   echo -e "  ${GREEN}  ACS URL recomendada (WireGuard): http://10.13.13.1:7547${NC}"
   echo -e "  ${GREEN}  ACS URL alterna (IP pública):    http://$VPS_IP:7547${NC}"
-  echo -e "  ${GREEN}  STUN (coturn) p/ Connection Request: $VPS_IP:3478 (acs/acs)${NC}"
+  echo -e "  ${GREEN}  Connection Request: por túnel WireGuard (sin STUN)${NC}"
   echo -e "  ${GREEN}  Panel gráfico OmniSync: http://$VPS_IP/onu-management${NC}"
 fi
 
