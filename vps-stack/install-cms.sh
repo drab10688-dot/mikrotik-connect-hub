@@ -14,21 +14,23 @@ NC='\033[0m'
 
 CMS_DIR="/opt/cms-cdata"
 CMS_VERSION="${CMS_VERSION:-4.5.14}"
-VPS_IP=$(curl -4 -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+VPS_IP=$(curl -4 -fsS --connect-timeout 5 --max-time 10 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 INSTALL_LOG="/var/log/omnisync-cms-install.log"
 CURRENT_STAGE="inicio"
 
 on_error() {
   local exit_code=$?
+  local failed_command="${BASH_COMMAND}"
   local line_no="${BASH_LINENO[0]:-desconocida}"
-  echo -e "${RED}✗ Falló la instalación en la etapa '${CURRENT_STAGE}' (línea ${line_no}, código ${exit_code}).${NC}" >&2
-  echo -e "${YELLOW}  Comando: ${BASH_COMMAND}${NC}" >&2
-  echo -e "${YELLOW}  Diagnóstico guardado en: ${INSTALL_LOG}${NC}" >&2
+  set +e
+  echo -e "${RED}✗ Falló la instalación en la etapa '${CURRENT_STAGE}' (línea ${line_no}, código ${exit_code}).${NC}"
+  echo -e "${YELLOW}  Comando: ${failed_command}${NC}"
+  echo -e "${YELLOW}  Diagnóstico guardado en: ${INSTALL_LOG}${NC}"
   if command -v docker >/dev/null 2>&1; then
     {
       echo ""
       echo "===== diagnóstico automático $(date -Is) ====="
-      echo "Etapa: ${CURRENT_STAGE}; línea: ${line_no}; código: ${exit_code}; comando: ${BASH_COMMAND}"
+      echo "Etapa: ${CURRENT_STAGE}; línea: ${line_no}; código: ${exit_code}; comando: ${failed_command}"
       docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>&1 || true
       if [ -f "${CMS_DIR}/docker-compose.yml" ]; then
         (cd "${CMS_DIR}" && docker compose ps 2>&1) || true
@@ -41,6 +43,8 @@ on_error() {
   exit "$exit_code"
 }
 
+touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/tmp/omnisync-cms-install.log"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
 trap on_error ERR
 
 # ── TR-069 / MQTT por WireGuard ──
