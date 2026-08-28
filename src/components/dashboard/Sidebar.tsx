@@ -152,22 +152,13 @@ export const Sidebar = () => {
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {loadingAccess || (isSecretary && loadingPermissions) ? (
+        {isSecretary && loadingPermissions ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           </div>
-        ) : !hasDeviceAccess && !isSecretary ? (
-          <div className="px-4 py-6 space-y-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Shield className="w-5 h-5" />
-              <span className="text-sm font-medium">Sin acceso</span>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              No tienes dispositivos MikroTik asignados. Contacta al administrador.
-            </p>
-          </div>
         ) : (
           <>
+
             {filteredMenuItems.map((item) => (
               <NavLink
                 key={item.path}
