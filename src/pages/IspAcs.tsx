@@ -1,0 +1,199 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Sidebar } from "@/components/dashboard/Sidebar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { api } from "@/lib/api-client";
+import { toast } from "sonner";
+import { Copy, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck } from "lucide-react";
+
+interface AcsInfo {
+  tenant: { id: string; name: string; slug: string };
+  vpn_subnet: string;
+  token: string;
+  public_url: string;
+  vpn_url: string;
+  acs_username: string;
+  acs_password: string;
+  connection_request_username: string;
+  connection_request_password: string;
+  inform_interval: number;
+  stun_enable: boolean;
+}
+
+const copy = (value: string) => {
+  navigator.clipboard.writeText(value);
+  toast.success("Copiado");
+};
+
+const Field = ({ label, value }: { label: string; value: string }) => (
+  <div className="space-y-1.5">
+    <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+    <div className="flex gap-2">
+      <Input readOnly value={value} className="font-mono text-sm" />
+      <Button variant="outline" size="icon" onClick={() => copy(value)} aria-label={`Copiar ${label}`}>
+        <Copy className="h-4 w-4" />
+      </Button>
+    </div>
+  </div>
+);
+
+const IspAcs = () => {
+  const queryClient = useQueryClient();
+  const [peerName, setPeerName] = useState("mikrotik-1");
+  const [onuNetworks, setOnuNetworks] = useState("10.82.0.0/21");
+  const [script, setScript] = useState<string>("");
+
+  const { data: acs, isLoading } = useQuery({
+    queryKey: ["isp-acs"],
+    queryFn: async () => (await api<{ data: AcsInfo }>("/isp/acs")).data,
+  });
+
+  const { data: vpn } = useQuery({
+    queryKey: ["isp-vpn"],
+    queryFn: async () => (await api<{ data: any }>("/isp/vpn")).data,
+  });
+
+  const rotate = useMutation({
+    mutationFn: () => api("/isp/acs/rotate", { method: "POST" }),
+    onSuccess: () => {
+      toast.success("Nuevo enlace TR-069 generado");
+      queryClient.invalidateQueries({ queryKey: ["isp-acs"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const generate = useMutation({
+    mutationFn: () =>
+      api<{ data: { script: string } }>("/isp/vpn/script", {
+        method: "POST",
+        body: { name: peerName, onu_networks: onuNetworks },
+      }),
+    onSuccess: (res) => {
+      setScript(res.data.script);
+      queryClient.invalidateQueries({ queryKey: ["isp-vpn"] });
+      toast.success("Script generado");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return (
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <main className="flex-1 overflow-auto p-6 space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Satellite className="h-6 w-6 text-primary" />
+            TR-069 y VPN del ISP
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Cada ISP tiene su propio enlace TR-069 y su propio túnel. Las ONUs de un ISP no son visibles para otro.
+          </p>
+        </header>
+
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                Enlace TR-069 {acs ? `— ${acs.tenant.name}` : ""}
+              </CardTitle>
+              <CardDescription>
+                Configura esta URL en las ONUs. Preferir la URL por VPN: aplica los cambios más rápido.
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={() => rotate.mutate()} disabled={rotate.isPending}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Rotar enlace
+            </Button>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {isLoading || !acs ? (
+              <p className="text-sm text-muted-foreground">Cargando…</p>
+            ) : (
+              <>
+                <Field label="ACS URL (por VPN — recomendada)" value={acs.vpn_url} />
+                <Field label="ACS URL (pública)" value={acs.public_url} />
+                <Field label="Usuario ACS" value={acs.acs_username} />
+                <Field label="Clave ACS" value={acs.acs_password} />
+                <Field label="Connection Request usuario" value={acs.connection_request_username} />
+                <Field label="Connection Request clave" value={acs.connection_request_password} />
+                <div className="md:col-span-2 flex flex-wrap gap-2 pt-1">
+                  <Badge variant="secondary">Inform: {acs.inform_interval}s</Badge>
+                  <Badge variant="secondary">STUN: desactivado (se usa la VPN)</Badge>
+                  <Badge variant="secondary">Subred VPN: {acs.vpn_subnet}</Badge>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <RouterIcon className="h-5 w-5 text-primary" />
+              Script para la MikroTik
+            </CardTitle>
+            <CardDescription>
+              Genera el script completo: túnel al VPS, acceso a la API y ruta hacia la red de administración de las ONUs.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Nombre del router</Label>
+                <Input value={peerName} onChange={(e) => setPeerName(e.target.value)} placeholder="mikrotik-1" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Red de administración de ONUs</Label>
+                <Input value={onuNetworks} onChange={(e) => setOnuNetworks(e.target.value)} placeholder="10.82.0.0/21" />
+              </div>
+              <div className="flex items-end">
+                <Button className="w-full" onClick={() => generate.mutate()} disabled={generate.isPending}>
+                  {generate.isPending ? "Generando…" : "Generar script"}
+                </Button>
+              </div>
+            </div>
+
+            {script && (
+              <>
+                <Separator />
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={() => copy(script)}>
+                    <Copy className="h-4 w-4 mr-2" /> Copiar script
+                  </Button>
+                </div>
+                <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs font-mono whitespace-pre-wrap">
+                  {script}
+                </pre>
+              </>
+            )}
+
+            {!!vpn?.peers?.length && (
+              <div className="space-y-2">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Routers conectados</Label>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {vpn.peers.map((p: any) => (
+                    <div key={p.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                      <span className="font-medium">{p.name}</span>
+                      <span className="font-mono text-muted-foreground">{p.tunnel_ip}</span>
+                      <Badge variant={p.is_active ? "default" : "secondary"}>
+                        {p.is_active ? "activo" : "inactivo"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+};
+
+export default IspAcs;
