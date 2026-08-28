@@ -37,7 +37,7 @@ echo "Este instalador no toca el CMS."
 STAGE="paquetes base"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y curl ca-certificates openssl python3 iproute2 iptables ufw
+apt-get install -y curl ca-certificates openssl python3 iproute2 iptables ufw psmisc
 
 STAGE="Docker"
 if ! command -v docker >/dev/null 2>&1; then
@@ -117,6 +117,23 @@ docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 || {
 }
 
 STAGE="panel MikroTik"
+# Detiene el servicio anterior y libera el puerto dedicado. Esto corrige
+# instalaciones previas que dejaron server.py ejecutándose fuera de systemd.
+systemctl stop omnisync-mt-panel.service >/dev/null 2>&1 || true
+if fuser "${PANEL_PORT}/tcp" >/dev/null 2>&1; then
+  echo -e "${YELLOW}Liberando instancia anterior en el puerto ${PANEL_PORT}...${NC}"
+  fuser -k "${PANEL_PORT}/tcp" >/dev/null 2>&1 || true
+  for _ in $(seq 1 10); do
+    ! ss -lnt "sport = :${PANEL_PORT}" | grep -q LISTEN && break
+    sleep 1
+  done
+fi
+if ss -lnt "sport = :${PANEL_PORT}" | grep -q LISTEN; then
+  echo -e "${RED}El puerto ${PANEL_PORT} continúa ocupado:${NC}"
+  ss -lntp "sport = :${PANEL_PORT}" || true
+  exit 1
+fi
+
 # Se descarga siempre para que funcione igual como archivo o mediante `curl | bash`.
 # El sufijo evita la caché de raw.githubusercontent (hasta 5 min de retraso).
 curl -fsSL --retry 3 --connect-timeout 15 --max-time 90 \
