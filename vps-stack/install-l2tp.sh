@@ -123,10 +123,12 @@ VPN_SHA2_TRUNCBUG=no
 EOF
 chmod 600 "$DIR/vpn.conf"
 
+# IMPORTANTE: red host. Con -p (docker-proxy) IKE/ESP se rompe y el cliente
+# solo ve retransmisiones en fase 1.
 docker run -d --name omnisync-l2tp \
   --restart unless-stopped \
   --privileged \
-  -p 500:500/udp -p 4500:4500/udp -p 1701:1701/udp \
+  --network host \
   --env-file "$DIR/vpn.conf" \
   -v "$DIR/ikev2-vpn-data":/etc/ipsec.d \
   -v /lib/modules:/lib/modules:ro \
@@ -143,6 +145,8 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 500/udp  >/dev/null 2>&1 || true
   ufw allow 4500/udp >/dev/null 2>&1 || true
   ufw allow 1701/udp >/dev/null 2>&1 || true
+  ufw allow proto esp from any >/dev/null 2>&1 || true
+  ufw allow proto ah  from any >/dev/null 2>&1 || true
 fi
 
 # --- Publicar datos de la VPN al stack (los usa el panel) ---
