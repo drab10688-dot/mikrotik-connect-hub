@@ -84,6 +84,9 @@ fi
 
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
+# ── Quitar UISP (ya no forma parte del stack) ──
+purge_uisp
+
 # ── Limpieza de intentos previos ──
 echo -e "${YELLOW}Limpiando instalaciones anteriores de CMS...${NC}"
 if [ -f "$CMS_DIR/docker-compose.yml" ]; then
