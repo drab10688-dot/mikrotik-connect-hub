@@ -66,7 +66,7 @@ const Permissions = () => {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-6 space-y-6">
+      <main className="flex-1 min-w-0 overflow-auto p-4 md:p-6 md:ml-64 space-y-6">
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <KeyRound className="h-6 w-6 text-primary" />
