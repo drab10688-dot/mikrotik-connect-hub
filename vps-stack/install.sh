@@ -860,8 +860,9 @@ setup_wireguard_networking() {
     local REMOTE_NETS
     REMOTE_NETS=$(docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAc \
       "SELECT DISTINCT remote_networks FROM vpn_peers WHERE is_active=true AND remote_networks IS NOT NULL" 2>/dev/null)
-    if [ -n "$REMOTE_NETS" ]; then
-      echo "$REMOTE_NETS" | while read -r net; do
+    REMOTE_NETS="$REMOTE_NETS ${ONU_NETS:-}"
+    if [ -n "${REMOTE_NETS// /}" ]; then
+      echo "$REMOTE_NETS" | tr ', ' '\n\n' | while read -r net; do
         [ -z "$net" ] && continue
         ip route replace "$net" via "$WG_IP" 2>/dev/null && \
           echo -e "${GREEN}✓ Ruta host red remota ($net via $WG_IP)${NC}"
@@ -869,12 +870,12 @@ setup_wireguard_networking() {
     fi
 
     # Configurar iptables en WireGuard para forwarding (eth0 <-> wg0) y
-    # MASQUERADE del tráfico del bridge Docker hacia el túnel (para que las
-    # ONUs respondan a 10.13.13.1, ruta de retorno conocida por el MikroTik).
+    # MASQUERADE del tráfico que sale por el túnel. Sin el MASQUERADE de
+    # salida (-o wg0) las ONU/MikroTik no saben devolver los paquetes del VPS.
     docker exec omnisync-wireguard sh -c '
-      iptables -C FORWARD -i eth0 -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i eth0 -o wg0 -j ACCEPT
-      iptables -C FORWARD -i wg0 -o eth0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -o eth0 -j ACCEPT
-      iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -o wg0 -j MASQUERADE
+      iptables -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -o wg0 -j ACCEPT
+      iptables -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -j ACCEPT
+      iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
     ' 2>/dev/null && \
       echo -e "${GREEN}✓ Forwarding VPN configurado${NC}" || \
       echo -e "${YELLOW}⚠ No se pudo configurar forwarding VPN${NC}"
@@ -883,22 +884,32 @@ setup_wireguard_networking() {
     # reinicia y cambia de IP. Se ejecuta cada minuto desde cron.
     local REFRESH_SCRIPT="$INSTALL_DIR/scripts/refresh-vpn-routes.sh"
     mkdir -p "$INSTALL_DIR/scripts"
-    cat > "$REFRESH_SCRIPT" <<'ROUTE_EOF'
+    cat > "$REFRESH_SCRIPT" <<ROUTE_EOF
 #!/bin/bash
-# Reaplica rutas host hacia la subred VPN y redes remotas (remote_networks)
-# via el contenedor WireGuard. Idempotente (ip route replace).
+# Reaplica rutas host + NAT hacia la subred VPN y redes remotas
+# (remote_networks) via el contenedor WireGuard. Idempotente.
+EXTRA_NETS="${ONU_NETS:-}"
+ROUTE_EOF
+    cat >> "$REFRESH_SCRIPT" <<'ROUTE_EOF'
 WG_IP=$(docker inspect omnisync-wireguard --format '{{range $k,$v := .NetworkSettings.Networks}}{{if eq $k "omnisync_omnisync-net"}}{{$v.IPAddress}}{{end}}{{end}}' 2>/dev/null)
 [ -z "$WG_IP" ] && WG_IP=$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $NF}')
 [ -z "$WG_IP" ] && exit 0
-# Subred VPN base
+# Subred VPN base (host + contenedor API)
 ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null
-# Redes remotas declaradas en los peers activos
+docker exec omnisync-api ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null
+# Redes remotas declaradas en los peers activos (+ ONU_NETS manuales)
 NETWORKS=$(docker exec omnisync-postgres psql -U omnisync -d omnisync -tAc \
   "SELECT DISTINCT remote_networks FROM vpn_peers WHERE is_active=true AND remote_networks IS NOT NULL" 2>/dev/null)
-echo "$NETWORKS" | while read -r net; do
+echo "$NETWORKS $EXTRA_NETS" | tr ', ' '\n\n' | while read -r net; do
   [ -z "$net" ] && continue
   ip route replace "$net" via "$WG_IP" 2>/dev/null
 done
+# Forwarding + NAT dentro del contenedor WireGuard (se pierde al reiniciarlo)
+docker exec omnisync-wireguard sh -c '
+  iptables -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -o wg0 -j ACCEPT
+  iptables -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -j ACCEPT
+  iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
+' >/dev/null 2>&1
 ROUTE_EOF
     chmod +x "$REFRESH_SCRIPT"
     # Cron cada minuto (idempotente)
@@ -906,6 +917,7 @@ ROUTE_EOF
       echo "* * * * * $REFRESH_SCRIPT >/dev/null 2>&1" ) | crontab -
     # Aplicar rutas ahora también
     "$REFRESH_SCRIPT" >/dev/null 2>&1
+
   else
     echo -e "${YELLOW}⚠ No se pudo detectar IP del contenedor WireGuard${NC}"
   fi
