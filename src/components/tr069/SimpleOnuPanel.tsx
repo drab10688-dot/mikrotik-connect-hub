@@ -351,6 +351,37 @@ export default function SimpleOnuPanel() {
                       </Badge>
                       <span>{sinceLabel(sig?.lastInform)}</span>
                     </div>
+                    {(() => {
+                      const radios = (sig?.radios || []).filter((r) => r.ssid);
+                      const active = radios.filter((r) => r.enabled);
+                      if (!radios.length) {
+                        return (
+                          <p className="text-[11px] text-muted-foreground">
+                            WiFi sin datos — abra “Configurar” y pulse leer/actualizar.
+                          </p>
+                        );
+                      }
+                      return (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {radios.map((r) => (
+                            <Badge
+                              key={r.index}
+                              variant={r.enabled ? "default" : "secondary"}
+                              className="text-[10px] font-normal"
+                            >
+                              <Wifi className="w-3 h-3 mr-1" />
+                              {r.ssid} · {r.band}
+                              {r.channel ? ` · ch ${r.channel}` : ""}
+                              {r.enabled ? "" : " · apagada"}
+                            </Badge>
+                          ))}
+                          {active.length === 0 && (
+                            <span className="text-[11px] text-destructive">Ninguna radio activa</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                   </div>
                   <div className="flex items-center gap-3">
                     <div className={offline ? "opacity-40 grayscale" : ""}>
