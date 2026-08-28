@@ -173,7 +173,7 @@ ip route replace ${WG_BASE}.0/24 via "\$IP"
 
 # Lleva los servicios instalados después en el host (CMS web, ACS y MQTT)
 # hasta la IP gateway de WireGuard. Las reglas son idempotentes.
-GW=\$(docker exec omnisync-wireguard sh -c "ip route | awk '/default/{print \\$3; exit}'" 2>/dev/null || true)
+GW=\$(docker exec omnisync-wireguard sh -c "ip route | awk '/default/{print \\\$3; exit}'" 2>/dev/null || true)
 [ -n "\$GW" ] || exit 0
 for SPEC in 18080:18080 9909:9909 1883:1883; do
   DPORT=\${SPEC%%:*}; HPORT=\${SPEC##*:}
