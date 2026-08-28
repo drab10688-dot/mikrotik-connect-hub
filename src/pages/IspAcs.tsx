@@ -168,10 +168,11 @@ const IspAcs = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <RouterIcon className="h-5 w-5 text-primary" />
-              Script para la MikroTik
+              Script para la MikroTik (VPN L2TP/IPsec)
             </CardTitle>
             <CardDescription>
-              Genera el script completo: túnel al VPS, acceso a la API y ruta hacia la red de administración de las ONUs.
+              Genera el script completo: túnel L2TP/IPsec al VPS, firewall, acceso a la API y ruta hacia la red de
+              administración de las ONUs. Pégalo tal cual en la terminal de RouterOS.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -194,15 +195,27 @@ const IspAcs = () => {
             {script && (
               <>
                 <Separator />
-                <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => copy(script)}>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => downloadScript(script, peerName)}>
+                    <Download className="h-4 w-4 mr-2" /> Descargar .rsc
+                  </Button>
+                  <Button size="sm" onClick={() => copy(script)}>
                     <Copy className="h-4 w-4 mr-2" /> Copiar script
                   </Button>
                 </div>
-                <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs font-mono whitespace-pre-wrap">
-                  {script}
-                </pre>
+                <textarea
+                  readOnly
+                  value={script}
+                  onFocus={(e) => e.currentTarget.select()}
+                  spellCheck={false}
+                  className="h-96 w-full resize-y rounded-md bg-muted p-4 text-xs font-mono"
+                  aria-label="Script para la MikroTik"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si el botón no copia (navegador restringido), haz clic dentro del recuadro y usa Ctrl+C.
+                </p>
               </>
+
             )}
 
             {!!vpn?.peers?.length && (
