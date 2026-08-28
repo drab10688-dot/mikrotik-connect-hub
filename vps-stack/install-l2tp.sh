@@ -154,6 +154,27 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow proto ah  from any >/dev/null 2>&1 || true
 fi
 
+# --- Eliminar el DROP que la imagen inserta para L2TP sin IPsec ---
+# La imagen hwdsl2/ipsec-vpn-server añade:
+#   -A INPUT -p udp --dport 1701 -m policy --dir in --pol none -j DROP
+# Esto descarta el L2TP en texto plano (sin IPsec), impidiendo que el
+# túnel conecte cuando use-ipsec=no. Lo quitamos y dejamos ACCEPT.
+info "Limpiando regla DROP de L2TP sin IPsec..."
+iptables -D INPUT -p udp --dport 1701 -m policy --dir in --pol none -j DROP 2>/dev/null || true
+iptables -C INPUT -p udp --dport 1701 -j ACCEPT 2>/dev/null || \
+  iptables -I INPUT -p udp --dport 1701 -j ACCEPT 2>/dev/null || true
+
+# Hacer la regla persistente tras reinicios (se ejecuta en cada arranque del contenedor)
+# La imagen reinserta el DROP al reiniciar, así que también parcheamos su entrypoint
+docker exec omnisync-l2tp sh -c 'grep -q "1701.*pol none.*DROP" /entrypoint.sh 2>/dev/null && \
+  sed -i "/1701.*pol none.*DROP/d" /entrypoint.sh 2>/dev/null; \
+  sed -i "/iptables.*-A.*INPUT.*1701.*-j ACCEPT/d" /entrypoint.sh 2>/dev/null; \
+  sed -i "/ip6tables.*-A.*INPUT.*1701.*-j DROP/d" /entrypoint.sh 2>/dev/null; \
+  sed -i "/ip6tables.*-A.*INPUT.*1701.*-j ACCEPT/d" /entrypoint.sh 2>/dev/null; \
+  true' 2>/dev/null || true
+
+ok "Regla DROP de L2TP sin IPsec eliminada"
+
 # --- Publicar datos de la VPN al stack (los usa el panel) ---
 if [ -f "$STACK_DIR/.env" ]; then
   sed -i '/^L2TP_/d;/^VPN_SERVER_IP=/d' "$STACK_DIR/.env" 2>/dev/null || true
