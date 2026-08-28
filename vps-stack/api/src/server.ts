@@ -65,8 +65,8 @@ app.use('/api/mikrotik', authMiddleware, (req, res, next) => {
 });
 
 
-// Cron: recolección de señal óptica cada 15 minutos
-cron.schedule('*/15 * * * *', () => {
+// Cron: recolección de señal óptica cada 5 minutos
+cron.schedule('*/5 * * * *', () => {
   console.log('[CRON] Running optical signal collection...');
   // ACS-driven: todas las ONUs conectadas a GenieACS (no requiere registro local)
   collectAcsSignals(pool)

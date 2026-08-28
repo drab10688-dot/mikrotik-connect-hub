@@ -66,7 +66,7 @@ const Dashboard = () => {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(() => load(false), 30000);
+    const t = window.setInterval(() => load(false), 10000);
     return () => window.clearInterval(t);
   }, [load]);
 
