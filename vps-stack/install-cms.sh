@@ -125,7 +125,9 @@ echo -e "${GREEN}✓ Paquete descargado${NC}"
 # Puertos elegidos para coexistir con OmniSync:
 #   MySQL 3307 (OmniSync/MariaDB usa 3306) | Redis 6380 | Web 18080/18443
 #   STUN 13478/UDP (coturn de OmniSync ya usa 3478)
-MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
+# Generador robusto: evita SIGPIPE de 'tr </dev/urandom | head' (mata el script con pipefail)
+MYSQL_ROOT_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c 16 || true)
+[ -z "$MYSQL_ROOT_PASSWORD" ] && MYSQL_ROOT_PASSWORD=$(date +%s%N | sha256sum | head -c 16)
 cat > .env << EOF
 VOLUME_PATH=./
 
