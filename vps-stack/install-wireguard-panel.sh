@@ -117,8 +117,12 @@ docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 || {
 }
 
 STAGE="panel MikroTik"
-LOCAL_PANEL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mt-panel/server.py"
-if [ -s "$LOCAL_PANEL" ]; then
+# Con `curl | bash` no hay ruta propia: BASH_SOURCE puede no existir bajo `set -u`.
+LOCAL_PANEL=""
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]:-}" ]; then
+  LOCAL_PANEL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mt-panel/server.py"
+fi
+if [ -n "$LOCAL_PANEL" ] && [ -s "$LOCAL_PANEL" ]; then
   cp "$LOCAL_PANEL" "$WG_DIR/mt-panel/server.py"
 else
   curl -fsSL --retry 3 --connect-timeout 15 --max-time 90 -o "$WG_DIR/mt-panel/server.py" "$SCRIPT_URL"
