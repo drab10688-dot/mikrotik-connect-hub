@@ -106,40 +106,35 @@ export const Sidebar = () => {
   };
 
   return (
-    <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex flex-col border-r border-sidebar-border hidden md:flex">
+    <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex-col border-r border-sidebar-border hidden md:flex">
       {/* Logo section */}
-      <div className="p-4 border-b border-sidebar-border">
-        <div className="flex justify-center">
-          <div className="relative group">
+      <div className="p-3 border-b border-sidebar-border shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="relative group shrink-0">
             {displayLogo ? (
-              <div className="w-28 h-28 rounded-full overflow-hidden relative bg-sidebar-accent/30 border-2 border-sidebar-border">
+              <div className="w-12 h-12 rounded-full overflow-hidden relative bg-sidebar-accent/30 border border-sidebar-border">
                 <img src={displayLogo} alt={displayName} className="w-full h-full object-cover" />
-                <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-6 h-6 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
-                  <X className="w-3 h-3 text-destructive-foreground" />
+                <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
+                  <X className="w-2.5 h-2.5 text-destructive-foreground" />
                 </button>
               </div>
             ) : (
-              <div className="w-28 h-28 rounded-full overflow-hidden bg-sidebar-accent/30 border-2 border-sidebar-border flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-sidebar-accent/30 border border-sidebar-border flex items-center justify-center">
                 <img src={omnisyncLogo} alt={displayName} className="w-full h-full object-cover" />
               </div>
             )}
             <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex">
-              <ImagePlus className="w-6 h-6 text-white" />
+              <ImagePlus className="w-4 h-4 text-white" />
             </button>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
           </div>
-        </div>
-        <p className="mt-3 text-center text-sm font-semibold truncate">{displayName}</p>
-        <div className="mt-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70">
-            <Radio className="w-4 h-4" />
-            <span>TR-069 / ACS</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">{displayName}</p>
+            <p className="text-[11px] text-sidebar-foreground/60 truncate">OmniACS · TR-069 / ACS</p>
           </div>
         </div>
-        <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground text-center">
-          OmniACS · Gestión de ONUs
-        </div>
       </div>
+
 
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
