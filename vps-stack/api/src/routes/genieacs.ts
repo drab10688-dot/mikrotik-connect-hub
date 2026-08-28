@@ -1007,40 +1007,20 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
 
 
 // ─── Overview rápido: una sola consulta al ACS (lista + señal + PPPoE) ──
+// Proyección amplia: se traen subárboles completos para soportar cualquier
+// fabricante (Realtek, V-SOL, Zyxel, Huawei, ZTE, C-Data…) sin rutas fijas.
 const FAST_PROJECTION = [
   '_id', '_deviceId', '_lastInform',
-  'InternetGatewayDevice.DeviceInfo.Manufacturer',
-  'InternetGatewayDevice.DeviceInfo.ModelName',
-  'InternetGatewayDevice.DeviceInfo.ProductClass',
-  'InternetGatewayDevice.DeviceInfo.SerialNumber',
-  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower',
-  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.X_HW_PONInfo.RXPower',
-  'InternetGatewayDevice.X_HW_PONInfo.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower',
-  'Device.Optical.Interface.1.Stats.SignalStrength',
-  'Device.Optical.Interface.1.Stats.TransmitPower',
-  'Device.Optical.Interface.1.RxPower',
-  'Device.Optical.Interface.1.TxPower',
-  'Device.DeviceInfo.Manufacturer',
-  'Device.DeviceInfo.ModelName',
-  'Device.DeviceInfo.SerialNumber',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ConnectionStatus',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANPPPConnection.1.Username',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.WANPPPConnection.1.Username',
+  'InternetGatewayDevice.DeviceInfo',
+  'InternetGatewayDevice.WANDevice',
+  'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
+  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
+  'InternetGatewayDevice.X_HW_PONInfo',
+  'Device.DeviceInfo',
+  'Device.Optical',
+  'Device.WiFi',
 ].join(',');
+
 
 function sanitizePower(val: any): number | null {
   let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
