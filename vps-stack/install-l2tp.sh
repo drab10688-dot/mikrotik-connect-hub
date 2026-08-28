@@ -122,8 +122,17 @@ EOS
 sed -i "s|__NETS__|$ONU_NETS|" "$DIR/l2tp-routes.sh"
 chmod +x "$DIR/l2tp-routes.sh"
 "$DIR/l2tp-routes.sh" || true
-( crontab -l 2>/dev/null | grep -v l2tp-routes.sh; echo "* * * * * $DIR/l2tp-routes.sh >/dev/null 2>&1" ) | crontab -
-ok "Rutas hacia $ONU_NETS configuradas y persistentes (cron)"
+if ! command -v crontab >/dev/null 2>&1; then
+  info "Instalando cron..."
+  apt-get update -qq >/dev/null 2>&1 || true
+  apt-get install -y cron >/dev/null 2>&1 || warn "No se pudo instalar cron (rutas no persistentes tras reinicio)"
+fi
+if command -v crontab >/dev/null 2>&1; then
+  ( crontab -l 2>/dev/null | grep -v l2tp-routes.sh; echo "* * * * * $DIR/l2tp-routes.sh >/dev/null 2>&1" ) | crontab -
+  ok "Rutas hacia $ONU_NETS configuradas y persistentes (cron)"
+else
+  warn "Rutas aplicadas solo para esta sesión"
+fi
 
 # --- Script para MikroTik ---
 MT="$DIR/mikrotik-l2tp.rsc"
