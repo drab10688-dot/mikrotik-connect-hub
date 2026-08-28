@@ -203,25 +203,71 @@ else
 fi
 chmod +x "$WG_DIR/mikrotik-wg.sh" 2>/dev/null || true
 
-echo ""
-echo -e "${CYAN}Peers WireGuard:${NC}"
-echo -e "  Crea los peers desde el panel web y descarga su archivo .conf"
-echo -e "  Script listo para MikroTik (todas las reglas OmniSync):"
-echo -e "    ${GREEN}bash ${WG_DIR}/mikrotik-wg.sh peer-mikrotik1.conf${NC}"
-echo -e "  También puedes pegar la config directamente:  ${GREEN}bash ${WG_DIR}/mikrotik-wg.sh${NC}"
+# ── Panel web generador de scripts MikroTik ───────────────
+CURRENT_STAGE="panel web MikroTik"
+MT_PANEL_PORT="${MT_PANEL_PORT:-51822}"
+apt-get install -y python3 >/dev/null 2>&1 || true
+mkdir -p "$WG_DIR/mt-panel"
+PANEL_SRC="$SCRIPT_DIR/mt-panel/server.py"
+if [ -s "$PANEL_SRC" ]; then
+  cp "$PANEL_SRC" "$WG_DIR/mt-panel/server.py"
+else
+  curl --retry 3 --connect-timeout 15 --max-time 60 -fsSL \
+    -o "$WG_DIR/mt-panel/server.py" \
+    "https://raw.githubusercontent.com/drab10688-dot/mikrotik-connect-hub/main/vps-stack/mt-panel/server.py"
+fi
 
+cat > /etc/omnisync-mt-panel.env << EOF
+WG_API=http://127.0.0.1:${WG_WEB_PORT}
+WG_PASSWORD=${WG_ADMIN_PASS}
+WG_SUBNET_BASE=${WG_SUBNET%.*}
+WG_PORT=${WG_PORT}
+PANEL_PORT=${MT_PANEL_PORT}
+PANEL_USER=admin
+PANEL_PASS=${WG_ADMIN_PASS}
+EOF
+chmod 600 /etc/omnisync-mt-panel.env
+
+cat > /etc/systemd/system/omnisync-mt-panel.service << EOF
+[Unit]
+Description=OmniSync · Panel web generador de scripts MikroTik (WireGuard)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/omnisync-mt-panel.env
+ExecStart=/usr/bin/python3 ${WG_DIR}/mt-panel/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now omnisync-mt-panel.service >/dev/null 2>&1 || true
+command -v ufw >/dev/null 2>&1 && ufw allow ${MT_PANEL_PORT}/tcp >/dev/null 2>&1 || true
+sleep 2
+if curl -s -o /dev/null --connect-timeout 5 "http://127.0.0.1:${MT_PANEL_PORT}/"; then
+  echo -e "${GREEN}✓ Panel MikroTik activo en :${MT_PANEL_PORT}${NC}"
+else
+  echo -e "${YELLOW}⚠ El panel MikroTik no respondió aún (systemctl status omnisync-mt-panel)${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║        Instalación LITE completada           ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
-echo -e "  CMS web:        ${CYAN}http://${VPS_IP}:18080${NC}   (root / adminisp)"
-echo -e "  Panel WG web:   ${CYAN}http://${VPS_IP}:${WG_WEB_PORT}${NC}   (admin / ${WG_ADMIN_PASS})"
-echo -e "  WireGuard:      ${CYAN}${VPS_IP}:${WG_PORT}/udp${NC}  · subred ${WG_SUBNET}/24"
-echo -e "  ACS de la ONU:  ${CYAN}http://${WG_SUBNET%.*}.1:9909/v1/acs${NC}"
-echo -e "  MQTT:           ${CYAN}${WG_SUBNET%.*}.1:1883${NC}"
-echo -e "  Log:            ${CYAN}${INSTALL_LOG}${NC}"
+echo -e "  CMS web:         ${CYAN}http://${VPS_IP}:18080${NC}   (root / adminisp)"
+echo -e "  Panel WG web:    ${CYAN}http://${VPS_IP}:${WG_WEB_PORT}${NC}   (admin / ${WG_ADMIN_PASS})"
+echo -e "  Panel MikroTik:  ${CYAN}http://${VPS_IP}:${MT_PANEL_PORT}${NC}   (admin / ${WG_ADMIN_PASS})"
+echo -e "  WireGuard:       ${CYAN}${VPS_IP}:${WG_PORT}/udp${NC}  · subred ${WG_SUBNET}/24"
+echo -e "  ACS de la ONU:   ${CYAN}http://${WG_SUBNET%.*}.1:9909/v1/acs${NC}"
+echo -e "  MQTT:            ${CYAN}${WG_SUBNET%.*}.1:1883${NC}"
+echo -e "  Log:             ${CYAN}${INSTALL_LOG}${NC}"
 echo ""
-echo -e "${YELLOW}⚠ Guarda la contraseña del panel WG: ${WG_ADMIN_PASS}${NC}"
-echo -e "  Desde el panel puedes crear/eliminar peers, ver QR y bloquear dispositivos.${NC}"
+echo -e "${YELLOW}⚠ Guarda la contraseña: ${WG_ADMIN_PASS}${NC}"
+echo -e "  En el Panel MikroTik creas el peer y copias el script RouterOS listo."
+echo -e "  Alternativa por consola: ${GREEN}bash ${WG_DIR}/mikrotik-wg.sh peer.conf${NC}"
 echo ""
+
