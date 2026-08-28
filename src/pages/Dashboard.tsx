@@ -204,9 +204,10 @@ const Dashboard = () => {
                       <TableCell className="text-xs">
                         {d.activeSsids?.length ? d.activeSsids.join(" · ") : "—"}
                       </TableCell>
-                      <TableCell className={`font-mono text-sm ${signalTone(d.rxPower)}`}>
-                        {d.rxPower !== null ? `${d.rxPower.toFixed(2)} dBm` : "—"}
+                      <TableCell>
+                        <OpticalMeter compact rx={d.rxPower} tx={d.txPower} dimmed={isOffline(d.lastInform)} />
                       </TableCell>
+
                       <TableCell className="text-right">
                         {isOffline(d.lastInform) ? (
                           <Badge variant="destructive">Desconectada</Badge>
