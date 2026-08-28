@@ -30,6 +30,8 @@ import { ubiquitiRouter } from './routes/ubiquiti';
 import { antennasRouter } from './routes/antennas';
 import { radiusRouter } from './routes/radius';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
+import { ispRouter, ispPublicRouter, requireSection } from './routes/isp';
+import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runBillingCron } from './cron/billing';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -54,6 +56,7 @@ app.get('/api/health', (_, res) => {
 // Public routes
 app.use('/api/auth', authRouter);
 app.use('/api/tenants/public', tenantsPublicRouter); // branding público por ISP
+app.use('/api/public', ispPublicRouter); // resolución del token TR-069 por ISP
 app.use('/api/hotspot', hotspotRouter); // hotspot/login is public, others need auth via route-level check
 // Bot de técnicos: /webhook/* es público (Telegram no envía JWT), el resto requiere auth
 app.use('/api/telegram-bot', (req, res, next) => {
@@ -68,6 +71,7 @@ app.use('/api/portal-ads', (req, res, next) => {
 
 // Protected routes
 app.use('/api/tenants', authMiddleware, tenantsRouter);
+app.use('/api/isp', authMiddleware, ispRouter);
 app.use('/api/devices', authMiddleware, devicesRouter);
 // IMPORTANT: register specific /api/clients sub-routes before generic /api/clients
 app.use('/api/clients/contracts', authMiddleware, requirePermission('can_manage_clients'), contractsRouter);
@@ -87,8 +91,8 @@ app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/backups', authMiddleware, requirePermission('can_manage_backup'), backupRouter);
 app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
 app.use('/api/messaging', authMiddleware, requirePermission('can_manage_clients'), messagingRouter);
-app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), onuRouter);
-app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), genieacsRouter);
+app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), onuRouter);
+app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), genieacsRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 app.use('/api/ubiquiti', authMiddleware, requirePermission('can_manage_onu'), ubiquitiRouter);
 app.use('/api/antennas', authMiddleware, requirePermission('can_manage_onu'), antennasRouter);
@@ -141,6 +145,9 @@ cron.schedule('0 3 * * *', () => {
 
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
+
+  // Esquema multi-ISP (tokens TR-069, permisos, peers VPN)
+  ensureIspSchema(pool).catch((e: any) => console.error('[SCHEMA] isp:', e.message));
   
   // Auto-configure WireGuard route after a short delay (wait for DNS)
   setTimeout(async () => {
