@@ -122,18 +122,26 @@ curl -fsSL --retry 3 --connect-timeout 15 --max-time 90 \
   -o "$WG_DIR/mt-panel/server.py" "$SCRIPT_URL"
 python3 -m py_compile "$WG_DIR/mt-panel/server.py"
 
-cat > /etc/omnisync-mt-panel.env <<EOF
-WG_API=http://127.0.0.1:${WG_WEB_PORT}
-WG_PASSWORD=${WG_ADMIN_PASS}
-WG_SUBNET_BASE=${WG_BASE}
-WG_PORT=${WG_PORT}
-PANEL_PORT=${PANEL_PORT}
-PANEL_USER=${PANEL_USER}
-PANEL_PASS=${PANEL_PASS}
-CMS_VPN_IP=${CMS_VPN_IP:-${WG_BASE}.1}
-CMS_ACS_PORT=${CMS_ACS_PORT:-9909}
-CMS_ACS_PATH=${CMS_ACS_PATH:-/v1/acs}
-EOF
+# systemd EnvironmentFile no interpreta valores igual que Bash. Escribimos cada
+# valor escapado para admitir credenciales antiguas con símbolos sin romperlo.
+write_env() {
+  local key="$1" value="$2"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s="%s"\n' "$key" "$value"
+}
+{
+  write_env WG_API "http://127.0.0.1:${WG_WEB_PORT}"
+  write_env WG_PASSWORD "$WG_ADMIN_PASS"
+  write_env WG_SUBNET_BASE "$WG_BASE"
+  write_env WG_PORT "$WG_PORT"
+  write_env PANEL_PORT "$PANEL_PORT"
+  write_env PANEL_USER "$PANEL_USER"
+  write_env PANEL_PASS "$PANEL_PASS"
+  write_env CMS_VPN_IP "${CMS_VPN_IP:-${WG_BASE}.1}"
+  write_env CMS_ACS_PORT "${CMS_ACS_PORT:-9909}"
+  write_env CMS_ACS_PATH "${CMS_ACS_PATH:-/v1/acs}"
+} > /etc/omnisync-mt-panel.env
 chmod 600 "$SECRETS_FILE" /etc/omnisync-mt-panel.env
 
 cat > /etc/systemd/system/omnisync-mt-panel.service <<EOF
@@ -204,7 +212,9 @@ WantedBy=timers.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now omnisync-mt-panel.service >/dev/null
+systemctl enable omnisync-mt-panel.service >/dev/null
+systemctl reset-failed omnisync-mt-panel.service >/dev/null 2>&1 || true
+systemctl restart omnisync-mt-panel.service
 systemctl enable omnisync-wg-route.service >/dev/null
 systemctl enable --now omnisync-wg-route.timer >/dev/null
 /usr/local/sbin/omnisync-wg-route || true
@@ -219,11 +229,23 @@ ufw allow from "${WG_BASE}.0/24" to any port 9909 proto tcp >/dev/null 2>&1 || t
 ufw allow from "${WG_BASE}.0/24" to any port 1883 proto tcp >/dev/null 2>&1 || true
 
 STAGE="verificación"
-for _ in $(seq 1 20); do
+for _ in $(seq 1 30); do
   curl -fsS -u "${PANEL_USER}:${PANEL_PASS}" "http://127.0.0.1:${PANEL_PORT}/" >/dev/null 2>&1 && break
+  if ! systemctl is-active --quiet omnisync-mt-panel.service; then
+    echo -e "${RED}El panel no pudo iniciar. Diagnóstico:${NC}"
+    systemctl status omnisync-mt-panel.service --no-pager -l || true
+    journalctl -u omnisync-mt-panel.service -n 60 --no-pager || true
+    exit 1
+  fi
   sleep 1
 done
-curl -fsS -u "${PANEL_USER}:${PANEL_PASS}" "http://127.0.0.1:${PANEL_PORT}/" >/dev/null
+if ! curl -fsS -u "${PANEL_USER}:${PANEL_PASS}" "http://127.0.0.1:${PANEL_PORT}/" >/dev/null; then
+  echo -e "${RED}El panel sigue sin responder en el puerto ${PANEL_PORT}. Diagnóstico:${NC}"
+  ss -lntp | grep -E ":${PANEL_PORT}[[:space:]]" || true
+  systemctl status omnisync-mt-panel.service --no-pager -l || true
+  journalctl -u omnisync-mt-panel.service -n 60 --no-pager || true
+  exit 1
+fi
 
 echo
 echo -e "${GREEN}✓ WireGuard y panel instalados. El CMS no fue modificado.${NC}"
