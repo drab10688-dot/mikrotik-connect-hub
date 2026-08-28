@@ -34,9 +34,9 @@ git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
 
 cd "$TEMP_DIR"
 
-# Configure API URL to point to localhost VPS API
+# El frontend habla con la API a través del proxy de Nginx (mismo origen)
 VPS_IP=$(hostname -I | awk '{print $1}')
-echo "VITE_API_BASE_URL=http://$VPS_IP:3000/api" > .env.production
+echo "VITE_API_BASE_URL=/api" > .env.production
 
 echo -e "${YELLOW}Instalando dependencias...${NC}"
 npm install --legacy-peer-deps 2>/dev/null || npm install
