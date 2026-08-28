@@ -66,7 +66,7 @@ const Dashboard = () => {
 
   const quickActions = [
     {
-      title: "Usuarios Hotspot",
+      title: "Gestión de ONUs",
       description: "Ver y configurar ONUs por TR-069",
       icon: Wifi,
       path: "/onus",
