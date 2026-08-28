@@ -77,14 +77,31 @@ const downloadScript = (value: string, name: string) => {
   URL.revokeObjectURL(url);
 };
 
-const Field = ({ label, value }: { label: string; value: string }) => (
+const Field = ({
+  label,
+  value,
+  editable = false,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  editable?: boolean;
+  onChange?: (v: string) => void;
+}) => (
   <div className="space-y-1.5">
     <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
     <div className="flex gap-2">
-      <Input readOnly value={value} className="font-mono text-sm" />
-      <Button variant="outline" size="icon" onClick={() => copy(value)} aria-label={`Copiar ${label}`}>
-        <Copy className="h-4 w-4" />
-      </Button>
+      <Input
+        readOnly={!editable}
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        className="font-mono text-sm"
+      />
+      {!editable && (
+        <Button variant="outline" size="icon" onClick={() => copy(value)} aria-label={`Copiar ${label}`}>
+          <Copy className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   </div>
 );
