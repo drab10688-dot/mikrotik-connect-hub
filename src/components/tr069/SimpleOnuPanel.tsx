@@ -1,14 +1,37 @@
-import { useCallback, useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
-import SignalGauge from "@/components/onu/SignalGauge";
-import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag, Wifi } from "lucide-react";
+import OpticalMeter, { opticalTone } from "@/components/onu/OpticalMeter";
+import KpiCard from "@/components/dashboard/KpiCard";
+import {
+  Activity,
+  Antenna,
+  Check,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Eye,
+  EyeOff,
+  Gauge,
+  Loader2,
+  Network,
+  Pencil,
+  RotateCcw,
+  Search,
+  Signal,
+  SignalLow,
+  Wifi,
+  X,
+} from "lucide-react";
 
 interface RadioInfo {
   index: string;
@@ -30,12 +53,12 @@ interface SignalEntry {
   radios?: RadioInfo[];
 }
 
-
-function signalColor(dbm: number | null) {
-  if (dbm === null || dbm === undefined) return "text-muted-foreground";
-  if (dbm > -20) return "text-green-500";
-  if (dbm > -25) return "text-yellow-500";
-  return "text-destructive";
+interface OnuMeta {
+  uptime: number | null;
+  softwareVersion: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
 }
 
 const OFFLINE_AFTER_MS = 5 * 60 * 1000;
@@ -58,67 +81,36 @@ function sinceLabel(lastInform: string | null | undefined) {
   return `hace ${Math.floor(h / 24)} d`;
 }
 
-function deviceInfo(device: any) {
-  const di = device?.InternetGatewayDevice?.DeviceInfo || device?.Device?.DeviceInfo || {};
-  const meta = device?._deviceId || {};
-  const parts = typeof device?._id === "string" ? device._id.split("-") : [];
-  return {
-    manufacturer: di?.Manufacturer?._value || meta?._Manufacturer || meta?._OUI || "ONU",
-    model: di?.ModelName?._value || di?.ProductClass?._value || meta?._ProductClass || parts[1] || "-",
-    serial: di?.SerialNumber?._value || meta?._SerialNumber || (parts.length >= 3 ? parts.slice(2).join("-") : "-"),
-  };
+function formatUptime(seconds: number | null) {
+  if (!seconds) return "—";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
+type Filter = "all" | "online" | "offline" | "critical" | "wifi";
 
 export default function SimpleOnuPanel() {
-  const [devices, setDevices] = useState<any[]>([]);
+  const [devices, setDevices] = useState<string[]>([]);
   const [signals, setSignals] = useState<Record<string, SignalEntry>>({});
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState<"unknown" | "online" | "offline">("unknown");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pppoe, setPppoe] = useState<Record<string, { username: string; password: string }>>({});
   const [pppoeCurrent, setPppoeCurrent] = useState<Record<string, any[]>>({});
   const [showPppoePass, setShowPppoePass] = useState<Record<string, boolean>>({});
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [pppoeNames, setPppoeNames] = useState<Record<string, string>>({});
+  const [meta, setMeta] = useState<Record<string, OnuMeta>>({});
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
   const [aliasDraft, setAliasDraft] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [, setTick] = useState(0);
-
-
-  const loadAliases = useCallback(async () => {
-    try {
-      const res = await api("/genieacs/aliases");
-      const map = res?.data ?? res;
-      if (map && typeof map === "object") setAliases(map as Record<string, string>);
-    } catch {
-      /* opcional */
-    }
-  }, []);
-
-  const saveAlias = async (deviceId: string) => {
-    const name = aliasDraft.trim();
-    setBusy(`alias-${deviceId}`);
-    try {
-      await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/alias`, {
-        method: "POST",
-        body: { name },
-      });
-      setAliases((a) => {
-        const next = { ...a };
-        if (name) next[deviceId] = name; else delete next[deviceId];
-        return next;
-      });
-      setEditingAlias(null);
-      toast.success(name ? "Nombre guardado" : "Nombre eliminado");
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
 
   const loadSignals = useCallback(async () => {
     try {
@@ -127,9 +119,8 @@ export default function SimpleOnuPanel() {
       const map: Record<string, SignalEntry> = {};
       list.forEach((e) => { map[e.deviceId] = e; });
       setSignals((s) => ({ ...s, ...map }));
-      return list;
     } catch {
-      return [];
+      /* silencioso */
     }
   }, []);
 
@@ -147,6 +138,27 @@ export default function SimpleOnuPanel() {
       }
     } catch {
       setPppoeCurrent((p) => ({ ...p, [deviceId]: [] }));
+    }
+  }, []);
+
+  const loadMeta = useCallback(async (deviceId: string) => {
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
+      const data = res?.data ?? res;
+      if (data && typeof data === "object") {
+        setMeta((m) => ({
+          ...m,
+          [deviceId]: {
+            uptime: data.uptime ?? null,
+            softwareVersion: data.softwareVersion || "—",
+            manufacturer: data.manufacturer || "—",
+            model: data.model || "—",
+            serial: data.serial || "—",
+          },
+        }));
+      }
+    } catch {
+      /* opcional */
     }
   }, []);
 
@@ -171,17 +183,13 @@ export default function SimpleOnuPanel() {
           lastInform: e.lastInform ?? null,
           radios: Array.isArray(e.radios) ? e.radios : [],
         };
-
         if (e.alias) aliasMap[e.deviceId] = e.alias;
         if (e.pppoeUsername) nameMap[e.deviceId] = e.pppoeUsername;
       });
       setSignals(sigMap);
       setAliases((a) => ({ ...a, ...aliasMap }));
       setPppoeNames(nameMap);
-      setDevices(list.map((e: any) => ({
-        _id: e.deviceId,
-        _deviceId: { _Manufacturer: e.manufacturer, _ProductClass: e.model, _SerialNumber: e.serial },
-      })));
+      setDevices(list.map((e: any) => e.deviceId));
     } catch {
       setHealth("offline");
     } finally {
@@ -194,18 +202,35 @@ export default function SimpleOnuPanel() {
     const t = window.setInterval(() => load(false), 30000);
     return () => window.clearInterval(t);
   }, [load]);
-  // Refresca el cálculo de "en línea / desconectada" sin recargar datos
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 30000);
     return () => window.clearInterval(t);
   }, []);
 
+  const saveAlias = async (deviceId: string) => {
+    const name = aliasDraft.trim();
+    setBusy(`alias-${deviceId}`);
+    try {
+      await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/alias`, { method: "POST", body: { name } });
+      setAliases((a) => {
+        const next = { ...a };
+        if (name) next[deviceId] = name; else delete next[deviceId];
+        return next;
+      });
+      setEditingAlias(null);
+      toast.success(name ? "Nombre guardado" : "Nombre eliminado");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const refreshSignal = async (deviceId: string) => {
     setBusy(`sig-${deviceId}`);
     try {
       await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-signal`, { method: "POST" });
-      toast.success("Leyendo señal óptica, espere unos segundos...");
+      toast.success("Leyendo señal óptica, espere unos segundos…");
       setTimeout(loadSignals, 10000);
     } catch (err: any) {
       toast.error(err.message);
@@ -214,18 +239,25 @@ export default function SimpleOnuPanel() {
     }
   };
 
-  const toggleExpand = (deviceId: string) => {
-    const open = expanded === deviceId;
-    setExpanded(open ? null : deviceId);
-    if (!open) loadPppoe(deviceId);
-  };
-
   const refreshPppoe = async (deviceId: string) => {
     setBusy(`rpppoe-${deviceId}`);
     try {
       await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-pppoe`, { method: "POST" });
-      toast.success("Leyendo PPPoE de la ONU, espere unos segundos...");
+      toast.success("Leyendo PPPoE de la ONU, espere unos segundos…");
       setTimeout(() => loadPppoe(deviceId), 8000);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const refreshParams = async (deviceId: string) => {
+    setBusy(`tr069-${deviceId}`);
+    try {
+      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-onu`, { method: "POST" });
+      toast.success(res?.message || "Solicitud TR-069 enviada a la ONU");
+      setTimeout(() => { loadMeta(deviceId); load(false); }, 6000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -251,11 +283,45 @@ export default function SimpleOnuPanel() {
     }
   };
 
+  const openDevice = (deviceId: string) => {
+    setSelected(deviceId);
+    loadPppoe(deviceId);
+    loadMeta(deviceId);
+  };
+
+  const displayName = (id: string) => {
+    const sig = signals[id];
+    return pppoeNames[id] || aliases[id] || `${sig?.manufacturer || "ONU"} ${sig?.model || ""}`.trim();
+  };
+
+  const stats = useMemo(() => {
+    const online = devices.filter((id) => !isOffline(signals[id]?.lastInform));
+    const critical = devices.filter((id) => opticalTone(signals[id]?.rxPower) === "crit");
+    const wifi = devices.filter((id) => (signals[id]?.radios || []).some((r) => r.enabled && r.ssid));
+    return { total: devices.length, online: online.length, offline: devices.length - online.length, critical: critical.length, wifi: wifi.length };
+  }, [devices, signals]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return devices.filter((id) => {
+      const sig = signals[id];
+      const off = isOffline(sig?.lastInform);
+      if (filter === "online" && off) return false;
+      if (filter === "offline" && !off) return false;
+      if (filter === "critical" && opticalTone(sig?.rxPower) !== "crit") return false;
+      if (filter === "wifi" && !(sig?.radios || []).some((r) => r.enabled && r.ssid)) return false;
+      if (!q) return true;
+      return [displayName(id), sig?.serial, sig?.model, sig?.manufacturer, pppoeNames[id]]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices, signals, filter, query, aliases, pppoeNames]);
 
   if (health === "offline" && !loading) {
     return (
       <Card>
-        <CardContent className="p-8 text-center space-y-3">
+        <CardContent className="p-10 text-center space-y-3">
           <Signal className="w-10 h-10 mx-auto text-muted-foreground" />
           <p className="font-medium">El ACS no está disponible</p>
           <p className="text-sm text-muted-foreground">
@@ -267,239 +333,326 @@ export default function SimpleOnuPanel() {
     );
   }
 
-  return (
-    <div className="space-y-3 min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Badge variant={health === "online" ? "default" : "secondary"}>
-            {health === "online" ? "ACS Online" : "Conectando..."}
-          </Badge>
-          <span className="text-sm text-muted-foreground">
-            {devices.filter((d) => !isOffline(signals[d._id]?.lastInform)).length} en línea / {devices.length} ONU(s)
-          </span>
+  const sel = selected ? signals[selected] : null;
+  const selMeta = selected ? meta[selected] : null;
+  const selOffline = isOffline(sel?.lastInform);
+  const selForm = (selected && pppoe[selected]) || { username: "", password: "" };
 
-        </div>
-        <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
-          <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Actualizar
-        </Button>
+  return (
+    <div className="space-y-5 min-w-0">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiCard label="Total registradas" value={stats.total} icon={Antenna} tone="neutral" loading={loading}
+          onClick={() => setFilter("all")} active={filter === "all"} />
+        <KpiCard label="En línea" value={stats.online} icon={Activity} tone="success" loading={loading}
+          onClick={() => setFilter("online")} active={filter === "online"} />
+        <KpiCard label="Desconectadas" value={stats.offline} icon={SignalLow} tone="danger" loading={loading}
+          onClick={() => setFilter("offline")} active={filter === "offline"} />
+        <KpiCard label="Señal crítica" hint="≤ −28 dBm" value={stats.critical} icon={Gauge} tone="warning" loading={loading}
+          onClick={() => setFilter("critical")} active={filter === "critical"} />
+        <KpiCard label="Wi-Fi activo" value={stats.wifi} icon={Wifi} tone="info" loading={loading}
+          onClick={() => setFilter("wifi")} active={filter === "wifi"} />
       </div>
 
-      {devices.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            {loading ? <Loader2 className="w-5 h-5 mx-auto animate-spin" /> : "Aún no hay ONUs conectadas al ACS."}
-          </CardContent>
-        </Card>
-      ) : (
-        devices.map((d) => {
-          const info = deviceInfo(d);
-          const sig = signals[d._id];
-          const offline = isOffline(sig?.lastInform);
+      {/* Barra de control */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Buscar por cliente, PPPoE, serie o modelo…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant={health === "online" ? "secondary" : "outline"}>
+            {health === "online" ? "ACS en línea" : "Conectando…"}
+          </Badge>
+          <Button size="sm" variant="outline" onClick={() => load()} disabled={loading}>
+            <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Actualizar
+          </Button>
+        </div>
+      </div>
 
-          const isOpen = expanded === d._id;
-          const form = pppoe[d._id] || { username: "", password: "" };
-          const pppoeName = (pppoeCurrent[d._id] || []).find((c) => c?.username)?.username || pppoeNames[d._id];
-          const displayName = pppoeName || aliases[d._id] || `${info.manufacturer} ${info.model}`;
-          return (
-            <Card key={d._id} className="overflow-hidden">
-              <CardHeader className="p-3 pb-2">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <CardTitle className="text-sm flex items-center gap-2 min-w-0">
-                      <Router className="w-4 h-4 text-primary shrink-0" />
-                      {editingAlias === d._id ? (
-                        <span className="flex items-center gap-1">
-                          <Input
-                            autoFocus
-                            className="h-7 text-xs w-48"
-                            placeholder="Nombre del cliente"
-                            value={aliasDraft}
-                            onChange={(e) => setAliasDraft(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") saveAlias(d._id); if (e.key === "Escape") setEditingAlias(null); }}
-                          />
-                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => saveAlias(d._id)} disabled={busy === `alias-${d._id}`}>
-                            {busy === `alias-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingAlias(null)}>
-                            <X className="w-3 h-3" />
-                          </Button>
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 min-w-0">
-                          <span className="truncate">{displayName}</span>
-                          {!pppoeName && (
-                            <Button
-                              size="sm" variant="ghost" className="h-6 px-1"
-                              onClick={() => { setEditingAlias(d._id); setAliasDraft(aliases[d._id] || ""); }}
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </span>
-                      )}
-                    </CardTitle>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground min-w-0">
-
-                      {(pppoeName || aliases[d._id]) && (
-                        <span className="flex items-center gap-1 truncate">
-                          <Tag className="w-3 h-3" />{info.manufacturer} {info.model}
-                        </span>
-                      )}
-                      <span className="font-mono truncate">{info.serial}</span>
-                      <Badge variant={offline ? "destructive" : "default"} className="text-[10px]">
-                        {offline ? "Desconectada" : "En línea"}
-                      </Badge>
-                      <span>{sinceLabel(sig?.lastInform)}</span>
-                    </div>
-                    {(() => {
-                      const radios = (sig?.radios || []).filter((r) => r.ssid);
-                      const active = radios.filter((r) => r.enabled);
-                      if (!radios.length) {
-                        return (
-                          <p className="text-[11px] text-muted-foreground">
-                            WiFi sin datos — abra “Configurar” y pulse leer/actualizar.
-                          </p>
-                        );
-                      }
-                      return (
-                        <div className="flex flex-wrap items-center gap-1">
-                          {radios.map((r) => (
-                            <Badge
-                              key={r.index}
-                              variant={r.enabled ? "default" : "secondary"}
-                              className="text-[10px] font-normal"
-                            >
-                              <Wifi className="w-3 h-3 mr-1" />
-                              {r.ssid} · {r.band}
-                              {r.channel ? ` · ch ${r.channel}` : ""}
-                              {r.enabled ? "" : " · apagada"}
-                            </Badge>
-                          ))}
-                          {active.length === 0 && (
-                            <span className="text-[11px] text-destructive">Ninguna radio activa</span>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className={offline ? "opacity-40 grayscale" : ""}>
-                      <SignalGauge rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} />
-                    </div>
-
-                    <Button size="sm" variant="ghost" onClick={() => refreshSignal(d._id)} disabled={busy === `sig-${d._id}`}>
-                      {busy === `sig-${d._id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Signal className="w-3 h-3" />}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => toggleExpand(d._id)}>
-                      {isOpen ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
-                      Configurar
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-
-              {isOpen && (
-                <CardContent className="p-3 pt-0 space-y-3">
-                  {/* WiFi dual banda + CATV */}
-                  <OnuRadiosPanel deviceId={d._id} />
-
-                  {/* PPPoE */}
-                  <Card className="bg-muted/30">
-                    <CardHeader className="p-3 pb-1">
-                      <CardTitle className="text-sm flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-2"><Network className="w-4 h-4" /> PPPoE</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs"
-                          onClick={() => refreshPppoe(d._id)}
-                          disabled={busy === `rpppoe-${d._id}`}
-                        >
-                          {busy === `rpppoe-${d._id}`
-                            ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                            : <RotateCcw className="w-3 h-3 mr-1" />}
-                          Leer de la ONU
-                        </Button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-3 pt-2 space-y-3">
-                      {(pppoeCurrent[d._id] || []).length > 0 ? (
-                        <div className="rounded-md border bg-background/60 p-2 space-y-1 text-xs">
-                          {(pppoeCurrent[d._id] || []).map((c) => (
-                            <div key={c.path} className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                              <span>
-                                <span className="text-muted-foreground mr-1">Usuario:</span>
-                                <span className="font-mono">{c.username || "—"}</span>
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <span className="text-muted-foreground">Clave:</span>
-                                <span className="font-mono">
-                                  {c.password ? (showPppoePass[d._id] ? c.password : "••••••••") : "—"}
-                                </span>
-                                {c.password && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-5 px-1 text-[10px]"
-                                    onClick={() => setShowPppoePass((s) => ({ ...s, [d._id]: !s[d._id] }))}
-                                  >
-                                    {showPppoePass[d._id] ? "ocultar" : "ver"}
-                                  </Button>
-                                )}
-                              </span>
-                              <Badge variant={c.status === "Connected" ? "default" : "secondary"} className="text-[10px]">
-                                {c.status || "—"}
-                              </Badge>
-                              {c.ip && <span className="font-mono text-muted-foreground">{c.ip}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Sin datos PPPoE leídos. Use “Leer de la ONU”. Muchas ONUs no reportan la contraseña PPPoE por TR-069.
-                        </p>
-                      )}
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Usuario</Label>
-                          <Input
-                            className="h-8 text-xs"
-                            value={form.username}
-                            onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, username: e.target.value } }))}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Contraseña</Label>
-                          <div className="flex gap-1">
-                            <Input
-                              className="h-8 text-xs"
-                              type={showPppoePass[d._id] ? "text" : "password"}
-                              value={form.password}
-                              onChange={(e) => setPppoe((p) => ({ ...p, [d._id]: { ...form, password: e.target.value } }))}
-                            />
-                            <Button
-                              size="sm" variant="ghost" className="h-8 px-2"
-                              onClick={() => setShowPppoePass((s) => ({ ...s, [d._id]: !s[d._id] }))}
-                            >
-                              {showPppoePass[d._id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                            </Button>
+      {/* Tabla de ONUs */}
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead className="min-w-[220px]">ONU / Cliente</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="min-w-[150px]">Potencia óptica</TableHead>
+                <TableHead className="hidden md:table-cell">Wi-Fi</TableHead>
+                <TableHead className="hidden lg:table-cell">PPPoE</TableHead>
+                <TableHead className="hidden sm:table-cell">Último reporte</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-32 text-center text-sm text-muted-foreground">
+                    {loading ? (
+                      <Loader2 className="w-5 h-5 mx-auto animate-spin" />
+                    ) : devices.length === 0 ? (
+                      "Aún no hay ONUs conectadas al ACS."
+                    ) : (
+                      "Ninguna ONU coincide con el filtro."
+                    )}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                visible.map((id) => {
+                  const sig = signals[id];
+                  const off = isOffline(sig?.lastInform);
+                  const radios = (sig?.radios || []).filter((r) => r.ssid);
+                  const activeRadios = radios.filter((r) => r.enabled);
+                  return (
+                    <TableRow key={id} className="cursor-pointer" onClick={() => openDevice(id)}>
+                      <TableCell>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${off ? "bg-destructive" : "bg-success"}`} />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{displayName(id)}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {sig?.manufacturer} {sig?.model} · <span className="font-mono">{sig?.serial}</span>
+                            </p>
                           </div>
                         </div>
-                        <Button size="sm" onClick={() => savePppoe(d._id)} disabled={busy === `pppoe-${d._id}`}>
-                          {busy === `pppoe-${d._id}` && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
-                          Aplicar PPPoE
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </CardContent>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={off ? "destructive" : "secondary"} className="text-[11px]">
+                          {off ? "Desconectada" : "En línea"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <OpticalMeter compact rx={sig?.rxPower ?? null} tx={sig?.txPower ?? null} dimmed={off} />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {activeRadios.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {activeRadios.slice(0, 2).map((r) => (
+                              <Badge key={r.index} variant="outline" className="text-[10px] font-normal">
+                                <Wifi className="w-3 h-3 mr-1 text-primary" />
+                                {r.ssid} · {r.band}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{radios.length ? "apagadas" : "sin datos"}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-sm font-mono">
+                        {pppoeNames[id] || "—"}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
+                        {sinceLabel(sig?.lastInform)}
+                      </TableCell>
+                      <TableCell>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
-            </Card>
-          );
-        })
-      )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      {/* Panel detallado */}
+      <Dialog open={!!selected} onOpenChange={(o) => { if (!o) { setSelected(null); setEditingAlias(null); } }}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex flex-wrap items-center gap-2 pr-6">
+                  <Antenna className="h-5 w-5 text-primary" />
+                  {editingAlias === selected ? (
+                    <span className="flex items-center gap-1">
+                      <Input
+                        autoFocus
+                        className="h-8 w-56"
+                        placeholder="Nombre del cliente"
+                        value={aliasDraft}
+                        onChange={(e) => setAliasDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveAlias(selected);
+                          if (e.key === "Escape") setEditingAlias(null);
+                        }}
+                      />
+                      <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => saveAlias(selected)} disabled={busy === `alias-${selected}`}>
+                        {busy === `alias-${selected}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditingAlias(null)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="truncate">{displayName(selected)}</span>
+                      <Button
+                        size="sm" variant="ghost" className="h-7 px-2"
+                        onClick={() => { setEditingAlias(selected); setAliasDraft(aliases[selected] || ""); }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                  <Badge variant={selOffline ? "destructive" : "secondary"}>
+                    {selOffline ? "Desconectada" : "En línea"}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="font-mono text-xs">
+                  {sel?.manufacturer} {sel?.model} · {sel?.serial}
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Barra de acciones rápidas */}
+              <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-2">
+                <Button size="sm" variant="outline" onClick={() => refreshSignal(selected)} disabled={busy === `sig-${selected}`}>
+                  {busy === `sig-${selected}` ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Signal className="h-3.5 w-3.5 mr-2" />}
+                  Refrescar señal
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => refreshPppoe(selected)} disabled={busy === `rpppoe-${selected}`}>
+                  {busy === `rpppoe-${selected}` ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Network className="h-3.5 w-3.5 mr-2" />}
+                  Refrescar PPPoE
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => refreshParams(selected)} disabled={busy === `tr069-${selected}`}>
+                  {busy === `tr069-${selected}` ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Cpu className="h-3.5 w-3.5 mr-2" />}
+                  Leer parámetros TR-069
+                </Button>
+              </div>
+
+              <Tabs defaultValue="general">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="general">Estado y óptica</TabsTrigger>
+                  <TabsTrigger value="wifi">Wi-Fi dual band</TabsTrigger>
+                  <TabsTrigger value="red">Red / PPPoE</TabsTrigger>
+                </TabsList>
+
+                {/* TAB 1 */}
+                <TabsContent value="general" className="space-y-4 pt-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <OpticalMeter rx={sel?.rxPower ?? null} tx={sel?.txPower ?? null} dimmed={selOffline} />
+                    <div className="rounded-lg border divide-y">
+                      {[
+                        { label: "Uptime", value: formatUptime(selMeta?.uptime ?? null), icon: Clock },
+                        { label: "Modelo", value: selMeta?.model || sel?.model || "—", icon: Antenna },
+                        { label: "Firmware", value: selMeta?.softwareVersion || "—", icon: Cpu },
+                        { label: "Último reporte", value: sinceLabel(sel?.lastInform), icon: Activity },
+                      ].map((row) => (
+                        <div key={row.label} className="flex items-center justify-between gap-3 px-4 py-3">
+                          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <row.icon className="h-4 w-4" /> {row.label}
+                          </span>
+                          <span className="text-sm font-medium truncate">{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border p-4 space-y-2">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Alias del cliente</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={editingAlias === selected ? aliasDraft : (aliases[selected] || "")}
+                        placeholder="Ej. Juan Pérez — Calle 5"
+                        onChange={(e) => { setEditingAlias(selected); setAliasDraft(e.target.value); }}
+                      />
+                      <Button onClick={() => saveAlias(selected)} disabled={busy === `alias-${selected}`}>
+                        {busy === `alias-${selected}` && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        Guardar
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Si la ONU reporta usuario PPPoE, ese nombre tiene prioridad en los listados.
+                    </p>
+                  </div>
+                </TabsContent>
+
+                {/* TAB 2 */}
+                <TabsContent value="wifi" className="pt-4">
+                  <OnuRadiosPanel deviceId={selected} />
+                </TabsContent>
+
+                {/* TAB 3 */}
+                <TabsContent value="red" className="space-y-4 pt-4">
+                  {(pppoeCurrent[selected] || []).length > 0 ? (
+                    <div className="rounded-lg border divide-y">
+                      {(pppoeCurrent[selected] || []).map((c: any) => (
+                        <div key={c.path} className="grid gap-2 p-4 sm:grid-cols-4 sm:items-center">
+                          <div>
+                            <p className="text-[11px] uppercase text-muted-foreground">Usuario</p>
+                            <p className="font-mono text-sm">{c.username || "—"}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase text-muted-foreground">Clave</p>
+                            <p className="font-mono text-sm flex items-center gap-1">
+                              {c.password ? (showPppoePass[selected] ? c.password : "••••••••") : "—"}
+                              {c.password && (
+                                <Button size="sm" variant="ghost" className="h-6 px-1"
+                                  onClick={() => setShowPppoePass((s) => ({ ...s, [selected]: !s[selected] }))}>
+                                  {showPppoePass[selected] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                </Button>
+                              )}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase text-muted-foreground">Estado</p>
+                            <Badge variant={c.status === "Connected" ? "secondary" : "outline"} className="text-[11px]">
+                              {c.status || "—"}
+                            </Badge>
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase text-muted-foreground">IP</p>
+                            <p className="font-mono text-sm">{c.ip || "—"}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      Sin datos PPPoE leídos. Use “Refrescar PPPoE”. Muchas ONUs no reportan la contraseña por TR-069.
+                    </p>
+                  )}
+
+                  <div className="rounded-lg border p-4 space-y-3">
+                    <p className="text-sm font-medium flex items-center gap-2"><Network className="h-4 w-4" /> Aplicar credenciales PPPoE</p>
+                    <div className="grid gap-3 sm:grid-cols-3 sm:items-end">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Usuario</Label>
+                        <Input
+                          value={selForm.username}
+                          onChange={(e) => setPppoe((p) => ({ ...p, [selected]: { ...selForm, username: e.target.value } }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Contraseña</Label>
+                        <div className="flex gap-1">
+                          <Input
+                            type={showPppoePass[selected] ? "text" : "password"}
+                            value={selForm.password}
+                            onChange={(e) => setPppoe((p) => ({ ...p, [selected]: { ...selForm, password: e.target.value } }))}
+                          />
+                          <Button variant="ghost" size="icon" onClick={() => setShowPppoePass((s) => ({ ...s, [selected]: !s[selected] }))}>
+                            {showPppoePass[selected] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                      <Button onClick={() => savePppoe(selected)} disabled={busy === `pppoe-${selected}`}>
+                        {busy === `pppoe-${selected}` && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        Aplicar PPPoE
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

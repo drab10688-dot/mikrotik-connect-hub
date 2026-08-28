@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api-client";
+import KpiCard, { KpiTone } from "@/components/dashboard/KpiCard";
+import OpticalMeter from "@/components/onu/OpticalMeter";
 import { Antenna, Wifi, Server, Settings, Activity, SignalHigh, SignalLow, RefreshCw } from "lucide-react";
+
 
 interface OverviewEntry {
   deviceId: string;
@@ -28,13 +31,6 @@ const isOffline = (lastInform: string | null) => {
   const t = new Date(lastInform).getTime();
   if (!Number.isFinite(t)) return true;
   return Date.now() - t > OFFLINE_AFTER_MS;
-};
-
-const signalTone = (dbm: number | null) => {
-  if (dbm === null) return "text-muted-foreground";
-  if (dbm > -20) return "text-emerald-500";
-  if (dbm > -25) return "text-amber-500";
-  return "text-destructive";
 };
 
 const sinceLabel = (lastInform: string | null) => {
@@ -79,13 +75,14 @@ const Dashboard = () => {
   const critical = devices.filter((d) => d.rxPower !== null && d.rxPower <= -28);
   const withWifi = devices.filter((d) => (d.activeSsids?.length || 0) > 0);
 
-  const stats = [
-    { label: "ONUs registradas", value: devices.length, icon: Antenna, tone: "text-primary bg-primary/10" },
-    { label: "En línea", value: online.length, icon: Activity, tone: "text-emerald-500 bg-emerald-500/10" },
-    { label: "Desconectadas", value: offline, icon: SignalLow, tone: "text-destructive bg-destructive/10" },
-    { label: "Señal crítica", value: critical.length, icon: SignalHigh, tone: "text-amber-500 bg-amber-500/10" },
-    { label: "Con WiFi activo", value: withWifi.length, icon: Wifi, tone: "text-sky-500 bg-sky-500/10" },
+  const stats: { label: string; value: number; icon: typeof Antenna; tone: KpiTone; hint?: string }[] = [
+    { label: "Total registradas", value: devices.length, icon: Antenna, tone: "neutral" },
+    { label: "En línea", value: online.length, icon: Activity, tone: "success" },
+    { label: "Desconectadas", value: offline, icon: SignalLow, tone: "danger" },
+    { label: "Señal crítica", value: critical.length, icon: SignalHigh, tone: "warning", hint: "≤ −28 dBm" },
+    { label: "Wi-Fi activo", value: withWifi.length, icon: Wifi, tone: "info" },
   ];
+
 
   const quickActions = [
     { title: "Gestión de ONUs", description: "Señal, WiFi, PPPoE y alias", icon: Antenna, path: "/onus" },
@@ -117,23 +114,21 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
           {stats.map((s) => (
-            <Card key={s.label}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs md:text-sm font-medium text-muted-foreground">{s.label}</p>
-                    <h3 className="text-2xl md:text-3xl font-bold mt-2">{loading ? "…" : s.value}</h3>
-                  </div>
-                  <div className={`w-11 h-11 rounded-full flex items-center justify-center ${s.tone}`}>
-                    <s.icon className="w-5 h-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <KpiCard
+              key={s.label}
+              label={s.label}
+              value={s.value}
+              icon={s.icon}
+              tone={s.tone}
+              hint={s.hint}
+              loading={loading}
+              onClick={() => navigate("/onus")}
+            />
           ))}
         </div>
+
 
         <Card className="mb-8">
           <CardHeader>
@@ -181,7 +176,7 @@ const Dashboard = () => {
                     <TableHead>ONU</TableHead>
                     <TableHead>PPPoE</TableHead>
                     <TableHead>WiFi</TableHead>
-                    <TableHead>RX</TableHead>
+                    <TableHead className="min-w-[150px]">Potencia óptica</TableHead>
                     <TableHead className="text-right">Estado</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -202,9 +197,10 @@ const Dashboard = () => {
                       <TableCell className="text-xs">
                         {d.activeSsids?.length ? d.activeSsids.join(" · ") : "—"}
                       </TableCell>
-                      <TableCell className={`font-mono text-sm ${signalTone(d.rxPower)}`}>
-                        {d.rxPower !== null ? `${d.rxPower.toFixed(2)} dBm` : "—"}
+                      <TableCell>
+                        <OpticalMeter compact rx={d.rxPower} tx={d.txPower} dimmed={isOffline(d.lastInform)} />
                       </TableCell>
+
                       <TableCell className="text-right">
                         {isOffline(d.lastInform) ? (
                           <Badge variant="destructive">Desconectada</Badge>

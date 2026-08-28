@@ -44,6 +44,13 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
+    /* Visor de código (siempre oscuro) */
+    --code-background: 222 30% 11%;
+    --code-header: 222 26% 16%;
+    --code-foreground: 210 30% 88%;
+    --code-muted: 215 15% 65%;
+    --code-border: 222 22% 22%;
+
     --sidebar-background: 220 20% 14%;
     --sidebar-foreground: 220 10% 85%;
     --sidebar-primary: 217 91% 60%;
@@ -111,6 +118,12 @@ All colors MUST be HSL.
     --border: 220 15% 18%;
     --input: 220 15% 18%;
     --ring: 217 91% 60%;
+
+    --code-background: 222 30% 9%;
+    --code-header: 222 26% 14%;
+    --code-foreground: 210 30% 90%;
+    --code-muted: 215 15% 65%;
+    --code-border: 222 22% 20%;
 
     /* Chart colors - vibrant for dark mode */
     --chart-1: 217 91% 65%;

@@ -166,11 +166,19 @@ const IspAcs = () => {
                 <Field label="Clave ACS" value={acs.acs_password} />
                 <Field label="Connection Request usuario" value={acs.connection_request_username} />
                 <Field label="Connection Request clave" value={acs.connection_request_password} />
-                <div className="md:col-span-2 flex flex-wrap gap-2 pt-1">
+                <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-1">
+                  <Badge className="bg-success text-success-foreground hover:bg-success">Token activo</Badge>
+                  <code className="rounded-md border bg-muted px-2 py-1 font-mono text-xs">
+                    {acs.token.slice(0, 6)}…{acs.token.slice(-4)}
+                  </code>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(acs.token)} aria-label="Copiar token ACS">
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
                   <Badge variant="secondary">Inform: {acs.inform_interval}s</Badge>
                   <Badge variant="secondary">STUN: desactivado (se usa la VPN)</Badge>
                   <Badge variant="secondary">Subred VPN: {acs.vpn_subnet}</Badge>
                 </div>
+
               </>
             )}
           </CardContent>
@@ -207,28 +215,40 @@ const IspAcs = () => {
             {script && (
               <>
                 <Separator />
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => downloadScript(script, peerName)}>
-                    <Download className="h-4 w-4 mr-2" /> Descargar .rsc
-                  </Button>
-                  <Button size="sm" onClick={() => copy(script)}>
-                    <Copy className="h-4 w-4 mr-2" /> Copiar script
-                  </Button>
+                <div className="overflow-hidden rounded-lg border border-code-border bg-code shadow-md">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-code-border bg-code-header px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex gap-1.5" aria-hidden>
+                        <i className="h-2.5 w-2.5 rounded-full bg-destructive/80" />
+                        <i className="h-2.5 w-2.5 rounded-full bg-warning/80" />
+                        <i className="h-2.5 w-2.5 rounded-full bg-success/80" />
+                      </span>
+                      <span className="font-mono text-xs text-code-muted">omnisync-{peerName || "mikrotik"}.rsc</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" className="h-7 text-code-foreground hover:bg-code-header/60 hover:text-code-foreground" onClick={() => downloadScript(script, peerName)}>
+                        <Download className="h-3.5 w-3.5 mr-1.5" /> Descargar .rsc
+                      </Button>
+                      <Button size="sm" className="h-7" onClick={() => copy(script)}>
+                        <Copy className="h-3.5 w-3.5 mr-1.5" /> Copiar script
+                      </Button>
+                    </div>
+                  </div>
+                  <textarea
+                    readOnly
+                    value={script}
+                    onFocus={(e) => e.currentTarget.select()}
+                    spellCheck={false}
+                    className="h-96 w-full resize-y bg-code p-4 text-xs font-mono leading-relaxed text-code-foreground outline-none"
+                    aria-label="Script para la MikroTik"
+                  />
                 </div>
-                <textarea
-                  readOnly
-                  value={script}
-                  onFocus={(e) => e.currentTarget.select()}
-                  spellCheck={false}
-                  className="h-96 w-full resize-y rounded-md bg-muted p-4 text-xs font-mono"
-                  aria-label="Script para la MikroTik"
-                />
                 <p className="text-xs text-muted-foreground">
                   Si el botón no copia (navegador restringido), haz clic dentro del recuadro y usa Ctrl+C.
                 </p>
               </>
-
             )}
+
 
             {!!vpn?.peers?.length && (
               <div className="space-y-2">
