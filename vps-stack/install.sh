@@ -955,9 +955,8 @@ if [ -n "${GENIEACS_NBI_URL:-}" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs
   GENIEACS_EXTERNAL=1
 fi
 if [ "$GENIEACS_EXTERNAL" = "0" ]; then
-  check_service "MongoDB (ACS)" "omnisync-mongo"
-  check_service "GenieACS TR-069" "omnisync-genieacs"
-  check_service "coturn (STUN)" "omnisync-coturn"
+   check_service "MongoDB (ACS)" "omnisync-mongo"
+   check_service "GenieACS TR-069" "omnisync-genieacs"
 
   # No basta con que el contenedor figure como running: valida los servicios
   # que usa la ONU y el panel. CWMP responde 405 a GET cuando está sano.
