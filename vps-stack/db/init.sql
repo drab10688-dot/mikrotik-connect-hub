@@ -759,7 +759,13 @@ VALUES (
   'admin@omnisync.local',
   crypt('admin123', gen_salt('bf')),
   'Super Admin'
-);
+)
+ON CONFLICT (email) DO NOTHING;
+
+-- Rol super_admin para el usuario por defecto
+INSERT INTO user_roles (user_id, role)
+SELECT id, 'super_admin'::app_role FROM users WHERE email = 'admin@omnisync.local'
+ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Ubiquiti airOS Devices
