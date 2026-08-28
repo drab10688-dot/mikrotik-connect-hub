@@ -25,10 +25,42 @@ interface AcsInfo {
   stun_enable: boolean;
 }
 
-const copy = (value: string) => {
-  navigator.clipboard.writeText(value);
-  toast.success("Copiado");
+/** Copia robusta: funciona también dentro de iframes y sin HTTPS. */
+const copyText = async (value: string) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copiado");
+      return;
+    }
+  } catch {
+    /* se usa el respaldo */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "0";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const okCopy = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (okCopy) toast.success("Copiado");
+    else toast.error("No se pudo copiar: selecciona el texto y usa Ctrl+C");
+  } catch {
+    toast.error("No se pudo copiar: selecciona el texto y usa Ctrl+C");
+  }
 };
+
+const copy = (value: string) => {
+  void copyText(value);
+};
+
 
 const Field = ({ label, value }: { label: string; value: string }) => (
   <div className="space-y-1.5">
