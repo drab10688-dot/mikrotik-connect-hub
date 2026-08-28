@@ -102,6 +102,11 @@ fi
 modprobe af_key    2>/dev/null || true
 modprobe ip_tables 2>/dev/null || true
 modprobe xfrm_user 2>/dev/null || true
+# Soporte L2TP en kernel (sin esto xl2tpd no levanta sesiones PPP)
+for m in l2tp_core l2tp_netlink l2tp_ppp pppol2tp ppp_generic ppp_async ppp_mppe; do
+  modprobe "$m" 2>/dev/null || true
+done
+printf 'af_key\nl2tp_core\nl2tp_netlink\nl2tp_ppp\npppol2tp\nppp_generic\nppp_mppe\n' > /etc/modules-load.d/omnisync-l2tp.conf 2>/dev/null || true
 
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null || echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
