@@ -188,7 +188,7 @@ if [ ! -s "$CMS_INSTALLER" ]; then
     -o "$CMS_INSTALLER" "$CMS_SCRIPT_URL"
 fi
 echo -e "${YELLOW}Instalando CMS C-Data (TR-069 por WireGuard ${WG_SUBNET%.*}.1)...${NC}"
-CMS_TENANT_TYPE="$CMS_TENANT_TYPE" ACS_HOST="${WG_SUBNET%.*}.1" WG_IP="${WG_SUBNET%.*}.1" \
+CMS_TENANT_TYPE="$CMS_TENANT_TYPE" CMS_TENANT_NONINTERACTIVE=1 ACS_HOST="${WG_SUBNET%.*}.1" WG_IP="${WG_SUBNET%.*}.1" \
   bash "$CMS_INSTALLER" < /dev/null
 
 # ── Generador de configuración para MikroTik ──────────────
