@@ -17,17 +17,39 @@ VPS_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 CMS_SKIP_TENANT_PROMPT="${CMS_SKIP_TENANT_PROMPT:-0}"
 CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
 
-normalize_cms_channels() {
-  echo -e "${YELLOW}Normalizando canales TR-069/MQTT del CMS...${NC}"
+# ── TR-069 / MQTT por WireGuard ──
+# Las ONUs alcanzan el VPS por el túnel (MikroTik ↔ WireGuard), no por la IP
+# pública: mucho menos latencia y sin depender de NAT/STUN.
+# Puedes forzar otra IP con ACS_HOST=<ip>.
+WG_IP="${WG_IP:-10.13.13.1}"
+ACS_HOST="${ACS_HOST:-$WG_IP}"
 
-  if docker exec cms-mysql sh -c "mysql -uroot -p\"\${MYSQL_ROOT_PASSWORD}\" --default-character-set=utf8mb4 ccssx_boot -e \"UPDATE iot_channel SET channel_url='${VPS_IP}:9909/v1/acs', channel_port=9909 WHERE channel_id=1; UPDATE iot_channel SET channel_url='${VPS_IP}', channel_port=1883 WHERE channel_id=2;\""; then
+purge_uisp() {
+  echo -e "${YELLOW}Eliminando UISP (Ubiquiti) si está instalado...${NC}"
+  systemctl stop unms.service >/dev/null 2>&1 || true
+  systemctl disable unms.service >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/unms.service >/dev/null 2>&1 || true
+  for c in $(docker ps -aq --filter "name=unms" 2>/dev/null) $(docker ps -aq --filter "name=uisp" 2>/dev/null); do
+    docker rm -f "$c" >/dev/null 2>&1 || true
+  done
+  docker volume ls -q 2>/dev/null | grep -Ei 'unms|uisp' | xargs -r docker volume rm >/dev/null 2>&1 || true
+  rm -rf /home/unms >/dev/null 2>&1 || true
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  echo -e "${GREEN}✓ UISP eliminado${NC}"
+}
+
+normalize_cms_channels() {
+  echo -e "${YELLOW}Normalizando canales TR-069/MQTT del CMS (host: ${ACS_HOST})...${NC}"
+
+  if docker exec cms-mysql sh -c "mysql -uroot -p\"\${MYSQL_ROOT_PASSWORD}\" --default-character-set=utf8mb4 ccssx_boot -e \"UPDATE iot_channel SET channel_url='${ACS_HOST}:9909/v1/acs', channel_port=9909 WHERE channel_id=1; UPDATE iot_channel SET channel_url='${ACS_HOST}', channel_port=1883 WHERE channel_id=2;\""; then
     docker exec cms-redis redis-cli FLUSHALL >/dev/null 2>&1 || true
     docker restart cms-boot >/dev/null 2>&1 || true
-    echo -e "${GREEN}✓ Canales del CMS normalizados${NC}"
+    echo -e "${GREEN}✓ Canales del CMS apuntando a ${ACS_HOST} (WireGuard)${NC}"
   else
     echo -e "${YELLOW}⚠ No se pudo normalizar iot_channel automáticamente${NC}"
   fi
 }
+
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
