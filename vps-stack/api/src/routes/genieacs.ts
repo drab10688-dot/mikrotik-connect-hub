@@ -1,5 +1,5 @@
-import { Router, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
+import { Router, Response, NextFunction } from 'express';
+import { AuthRequest, getAccessibleDeviceIds } from '../middleware/auth';
 import { pool } from '../lib/db';
 import {
   ensureAcsSignalTables,
