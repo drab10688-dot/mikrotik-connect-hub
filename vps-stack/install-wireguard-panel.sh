@@ -187,7 +187,6 @@ Requires=docker.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/omnisync-wg-route
-RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target

@@ -19,6 +19,7 @@ Variables de entorno:
 
 import base64
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -131,7 +132,15 @@ def routeros_script(conf, extra_nets=""):
         raise RuntimeError("Configuración de peer incompleta")
 
     psk_line = f'  preshared-key="{psk}" \\\n' if psk else ""
-    nets = [f"{SUBNET}.0/24"] + [n.strip() for n in extra_nets.split(",") if n.strip()]
+    nets = [f"{SUBNET}.0/24"]
+    for raw_net in extra_nets.split(","):
+        raw_net = raw_net.strip()
+        if not raw_net:
+            continue
+        try:
+            nets.append(str(ipaddress.ip_network(raw_net, strict=False)))
+        except ValueError as exc:
+            raise RuntimeError(f"Red inválida: {raw_net}") from exc
     allowed = ",".join(nets)
 
     return f"""# ============================================
@@ -371,7 +380,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(n) or b"{}")
-            create_client((body.get("name") or "peer").strip())
+            name = (body.get("name") or "").strip()
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name):
+                return self._send(400, "Usa de 1 a 64 caracteres: letras, números, punto, guion o guion bajo")
+            create_client(name)
             self._send(200, json.dumps({"ok": True}), "application/json")
         except Exception as e:  # noqa: BLE001
             self._send(500, f"Error: {e}")
