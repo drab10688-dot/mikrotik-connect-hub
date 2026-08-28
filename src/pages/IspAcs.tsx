@@ -123,10 +123,30 @@ const IspAcs = () => {
     queryFn: async () => (await api<{ data: any }>("/isp/vpn")).data,
   });
 
-  const rotate = useMutation({
-    mutationFn: () => api("/isp/acs/rotate", { method: "POST" }),
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({});
+
+  const startEdit = () => {
+    if (!acs) return;
+    setForm({
+      acs_username: acs.acs_username || "",
+      acs_password: acs.acs_password || "",
+      connection_request_username: acs.connection_request_username || "",
+      connection_request_password: acs.connection_request_password || "",
+      stun_host: acs.stun_host || "",
+      stun_port: String(acs.stun_port ?? ""),
+      stun_username: acs.stun_username || "",
+      stun_password: acs.stun_password || "",
+      inform_interval: String(acs.inform_interval ?? ""),
+    });
+    setEditing(true);
+  };
+
+  const saveCreds = useMutation({
+    mutationFn: () => api("/isp/acs/credentials", { method: "PUT", body: form }),
     onSuccess: () => {
-      toast.success("Nuevo enlace TR-069 generado");
+      toast.success("Credenciales actualizadas");
+      setEditing(false);
       queryClient.invalidateQueries({ queryKey: ["isp-acs"] });
     },
     onError: (e: any) => toast.error(e.message),
