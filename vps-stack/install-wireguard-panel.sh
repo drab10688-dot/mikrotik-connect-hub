@@ -157,9 +157,25 @@ WantedBy=multi-user.target
 EOF
 
 cat > /usr/local/sbin/omnisync-wg-route <<EOF
-#!/bin/sh
-IP=\$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null)
-[ -n "\$IP" ] && ip route replace ${WG_BASE}.0/24 via "\$IP"
+#!/bin/bash
+set -u
+for _ in \$(seq 1 30); do
+  IP=\$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+  docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 && [ -n "\$IP" ] && break
+  sleep 2
+done
+[ -n "\${IP:-}" ] || exit 1
+ip route replace ${WG_BASE}.0/24 via "\$IP"
+
+# Lleva los servicios instalados después en el host (CMS web, ACS y MQTT)
+# hasta la IP gateway de WireGuard. Las reglas son idempotentes.
+GW=\$(docker exec omnisync-wireguard sh -c "ip route | awk '/default/{print \\$3; exit}'" 2>/dev/null || true)
+[ -n "\$GW" ] || exit 0
+for SPEC in 18080:18080 9909:9909 1883:1883; do
+  DPORT=\${SPEC%%:*}; HPORT=\${SPEC##*:}
+  docker exec omnisync-wireguard sh -c \
+    "iptables -t nat -C PREROUTING -i wg0 -d ${WG_BASE}.1 -p tcp --dport \$DPORT -j DNAT --to-destination \$GW:\$HPORT 2>/dev/null || iptables -t nat -A PREROUTING -i wg0 -d ${WG_BASE}.1 -p tcp --dport \$DPORT -j DNAT --to-destination \$GW:\$HPORT"
+done
 EOF
 chmod +x /usr/local/sbin/omnisync-wg-route
 cat > /etc/systemd/system/omnisync-wg-route.service <<'EOF'
@@ -177,9 +193,23 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
+cat > /etc/systemd/system/omnisync-wg-route.timer <<'EOF'
+[Unit]
+Description=Verifica rutas y enlace de servicios OmniSync VPN
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=omnisync-wg-route.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl daemon-reload
 systemctl enable --now omnisync-mt-panel.service >/dev/null
 systemctl enable omnisync-wg-route.service >/dev/null
+systemctl enable --now omnisync-wg-route.timer >/dev/null
 /usr/local/sbin/omnisync-wg-route || true
 
 STAGE="firewall"
