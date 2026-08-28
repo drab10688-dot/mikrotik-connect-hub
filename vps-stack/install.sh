@@ -993,10 +993,17 @@ if [ "$GENIEACS_EXTERNAL" = "1" ]; then
   echo -e "  ${GREEN}✓ GenieACS externo — NBI: ${GENIEACS_NBI_URL}${NC}"
 else
   echo -e "  ${GREEN}✓ GenieACS integrado — UI: http://$VPS_IP:3001 (admin/admin)${NC}"
-  echo -e "  ${GREEN}  ACS URL para las ONUs: http://$VPS_IP:7547${NC}"
+  echo -e "  ${GREEN}  ACS URL recomendada (WireGuard): http://10.13.13.1:7547${NC}"
+  echo -e "  ${GREEN}  ACS URL alterna (IP pública):    http://$VPS_IP:7547${NC}"
   echo -e "  ${GREEN}  STUN (coturn) p/ Connection Request: $VPS_IP:3478 (acs/acs)${NC}"
   echo -e "  ${GREEN}  Panel gráfico OmniSync: http://$VPS_IP/onu-management${NC}"
 fi
+
+echo ""
+echo -e "${CYAN}CMS C-Data (OLT/ONU):${NC}"
+echo -e "  Instalar/actualizar: ${GREEN}bash $INSTALL_DIR/install-cms.sh${NC}"
+echo -e "  Web: ${GREEN}http://$VPS_IP:18080${NC} (root/adminisp) · Panel: ${GREEN}http://$VPS_IP/cms/${NC}"
+echo -e "  TR-069 por WireGuard: ${GREEN}http://10.13.13.1:9909/v1/acs${NC} · MQTT ${GREEN}10.13.13.1:1883${NC}"
 
 # Check optional services (informational only)
 echo ""
