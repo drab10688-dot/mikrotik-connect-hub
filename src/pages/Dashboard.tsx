@@ -79,13 +79,14 @@ const Dashboard = () => {
   const critical = devices.filter((d) => d.rxPower !== null && d.rxPower <= -28);
   const withWifi = devices.filter((d) => (d.activeSsids?.length || 0) > 0);
 
-  const stats = [
-    { label: "ONUs registradas", value: devices.length, icon: Antenna, tone: "text-primary bg-primary/10" },
-    { label: "En línea", value: online.length, icon: Activity, tone: "text-emerald-500 bg-emerald-500/10" },
-    { label: "Desconectadas", value: offline, icon: SignalLow, tone: "text-destructive bg-destructive/10" },
-    { label: "Señal crítica", value: critical.length, icon: SignalHigh, tone: "text-amber-500 bg-amber-500/10" },
-    { label: "Con WiFi activo", value: withWifi.length, icon: Wifi, tone: "text-sky-500 bg-sky-500/10" },
+  const stats: { label: string; value: number; icon: typeof Antenna; tone: KpiTone; hint?: string }[] = [
+    { label: "Total registradas", value: devices.length, icon: Antenna, tone: "neutral" },
+    { label: "En línea", value: online.length, icon: Activity, tone: "success" },
+    { label: "Desconectadas", value: offline, icon: SignalLow, tone: "danger" },
+    { label: "Señal crítica", value: critical.length, icon: SignalHigh, tone: "warning", hint: "≤ −28 dBm" },
+    { label: "Wi-Fi activo", value: withWifi.length, icon: Wifi, tone: "info" },
   ];
+
 
   const quickActions = [
     { title: "Gestión de ONUs", description: "Señal, WiFi, PPPoE y alias", icon: Antenna, path: "/onus" },
