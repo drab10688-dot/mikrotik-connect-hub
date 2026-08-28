@@ -129,8 +129,8 @@ if [ -z "$VPS_IP" ]; then
   exit 1
 fi
 
-# ── Tipo de tenant (pregunta solo si hay TTY; por defecto isp) ──
-if [ -t 0 ] && [ -e /dev/tty ]; then
+# ── Tipo de tenant (pregunta solo si hay TTY y no viene predefinido) ──
+if [ -z "${CMS_TENANT_NONINTERACTIVE:-}" ] && [ -t 0 ] && [ -e /dev/tty ]; then
   echo -e "${YELLOW}¿Tipo de instalación?${NC}  isp = un solo ISP | multi = multi-tenant"
   read -t 30 -p "Tipo de tenant [multi/isp] (${CMS_TENANT_TYPE}): " _ans < /dev/tty || true
   CMS_TENANT_TYPE=${_ans:-$CMS_TENANT_TYPE}
