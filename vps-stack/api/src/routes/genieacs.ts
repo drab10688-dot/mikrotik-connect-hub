@@ -1141,27 +1141,20 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
       const rx = sanitizePower(
         getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
         ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
         ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
-        ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
-      );
+      ) ?? deepFindPower(device, RX_KEY) ?? null;
+
       const tx = sanitizePower(
         getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
         ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
         ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
-        ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
-      );
+      ) ?? deepFindPower(device, TX_KEY) ?? null;
+
+      const radios = wifiRadios(device);
 
       return {
         deviceId: device._id,
@@ -1170,10 +1163,13 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
         serial: di?.SerialNumber?._value || meta?._SerialNumber || (idParts.length >= 3 ? idParts.slice(2).join('-') : '-'),
         rxPower: rx,
         txPower: tx,
+        radios,
+        activeSsids: radios.filter((r) => r.enabled && r.ssid).map((r) => `${r.ssid} (${r.band})`),
         pppoeUsername: firstPppoeUsername(device),
         alias: aliases[device._id] || null,
         lastInform: device?._lastInform || null,
       };
+
     });
 
     const scope = await getAcsScope(req);
