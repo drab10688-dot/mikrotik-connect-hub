@@ -166,11 +166,19 @@ const IspAcs = () => {
                 <Field label="Clave ACS" value={acs.acs_password} />
                 <Field label="Connection Request usuario" value={acs.connection_request_username} />
                 <Field label="Connection Request clave" value={acs.connection_request_password} />
-                <div className="md:col-span-2 flex flex-wrap gap-2 pt-1">
+                <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-1">
+                  <Badge className="bg-success text-success-foreground hover:bg-success">Token activo</Badge>
+                  <code className="rounded-md border bg-muted px-2 py-1 font-mono text-xs">
+                    {acs.token.slice(0, 6)}…{acs.token.slice(-4)}
+                  </code>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(acs.token)} aria-label="Copiar token ACS">
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
                   <Badge variant="secondary">Inform: {acs.inform_interval}s</Badge>
                   <Badge variant="secondary">STUN: desactivado (se usa la VPN)</Badge>
                   <Badge variant="secondary">Subred VPN: {acs.vpn_subnet}</Badge>
                 </div>
+
               </>
             )}
           </CardContent>
