@@ -290,10 +290,15 @@ for item in docker-compose.yml db nginx radius mariadb-init phpnuxbill; do
   fi
 done
 
-# Copy deploy scripts
+# Copy deploy & helper scripts
 cp "$TMP_DIR/app/vps-stack/deploy-frontend.sh" "$APP_DIR/deploy-frontend.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/deploy-all.sh" "$APP_DIR/deploy-all.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/repair-nuxbill-auth.sh" "$APP_DIR/repair-nuxbill-auth.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/install-cms.sh" "$APP_DIR/install-cms.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/genieacs-config.sh" "$APP_DIR/genieacs-config.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/recover-mariadb-root.sh" "$APP_DIR/recover-mariadb-root.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/onu-ctl.sh" "$APP_DIR/onu-ctl.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/reinstall-preserve-data.sh" "$APP_DIR/reinstall-preserve-data.sh" 2>/dev/null || true
 chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 
 # ─── Rebuild core containers ───────────────────
