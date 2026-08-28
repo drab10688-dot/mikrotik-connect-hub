@@ -80,16 +80,16 @@ function acsUrls(tenant: any, req: Request) {
     nat_url: `http://${host}:7547/tr069/${tenant.acs_token}/`,
     // URL preferida: dentro del túnel VPN, más rápida y sin exponer el ACS
     vpn_url: `http://${VPN_SERVER_IP}:7547/tr069/${tenant.acs_token}/`,
-    acs_username: 'omnisync',
-    acs_password: tenant.acs_token,
-    connection_request_username: 'omnisync',
-    connection_request_password: tenant.acs_token,
-    inform_interval: 60,
+    acs_username: tenant.acs_username || 'omnisync',
+    acs_password: tenant.acs_password || tenant.acs_token,
+    connection_request_username: tenant.cr_username || 'omnisync',
+    connection_request_password: tenant.cr_password || tenant.acs_token,
+    inform_interval: tenant.inform_interval || 60,
     stun_enable: false,
-    stun_host: host,
-    stun_port: 3478,
-    stun_username: 'acs',
-    stun_password: 'acs',
+    stun_host: tenant.stun_host || host,
+    stun_port: tenant.stun_port || 3478,
+    stun_username: tenant.stun_username || 'acs',
+    stun_password: tenant.stun_password || 'acs',
   };
 }
 
