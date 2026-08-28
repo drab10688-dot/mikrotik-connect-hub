@@ -44,13 +44,14 @@ export const AdminMenu = () => {
         </Link>
         {isAdmin && (
           <Link
-            to="/admin/secretaries"
+            to="/admin/permissions"
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
           >
             <Users className="h-4 w-4" />
-            <span>Asistentes</span>
+            <span>Roles y permisos</span>
           </Link>
         )}
+
       </div>
     </div>
   );
