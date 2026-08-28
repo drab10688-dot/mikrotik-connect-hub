@@ -11,12 +11,34 @@ export const genieacsRouter = Router();
 
 const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs-nbi:7557';
 
+// Credenciales del Connection Request. El usuario es fijo (omnisync) y la
+// contraseña es el token ACS del ISP dueño de la ONU.
+const CR_USERNAME = process.env.ACS_CR_USERNAME || 'omnisync';
+const CR_FALLBACK_PASSWORD = process.env.ACS_CR_PASSWORD || 'omnisync';
+
+// Auth opcional del NBI (si GenieACS se publica detrás de basic-auth).
+function nbiAuthHeader(): Record<string, string> {
+  const user = process.env.GENIEACS_NBI_USER;
+  const pass = process.env.GENIEACS_NBI_PASSWORD;
+  if (!user || !pass) return {};
+  return { Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}` };
+}
+
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
 async function genieFetch(path: string, options: RequestInit = {}) {
+  // Antes de forzar un connection request, el ACS debe conocer las
+  // credenciales correctas de la ONU (omnisync / token del ISP); de lo
+  // contrario la petición se rechaza y la actualización queda en cola.
+  if (path.includes('connection_request')) {
+    const deviceId = decodeURIComponent(path.match(/\/devices\/([^/]+)\/tasks/)?.[1] || '');
+    if (deviceId) await ensureConnectionRequestAuth(deviceId);
+  }
+
   const res = await fetch(`${GENIEACS_NBI}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...nbiAuthHeader(),
       ...(options.headers || {}),
     },
   });
@@ -30,6 +52,50 @@ async function genieFetch(path: string, options: RequestInit = {}) {
   }
   return res.text();
 }
+
+// Cache para no reenviar la misma tarea en cada refresco.
+const crAuthCache = new Map<string, { password: string; at: number }>();
+const CR_AUTH_TTL_MS = 30 * 60 * 1000;
+
+async function connectionRequestPassword(deviceId: string): Promise<string> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT t.acs_token
+         FROM onu_devices o
+         JOIN tenants t ON t.id = o.tenant_id
+        WHERE o.acs_device_id = $1
+        LIMIT 1`,
+      [deviceId]
+    );
+    if (rows[0]?.acs_token) return String(rows[0].acs_token);
+  } catch { /* instalación sin multi-ISP */ }
+  return CR_FALLBACK_PASSWORD;
+}
+
+/** Sincroniza ConnectionRequestUsername/Password de la ONU con el ISP dueño. */
+async function ensureConnectionRequestAuth(deviceId: string): Promise<void> {
+  try {
+    const password = await connectionRequestPassword(deviceId);
+    const cached = crAuthCache.get(deviceId);
+    if (cached && cached.password === password && Date.now() - cached.at < CR_AUTH_TTL_MS) return;
+
+    const roots = ['InternetGatewayDevice', 'Device'];
+    const parameterValues = roots.flatMap((root) => [
+      [`${root}.ManagementServer.ConnectionRequestUsername`, CR_USERNAME, 'xsd:string'],
+      [`${root}.ManagementServer.ConnectionRequestPassword`, password, 'xsd:string'],
+    ]);
+
+    await fetch(`${GENIEACS_NBI}/devices/${encodeURIComponent(deviceId)}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...nbiAuthHeader() },
+      body: JSON.stringify({ name: 'setParameterValues', parameterValues }),
+    });
+    crAuthCache.set(deviceId, { password, at: Date.now() });
+  } catch (error) {
+    console.error('⚠️ No se pudo sincronizar el Connection Request:', error);
+  }
+}
+
 
 // GenieACS NBI no soporta GET /devices/:id (devuelve 405). Se consulta por query.
 async function fetchDevice(deviceId: string, projection?: string): Promise<any> {
