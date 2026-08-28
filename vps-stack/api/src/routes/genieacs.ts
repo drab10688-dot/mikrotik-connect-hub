@@ -188,11 +188,23 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
       // Fallback: al menos devolver identificadores e info básica
        data = await genieFetch('/devices/?projection=_id');
     }
-    res.json({ success: true, data: Array.isArray(data) ? data : [] });
+    const list = Array.isArray(data) ? data : [];
+    const scope = await getAcsScope(req);
+    const visible = scope.unrestricted
+      ? list
+      : list.filter((d: any) =>
+          acsAllows(scope, {
+            deviceId: d?._id,
+            serial: d?._deviceId?._SerialNumber,
+            pppoe: firstPppoeUsername(d),
+          })
+        );
+    res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── Get single device (full tree) ──────────────────────
 genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response) => {
