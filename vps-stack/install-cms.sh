@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================
-# CMS C-Data — Instalación con beryindo/cms
+# CMS C-Data — Instalación NO interactiva
 # Integrado al stack OmniSync (puertos alternos)
 # ============================================
 
@@ -13,9 +13,8 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 CMS_DIR="/opt/cms-cdata"
-VPS_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-CMS_SKIP_TENANT_PROMPT="${CMS_SKIP_TENANT_PROMPT:-0}"
-CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
+CMS_VERSION="${CMS_VERSION:-4.5.14}"
+VPS_IP=$(curl -4 -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 
 # ── TR-069 / MQTT por WireGuard ──
 # Las ONUs alcanzan el VPS por el túnel (MikroTik ↔ WireGuard), no por la IP
@@ -23,6 +22,9 @@ CMS_TENANT_TYPE_DEFAULT="${CMS_TENANT_TYPE_DEFAULT:-isp}"
 # Puedes forzar otra IP con ACS_HOST=<ip>.
 WG_IP="${WG_IP:-10.13.13.1}"
 ACS_HOST="${ACS_HOST:-$WG_IP}"
+
+# Tipo de tenant: isp (un solo ISP) o multi (revender a otros ISPs)
+CMS_TENANT_TYPE="${CMS_TENANT_TYPE:-isp}"
 
 purge_uisp() {
   echo -e "${YELLOW}Eliminando UISP (Ubiquiti) si está instalado...${NC}"
@@ -40,7 +42,6 @@ purge_uisp() {
 
 normalize_cms_channels() {
   echo -e "${YELLOW}Normalizando canales TR-069/MQTT del CMS (host: ${ACS_HOST})...${NC}"
-
   if docker exec cms-mysql sh -c "mysql -uroot -p\"\${MYSQL_ROOT_PASSWORD}\" --default-character-set=utf8mb4 ccssx_boot -e \"UPDATE iot_channel SET channel_url='${ACS_HOST}:9909/v1/acs', channel_port=9909 WHERE channel_id=1; UPDATE iot_channel SET channel_url='${ACS_HOST}', channel_port=1883 WHERE channel_id=2;\""; then
     docker exec cms-redis redis-cli FLUSHALL >/dev/null 2>&1 || true
     docker restart cms-boot >/dev/null 2>&1 || true
@@ -50,11 +51,24 @@ normalize_cms_channels() {
   fi
 }
 
+wait_mysql() {
+  echo -e "${CYAN}Esperando MySQL del CMS...${NC}"
+  for i in $(seq 1 60); do
+    if docker exec -i cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -BN -e "select 1"' &>/dev/null; then
+      echo -e "${GREEN}✓ MySQL listo${NC}"
+      return 0
+    fi
+    sleep 3
+    echo -e "  Esperando MySQL... (${i}/60)"
+  done
+  echo -e "${RED}✗ MySQL no respondió a tiempo${NC}"
+  return 1
+}
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
-echo "║   CMS C-Data — Instalador (beryindo/cms)     ║"
-echo "║   Integrado con OmniSync                      ║"
+echo "║   CMS C-Data — Instalador no interactivo     ║"
+echo "║   Integrado con OmniSync                     ║"
 echo "╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -63,25 +77,21 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# ── Tipo de tenant ──
-echo ""
-echo -e "${YELLOW}¿Qué tipo de instalación deseas?${NC}"
-echo -e "  ${GREEN}isp${NC}   — Un solo ISP (tu empresa)"
-echo -e "  ${GREEN}multi${NC} — Multi-tenant (revender servicio a otros ISPs)"
-
-if [ "$CMS_SKIP_TENANT_PROMPT" = "1" ]; then
-  CMS_TENANT_TYPE="$CMS_TENANT_TYPE_DEFAULT"
-  echo -e "${CYAN}→ Tipo preseleccionado: ${CMS_TENANT_TYPE}${NC}"
-else
-  read -p "Tipo de tenant [multi/isp] (isp): " CMS_TENANT_TYPE < /dev/tty
-  CMS_TENANT_TYPE=${CMS_TENANT_TYPE:-$CMS_TENANT_TYPE_DEFAULT}
-fi
-
-if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
-  echo -e "${RED}Opción inválida. Usa 'multi' o 'isp'${NC}"
+if ! command -v docker >/dev/null 2>&1; then
+  echo -e "${RED}Error: Docker no está instalado. Instala primero el stack OmniSync.${NC}"
   exit 1
 fi
 
+# ── Tipo de tenant (pregunta solo si hay TTY; por defecto isp) ──
+if [ -t 0 ] && [ -e /dev/tty ]; then
+  echo -e "${YELLOW}¿Tipo de instalación?${NC}  isp = un solo ISP | multi = multi-tenant"
+  read -t 30 -p "Tipo de tenant [multi/isp] (${CMS_TENANT_TYPE}): " _ans < /dev/tty || true
+  CMS_TENANT_TYPE=${_ans:-$CMS_TENANT_TYPE}
+fi
+if [[ "$CMS_TENANT_TYPE" != "multi" && "$CMS_TENANT_TYPE" != "isp" ]]; then
+  echo -e "${RED}Opción inválida '${CMS_TENANT_TYPE}'. Usa 'multi' o 'isp'${NC}"
+  exit 1
+fi
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
 # ── Quitar UISP (ya no forma parte del stack) ──
@@ -99,98 +109,106 @@ docker volume ls -q 2>/dev/null | grep -i cms | xargs -r docker volume rm 2>/dev
 rm -rf "$CMS_DIR"
 echo -e "${GREEN}✓ Limpieza completa${NC}"
 
-# ── Descargar e instalar con beryindo/cms ──
+# ── Descargar paquete oficial ──
 mkdir -p "$CMS_DIR"
 cd "$CMS_DIR"
 
-echo -e "${YELLOW}Descargando instalador desde beryindo/cms...${NC}"
-wget -q -O install_docker.sh https://raw.githubusercontent.com/beryindo/cms/refs/heads/main/install_docker.sh
-chmod +x install_docker.sh
+echo -e "${YELLOW}Descargando CMS v${CMS_VERSION} (paquete oficial)...${NC}"
+curl -fsSL -o cms.tar "https://cms.s.cdatayun.com/cms_linux/stable/cms_v${CMS_VERSION}_linux.tar"
+tar -xf cms.tar
+rm -f cms.tar
+chmod +x cms.sh 2>/dev/null || true
+chmod +x -R script 2>/dev/null || true
+echo -e "${GREEN}✓ Paquete descargado${NC}"
 
-# Puertos alternos para coexistir con OmniSync:
-# MySQL: 3307 (OmniSync usa 3306)
-# Redis: 6380 (OmniSync/MariaDB)
-# Web/Nginx: 18080 (OmniSync usa 80)
-# emqx, acs, stun, cms: sin conflicto, puertos default
-echo -e "${YELLOW}Ejecutando instalador con puertos alternos para OmniSync...${NC}"
-echo -e "${CYAN}  MySQL: 3307 | Redis: 6380 | Web: 18080 | Resto: default${NC}"
+# ── Escribir .env con puertos alternos (sin preguntas) ──
+# Puertos elegidos para coexistir con OmniSync:
+#   MySQL 3307 (OmniSync/MariaDB usa 3306) | Redis 6380 | Web 18080/18443
+#   STUN 13478/UDP (coturn de OmniSync ya usa 3478)
+MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
+cat > .env << EOF
+VOLUME_PATH=./
 
-# Respuestas al instalador interactivo:
-# 1. mysql port modify? y → 3307
-# 2. redis port modify? y → 6380
-# 3. emqx port modify? n
-# 4. acs port modify? n
-# 5. stun port modify? n
-# 6. cms service port modify? n
-# 7. nginx port modify? y → 18080
-# 8. data volume modify? n
-# 9. tenant type: isp/multi
-# 10. tenant host: IP
-cat > /tmp/cms_answers.txt << EOF
-y
-3307
-y
-6380
-n
-n
-n
-n
-y
-18080
-n
-${CMS_TENANT_TYPE}
-${VPS_IP}
+REDIS_VERSION=7.2.3.1
+REDIS_PORT=6380
+
+EMQX_VERSION=5.6.0.1
+EMQX_PORT=1883
+
+ROCKET_MQ_VERSION=5.2.0
+ROCKET_MQ_NAMESRV_PORT=9876
+
+MYSQL_VERSION=${CMS_VERSION}
+MYSQL_PORT=3307
+MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+
+CMS_ACS_VERSION=${CMS_VERSION}
+CMS_ACS_PORT=9909
+CMS_ACS_JMX_ENABLE=false
+CMS_ACS_JMX_PORT=9901
+
+CMS_STUN_VERSION=${CMS_VERSION}
+CMS_STUN_PORT=13478
+
+CMS_FTP_VERSION=${CMS_VERSION}
+CMS_FTP_PORT=21
+
+CMS_BOOT_VERSION=${CMS_VERSION}
+CMS_BOOT_PORT=9999
+CMS_BOOT_JMX_ENABLE=false
+CMS_BOOT_JMX_PORT=9991
+
+NGINX_VERSION=${CMS_VERSION}
+NGINX_PORT=18080
+NGINX_PORT_HTTPS=18443
+NGINX_PORT_MQTTS=8883
+
+CMS_HOST=${VPS_IP}
 EOF
+echo -e "${GREEN}✓ .env generado (MySQL 3307, Redis 6380, Web 18080, STUN 13478)${NC}"
 
-set +e
-bash install_docker.sh < /tmp/cms_answers.txt 2>&1 | tee /tmp/cms_install.log
-INSTALL_EXIT=${PIPESTATUS[0]:-1}
-set -e
-rm -f /tmp/cms_answers.txt
+# Directorios de datos con permisos que esperan los contenedores
+mkdir -p data/emqx log/emqx log/redis log/nginx
+chmod -R 777 data/emqx log/emqx log/redis log/nginx
 
-if [ "$INSTALL_EXIT" -ne 0 ]; then
-  echo -e "${YELLOW}⚠ El instalador devolvió código ${INSTALL_EXIT}. Intentando continuar...${NC}"
-fi
+# ── Fase 1: solo MySQL para inicializar tenant ──
+echo -e "${YELLOW}Iniciando MySQL del CMS...${NC}"
+docker compose up -d mysql
+wait_mysql
 
-# ── Esperar estabilización ──
-echo -e "${CYAN}Esperando estabilización de servicios (180s máx)...${NC}"
-for i in $(seq 1 36); do
-  sleep 5
-  if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-mysql.*healthy"; then
-    echo -e "${GREEN}✓ MySQL CMS healthy${NC}"
-    break
-  fi
-  RUNNING=$(docker ps --format "{{.Names}}" | grep -c "cms-" 2>/dev/null || echo "0")
-  echo -e "  Esperando MySQL... (${i}/36) — ${RUNNING} contenedores activos"
-done
+# ── Inicializar tenant por SQL directo (equivale al cms_init.sh interactivo) ──
+echo -e "${YELLOW}Inicializando tenant '${CMS_TENANT_TYPE}' (host: ${ACS_HOST})...${NC}"
+docker exec -i cms-mysql sh -c 'sed -i "s|{tenant_host}|'"${ACS_HOST}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql'
+docker exec -i cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"'
+docker exec -i cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "update cms_global_config set initialized_flag = 1"'
+# CMS_HOST queda como IP pública para la web; el tenant host queda en WireGuard
+echo -e "${GREEN}✓ Tenant inicializado${NC}"
 
-# ── Esperar cms-boot ──
-for i in $(seq 1 24); do
-  if docker ps --format "{{.Names}} {{.Status}}" | grep -q "cms-boot.*healthy"; then
-    break
-  fi
-  sleep 5
-  echo -e "  Esperando cms-boot... (${i}/24)"
-done
-
-# ── Normalizar canales ──
-normalize_cms_channels
+# ── Fase 2: stack completo ──
+echo -e "${YELLOW}Levantando stack completo del CMS (esto tarda 2-5 min)...${NC}"
+docker compose down
+docker compose up -d
 
 # ── Esperar servicio web ──
 echo -e "${CYAN}Esperando servicio web en puerto 18080...${NC}"
-for i in $(seq 1 12); do
+for i in $(seq 1 36); do
   sleep 5
-  if ss -lntp | grep -q ":18080 "; then
+  if ss -lntp 2>/dev/null | grep -q ":18080 "; then
     echo -e "${GREEN}✓ CMS respondiendo en puerto 18080${NC}"
     break
   fi
-  echo -e "  Esperando web... (${i}/12)"
+  echo -e "  Esperando web... (${i}/36)"
 done
 
-# ── Estado ──
-echo ""
-echo -e "${CYAN}Contenedores CMS:${NC}"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
+# ── Normalizar canales TR-069/MQTT hacia WireGuard ──
+normalize_cms_channels
+
+# ── Firewall: web público, TR-069/MQTT solo por el túnel ──
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 18080/tcp >/dev/null 2>&1 || true
+  ufw allow in on wg0 to any port 9909 >/dev/null 2>&1 || true
+  ufw allow in on wg0 to any port 1883 >/dev/null 2>&1 || true
+fi
 
 # ── Servicio systemd ──
 cat > /etc/systemd/system/cms-cdata.service << EOF
@@ -213,6 +231,11 @@ EOF
 systemctl daemon-reload
 systemctl enable cms-cdata.service >/dev/null 2>&1 || true
 
+# ── Estado final ──
+echo ""
+echo -e "${CYAN}Contenedores CMS:${NC}"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i cms || echo "  (ninguno activo)"
+
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║   CMS C-Data — Instalación finalizada        ║${NC}"
@@ -220,8 +243,8 @@ echo -e "${CYAN}╠════════════════════�
 echo -e "${CYAN}║${NC}  URL:    ${GREEN}http://${VPS_IP}:18080${NC}"
 echo -e "${CYAN}║${NC}  Tipo:   ${GREEN}${CMS_TENANT_TYPE}${NC}"
 echo -e "${CYAN}║${NC}  User:   ${GREEN}root${NC}"
-echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC}"
-echo -e "${CYAN}║${NC}  MySQL:  ${GREEN}puerto 3307${NC}"
+echo -e "${CYAN}║${NC}  Pass:   ${GREEN}adminisp${NC} ${YELLOW}(cámbiala al entrar)${NC}"
+echo -e "${CYAN}║${NC}  MySQL:  ${GREEN}puerto 3307${NC} (clave en ${CMS_DIR}/.env)"
 echo -e "${CYAN}║${NC}  Redis:  ${GREEN}puerto 6380${NC}"
 echo -e "${CYAN}║${NC}  Dir:    ${GREEN}${CMS_DIR}${NC}"
 echo -e "${CYAN}║${NC}  TR-069: ${GREEN}http://${ACS_HOST}:9909/v1/acs${NC} (WireGuard)"
@@ -229,7 +252,4 @@ echo -e "${CYAN}║${NC}  MQTT:   ${GREEN}${ACS_HOST}:1883${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 echo -e "${YELLOW}Configura las ONUs/OLT con ACS URL http://${ACS_HOST}:9909/v1/acs${NC}"
 echo -e "${YELLOW}(la ruta va por el túnel WireGuard, no por la IP pública)${NC}"
-
-if [ "$INSTALL_EXIT" -ne 0 ]; then
-  echo -e "${YELLOW}⚠ Revisa /tmp/cms_install.log si hay problemas${NC}"
-fi
+echo -e "${YELLOW}Nota: el CMS (Java) tarda 2-5 min en mostrar la interfaz completa.${NC}"
