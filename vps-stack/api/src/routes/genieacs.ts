@@ -977,8 +977,14 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
       });
     } catch { /* si falla la consulta, usamos el fallback */ }
 
-    // Fallback seguro: refrescar el nodo WAN completo (siempre existe en TR-069 IGD)
-    const targets = existing.length ? existing : ['InternetGatewayDevice.WANDevice'];
+    // Siempre se refresca el árbol WAN (donde vive la PON en cualquier vendor)
+    // y las radios WiFi, para que la UI muestre señal y SSID activos.
+    const targets = Array.from(new Set([
+      ...existing,
+      'InternetGatewayDevice.WANDevice',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
+    ]));
+
 
     const results: any[] = [];
     for (const objectName of targets) {
