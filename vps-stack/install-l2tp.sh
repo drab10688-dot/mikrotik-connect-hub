@@ -128,7 +128,7 @@ if ! command -v crontab >/dev/null 2>&1; then
   apt-get install -y cron >/dev/null 2>&1 || warn "No se pudo instalar cron (rutas no persistentes tras reinicio)"
 fi
 if command -v crontab >/dev/null 2>&1; then
-  ( crontab -l 2>/dev/null | grep -v l2tp-routes.sh; echo "* * * * * $DIR/l2tp-routes.sh >/dev/null 2>&1" ) | crontab -
+  { { crontab -l 2>/dev/null || true; } | { grep -v l2tp-routes.sh || true; }; echo "* * * * * $DIR/l2tp-routes.sh >/dev/null 2>&1"; } | crontab - || warn "No se pudo registrar el cron"
   ok "Rutas hacia $ONU_NETS configuradas y persistentes (cron)"
 else
   warn "Rutas aplicadas solo para esta sesión"
