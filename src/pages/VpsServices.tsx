@@ -165,21 +165,21 @@ function GenieacsPanel() {
 }
 
 
-function UispPanel() {
+function CmsPanel() {
   const [vpsHost, setVpsHost] = useState("");
-  const [uispAvailable, setUispAvailable] = useState<boolean | null>(null);
+  const [cmsAvailable, setCmsAvailable] = useState<boolean | null>(null);
 
   useEffect(() => {
     const host = window.location.hostname;
     setVpsHost(host);
-    const url = `${window.location.protocol}//${host}/uisp/`;
+    const url = `${window.location.protocol}//${host}/cms/`;
     fetch(url, { mode: "no-cors" })
-      .then(() => setUispAvailable(true))
-      .catch(() => setUispAvailable(false));
+      .then(() => setCmsAvailable(true))
+      .catch(() => setCmsAvailable(false));
   }, []);
 
-  const uispUrl = `${window.location.protocol}//${vpsHost}/uisp/`;
-  const uispExternalUrl = `https://${vpsHost}:9443`;
+  const cmsUrl = `${window.location.protocol}//${vpsHost}/cms/`;
+  const cmsExternalUrl = `http://${vpsHost}:18080`;
 
   return (
     <Card>
@@ -187,24 +187,27 @@ function UispPanel() {
         <div>
           <CardTitle className="flex items-center gap-2">
             <Radio className="h-5 w-5" />
-            UISP — Ubiquiti ISP Manager
+            CMS C-Data — Gestión de OLT / ONU
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestión centralizada de infraestructura Ubiquiti: dispositivos AirMax, EdgeRouter, switches y más. Monitoreo, firmware y CRM integrado.
+            Administración de OLTs y ONUs C-Data: aprovisionamiento, perfiles, señal óptica y TR-069. El canal TR-069/MQTT se enlaza por el túnel WireGuard.
           </p>
+          <FactoryCredentials user="root" pass="adminisp" label="CMS C-Data" />
           <Alert className="mt-3">
             <Info className="h-4 w-4" />
             <AlertDescription className="text-xs">
-              <strong>Primer acceso:</strong> Crea tu cuenta de administrador directamente en UISP al iniciar sesión por primera vez.
+              <strong>TR-069 por WireGuard:</strong> las ONUs deben apuntar a{" "}
+              <code className="bg-muted px-1 rounded">http://10.13.13.1:9909/v1/acs</code> (MQTT{" "}
+              <code className="bg-muted px-1 rounded">10.13.13.1:1883</code>), no a la IP pública.
             </AlertDescription>
           </Alert>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={uispAvailable ? "default" : "secondary"}>
-            {uispAvailable === null ? "Verificando..." : uispAvailable ? "Activo" : "No disponible"}
+          <Badge variant={cmsAvailable ? "default" : "secondary"}>
+            {cmsAvailable === null ? "Verificando..." : cmsAvailable ? "Activo" : "No disponible"}
           </Badge>
           <Button variant="outline" size="sm" asChild>
-            <a href={uispExternalUrl} target="_blank" rel="noopener noreferrer">
+            <a href={cmsExternalUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4 mr-1" />
               Abrir externo
             </a>
@@ -212,34 +215,35 @@ function UispPanel() {
         </div>
       </CardHeader>
       <CardContent>
-        {uispAvailable === false ? (
+        {cmsAvailable === false ? (
           <div className="text-center py-12 space-y-4">
             <Radio className="h-12 w-12 mx-auto text-muted-foreground" />
             <div>
-              <p className="text-lg font-medium text-foreground">UISP no está activo</p>
+              <p className="text-lg font-medium text-foreground">CMS C-Data no está activo</p>
               <p className="text-muted-foreground text-sm mt-1">
                 Si no lo has instalado, ejecuta en tu VPS:
               </p>
               <code className="block mt-2 bg-muted px-3 py-2 rounded text-xs font-mono">
-                bash /opt/omnisync/install-uisp.sh
+                bash /opt/omnisync/install-cms.sh
               </code>
               <p className="text-muted-foreground text-xs mt-2">
-                Requisitos: 2 GB RAM mínimo, puertos 9080 y 9443 libres.
+                Puertos: Web 18080 · MySQL 3307 · Redis 6380 · ACS 9909 · MQTT 1883.
               </p>
             </div>
           </div>
         ) : (
           <iframe
-            src={uispUrl}
+            src={cmsUrl}
             className="w-full border-0 rounded-lg"
             style={{ height: "75vh" }}
-            title="UISP"
+            title="CMS C-Data"
           />
         )}
       </CardContent>
     </Card>
   );
 }
+
 
 
 export default function VpsServices() {
@@ -270,9 +274,9 @@ export default function VpsServices() {
               <Monitor className="h-4 w-4" />
               GenieACS
             </TabsTrigger>
-            <TabsTrigger value="uisp" className="gap-2">
+            <TabsTrigger value="cms" className="gap-2">
               <Radio className="h-4 w-4" />
-              UISP
+              CMS C-Data
             </TabsTrigger>
             <TabsTrigger value="docker" className="gap-2">
               <Container className="h-4 w-4" />
@@ -306,8 +310,8 @@ export default function VpsServices() {
             <GenieacsPanel />
           </TabsContent>
 
-          <TabsContent value="uisp">
-            <UispPanel />
+          <TabsContent value="cms">
+            <CmsPanel />
           </TabsContent>
 
           <TabsContent value="docker">

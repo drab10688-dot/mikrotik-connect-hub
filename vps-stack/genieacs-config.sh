@@ -287,7 +287,39 @@ curl -sf -X PUT "$NBI_URL/presets/omnisync-refresh" -H 'Content-Type: applicatio
   --data '{"weight":0,"precondition":"{}","configurations":[{"type":"provision","name":"omnisync-refresh"}]}' \
   >/dev/null && c_ok "Preset omnisync-refresh" || c_err "Preset falló"
 
+# ---------------- TR-069 por WireGuard (no por IP pública) ----------------
+# Las ONUs llegan al VPS por el túnel MikroTik ↔ WireGuard: menos latencia y
+# el Connection Request funciona sin STUN porque no hay NAT de por medio.
+# Override:  ACS_HOST=<ip>  bash genieacs-config.sh
+WG_IP="${WG_IP:-10.13.13.1}"
+ACS_HOST="${ACS_HOST:-$WG_IP}"
+ACS_PORT="${ACS_PORT:-7547}"
+ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-60}"
+
+PROV_WG=$(cat <<EOF
+// Apunta el CPE al ACS a través del túnel WireGuard
+declare("InternetGatewayDevice.ManagementServer.URL", {value: Date.now()}, {value: "http://${ACS_HOST}:${ACS_PORT}/"});
+declare("Device.ManagementServer.URL", {value: Date.now()}, {value: "http://${ACS_HOST}:${ACS_PORT}/"});
+declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
+declare("InternetGatewayDevice.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
+declare("InternetGatewayDevice.ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "omnisync"});
+declare("InternetGatewayDevice.ManagementServer.ConnectionRequestPassword", {value: Date.now()}, {value: "omnisync"});
+// Sin NAT dentro del túnel: STUN no es necesario
+declare("InternetGatewayDevice.ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
+EOF
+)
+
+curl -sf -X PUT "$NBI_URL/provisions/omnisync-acs-wg" -H 'Content-Type: text/plain' \
+  --data-binary "$PROV_WG" >/dev/null && c_ok "Provision omnisync-acs-wg (ACS ${ACS_HOST}:${ACS_PORT})" \
+  || c_err "Provision omnisync-acs-wg falló"
+
+curl -sf -X PUT "$NBI_URL/presets/omnisync-acs-wg" -H 'Content-Type: application/json' \
+  --data '{"weight":-10,"precondition":"{}","configurations":[{"type":"provision","name":"omnisync-acs-wg"}]}' \
+  >/dev/null && c_ok "Preset omnisync-acs-wg" || c_err "Preset omnisync-acs-wg falló"
+
 docker restart "$GENIEACS_CONTAINER" >/dev/null 2>&1 && c_ok "GenieACS reiniciado" || true
 
 echo
 c_ok "Listo. Abre GenieACS, pulsa Ctrl+Shift+R y presiona 'Summon' en la ONU para poblar las columnas."
+c_ok "TR-069 escuchando por WireGuard: http://${ACS_HOST}:${ACS_PORT}/ (inform cada ${ACS_INFORM_INTERVAL}s)"
+
