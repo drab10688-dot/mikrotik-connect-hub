@@ -206,6 +206,9 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
 });
 
 
+// Todas las rutas por ONU pasan por el guard multi-ISP
+genieacsRouter.use('/devices/:deviceId', guardAcsDevice);
+
 // ─── Get single device (full tree) ──────────────────────
 genieacsRouter.get('/devices/:deviceId', async (req: AuthRequest, res: Response) => {
   try {
@@ -1070,7 +1073,7 @@ function firstPppoeUsername(device: any): string | null {
   return null;
 }
 
-genieacsRouter.get('/overview', async (_req: AuthRequest, res: Response) => {
+genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
   try {
     const devices: any[] = (await genieFetch(`/devices/?projection=${encodeURIComponent(FAST_PROJECTION)}`)) || [];
 
@@ -1124,7 +1127,14 @@ genieacsRouter.get('/overview', async (_req: AuthRequest, res: Response) => {
       };
     });
 
-    res.json({ success: true, data });
+    const scope = await getAcsScope(req);
+    const visible = scope.unrestricted
+      ? data
+      : data.filter((d: any) =>
+          acsAllows(scope, { deviceId: d.deviceId, serial: d.serial, pppoe: d.pppoeUsername })
+        );
+
+    res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1194,7 +1204,14 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
       };
     });
 
-    res.json({ success: true, data: overview });
+    const scope = await getAcsScope(req);
+    const visibleOverview = scope.unrestricted
+      ? overview
+      : overview.filter((d: any) =>
+          acsAllows(scope, { deviceId: d.deviceId || d.device_id, serial: d.serial })
+        );
+
+    res.json({ success: true, data: visibleOverview });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2351,7 +2368,7 @@ genieacsRouter.post('/acs-signal/collect', async (_req: AuthRequest, res: Respon
 });
 
 // Resumen: última lectura por ONU + tendencia 24h
-genieacsRouter.get('/acs-signal/overview', async (_req: AuthRequest, res: Response) => {
+genieacsRouter.get('/acs-signal/overview', async (req: AuthRequest, res: Response) => {
   try {
     await ensureAcsSignalTables(pool);
     const { rows } = await pool.query(`
@@ -2392,7 +2409,12 @@ genieacsRouter.get('/acs-signal/overview', async (_req: AuthRequest, res: Respon
       };
     });
 
-    res.json({ success: true, data });
+    const scope = await getAcsScope(req);
+    const visible = scope.unrestricted
+      ? data
+      : data.filter((d: any) => acsAllows(scope, { deviceId: d.device_id, serial: d.serial }));
+
+    res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
