@@ -657,6 +657,14 @@ async function getSecretaryPermColumns(): Promise<Set<string>> {
   // El ON CONFLICT necesita el índice único; en instalaciones antiguas puede faltar.
   try {
     await pool.query(
+      `DELETE FROM secretary_assignments sa
+        WHERE sa.ctid <> (
+          SELECT max(b.ctid) FROM secretary_assignments b
+           WHERE b.secretary_id = sa.secretary_id
+             AND b.mikrotik_id IS NOT DISTINCT FROM sa.mikrotik_id
+        )`
+    );
+    await pool.query(
       `CREATE UNIQUE INDEX IF NOT EXISTS secretary_assignments_secretary_mikrotik_key
          ON secretary_assignments (secretary_id, mikrotik_id)`
     );
