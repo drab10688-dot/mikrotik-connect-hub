@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Copy, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck } from "lucide-react";
+import { Copy, Download, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck } from "lucide-react";
 
 interface AcsInfo {
   tenant: { id: string; name: string; slug: string };
@@ -59,6 +59,18 @@ const copyText = async (value: string) => {
 
 const copy = (value: string) => {
   void copyText(value);
+};
+
+const downloadScript = (value: string, name: string) => {
+  const blob = new Blob([value], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `omnisync-${name || "mikrotik"}.rsc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };
 
 
