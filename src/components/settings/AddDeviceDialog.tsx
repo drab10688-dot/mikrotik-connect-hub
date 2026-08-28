@@ -31,7 +31,6 @@ export const AddDeviceDialog = () => {
     password: '',
     port: 443,
     version: 'v7',
-    hotspot_url: 'http://192.168.88.1/login',
   });
 
   useEffect(() => {
@@ -86,7 +85,6 @@ export const AddDeviceDialog = () => {
         password: '',
         port: 443,
         version: 'v7',
-        hotspot_url: 'http://192.168.88.1/login',
       });
     },
     onError: (error: any) => {
@@ -224,18 +222,6 @@ export const AddDeviceDialog = () => {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="hotspot_url">URL del Portal Hotspot</Label>
-              <Input
-                id="hotspot_url"
-                placeholder="http://192.168.88.1/login"
-                value={formData.hotspot_url}
-                onChange={(e) => setFormData({ ...formData, hotspot_url: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Esta URL se usará en el código QR de los vouchers para acceso directo
-              </p>
             </div>
           </div>
           <DialogFooter>

@@ -195,168 +195,11 @@ export const devicesApi = {
   diagnoseConnection: (id: string) => apiPost<any>(`/devices/${id}/connect/diagnose`),
 };
 
-// ─── Clients API ──────────────────────────────────────────
-export const clientsApi = {
-  list: async (mikrotikId: string, params?: { is_potential_client?: boolean; limit?: number }) => {
-    const query = new URLSearchParams();
-    if (params?.is_potential_client !== undefined) query.set('is_potential_client', String(params.is_potential_client));
-    if (params?.limit) query.set('limit', String(params.limit));
-    const queryString = query.toString();
-    const endpoint = queryString ? `/clients/${mikrotikId}?${queryString}` : `/clients/${mikrotikId}`;
-    return unwrapArray(await apiGet<any>(endpoint));
-  },
-  get: (id: string) => apiGet<any>(`/clients/detail/${id}`),
-  create: async (client: any) => {
-    const mikrotikId = client?.mikrotik_id;
-    if (!mikrotikId) throw new Error('mikrotik_id es requerido para crear cliente');
-    return unwrapData(await apiPost(`/clients/${mikrotikId}`, client));
-  },
-  update: async (id: string, client: any) => {
-    const mikrotikId = client?.mikrotik_id || getSelectedMikrotikId();
-    if (!mikrotikId) throw new Error('mikrotik_id es requerido para actualizar cliente');
-    return unwrapData(await apiPut(`/clients/${mikrotikId}/${id}`, client));
-  },
-  delete: async (id: string, _deleteFromMikrotik?: boolean, mikrotikId?: string) => {
-    const resolvedMikrotikId = mikrotikId || getSelectedMikrotikId();
-    if (!resolvedMikrotikId) throw new Error('Selecciona un MikroTik antes de eliminar el cliente');
-    return apiDelete(`/clients/${resolvedMikrotikId}/${id}`);
-  },
-  search: async (identification: string) => {
-    const data = await apiGet<any>(`/clients/search/identification/${encodeURIComponent(identification)}`);
-    const rows = unwrapArray(data);
-    return rows[0] || null;
-  },
-  register: (data: any) => apiPost('/clients/register', data),
-  scan: (mikrotikId: string, scanType: string) => apiPost('/clients/scan', { mikrotik_id: mikrotikId, scan_type: scanType }),
-  importClients: (mikrotikId: string, clients: any[]) => apiPost('/clients/import', { mikrotik_id: mikrotikId, clients }),
-};
-
-// ─── PPPoE API ────────────────────────────────────────────
-export const pppoeApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/secrets`)),
-  active: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/active`)),
-  add: async (mikrotikId: string, userData: any) => unwrapData(await apiPost(`/pppoe/${mikrotikId}/secrets`, userData)),
-  remove: (mikrotikId: string, userId: string) => apiDelete(`/pppoe/${mikrotikId}/secrets/${userId}`),
-  enable: (mikrotikId: string, userId: string) => apiPut(`/pppoe/${mikrotikId}/secrets/${userId}`, { disabled: 'false' }),
-  disable: (mikrotikId: string, userId: string) => apiPut(`/pppoe/${mikrotikId}/secrets/${userId}`, { disabled: 'true' }),
-  disconnect: (mikrotikId: string, connectionId: string) => apiPost(`/pppoe/${mikrotikId}/disconnect/${connectionId}`),
-  profiles: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/profiles`)),
-  addProfile: (mikrotikId: string, profileData: any) => apiPost(`/pppoe/${mikrotikId}/profiles`, profileData),
-  deleteProfile: (mikrotikId: string, profileId: string) => apiDelete(`/pppoe/${mikrotikId}/profiles/${profileId}`),
-};
-
-// ─── Hotspot API ──────────────────────────────────────────
-export const hotspotApi = {
-  users: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/users`)),
-  activeUsers: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/active`)),
-  addUser: async (mikrotikId: string, userData: any) => unwrapData(await apiPost(`/hotspot/${mikrotikId}/users`, userData)),
-  updateUser: (mikrotikId: string, userId: string, data: any) => apiPut(`/hotspot/${mikrotikId}/users/${userId}`, data),
-  removeUser: (mikrotikId: string, userId: string) => apiDelete(`/hotspot/${mikrotikId}/users/${userId}`),
-  disconnectActive: (mikrotikId: string, activeId: string) => apiPost(`/hotspot/${mikrotikId}/active/${activeId}/disconnect`),
-  profiles: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/profiles`)),
-  addProfile: (mikrotikId: string, profileData: any) => apiPost(`/hotspot/${mikrotikId}/profiles`, profileData),
-  deleteProfile: (mikrotikId: string, profileId: string) => apiDelete(`/hotspot/${mikrotikId}/profiles/${profileId}`),
-  hosts: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/hosts`)),
-  ipBindings: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/ip-bindings`)),
-  addIpBinding: (mikrotikId: string, data: any) => apiPost(`/hotspot/${mikrotikId}/ip-bindings`, data),
-  deleteIpBinding: (mikrotikId: string, id: string) => apiDelete(`/hotspot/${mikrotikId}/ip-bindings/${id}`),
-  cookies: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/cookies`)),
-  deleteCookie: (mikrotikId: string, id: string) => apiDelete(`/hotspot/${mikrotikId}/cookies/${id}`),
-  dhcpLeases: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/dhcp-leases`)),
-  servers: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/servers`)),
-  // System
-  reboot: (mikrotikId: string) => apiPost(`/hotspot/${mikrotikId}/system/reboot`),
-  shutdown: (mikrotikId: string) => apiPost(`/hotspot/${mikrotikId}/system/shutdown`),
-  scheduler: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/scheduler`)),
-  log: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/log`)),
-  traffic: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/hotspot/${mikrotikId}/traffic`)),
-};
-
-// ─── Vouchers API ─────────────────────────────────────────
-export const vouchersApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/vouchers/${mikrotikId}`)),
-  generate: async (mikrotikId: string, data: any) => unwrapArray(await apiPost(`/vouchers/${mikrotikId}/generate`, data)),
-  delete: (mikrotikId: string, voucherId: string) => apiDelete(`/vouchers/${mikrotikId}/${voucherId}`),
-  sell: (mikrotikId: string, voucherId: string, sellData: any) => apiPost(`/vouchers/${mikrotikId}/sell/${voucherId}`, sellData),
-  salesHistory: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/vouchers/${mikrotikId}/sales-history`)),
-  presets: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/vouchers/${mikrotikId}/presets`)),
-  createPreset: (data: any) => apiPost('/vouchers/presets', data),
-  updatePreset: (id: string, data: any) => apiPut(`/vouchers/presets/${id}`, data),
-  deletePreset: (id: string) => apiDelete(`/vouchers/presets/${id}`),
-};
-
 // ─── System API ───────────────────────────────────────────
 export const systemApi = {
   resources: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/system/${mikrotikId}/resource`)),
   interfaces: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/system/${mikrotikId}/interfaces`)),
   testConnection: (mikrotikId: string) => apiPost<any>(`/devices/${mikrotikId}/connect`),
-};
-
-// ─── Queues API ───────────────────────────────────────────
-export const queuesApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/queues/${mikrotikId}`)),
-  add: (mikrotikId: string, data: any) => apiPost(`/queues/${mikrotikId}`, data),
-  update: (mikrotikId: string, id: string, data: any) => apiPut(`/queues/${mikrotikId}/${id}`, data),
-  delete: (mikrotikId: string, id: string) => apiDelete(`/queues/${mikrotikId}/${id}`),
-  enable: (mikrotikId: string, id: string) => apiPost(`/queues/${mikrotikId}/${id}/toggle`, { disabled: false }),
-  disable: (mikrotikId: string, id: string) => apiPost(`/queues/${mikrotikId}/${id}/toggle`, { disabled: true }),
-};
-
-// ─── Address List API ─────────────────────────────────────
-export const addressListApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/address-list/${mikrotikId}`)),
-  add: (mikrotikId: string, data: any) => apiPost(`/address-list/${mikrotikId}`, data),
-  remove: (mikrotikId: string, id: string) => apiDelete(`/address-list/${mikrotikId}/${id}`),
-  toggleSuspension: (mikrotikId: string, data: any) => apiPost('/address-list/toggle-suspension', { mikrotik_id: mikrotikId, ...data }),
-};
-
-// ─── Billing API ──────────────────────────────────────────
-export const billingApi = {
-  getConfig: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/billing/${mikrotikId}/config`)),
-  saveConfig: async (data: any) => {
-    const mikrotikId = data?.mikrotik_id;
-    if (!mikrotikId) throw new Error('mikrotik_id es requerido para guardar la configuración');
-    return unwrapData(await apiPost(`/billing/${mikrotikId}/config`, data));
-  },
-  clientSettings: async (clientId: string) => unwrapData(await apiGet<any>(`/billing/client/${clientId}`)),
-  updateClientSettings: (clientId: string, settings: any) => apiPut(`/billing/client/${clientId}`, settings),
-  listSettings: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/billing/settings?mikrotik_id=${mikrotikId}`)),
-  listSuspension: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/billing/suspension-status?mikrotik_id=${mikrotikId}`)),
-};
-
-// ─── Invoices API ─────────────────────────────────────────
-export const invoicesApi = {
-  list: async (mikrotikId: string, params?: { status?: string | string[]; start_date?: string; end_date?: string; limit?: number; with_contracts?: boolean }) => {
-    const query = new URLSearchParams();
-    if (params?.status) {
-      const statuses = Array.isArray(params.status) ? params.status : [params.status];
-      if (statuses[0]) query.set('status', statuses[0]);
-    }
-    const queryString = query.toString();
-    const endpoint = queryString ? `/invoices/${mikrotikId}?${queryString}` : `/invoices/${mikrotikId}`;
-    return unwrapArray(await apiGet<any>(endpoint));
-  },
-  get: (id: string) => apiGet<any>(`/invoices/detail/${id}`),
-  create: async (data: any) => {
-    const mikrotikId = data?.mikrotik_id || getSelectedMikrotikId();
-    if (!mikrotikId) throw new Error('mikrotik_id es requerido para crear factura');
-    return unwrapData(await apiPost(`/invoices/${mikrotikId}`, data));
-  },
-  update: (id: string, data: any) => apiPut(`/invoices/detail/${id}`, data),
-  delete: async (id: string, mikrotikId?: string) => {
-    const resolvedMikrotikId = mikrotikId || getSelectedMikrotikId();
-    if (!resolvedMikrotikId) throw new Error('Selecciona un MikroTik antes de eliminar factura');
-    return apiDelete(`/invoices/${resolvedMikrotikId}/${id}`);
-  },
-  markPaid: async (id: string, paymentData: any) => {
-    const mikrotikId = paymentData?.mikrotik_id || getSelectedMikrotikId();
-    if (!mikrotikId) throw new Error('Selecciona un MikroTik antes de registrar pago');
-    return unwrapData(await apiPost(`/invoices/${mikrotikId}/pay/${id}`, paymentData));
-  },
-  generateBatch: (mikrotikId: string) => apiPost('/invoices/generate', { mikrotik_id: mikrotikId }),
-  generateForClient: (data: any) => apiPost('/invoices/generate-single', data),
-  paidHistory: async (mikrotikId: string, startDate: string, endDate: string) =>
-    unwrapArray(await apiGet<any>(`/invoices/paid-history?mikrotik_id=${mikrotikId}&start_date=${startDate}&end_date=${endDate}`)),
 };
 
 // ─── Users/Admin API ──────────────────────────────────────
@@ -367,14 +210,6 @@ export const usersApi = {
   createUser: async (data: any) => apiPost('/auth/users', data),
 };
 
-// ─── Resellers API ────────────────────────────────────────
-export const resellersApi = {
-  assignments: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/devices/${mikrotikId}/resellers`)),
-  assign: (mikrotikId: string, data: any) => apiPost(`/devices/${mikrotikId}/resellers`, data),
-  updateCommission: (assignmentId: string, commission: number) => apiPut(`/devices/resellers/${assignmentId}`, { commission_percentage: commission }),
-  remove: (assignmentId: string) => apiDelete(`/devices/resellers/${assignmentId}`),
-};
-
 // ─── Secretary API ────────────────────────────────────────
 export const secretariesApi = {
   myAssignments: async () => unwrapArray(await apiGet<any>('/devices/my-secretary-assignments')),
@@ -382,77 +217,6 @@ export const secretariesApi = {
   assign: (mikrotikId: string, data: any) => apiPost(`/devices/${mikrotikId}/secretaries`, data),
   update: (assignmentId: string, permissions: any) => apiPut(`/devices/secretaries/${assignmentId}`, permissions),
   remove: (assignmentId: string) => apiDelete(`/devices/secretaries/${assignmentId}`),
-};
-
-// ─── Contracts API ────────────────────────────────────────
-export const contractsApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/clients/contracts?mikrotik_id=${mikrotikId}`)),
-  get: (id: string) => apiGet<any>(`/clients/contracts/${id}`),
-  create: (data: any) => apiPost('/clients/contracts', data),
-  update: (id: string, data: any) => apiPut(`/clients/contracts/${id}`, data),
-  delete: (id: string) => apiDelete(`/clients/contracts/${id}`),
-  verify: (contractNumber: string) => apiGet<any>(`/clients/contracts/verify/${contractNumber}`, { noAuth: true }),
-};
-
-// ─── Messaging API ────────────────────────────────────────
-export const messagingApi = {
-  // Telegram
-  getTelegramConfig: (mikrotikId: string) => apiGet<any>(`/messaging/telegram/config?mikrotik_id=${mikrotikId}`),
-  updateTelegramConfig: (mikrotikId: string, config: any) => apiPut('/messaging/telegram/config', { mikrotik_id: mikrotikId, ...config }),
-  sendTelegram: (data: any) => apiPost('/messaging/telegram/send', data),
-  // WhatsApp
-  getWhatsappConfig: (mikrotikId: string) => apiGet<any>(`/messaging/whatsapp/config?mikrotik_id=${mikrotikId}`),
-  updateWhatsappConfig: (mikrotikId: string, config: any) => apiPut('/messaging/whatsapp/config', { mikrotik_id: mikrotikId, ...config }),
-  sendWhatsapp: (data: any) => apiPost('/messaging/whatsapp/send', data),
-};
-
-// ─── Bot de Telegram para técnicos ────────────────────────
-export const techBotApi = {
-  listTechnicians: (mikrotikId: string) =>
-    apiGet<any>(`/telegram-bot/technicians?mikrotik_id=${mikrotikId}`),
-  addTechnician: (data: { mikrotik_id: string; chat_id: string; full_name: string }) =>
-    apiPost('/telegram-bot/technicians', data),
-  updateTechnician: (id: string, data: { is_active?: boolean; full_name?: string }) =>
-    apiPut(`/telegram-bot/technicians/${id}`, data),
-  deleteTechnician: (id: string) => apiDelete(`/telegram-bot/technicians/${id}`),
-  listProvisions: (mikrotikId: string) =>
-    apiGet<any>(`/telegram-bot/provisions?mikrotik_id=${mikrotikId}`),
-  setupWebhook: (mikrotikId: string, publicUrl: string) =>
-    apiPost('/telegram-bot/setup-webhook', { mikrotik_id: mikrotikId, public_url: publicUrl }),
-};
-
-// ─── Service Options API ──────────────────────────────────
-const serviceOptionsPrimaryBase = '/service-options';
-const serviceOptionsLegacyBase = '/clients/service-options';
-
-const callServiceOptions = async <T = any>(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  path: string,
-  body?: any
-): Promise<T> => {
-  const call = async (base: string) => {
-    const endpoint = `${base}${path}`;
-    if (method === 'GET') return apiGet<T>(endpoint);
-    if (method === 'POST') return apiPost<T>(endpoint, body);
-    if (method === 'PUT') return apiPut<T>(endpoint, body);
-    return apiDelete<T>(endpoint);
-  };
-
-  try {
-    return await call(serviceOptionsPrimaryBase);
-  } catch (error: any) {
-    if (error instanceof ApiError && error.status === 404) {
-      return await call(serviceOptionsLegacyBase);
-    }
-    throw error;
-  }
-};
-
-export const serviceOptionsApi = {
-  list: async (mikrotikId: string) => unwrapArray(await callServiceOptions<any>('GET', `?mikrotik_id=${mikrotikId}`)),
-  create: async (data: any) => unwrapData(await callServiceOptions('POST', '', data)),
-  update: async (id: string, data: any) => unwrapData(await callServiceOptions('PUT', `/${id}`, data)),
-  delete: (id: string) => callServiceOptions('DELETE', `/${id}`),
 };
 
 // ─── Cloudflare Tunnel API (estilo Stream Player Pro) ─────
@@ -486,156 +250,16 @@ export const vpsApi = {
   docker: (mikrotikId: string, action: string, service?: string) => apiPost('/system/vps/docker', { mikrotik_id: mikrotikId, action, service }),
 };
 
-// ─── Backup API ───────────────────────────────────────────
-export const backupApi = {
-  list: () => apiGet<any>('/backups'),
-  create: (type: string) => apiPost('/backups/create', { type }),
-  restore: (filename: string) => apiPost('/backups/restore', { filename }),
-  delete: (filename: string) => apiDelete(`/backups/${encodeURIComponent(filename)}`),
-  downloadUrl: (filename: string) => `${getBaseUrl()}/backups/download/${encodeURIComponent(filename)}`,
-  upload: async (file: File): Promise<any> => {
-    const token = getToken();
-    const formData = new FormData();
-    formData.append('backup', file);
-    const res = await fetch(`${getBaseUrl()}/backups/upload`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al subir backup');
-    return data;
-  },
-};
-
-// ─── Payment Platforms API ────────────────────────────────
-export const paymentPlatformsApi = {
-  list: (mikrotikId: string) => apiGet<any[]>(`/billing/platforms?mikrotik_id=${mikrotikId}`),
-  update: (platform: any) => apiPost('/billing/platforms', platform),
-  delete: (id: string) => apiDelete(`/billing/platforms/${id}`),
-};
-
-// ─── Transactions API ─────────────────────────────────────
-export const transactionsApi = {
-  list: (mikrotikId: string, params?: { status?: string; start_date?: string; end_date?: string }) => {
-    const query = new URLSearchParams({ mikrotik_id: mikrotikId });
-    if (params?.status) query.set('status', params.status);
-    if (params?.start_date) query.set('start_date', params.start_date);
-    if (params?.end_date) query.set('end_date', params.end_date);
-    return apiGet<any[]>(`/billing/transactions?${query}`);
-  },
-};
-
 // ─── MikroTik Command API (generic) ──────────────────────
 export const mikrotikCommandApi = {
   exec: (mikrotikId: string, command: string, params?: any) =>
     apiPost<any>('/mikrotik/command', { mikrotik_id: mikrotikId, command, params }),
 };
 
-// ─── Accounting API ──────────────────────────────────────
-export const accountingApi = {
-  summary: (mikrotikId: string, startDate: string, endDate: string) =>
-    apiGet<any>(`/accounting/summary?mikrotik_id=${mikrotikId}&start_date=${startDate}&end_date=${endDate}`),
-};
-
 // ─── Diagnostics API ─────────────────────────────────────
 export const diagnosticsApi = {
   run: (host: string, port: number) =>
     apiPost<any>('/system/diagnostics', { host, port, action: 'full-diagnostic' }),
-};
-
-// ─── Hotspot Login API (public) ──────────────────────────
-export const hotspotLoginApi = {
-  login: (mikrotikId: string, username: string, password: string) =>
-    apiPost<any>('/hotspot/login', { mikrotik_id: mikrotikId, username, password }, { noAuth: true }),
-  nuxbillLogin: (params: { mikrotik_id: string; code?: string; username?: string; password?: string; mode?: 'voucher' | 'customer'; ip?: string; mac?: string }) =>
-    apiPost<any>('/hotspot/nuxbill-login', params, { noAuth: true }),
-};
-
-// ─── Portal Ads API ──────────────────────────────────────
-export const portalAdsApi = {
-  list: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/portal-ads/${mikrotikId}`)),
-  create: (mikrotikId: string, data: any) => apiPost(`/portal-ads/${mikrotikId}`, data),
-  update: (mikrotikId: string, adId: string, data: any) => apiPut(`/portal-ads/${mikrotikId}/${adId}`, data),
-  delete: (mikrotikId: string, adId: string) => apiDelete(`/portal-ads/${mikrotikId}/${adId}`),
-  stats: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/portal-ads/${mikrotikId}/stats/summary`)),
-  // Public (no auth)
-  publicList: async (mikrotikId: string, position?: string) => {
-    const q = position ? `?position=${position}` : '';
-    return unwrapArray(await apiGet<any>(`/portal-ads/public/${mikrotikId}${q}`, { noAuth: true }));
-  },
-  trackImpression: (adId: string) => apiPost(`/portal-ads/public/${adId}/impression`, {}, { noAuth: true }),
-  trackClick: (adId: string) => apiPost(`/portal-ads/public/${adId}/click`, {}, { noAuth: true }),
-};
-
-// ─── RADIUS Manager API ──────────────────────────────────
-export const radiusApi = {
-  stats: async () => unwrapData(await apiGet<any>('/radius/sessions/stats')),
-
-  listUsers: async (params: { search?: string; group?: string } = {}) => {
-    const q = new URLSearchParams();
-    if (params.search) q.set('search', params.search);
-    if (params.group) q.set('group', params.group);
-    const qs = q.toString();
-    return unwrapArray(await apiGet<any>(`/radius/users${qs ? '?' + qs : ''}`));
-  },
-  getUser: async (username: string) => unwrapData(await apiGet<any>(`/radius/users/${encodeURIComponent(username)}`)),
-  createUser: (data: { username: string; password: string; group?: string; attributes?: any }) =>
-    apiPost('/radius/users', data),
-  updateUser: (username: string, data: { password?: string; group?: string; attributes?: any }) =>
-    apiPut(`/radius/users/${encodeURIComponent(username)}`, data),
-  deleteUser: (username: string) => apiDelete(`/radius/users/${encodeURIComponent(username)}`),
-
-  listGroups: async () => unwrapArray(await apiGet<any>('/radius/groups')),
-  createGroup: (groupname: string, attributes: Record<string, string>) =>
-    apiPost('/radius/groups', { groupname, attributes }),
-  updateGroup: (groupname: string, attributes: Record<string, string>) =>
-    apiPut(`/radius/groups/${encodeURIComponent(groupname)}`, { attributes }),
-  deleteGroup: (groupname: string) => apiDelete(`/radius/groups/${encodeURIComponent(groupname)}`),
-
-  activeSessions: async () => unwrapArray(await apiGet<any>('/radius/sessions/active')),
-  sessionHistory: async (params: { username?: string; limit?: number } = {}) => {
-    const q = new URLSearchParams();
-    if (params.username) q.set('username', params.username);
-    if (params.limit) q.set('limit', String(params.limit));
-    const qs = q.toString();
-    return unwrapArray(await apiGet<any>(`/radius/sessions/history${qs ? '?' + qs : ''}`));
-  },
-  disconnectSession: (id: number) => apiPost(`/radius/sessions/${id}/disconnect`),
-
-  listNas: async () => unwrapArray(await apiGet<any>('/radius/nas')),
-  createNas: (data: { nasname: string; shortname: string; secret: string; type?: string; description?: string }) =>
-    apiPost('/radius/nas', data),
-  updateNas: (id: number, data: any) => apiPut(`/radius/nas/${id}`, data),
-  deleteNas: (id: number) => apiDelete(`/radius/nas/${id}`),
-
-  provisionAuto: (mikrotikId: string, data: {
-    radius_host: string; secret?: string; services?: string;
-    enable_hotspot?: boolean; enable_ppp?: boolean; register_nas?: boolean;
-  }) => apiPost(`/radius/provision/${mikrotikId}/auto`, data),
-  provisionScript: async (mikrotikId: string, params: { radius_host: string; secret?: string; services?: string }): Promise<string> => {
-    const q = new URLSearchParams();
-    q.set('radius_host', params.radius_host);
-    if (params.secret) q.set('secret', params.secret);
-    if (params.services) q.set('services', params.services);
-    return apiGet<string>(`/radius/provision/${mikrotikId}/script?${q.toString()}`);
-  },
-
-  // Monitor
-  monitorTop: async (range: '24h'|'7d'|'30d' = '24h', limit = 10) =>
-    unwrapArray(await apiGet<any>(`/radius/monitor/top?range=${range}&limit=${limit}`)),
-  monitorTraffic: async (username: string, bucket: 'hour'|'day'|'month' = 'hour', range: '24h'|'7d'|'30d'|'12m' = '24h') =>
-    unwrapArray(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/traffic?bucket=${bucket}&range=${range}`)),
-  monitorDisconnects: async (username: string, limit = 50) =>
-    unwrapArray(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/disconnects?limit=${limit}`)),
-  monitorLive: async (username: string) =>
-    unwrapArray(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/live`)),
-  monitorStatus: async (username: string) =>
-    unwrapData(await apiGet<any>(`/radius/monitor/${encodeURIComponent(username)}/status`)),
-  monitorKick: (username: string) =>
-    apiPost(`/radius/monitor/${encodeURIComponent(username)}/kick`),
-  monitorBlock: (username: string, blocked: boolean) =>
-    apiPost(`/radius/monitor/${encodeURIComponent(username)}/block`, { blocked }),
 };
 
 // ─── Tenants (Multi-ISP) API ──────────────────────────────

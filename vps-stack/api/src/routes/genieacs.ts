@@ -92,6 +92,24 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
 
   const deviceIds = await getAccessibleDeviceIds(req);
   if (deviceIds === null) return { ...empty, unrestricted: true };
+
+  // Aislamiento multi-ISP: ONUs registradas al tenant del usuario, aunque
+  // todavía no estén asociadas a una MikroTik concreta.
+  if (req.tenantId) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT acs_device_id, serial_number, pppoe_username
+           FROM onu_devices WHERE tenant_id = $1`,
+        [req.tenantId]
+      );
+      rows.forEach((r: any) => {
+        if (r.acs_device_id) empty.ids.add(String(r.acs_device_id));
+        if (r.serial_number) empty.serials.add(String(r.serial_number).toUpperCase());
+        if (r.pppoe_username) empty.usernames.add(String(r.pppoe_username).toLowerCase());
+      });
+    } catch { /* columna/tabla opcional */ }
+  }
+
   if (!deviceIds.length) return empty;
 
   try {
