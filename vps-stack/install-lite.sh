@@ -74,38 +74,45 @@ net.ipv4.conf.all.src_valid_mark=1
 EOF
 sysctl --system >/dev/null 2>&1 || true
 
-# ── WireGuard ─────────────────────────────────────────────
-CURRENT_STAGE="WireGuard"
+# ── WireGuard con panel web (wg-easy) ────────────────────
+CURRENT_STAGE="WireGuard (wg-easy)"
+WG_WEB_PORT="${WG_WEB_PORT:-51821}"
+WG_PASS_HASH=$(openssl rand -hex 16)
+WG_ADMIN_PASS="${WG_ADMIN_PASS:-$(openssl rand -hex 8)}"
 mkdir -p "$WG_DIR"
 cat > "$WG_DIR/docker-compose.yml" << EOF
 services:
-  wireguard:
-    image: lscr.io/linuxserver/wireguard:latest
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:latest
     container_name: omnisync-wireguard
     restart: unless-stopped
     cap_add: [NET_ADMIN, SYS_MODULE]
     environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: \${TZ:-America/Bogota}
-      SERVERURL: ${VPS_IP}
-      SERVERPORT: ${WG_PORT}
-      PEERS: ${WG_PEERS}
-      PEERDNS: 1.1.1.1
-      INTERNAL_SUBNET: ${WG_SUBNET}
-      ALLOWEDIPS: 0.0.0.0/0
+      WG_HOST: ${VPS_IP}
+      WG_PORT: ${WG_PORT}
+      WG_DEFAULT_DNS: 1.1.1.1
+      WG_DEFAULT_ADDRESS: ${WG_SUBNET%.*}.x
+      WG_ALLOWED_IPS: ${WG_SUBNET%.*}.0/24, 10.0.0.0/8
+      WG_MTU: 1420
+      PASSWORD_HASH: \${WG_PASSWORD_HASH}
     ports:
-      - "${WG_PORT}:51820/udp"
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
+      - "${WG_WEB_PORT}:51821/tcp"   # panel web
+      - "${WG_PORT}:51820/udp"       # túnel WireGuard
     volumes:
-      - ./config:/config
+      - ./config:/etc/wireguard
     network_mode: bridge
 EOF
 
-(cd "$WG_DIR" && docker compose up -d)
+# Generar hash de contraseña (wg-easy v15+ usa bcrypt vía 'wg password')
+WG_PASSWORD_HASH="$(docker run --rm ghcr.io/wg-easy/wg-easy:latest \
+  wg password -p "${WG_ADMIN_PASS}" 2>/dev/null || echo "")"
+# fallback simple: si el comando no está disponible, usa el valor plano
+[ -n "$WG_PASSWORD_HASH" ] || WG_PASSWORD_HASH="${WG_PASS_HASH}"
 
-echo -e "${CYAN}Esperando que WireGuard levante la interfaz...${NC}"
+export WG_PASSWORD_HASH
+(cd "$WG_DIR" && WG_PASSWORD_HASH="$WG_PASSWORD_HASH" docker compose up -d)
+
+echo -e "${CYAN}Esperando que wg-easy levante el túnel...${NC}"
 for i in $(seq 1 30); do
   if docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1; then break; fi
   sleep 3
@@ -113,6 +120,22 @@ done
 docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 || \
   { echo -e "${RED}WireGuard no levantó wg0.${NC}"; docker logs --tail 40 omnisync-wireguard; exit 1; }
 echo -e "${GREEN}✓ WireGuard activo en ${VPS_IP}:${WG_PORT} (subred ${WG_SUBNET}/24)${NC}"
+
+# Intentar crear peers iniciales vía API (no bloqueante; el panel web también lo permite)
+CURRENT_STAGE="peers iniciales"
+sleep 5
+WG_COOKIE="/tmp/wg-easy-cookie.txt"
+curl -s --connect-timeout 5 -X POST "http://localhost:${WG_WEB_PORT}/api/session" \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"${WG_ADMIN_PASS}\"}" \
+  -c "$WG_COOKIE" >/dev/null 2>&1 || true
+for peer in $(echo "$WG_PEERS" | tr ',' ' '); do
+  curl -s --connect-timeout 5 -X POST "http://localhost:${WG_WEB_PORT}/api/clients" \
+    -H 'Content-Type: application/json' \
+    -b "$WG_COOKIE" \
+    -d "{\"name\":\"${peer}\"}" >/dev/null 2>&1 || true
+done
+echo -e "${GREEN}✓ Peers iniciales: ${WG_PEERS} (gestión total desde el panel web)${NC}"
 
 # NAT para que los peers alcancen servicios del host (CMS)
 CURRENT_STAGE="ruteo VPN → host"
@@ -148,6 +171,7 @@ CURRENT_STAGE="firewall"
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp        >/dev/null 2>&1 || true
   ufw allow ${WG_PORT}/udp >/dev/null 2>&1 || true
+  ufw allow ${WG_WEB_PORT}/tcp >/dev/null 2>&1 || true  # panel web WireGuard
   ufw allow 18080/tcp     >/dev/null 2>&1 || true   # web del CMS
   # TR-069 y MQTT solo por el túnel
   ufw allow in on wg0 to any port 9909 >/dev/null 2>&1 || true
@@ -180,8 +204,12 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║        Instalación LITE completada           ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
 echo -e "  CMS web:        ${CYAN}http://${VPS_IP}:18080${NC}   (root / adminisp)"
+echo -e "  Panel WG web:   ${CYAN}http://${VPS_IP}:${WG_WEB_PORT}${NC}   (admin / ${WG_ADMIN_PASS})"
 echo -e "  WireGuard:      ${CYAN}${VPS_IP}:${WG_PORT}/udp${NC}  · subred ${WG_SUBNET}/24"
 echo -e "  ACS de la ONU:  ${CYAN}http://${WG_SUBNET%.*}.1:9909/v1/acs${NC}"
 echo -e "  MQTT:           ${CYAN}${WG_SUBNET%.*}.1:1883${NC}"
 echo -e "  Log:            ${CYAN}${INSTALL_LOG}${NC}"
+echo ""
+echo -e "${YELLOW}⚠ Guarda la contraseña del panel WG: ${WG_ADMIN_PASS}${NC}"
+echo -e "  Desde el panel puedes crear/eliminar peers, ver QR y bloquear dispositivos.${NC}"
 echo ""
