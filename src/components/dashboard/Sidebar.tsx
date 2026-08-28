@@ -24,19 +24,8 @@ import { useMyTenant } from "@/hooks/useTenantBranding";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Server, label: "Servicios VPS", path: "/vps-services" },
-  { icon: Users, label: "Clientes", path: "/clients" },
-  { icon: Wifi, label: "Gestión PPPoE", path: "/ppp" },
-  { icon: ListChecks, label: "Address List", path: "/address-list" },
-  { icon: Gauge, label: "Simple Queues", path: "/simple-queues" },
-  { icon: CreditCard, label: "Pagos", path: "/payment-manager" },
-  { icon: Receipt, label: "Facturación", path: "/payments" },
-  { icon: BarChart3, label: "Reportes", path: "/reports" },
-  { icon: Database, label: "Backup/Restore", path: "/backup" },
-  { icon: Monitor, label: "Hotspot Monitor", path: "/hotspot-monitor" },
-  { icon: Radio, label: "RADIUS Manager", path: "/radius" },
-  { icon: Antenna, label: "Gestión ONU", path: "/onu-management" },
-  
+  { icon: Antenna, label: "Gestión de ONUs", path: "/onus" },
+  { icon: Radio, label: "TR-069 y VPN", path: "/acs" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
@@ -97,18 +86,8 @@ export const Sidebar = () => {
     secretaryAssignments?.find((a: any) => !a.mikrotik_id);
 
   const secretaryPermMap: Record<string, string> = {
-    '/clients': 'can_manage_clients',
-    '/ppp': 'can_manage_pppoe',
-    '/simple-queues': 'can_manage_queues',
-    '/payment-manager': 'can_manage_payments',
-    '/payments': 'can_manage_billing',
-    '/reports': 'can_manage_reports',
-    '/address-list': 'can_manage_address_list',
-    '/backup': 'can_manage_backup',
-    '/vps-services': 'can_manage_vps_services',
-    '/hotspot-monitor': 'can_manage_hotspot',
-    '/radius': 'can_manage_radius',
-    '/onu-management': 'can_manage_onu',
+    '/onus': 'can_manage_onu',
+    '/acs': 'can_manage_onu',
     '/settings': 'can_manage_settings',
     '/diagnostics': 'can_manage_diagnostics',
   };
