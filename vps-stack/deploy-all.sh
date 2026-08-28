@@ -295,6 +295,7 @@ cp "$TMP_DIR/app/vps-stack/deploy-frontend.sh" "$APP_DIR/deploy-frontend.sh" 2>/
 cp "$TMP_DIR/app/vps-stack/deploy-all.sh" "$APP_DIR/deploy-all.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/repair-nuxbill-auth.sh" "$APP_DIR/repair-nuxbill-auth.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/install-cms.sh" "$APP_DIR/install-cms.sh" 2>/dev/null || true
+cp "$TMP_DIR/app/vps-stack/install-cms-official.sh" "$APP_DIR/install-cms-official.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/install-wireguard-panel.sh" "$APP_DIR/install-wireguard-panel.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/genieacs-config.sh" "$APP_DIR/genieacs-config.sh" 2>/dev/null || true
 cp "$TMP_DIR/app/vps-stack/recover-mariadb-root.sh" "$APP_DIR/recover-mariadb-root.sh" 2>/dev/null || true
