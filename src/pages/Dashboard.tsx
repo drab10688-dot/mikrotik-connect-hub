@@ -1,272 +1,147 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, Wifi, Activity, HardDrive, Ticket, Settings, ArrowUpDown, Server } from "lucide-react";
-import { VpsServicesCard } from "@/components/dashboard/VpsServicesCard";
-import { useSystemResources, useHotspotActiveUsers, usePPPoEActive } from "@/hooks/useMikrotikData";
-import { SystemAlerts } from "@/components/notifications/SystemAlerts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useValidatedDevice } from "@/hooks/useValidatedDevice";
-import { Shield, Router } from "lucide-react";
-import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
-import { useAuth } from "@/hooks/useAuth";
-import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
+import { api } from "@/lib/api-client";
+import { Antenna, Wifi, Server, Settings, Activity, SignalHigh, SignalLow, RefreshCw } from "lucide-react";
+
+interface OverviewEntry {
+  deviceId: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
+  rxPower: number | null;
+  txPower: number | null;
+  alias: string | null;
+  pppoeUsername: string | null;
+  activeSsids?: string[];
+  lastInform: string | null;
+}
+
+const OFFLINE_AFTER_MS = 5 * 60 * 1000;
+
+const isOffline = (lastInform: string | null) => {
+  if (!lastInform) return true;
+  const t = new Date(lastInform).getTime();
+  if (!Number.isFinite(t)) return true;
+  return Date.now() - t > OFFLINE_AFTER_MS;
+};
+
+const signalTone = (dbm: number | null) => {
+  if (dbm === null) return "text-muted-foreground";
+  if (dbm > -20) return "text-emerald-500";
+  if (dbm > -25) return "text-amber-500";
+  return "text-destructive";
+};
+
+const sinceLabel = (lastInform: string | null) => {
+  if (!lastInform) return "sin reportes";
+  const diff = Date.now() - new Date(lastInform).getTime();
+  if (!Number.isFinite(diff)) return "sin reportes";
+  const min = Math.floor(diff / 60000);
+  if (min < 60) return `hace ${Math.max(min, 1)} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  return `hace ${Math.floor(h / 24)} d`;
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { isSecretary, isAdmin, isSuperAdmin, loading: authLoading } = useAuth();
-  const { device, isValidating, hasValidDevice, availableDevices } = useValidatedDevice(true);
-  const { assignments, isLoading: loadingPermissions } = useSecretaryPermissions();
-  const { data: systemInfo, isLoading: loadingSystem } = useSystemResources();
-  const { data: hotspotActiveData, isLoading: loadingHotspot } = useHotspotActiveUsers();
-  const { data: pppoeActiveData, isLoading: loadingPPPoE } = usePPPoEActive();
+  const [devices, setDevices] = useState<OverviewEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [acsOnline, setAcsOnline] = useState<boolean | null>(null);
 
-  const hotspotActive = (hotspotActiveData as any[]) || [];
-  const pppoeActive = (pppoeActiveData as any[]) || [];
-  const totalActiveUsers = hotspotActive.length + pppoeActive.length;
-
-  const systemData = (systemInfo as any[])?.[0];
-
-  const hasDeviceAccess = availableDevices && availableDevices.length > 0;
-  const canEnterWithoutDevice = isSecretary && (assignments?.length || 0) > 0;
-  const canUseVpsServices = isSecretary
-    ? (assignments || []).some((a: any) => a?.can_manage_vps_services === true)
-    : true;
-
-  useEffect(() => {
-    const isConnected = localStorage.getItem("mikrotik_connected");
-    if (!authLoading && !isConnected && hasDeviceAccess && !isValidating) {
-      navigate("/settings");
+  const load = useCallback(async (spinner = true) => {
+    if (spinner) setLoading(true);
+    try {
+      const res = await api("/genieacs/overview");
+      const list: OverviewEntry[] = Array.isArray(res) ? res : (res?.data || []);
+      setDevices(list);
+      setAcsOnline(true);
+    } catch {
+      setAcsOnline(false);
+    } finally {
+      if (spinner) setLoading(false);
     }
-  }, [navigate, isSecretary, authLoading, hasDeviceAccess, isValidating]);
+  }, []);
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-  };
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = window.setInterval(() => load(false), 30000);
+    return () => window.clearInterval(t);
+  }, [load]);
 
-  const cpuLoad = systemData?.['cpu-load'] || '0';
-  const totalMemory = parseInt(systemData?.['total-memory'] || '0');
-  const freeMemory = parseInt(systemData?.['free-memory'] || '0');
-  const usedMemory = totalMemory - freeMemory;
-  const memoryPercent = totalMemory > 0 ? Math.round((usedMemory / totalMemory) * 100) : 0;
+  const online = devices.filter((d) => !isOffline(d.lastInform));
+  const offline = devices.length - online.length;
+  const critical = devices.filter((d) => d.rxPower !== null && d.rxPower <= -28);
+  const withWifi = devices.filter((d) => (d.activeSsids?.length || 0) > 0);
 
-  const formatUptime = (seconds: number) => {
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${days}d ${hours}h ${minutes}m`;
-  };
-
-  const quickActions = [
-    {
-      title: "Gestión de ONUs",
-      description: "Ver y configurar ONUs por TR-069",
-      icon: Wifi,
-      path: "/onus",
-      color: "bg-blue-500",
-    },
-    {
-      title: "TR-069 y VPN",
-      description: "Enlace TR-069 del ISP y script MikroTik",
-      icon: Server,
-      path: "/acs",
-      color: "bg-purple-500",
-    },
-    {
-      title: "Configuración",
-      description: "Ajustes del sistema",
-      icon: Settings,
-      path: "/settings",
-      color: "bg-orange-500",
-    },
+  const stats = [
+    { label: "ONUs registradas", value: devices.length, icon: Antenna, tone: "text-primary bg-primary/10" },
+    { label: "En línea", value: online.length, icon: Activity, tone: "text-emerald-500 bg-emerald-500/10" },
+    { label: "Desconectadas", value: offline, icon: SignalLow, tone: "text-destructive bg-destructive/10" },
+    { label: "Señal crítica", value: critical.length, icon: SignalHigh, tone: "text-amber-500 bg-amber-500/10" },
+    { label: "Con WiFi activo", value: withWifi.length, icon: Wifi, tone: "text-sky-500 bg-sky-500/10" },
   ];
 
-  if (isValidating) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <div className="p-4 md:p-8 md:ml-64 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      </div>
-    );
-  }
+  const quickActions = [
+    { title: "Gestión de ONUs", description: "Señal, WiFi, PPPoE y alias", icon: Antenna, path: "/onus" },
+    { title: "TR-069 y VPN", description: "Enlace ACS del ISP y script MikroTik", icon: Server, path: "/acs" },
+    { title: "Configuración", description: "Ajustes del panel", icon: Settings, path: "/settings" },
+  ];
 
-  if (!hasDeviceAccess && !canEnterWithoutDevice) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <div className="p-4 md:p-8 md:ml-64 flex items-center justify-center">
-          <Card className="max-w-md w-full">
-            <CardHeader className="text-center">
-              <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Shield className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <CardTitle className="text-2xl">Sin Acceso a Dispositivos</CardTitle>
-              <CardDescription className="text-base mt-2">
-                {isSecretary 
-                  ? 'No tienes dispositivos MikroTik asignados'
-                  : 'No tienes dispositivos MikroTik asignados'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isSecretary ? (
-                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground text-center">
-                    Contacta al administrador para que te asigne un dispositivo MikroTik con los permisos correspondientes.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Puedes agregar tu propio dispositivo MikroTik para que el administrador lo revise y active.
-                    </p>
-                  </div>
-                  <div className="flex justify-center">
-                    <AddDeviceDialog />
-                  </div>
-                </>
-              )}
-              {canUseVpsServices && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => navigate("/acs")}
-                >
-                  <Server className="w-4 h-4 mr-2" />
-                  TR-069 y VPN del ISP
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  const recent = [...devices]
+    .sort((a, b) => new Date(b.lastInform || 0).getTime() - new Date(a.lastInform || 0).getTime())
+    .slice(0, 8);
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
       <div className="p-4 md:p-8 md:ml-64">
-        <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground">Panel de administración MikroTik</p>
+        <header className="mb-6 md:mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Panel OmniACS</h1>
+            <p className="text-muted-foreground">Monitoreo y gestión de ONUs por TR-069</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Badge variant={acsOnline === false ? "destructive" : "secondary"}>
+              ACS {acsOnline === false ? "sin conexión" : acsOnline ? "en línea" : "…"}
+            </Badge>
+            <Button variant="outline" size="sm" onClick={() => load()} disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Actualizar
+            </Button>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          {stats.map((s) => (
+            <Card key={s.label}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">{s.label}</p>
+                    <h3 className="text-2xl md:text-3xl font-bold mt-2">{loading ? "…" : s.value}</h3>
+                  </div>
+                  <div className={`w-11 h-11 rounded-full flex items-center justify-center ${s.tone}`}>
+                    <s.icon className="w-5 h-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* System Alerts */}
-        <div className="mb-8">
-          <SystemAlerts />
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Hotspot Activos</p>
-                  <h3 className="text-3xl font-bold mt-2">
-                    {loadingHotspot ? "..." : hotspotActive.length}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Usuarios conectados
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                  <Wifi className="w-6 h-6 text-blue-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">PPPoE Activos</p>
-                  <h3 className="text-3xl font-bold mt-2">
-                    {loadingPPPoE ? "..." : pppoeActive.length}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Conexiones activas
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-green-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Uso CPU</p>
-                  <h3 className="text-3xl font-bold mt-2">
-                    {loadingSystem ? "..." : `${cpuLoad}%`}
-                  </h3>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-orange-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Memoria RAM</p>
-                  <h3 className="text-3xl font-bold mt-2">
-                    {loadingSystem ? "..." : `${memoryPercent}%`}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formatBytes(usedMemory)} / {formatBytes(totalMemory)}
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                  <HardDrive className="w-6 h-6 text-purple-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Uptime</p>
-                  <h3 className="text-2xl font-bold mt-2">
-                    {loadingSystem ? "..." : (systemData?.uptime || "N/A")}
-                  </h3>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <Wifi className="w-6 h-6 text-green-500" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle>Accesos Rápidos</CardTitle>
-            <CardDescription>Administración de servicios MikroTik</CardDescription>
+            <CardTitle>Accesos rápidos</CardTitle>
+            <CardDescription>Operaciones frecuentes del ISP</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {quickActions.map((action) => (
                 <Button
                   key={action.path}
@@ -274,8 +149,8 @@ const Dashboard = () => {
                   className="h-auto p-6 flex flex-col items-center gap-3 hover:border-primary"
                   onClick={() => navigate(action.path)}
                 >
-                  <div className={`w-12 h-12 rounded-full ${action.color} bg-opacity-10 flex items-center justify-center`}>
-                    <action.icon className={`w-6 h-6 ${action.color.replace('bg-', 'text-')}`} />
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <action.icon className="w-6 h-6 text-primary" />
                   </div>
                   <div className="text-center">
                     <p className="font-semibold">{action.title}</p>
@@ -287,146 +162,63 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* VPS Services - always visible for self-hosted deployments */}
-        <div className="mb-8">
-          <VpsServicesCard mikrotikId={device?.id || localStorage.getItem("mikrotik_device_id")} />
-        </div>
-
-        {/* System Info */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Información del Sistema</CardTitle>
-              <CardDescription>Detalles del router MikroTik</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingSystem ? (
-                <p className="text-muted-foreground">Cargando...</p>
-              ) : systemData ? (
-                <div className="space-y-3">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-sm text-muted-foreground">Versión:</span>
-                    <span className="text-sm font-medium">{systemData.version}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-sm text-muted-foreground">Placa:</span>
-                    <span className="text-sm font-medium">{systemData['board-name']}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-sm text-muted-foreground">CPU:</span>
-                    <span className="text-sm font-medium">{systemData['cpu']}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-sm text-muted-foreground">Núcleos CPU:</span>
-                    <span className="text-sm font-medium">{systemData['cpu-count']}</span>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-sm text-muted-foreground">Arquitectura:</span>
-                    <span className="text-sm font-medium">{systemData['architecture-name']}</span>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No hay información disponible</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Usuarios Hotspot Activos</CardTitle>
-              <CardDescription>Conexiones hotspot en tiempo real</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingHotspot ? (
-                <p className="text-muted-foreground">Cargando...</p>
-              ) : hotspotActive.length > 0 ? (
-                <div className="space-y-2">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Usuario</TableHead>
-                        <TableHead>IP</TableHead>
-                        <TableHead>Perfil</TableHead>
-                        <TableHead className="text-right">Tiempo</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {hotspotActive.slice(0, 5).map((user: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{user.user || 'Sin nombre'}</TableCell>
-                          <TableCell>{user.address || 'Sin IP'}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{user.profile || 'default'}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-xs">{user.uptime || '0s'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {hotspotActive.length > 5 && (
-                    <Button 
-                      variant="ghost" 
-                      className="w-full mt-2"
-                      onClick={() => navigate("/users")}
-                    >
-                      Ver todos ({hotspotActive.length})
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">No hay usuarios activos</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Usuarios PPPoE Activos</CardTitle>
-              <CardDescription>Conexiones PPPoE en tiempo real</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingPPPoE ? (
-                <p className="text-muted-foreground">Cargando...</p>
-              ) : pppoeActive.length > 0 ? (
-                <div className="space-y-2">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Usuario</TableHead>
-                        <TableHead>IP Local</TableHead>
-                        <TableHead>Perfil</TableHead>
-                        <TableHead className="text-right">Tiempo</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pppoeActive.slice(0, 5).map((user: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{user.name || 'Sin nombre'}</TableCell>
-                          <TableCell>{user['local-address'] || 'Sin IP'}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{user.profile || 'default'}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-xs">{user.uptime || '0s'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {pppoeActive.length > 5 && (
-                    <Button 
-                      variant="ghost" 
-                      className="w-full mt-2"
+        <Card>
+          <CardHeader>
+            <CardTitle>Actividad reciente de ONUs</CardTitle>
+            <CardDescription>Últimos reportes TR-069 recibidos</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-muted-foreground">Cargando…</p>
+            ) : recent.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                Aún no hay ONUs reportando al ACS. Genera el script en TR-069 y VPN.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ONU</TableHead>
+                    <TableHead>PPPoE</TableHead>
+                    <TableHead>WiFi</TableHead>
+                    <TableHead>RX</TableHead>
+                    <TableHead className="text-right">Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recent.map((d) => (
+                    <TableRow
+                      key={d.deviceId}
+                      className="cursor-pointer"
                       onClick={() => navigate("/onus")}
                     >
-                      Ver todos ({pppoeActive.length})
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">No hay usuarios activos</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                      <TableCell>
+                        <div className="font-medium">{d.alias || d.pppoeUsername || d.serial}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {d.manufacturer} {d.model}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{d.pppoeUsername || "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {d.activeSsids?.length ? d.activeSsids.join(" · ") : "—"}
+                      </TableCell>
+                      <TableCell className={`font-mono text-sm ${signalTone(d.rxPower)}`}>
+                        {d.rxPower !== null ? `${d.rxPower.toFixed(2)} dBm` : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isOffline(d.lastInform) ? (
+                          <Badge variant="destructive">Desconectada</Badge>
+                        ) : (
+                          <Badge variant="secondary">{sinceLabel(d.lastInform)}</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
