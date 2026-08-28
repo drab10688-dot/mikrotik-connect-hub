@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Copy, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck } from "lucide-react";
+import { Copy, Download, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck } from "lucide-react";
 
 interface AcsInfo {
   tenant: { id: string; name: string; slug: string };
@@ -25,10 +25,54 @@ interface AcsInfo {
   stun_enable: boolean;
 }
 
-const copy = (value: string) => {
-  navigator.clipboard.writeText(value);
-  toast.success("Copiado");
+/** Copia robusta: funciona también dentro de iframes y sin HTTPS. */
+const copyText = async (value: string) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copiado");
+      return;
+    }
+  } catch {
+    /* se usa el respaldo */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "0";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const okCopy = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (okCopy) toast.success("Copiado");
+    else toast.error("No se pudo copiar: selecciona el texto y usa Ctrl+C");
+  } catch {
+    toast.error("No se pudo copiar: selecciona el texto y usa Ctrl+C");
+  }
 };
+
+const copy = (value: string) => {
+  void copyText(value);
+};
+
+const downloadScript = (value: string, name: string) => {
+  const blob = new Blob([value], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `omnisync-${name || "mikrotik"}.rsc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
 
 const Field = ({ label, value }: { label: string; value: string }) => (
   <div className="space-y-1.5">
@@ -136,10 +180,11 @@ const IspAcs = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <RouterIcon className="h-5 w-5 text-primary" />
-              Script para la MikroTik
+              Script para la MikroTik (VPN L2TP/IPsec)
             </CardTitle>
             <CardDescription>
-              Genera el script completo: túnel al VPS, acceso a la API y ruta hacia la red de administración de las ONUs.
+              Genera el script completo: túnel L2TP/IPsec al VPS, firewall, acceso a la API y ruta hacia la red de
+              administración de las ONUs. Pégalo tal cual en la terminal de RouterOS.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -162,15 +207,27 @@ const IspAcs = () => {
             {script && (
               <>
                 <Separator />
-                <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={() => copy(script)}>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => downloadScript(script, peerName)}>
+                    <Download className="h-4 w-4 mr-2" /> Descargar .rsc
+                  </Button>
+                  <Button size="sm" onClick={() => copy(script)}>
                     <Copy className="h-4 w-4 mr-2" /> Copiar script
                   </Button>
                 </div>
-                <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs font-mono whitespace-pre-wrap">
-                  {script}
-                </pre>
+                <textarea
+                  readOnly
+                  value={script}
+                  onFocus={(e) => e.currentTarget.select()}
+                  spellCheck={false}
+                  className="h-96 w-full resize-y rounded-md bg-muted p-4 text-xs font-mono"
+                  aria-label="Script para la MikroTik"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si el botón no copia (navegador restringido), haz clic dentro del recuadro y usa Ctrl+C.
+                </p>
               </>
+
             )}
 
             {!!vpn?.peers?.length && (
