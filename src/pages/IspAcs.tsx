@@ -236,12 +236,28 @@ const IspAcs = () => {
               <>
                 <Field label="ACS URL (por VPN)" value={acs.vpn_url} />
                 <Field label="ACS URL (sin VPN — tras NAT)" value={acs.nat_url} />
-                <Field label="Usuario ACS" value={acs.acs_username} />
-                <Field label="Clave ACS" value={acs.acs_password} />
-                <Field label="Connection Request usuario" value={acs.connection_request_username} />
-                <Field label="Connection Request clave" value={acs.connection_request_password} />
-                <Field label="Servidor STUN (sin VPN)" value={`${acs.stun_host}:${acs.stun_port}`} />
-                <Field label="STUN usuario / clave" value={`${acs.stun_username} / ${acs.stun_password}`} />
+                {editing ? (
+                  <>
+                    <Field label="Usuario ACS" value={form.acs_username} editable onChange={(v) => setForm((f) => ({ ...f, acs_username: v }))} />
+                    <Field label="Clave ACS" value={form.acs_password} editable onChange={(v) => setForm((f) => ({ ...f, acs_password: v }))} />
+                    <Field label="Connection Request usuario" value={form.connection_request_username} editable onChange={(v) => setForm((f) => ({ ...f, connection_request_username: v }))} />
+                    <Field label="Connection Request clave" value={form.connection_request_password} editable onChange={(v) => setForm((f) => ({ ...f, connection_request_password: v }))} />
+                    <Field label="Host STUN" value={form.stun_host} editable onChange={(v) => setForm((f) => ({ ...f, stun_host: v }))} />
+                    <Field label="Puerto STUN" value={form.stun_port} editable onChange={(v) => setForm((f) => ({ ...f, stun_port: v }))} />
+                    <Field label="STUN usuario" value={form.stun_username} editable onChange={(v) => setForm((f) => ({ ...f, stun_username: v }))} />
+                    <Field label="STUN clave" value={form.stun_password} editable onChange={(v) => setForm((f) => ({ ...f, stun_password: v }))} />
+                    <Field label="Intervalo Inform (s)" value={form.inform_interval} editable onChange={(v) => setForm((f) => ({ ...f, inform_interval: v }))} />
+                  </>
+                ) : (
+                  <>
+                    <Field label="Usuario ACS" value={acs.acs_username} />
+                    <Field label="Clave ACS" value={acs.acs_password} />
+                    <Field label="Connection Request usuario" value={acs.connection_request_username} />
+                    <Field label="Connection Request clave" value={acs.connection_request_password} />
+                    <Field label="Servidor STUN (sin VPN)" value={`${acs.stun_host}:${acs.stun_port}`} />
+                    <Field label="STUN usuario / clave" value={`${acs.stun_username} / ${acs.stun_password}`} />
+                  </>
+                )}
                 <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-1">
                   <Badge className="bg-success text-success-foreground hover:bg-success">Token activo</Badge>
                   <code className="rounded-md border bg-muted px-2 py-1 font-mono text-xs">
