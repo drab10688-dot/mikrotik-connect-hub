@@ -145,6 +145,8 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 500/udp  >/dev/null 2>&1 || true
   ufw allow 4500/udp >/dev/null 2>&1 || true
   ufw allow 1701/udp >/dev/null 2>&1 || true
+  ufw allow proto esp from any >/dev/null 2>&1 || true
+  ufw allow proto ah  from any >/dev/null 2>&1 || true
 fi
 
 # --- Publicar datos de la VPN al stack (los usa el panel) ---
