@@ -154,8 +154,6 @@ systemRouter.get('/vps/status', async (req: AuthRequest, res: Response) => {
       const containersMap: Record<string, { status: string; ports: string }> = {};
       const aliasMap: Record<string, string[]> = {
         api: ['routeros-proxy'],
-        freeradius: ['radius'],
-        mariadb: ['radius-db'],
       };
 
       parsed.forEach((container) => {
@@ -198,15 +196,8 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
     const serviceAliases: Record<string, string> = {
       'routeros-proxy': 'api',
       'omnisync-api': 'api',
-      radius: 'freeradius',
-      'omnisync-freeradius': 'freeradius',
-      'radius-db': 'mariadb',
-      'omnisync-mariadb': 'mariadb',
-      phpnuxbill: 'phpnuxbill',
-      'omnisync-phpnuxbill': 'phpnuxbill',
       'omnisync-genieacs': 'genieacs',
       'omnisync-mongo': 'mongo',
-      'omnisync-mikhmon': 'mikhmon',
       'omnisync-wireguard': 'wireguard',
     };
 
