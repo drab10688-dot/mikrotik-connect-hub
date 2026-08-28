@@ -10,6 +10,15 @@ import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
 import SignalGauge from "@/components/onu/SignalGauge";
 import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag } from "lucide-react";
 
+interface RadioInfo {
+  index: string;
+  ssid: string | null;
+  enabled: boolean;
+  channel: number | null;
+  band: "2.4GHz" | "5GHz";
+  password: string | null;
+}
+
 interface SignalEntry {
   deviceId: string;
   manufacturer: string;
@@ -18,7 +27,9 @@ interface SignalEntry {
   rxPower: number | null;
   txPower: number | null;
   lastInform: string | null;
+  radios?: RadioInfo[];
 }
+
 
 function signalColor(dbm: number | null) {
   if (dbm === null || dbm === undefined) return "text-muted-foreground";
