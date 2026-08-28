@@ -118,6 +118,27 @@ export function signalQuality(rx: number | null): string {
 
 }
 
+// Búsqueda profunda de parámetros ópticos (soporta cualquier fabricante).
+function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): number | null {
+  if (!obj || typeof obj !== 'object' || depth < 0) return null;
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_')) continue;
+    if (keyMatch.test(k)) {
+      const num = normalizePower(v?._value ?? (typeof v === 'object' ? undefined : v));
+      if (num !== null) return num;
+    }
+  }
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_') || !v || typeof v !== 'object') continue;
+    const found = deepFindPower(v, keyMatch, depth - 1);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
+const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+
 export function extractRx(device: any): number | null {
   return normalizePower(
     getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
@@ -131,7 +152,7 @@ export function extractRx(device: any): number | null {
     ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
     ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
     ?? null
-  );
+  ) ?? deepFindPower(device, RX_KEY);
 }
 
 export function extractTx(device: any): number | null {
@@ -147,8 +168,9 @@ export function extractTx(device: any): number | null {
     ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
     ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
     ?? null
-  );
+  ) ?? deepFindPower(device, TX_KEY);
 }
+
 
 export function deviceMeta(device: any) {
   const igd = device?.InternetGatewayDevice || device?.Device || {};
