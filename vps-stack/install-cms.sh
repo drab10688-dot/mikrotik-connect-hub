@@ -97,6 +97,23 @@ wait_mysql() {
   return 1
 }
 
+wait_cms_schema() {
+  echo -e "${CYAN}Esperando que el CMS termine de crear su esquema base...${NC}"
+  for i in $(seq 1 120); do
+    if docker exec -i cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -BN -e "select 1 from sys_ui_menu limit 1; select initialized_flag from cms_global_config limit 1"' &>/dev/null; then
+      echo -e "${GREEN}✓ Esquema base del CMS listo${NC}"
+      return 0
+    fi
+    if (( i % 10 == 0 )); then
+      echo -e "  Inicializando tablas del CMS... (${i}/120)"
+    fi
+    sleep 3
+  done
+  echo -e "${RED}✗ MySQL arrancó, pero el esquema base del CMS no terminó de crearse.${NC}"
+  docker logs --tail 100 cms-mysql >>"${INSTALL_LOG}" 2>&1 || true
+  return 1
+}
+
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
 echo "║   CMS C-Data — Instalador no interactivo     ║"
@@ -256,6 +273,7 @@ CURRENT_STAGE="inicio de MySQL"
 echo -e "${YELLOW}Iniciando MySQL del CMS...${NC}"
 docker compose up -d mysql
 wait_mysql
+wait_cms_schema
 
 # ── Inicializar tenant por SQL directo (equivale al cms_init.sh interactivo) ──
 CURRENT_STAGE="inicialización del tenant ${CMS_TENANT_TYPE}"

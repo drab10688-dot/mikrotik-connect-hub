@@ -32,7 +32,7 @@ WG_SUBNET="${WG_SUBNET:-10.13.13.0}"
 WG_PORT="${WG_PORT:-51820}"
 WG_PEERS="${WG_PEERS:-mikrotik1,mikrotik2,admin1}"
 CMS_SCRIPT_URL="${CMS_SCRIPT_URL:-https://raw.githubusercontent.com/drab10688-dot/mikrotik-connect-hub/main/vps-stack/install-cms.sh}"
-CMS_TENANT_TYPE="${CMS_TENANT_TYPE:-isp}"
+CMS_TENANT_TYPE="${CMS_TENANT_TYPE:-multi}"
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
