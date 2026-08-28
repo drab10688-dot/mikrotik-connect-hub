@@ -171,23 +171,39 @@ export default function Secretaries() {
       toast.error('La contraseña debe tener al menos 6 caracteres'); return;
     }
     try {
-      const response = await usersApi.createUser({
-        email: secretaryEmail, password: secretaryPassword,
-        full_name: secretaryFullName || secretaryEmail, role: 'secretary',
-      });
-      const createdUser = (response as any)?.user || (response as any)?.data || response;
-      const userId = createdUser?.id;
+      let userId: string | undefined;
+      try {
+        const response = await usersApi.createUser({
+          email: secretaryEmail, password: secretaryPassword,
+          full_name: secretaryFullName || secretaryEmail, role: 'secretary',
+        });
+        const createdUser = (response as any)?.user || (response as any)?.data || response;
+        userId = createdUser?.id;
+      } catch (createError: any) {
+        // Si el correo ya existe, se reutiliza esa cuenta para la asignación.
+        const alreadyExists = /ya está registrado|409/i.test(createError?.message || '');
+        if (!alreadyExists) throw createError;
+        const existing = await usersApi.list();
+        const match = (existing || []).find(
+          (u: any) => String(u.email).toLowerCase() === secretaryEmail.toLowerCase()
+        );
+        if (!match) throw createError;
+        if (match.role !== 'secretary') {
+          throw new Error('Ese correo ya existe con otro rol distinto a asistente');
+        }
+        userId = match.id;
+      }
       if (!userId) throw new Error('No se pudo obtener el ID del usuario creado');
 
       await assignSecretary({ secretaryId: userId, mikrotikId: dialogMikrotik || 'all', ...perms });
       setIsDialogOpen(false);
       setDialogMikrotik(''); setSecretaryEmail(''); setSecretaryPassword(''); setSecretaryFullName('');
       setPerms(getDefaultPerms());
-      toast.success('Asistente asignado exitosamente');
     } catch (error: any) {
       toast.error('Error: ' + error.message);
     }
   };
+
 
 
   const handleUpdatePermissions = (assignment: any, updates: any) => {
