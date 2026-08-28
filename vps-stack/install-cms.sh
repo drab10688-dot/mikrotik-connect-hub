@@ -14,7 +14,6 @@ NC='\033[0m'
 
 CMS_DIR="/opt/cms-cdata"
 CMS_VERSION="${CMS_VERSION:-4.5.14}"
-VPS_IP=$(curl -4 -fsS --connect-timeout 5 --max-time 10 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 INSTALL_LOG="/var/log/omnisync-cms-install.log"
 CURRENT_STAGE="inicio"
 
@@ -46,6 +45,8 @@ on_error() {
 touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/tmp/omnisync-cms-install.log"
 exec > >(tee -a "$INSTALL_LOG") 2>&1
 trap on_error ERR
+
+VPS_IP=$(curl -4 -fsS --connect-timeout 5 --max-time 10 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || true)
 
 # ── TR-069 / MQTT por WireGuard ──
 # Las ONUs alcanzan el VPS por el túnel (MikroTik ↔ WireGuard), no por la IP
@@ -123,6 +124,11 @@ if ! command -v openssl >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ -z "$VPS_IP" ]; then
+  echo -e "${RED}Error: no se pudo detectar una IPv4 para publicar la interfaz del CMS.${NC}"
+  exit 1
+fi
+
 # ── Tipo de tenant (pregunta solo si hay TTY; por defecto isp) ──
 if [ -t 0 ] && [ -e /dev/tty ]; then
   echo -e "${YELLOW}¿Tipo de instalación?${NC}  isp = un solo ISP | multi = multi-tenant"
@@ -158,17 +164,32 @@ mkdir -p "$CMS_DIR"
 cd "$CMS_DIR"
 
 echo -e "${YELLOW}Descargando CMS v${CMS_VERSION} (paquete oficial)...${NC}"
-curl -fsSL -o cms.tar "https://cms.s.cdatayun.com/cms_linux/stable/cms_v${CMS_VERSION}_linux.tar"
+curl --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 180 \
+  -fsSL -o cms.tar "https://cms.s.cdatayun.com/cms_linux/stable/cms_v${CMS_VERSION}_linux.tar"
+[ -s cms.tar ] || { echo -e "${RED}El paquete descargado está vacío.${NC}"; exit 1; }
 tar -xf cms.tar
 rm -f cms.tar
+
+# Aceptar también paquetes futuros que incluyan un único directorio superior.
+if [ ! -s docker-compose.yml ]; then
+  mapfile -t package_dirs < <(find . -mindepth 1 -maxdepth 1 -type d -print)
+  if [ "${#package_dirs[@]}" -eq 1 ] && [ -s "${package_dirs[0]}/docker-compose.yml" ]; then
+    cp -a "${package_dirs[0]}/." .
+    rm -rf "${package_dirs[0]}"
+  fi
+fi
 for required_file in docker-compose.yml cms_init.sh cms.sh; do
   if [ ! -s "$required_file" ]; then
     echo -e "${RED}El paquete oficial está incompleto: falta ${required_file}.${NC}"
     exit 1
   fi
 done
-chmod +x cms.sh 2>/dev/null || true
-chmod +x -R script 2>/dev/null || true
+chmod +x cms.sh cms_init.sh
+if [ -d script ]; then
+  chmod +x -R script
+else
+  echo -e "${YELLOW}Aviso: el paquete no incluye el directorio auxiliar 'script'.${NC}"
+fi
 echo -e "${GREEN}✓ Paquete descargado${NC}"
 
 # ── Escribir .env con puertos alternos (sin preguntas) ──
@@ -254,14 +275,21 @@ docker compose up -d
 # ── Esperar servicio web ──
 CURRENT_STAGE="espera del servicio web"
 echo -e "${CYAN}Esperando servicio web en puerto 18080...${NC}"
+WEB_READY=false
 for i in $(seq 1 36); do
   sleep 5
   if ss -lntp 2>/dev/null | grep -q ":18080 "; then
     echo -e "${GREEN}✓ CMS respondiendo en puerto 18080${NC}"
+    WEB_READY=true
     break
   fi
   echo -e "  Esperando web... (${i}/36)"
 done
+if [ "$WEB_READY" != true ]; then
+  echo -e "${RED}El CMS no abrió el puerto 18080 dentro del tiempo esperado.${NC}"
+  docker compose ps || true
+  exit 1
+fi
 
 # ── Normalizar canales TR-069/MQTT hacia WireGuard ──
 normalize_cms_channels
