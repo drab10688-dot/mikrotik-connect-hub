@@ -7,7 +7,17 @@ import { upsertL2tpUser, removeL2tpUser } from '../lib/l2tp';
 export const ispRouter = Router();
 export const ispPublicRouter = Router();
 
-export const SECTIONS = ['onus', 'wifi', 'pppoe', 'red', 'firmware', 'vpn', 'usuarios'] as const;
+export const SECTIONS = [
+  'dashboard',
+  'onus',
+  'wifi',
+  'pppoe',
+  'vpn',
+  'configuracion',
+  'diagnostico',
+  'usuarios',
+  'roles',
+] as const;
 export type Section = (typeof SECTIONS)[number];
 
 const PUBLIC_HOST = process.env.PUBLIC_HOST || process.env.VPS_PUBLIC_IP || process.env.L2TP_HOST || '';
