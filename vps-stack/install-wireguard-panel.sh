@@ -118,8 +118,10 @@ docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 || {
 
 STAGE="panel MikroTik"
 # Se descarga siempre para que funcione igual como archivo o mediante `curl | bash`.
+# El sufijo evita la caché de raw.githubusercontent (hasta 5 min de retraso).
 curl -fsSL --retry 3 --connect-timeout 15 --max-time 90 \
-  -o "$WG_DIR/mt-panel/server.py" "$SCRIPT_URL"
+  -H 'Cache-Control: no-cache' \
+  -o "$WG_DIR/mt-panel/server.py" "${SCRIPT_URL}?cb=$(date +%s)"
 python3 -m py_compile "$WG_DIR/mt-panel/server.py"
 
 # systemd EnvironmentFile no interpreta valores igual que Bash. Escribimos cada
