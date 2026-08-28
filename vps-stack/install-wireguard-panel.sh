@@ -117,8 +117,12 @@ docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 || {
 }
 
 STAGE="panel MikroTik"
-LOCAL_PANEL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mt-panel/server.py"
-if [ -s "$LOCAL_PANEL" ]; then
+# Con `curl | bash` no hay ruta propia: BASH_SOURCE puede no existir bajo `set -u`.
+LOCAL_PANEL=""
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]:-}" ]; then
+  LOCAL_PANEL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mt-panel/server.py"
+fi
+if [ -n "$LOCAL_PANEL" ] && [ -s "$LOCAL_PANEL" ]; then
   cp "$LOCAL_PANEL" "$WG_DIR/mt-panel/server.py"
 else
   curl -fsSL --retry 3 --connect-timeout 15 --max-time 90 -o "$WG_DIR/mt-panel/server.py" "$SCRIPT_URL"
@@ -169,7 +173,7 @@ ip route replace ${WG_BASE}.0/24 via "\$IP"
 
 # Lleva los servicios instalados después en el host (CMS web, ACS y MQTT)
 # hasta la IP gateway de WireGuard. Las reglas son idempotentes.
-GW=\$(docker exec omnisync-wireguard sh -c "ip route | awk '/default/{print \\$3; exit}'" 2>/dev/null || true)
+GW=\$(docker exec omnisync-wireguard sh -c "ip route | awk '/default/{print \\\$3; exit}'" 2>/dev/null || true)
 [ -n "\$GW" ] || exit 0
 for SPEC in 18080:18080 9909:9909 1883:1883; do
   DPORT=\${SPEC%%:*}; HPORT=\${SPEC##*:}
