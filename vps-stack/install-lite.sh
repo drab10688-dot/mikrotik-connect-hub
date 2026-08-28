@@ -103,10 +103,10 @@ services:
     network_mode: bridge
 EOF
 
-# Generar hash de contraseña (wg-easy usa bcrypt vía wireguard-tools)
+# Generar hash de contraseña (wg-easy v15+ usa bcrypt vía 'wg password')
 WG_PASSWORD_HASH="$(docker run --rm ghcr.io/wg-easy/wg-easy:latest \
-  sh -c "wg password -p '${WG_ADMIN_PASS}'" 2>/dev/null || echo "")"
-# fallback: usar variable de entorno del propio compose
+  wg password -p "${WG_ADMIN_PASS}" 2>/dev/null || echo "")"
+# fallback simple: si el comando no está disponible, usa el valor plano
 [ -n "$WG_PASSWORD_HASH" ] || WG_PASSWORD_HASH="${WG_PASS_HASH}"
 
 export WG_PASSWORD_HASH
@@ -121,20 +121,21 @@ docker exec omnisync-wireguard wg show wg0 >/dev/null 2>&1 || \
   { echo -e "${RED}WireGuard no levantó wg0.${NC}"; docker logs --tail 40 omnisync-wireguard; exit 1; }
 echo -e "${GREEN}✓ WireGuard activo en ${VPS_IP}:${WG_PORT} (subred ${WG_SUBNET}/24)${NC}"
 
-# Crear peers iniciales desde la API de wg-easy
+# Intentar crear peers iniciales vía API (no bloqueante; el panel web también lo permite)
 CURRENT_STAGE="peers iniciales"
 sleep 5
+WG_COOKIE="/tmp/wg-easy-cookie.txt"
+curl -s --connect-timeout 5 -X POST "http://localhost:${WG_WEB_PORT}/api/session" \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"${WG_ADMIN_PASS}\"}" \
+  -c "$WG_COOKIE" >/dev/null 2>&1 || true
 for peer in $(echo "$WG_PEERS" | tr ',' ' '); do
-  curl -s --connect-timeout 5 -X POST "http://localhost:${WG_WEB_PORT}/api/session" \
-    -H 'Content-Type: application/json' \
-    -d "{\"password\":\"${WG_ADMIN_PASS}\"}" \
-    -c "/tmp/wg-cookies-${peer}.txt" >/dev/null 2>&1 || true
   curl -s --connect-timeout 5 -X POST "http://localhost:${WG_WEB_PORT}/api/clients" \
     -H 'Content-Type: application/json' \
-    -b "/tmp/wg-cookies-${peer}.txt" \
+    -b "$WG_COOKIE" \
     -d "{\"name\":\"${peer}\"}" >/dev/null 2>&1 || true
 done
-echo -e "${GREEN}✓ Peers iniciales creados en el panel: ${WG_PEERS}${NC}"
+echo -e "${GREEN}✓ Peers iniciales: ${WG_PEERS} (gestión total desde el panel web)${NC}"
 
 # NAT para que los peers alcancen servicios del host (CMS)
 CURRENT_STAGE="ruteo VPN → host"
