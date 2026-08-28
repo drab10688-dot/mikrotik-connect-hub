@@ -4,7 +4,7 @@
 # Integrado al stack OmniSync (puertos alternos)
 # ============================================
 
-set -euo pipefail
+set -Eeuo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,7 +14,39 @@ NC='\033[0m'
 
 CMS_DIR="/opt/cms-cdata"
 CMS_VERSION="${CMS_VERSION:-4.5.14}"
-VPS_IP=$(curl -4 -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+INSTALL_LOG="/var/log/omnisync-cms-install.log"
+CURRENT_STAGE="inicio"
+
+on_error() {
+  local exit_code=$?
+  local failed_command="${BASH_COMMAND}"
+  local line_no="${BASH_LINENO[0]:-desconocida}"
+  set +e
+  echo -e "${RED}✗ Falló la instalación en la etapa '${CURRENT_STAGE}' (línea ${line_no}, código ${exit_code}).${NC}"
+  echo -e "${YELLOW}  Comando: ${failed_command}${NC}"
+  echo -e "${YELLOW}  Diagnóstico guardado en: ${INSTALL_LOG}${NC}"
+  if command -v docker >/dev/null 2>&1; then
+    {
+      echo ""
+      echo "===== diagnóstico automático $(date -Is) ====="
+      echo "Etapa: ${CURRENT_STAGE}; línea: ${line_no}; código: ${exit_code}; comando: ${failed_command}"
+      docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>&1 || true
+      if [ -f "${CMS_DIR}/docker-compose.yml" ]; then
+        (cd "${CMS_DIR}" && docker compose ps 2>&1) || true
+      fi
+      for container in cms-mysql cms-redis cms-rmqnamesrv cms-rmqbroker cms-acs cms-stun cms-ftp cms-boot cms-nginx; do
+        docker logs --tail 30 "$container" 2>&1 || true
+      done
+    } >>"${INSTALL_LOG}" 2>&1
+  fi
+  exit "$exit_code"
+}
+
+touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/tmp/omnisync-cms-install.log"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
+trap on_error ERR
+
+VPS_IP=$(curl -4 -fsS --connect-timeout 5 --max-time 10 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || true)
 
 # ── TR-069 / MQTT por WireGuard ──
 # Las ONUs alcanzan el VPS por el túnel (MikroTik ↔ WireGuard), no por la IP
@@ -82,6 +114,21 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! docker compose version >/dev/null 2>&1; then
+  echo -e "${RED}Error: falta Docker Compose v2 ('docker compose').${NC}"
+  exit 1
+fi
+
+if ! command -v openssl >/dev/null 2>&1; then
+  echo -e "${RED}Error: falta openssl, necesario para generar credenciales seguras.${NC}"
+  exit 1
+fi
+
+if [ -z "$VPS_IP" ]; then
+  echo -e "${RED}Error: no se pudo detectar una IPv4 para publicar la interfaz del CMS.${NC}"
+  exit 1
+fi
+
 # ── Tipo de tenant (pregunta solo si hay TTY; por defecto isp) ──
 if [ -t 0 ] && [ -e /dev/tty ]; then
   echo -e "${YELLOW}¿Tipo de instalación?${NC}  isp = un solo ISP | multi = multi-tenant"
@@ -95,9 +142,11 @@ fi
 echo -e "${GREEN}→ Tipo seleccionado: ${CMS_TENANT_TYPE}${NC}"
 
 # ── Quitar UISP (ya no forma parte del stack) ──
+CURRENT_STAGE="eliminación de UISP"
 purge_uisp
 
 # ── Limpieza de intentos previos ──
+CURRENT_STAGE="limpieza de instalación anterior"
 echo -e "${YELLOW}Limpiando instalaciones anteriores de CMS...${NC}"
 if [ -f "$CMS_DIR/docker-compose.yml" ]; then
   (cd "$CMS_DIR" && docker compose down -v --remove-orphans 2>/dev/null || true)
@@ -110,24 +159,50 @@ rm -rf "$CMS_DIR"
 echo -e "${GREEN}✓ Limpieza completa${NC}"
 
 # ── Descargar paquete oficial ──
+CURRENT_STAGE="descarga y extracción del paquete oficial"
 mkdir -p "$CMS_DIR"
 cd "$CMS_DIR"
 
 echo -e "${YELLOW}Descargando CMS v${CMS_VERSION} (paquete oficial)...${NC}"
-curl -fsSL -o cms.tar "https://cms.s.cdatayun.com/cms_linux/stable/cms_v${CMS_VERSION}_linux.tar"
+curl --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 180 \
+  -fsSL -o cms.tar "https://cms.s.cdatayun.com/cms_linux/stable/cms_v${CMS_VERSION}_linux.tar"
+[ -s cms.tar ] || { echo -e "${RED}El paquete descargado está vacío.${NC}"; exit 1; }
 tar -xf cms.tar
 rm -f cms.tar
-chmod +x cms.sh 2>/dev/null || true
-chmod +x -R script 2>/dev/null || true
+
+# Aceptar también paquetes futuros que incluyan un único directorio superior.
+if [ ! -s docker-compose.yml ]; then
+  mapfile -t package_dirs < <(find . -mindepth 1 -maxdepth 1 -type d -print)
+  if [ "${#package_dirs[@]}" -eq 1 ] && [ -s "${package_dirs[0]}/docker-compose.yml" ]; then
+    cp -a "${package_dirs[0]}/." .
+    rm -rf "${package_dirs[0]}"
+  fi
+fi
+for required_file in docker-compose.yml cms_init.sh cms.sh; do
+  if [ ! -s "$required_file" ]; then
+    echo -e "${RED}El paquete oficial está incompleto: falta ${required_file}.${NC}"
+    exit 1
+  fi
+done
+chmod +x cms.sh cms_init.sh
+if [ -d script ]; then
+  chmod +x -R script
+else
+  echo -e "${YELLOW}Aviso: el paquete no incluye el directorio auxiliar 'script'.${NC}"
+fi
 echo -e "${GREEN}✓ Paquete descargado${NC}"
 
 # ── Escribir .env con puertos alternos (sin preguntas) ──
+CURRENT_STAGE="generación de configuración"
 # Puertos elegidos para coexistir con OmniSync:
 #   MySQL 3307 (OmniSync/MariaDB usa 3306) | Redis 6380 | Web 18080/18443
 #   STUN 13478/UDP (coturn de OmniSync ya usa 3478)
-# Generador robusto: evita SIGPIPE de 'tr </dev/urandom | head' (mata el script con pipefail)
-MYSQL_ROOT_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c 16 || true)
-[ -z "$MYSQL_ROOT_PASSWORD" ] && MYSQL_ROOT_PASSWORD=$(date +%s%N | sha256sum | head -c 16)
+# Un solo proceso, sin tuberías: evita por completo SIGPIPE con pipefail.
+MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
+if [ -z "$MYSQL_ROOT_PASSWORD" ]; then
+  echo -e "${RED}No se pudo generar la contraseña de MySQL.${NC}"
+  exit 1
+fi
 cat > .env << EOF
 VOLUME_PATH=./
 
@@ -169,16 +244,21 @@ CMS_HOST=${VPS_IP}
 EOF
 echo -e "${GREEN}✓ .env generado (MySQL 3307, Redis 6380, Web 18080, STUN 13478)${NC}"
 
+# Detectar errores de sintaxis/variables del paquete antes de crear contenedores.
+docker compose config --quiet
+
 # Directorios de datos con permisos que esperan los contenedores
 mkdir -p data/emqx log/emqx log/redis log/nginx
 chmod -R 777 data/emqx log/emqx log/redis log/nginx
 
 # ── Fase 1: solo MySQL para inicializar tenant ──
+CURRENT_STAGE="inicio de MySQL"
 echo -e "${YELLOW}Iniciando MySQL del CMS...${NC}"
 docker compose up -d mysql
 wait_mysql
 
 # ── Inicializar tenant por SQL directo (equivale al cms_init.sh interactivo) ──
+CURRENT_STAGE="inicialización del tenant ${CMS_TENANT_TYPE}"
 echo -e "${YELLOW}Inicializando tenant '${CMS_TENANT_TYPE}' (host: ${ACS_HOST})...${NC}"
 docker exec -i cms-mysql sh -c 'sed -i "s|{tenant_host}|'"${ACS_HOST}"'|g" /init_tenant/'"${CMS_TENANT_TYPE}"'.sql'
 docker exec -i cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --default-character-set=utf8mb4 ccssx_boot -e "source /init_tenant/'"${CMS_TENANT_TYPE}"'.sql"'
@@ -187,20 +267,29 @@ docker exec -i cms-mysql sh -c 'mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --defaul
 echo -e "${GREEN}✓ Tenant inicializado${NC}"
 
 # ── Fase 2: stack completo ──
+CURRENT_STAGE="inicio del stack completo"
 echo -e "${YELLOW}Levantando stack completo del CMS (esto tarda 2-5 min)...${NC}"
 docker compose down
 docker compose up -d
 
 # ── Esperar servicio web ──
+CURRENT_STAGE="espera del servicio web"
 echo -e "${CYAN}Esperando servicio web en puerto 18080...${NC}"
+WEB_READY=false
 for i in $(seq 1 36); do
   sleep 5
   if ss -lntp 2>/dev/null | grep -q ":18080 "; then
     echo -e "${GREEN}✓ CMS respondiendo en puerto 18080${NC}"
+    WEB_READY=true
     break
   fi
   echo -e "  Esperando web... (${i}/36)"
 done
+if [ "$WEB_READY" != true ]; then
+  echo -e "${RED}El CMS no abrió el puerto 18080 dentro del tiempo esperado.${NC}"
+  docker compose ps || true
+  exit 1
+fi
 
 # ── Normalizar canales TR-069/MQTT hacia WireGuard ──
 normalize_cms_channels
