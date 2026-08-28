@@ -654,6 +654,18 @@ async function getSecretaryPermColumns(): Promise<Set<string>> {
     }
   }
 
+  // El ON CONFLICT necesita el índice único; en instalaciones antiguas puede faltar.
+  try {
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS secretary_assignments_secretary_mikrotik_key
+         ON secretary_assignments (secretary_id, mikrotik_id)`
+    );
+  } catch (error) {
+    console.error('⚠️ No se pudo crear el índice único de asignaciones:', error);
+  }
+
+
+
   const { rows } = await pool.query(
     `SELECT column_name FROM information_schema.columns
       WHERE table_name = 'secretary_assignments' AND column_name LIKE 'can\\_%'`
