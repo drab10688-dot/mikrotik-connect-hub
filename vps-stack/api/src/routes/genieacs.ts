@@ -1229,8 +1229,9 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
         return 'critical';
       };
 
-      const rxNorm = normalizePower(rxPower);
-      const txNorm = normalizePower(txPower);
+      const rxNorm = normalizePower(rxPower) ?? deepFindPower(device, RX_KEY) ?? null;
+      const txNorm = normalizePower(txPower) ?? deepFindPower(device, TX_KEY) ?? null;
+
 
       const idParts = String(device?._id || '').split('-');
       const serialFromId = idParts.length >= 3 ? idParts.slice(2).join('-') : null;
