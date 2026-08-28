@@ -689,16 +689,19 @@ devicesRouter.get('/:id/secretaries', requireRole('super_admin', 'admin'), async
     const isSuper = req.userRole === 'super_admin';
 
     if (id === 'all') {
+      // El super admin ve todo dentro de su ISP; el global solo lo sin-ISP.
       const { rows } = await pool.query(
         isSuper
           ? `SELECT sa.*, u.email, u.full_name
              FROM secretary_assignments sa
-             LEFT JOIN users u ON u.id = sa.secretary_id`
+             LEFT JOIN users u ON u.id = sa.secretary_id
+             WHERE ($1::uuid IS NULL AND u.tenant_id IS NULL)
+                OR u.tenant_id = $1::uuid`
           : `SELECT sa.*, u.email, u.full_name
              FROM secretary_assignments sa
              LEFT JOIN users u ON u.id = sa.secretary_id
              WHERE sa.assigned_by = $1`,
-        isSuper ? [] : [req.userId]
+        isSuper ? [req.tenantId || null] : [req.userId]
       );
       return res.json({ data: rows });
     }
