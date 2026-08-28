@@ -7,22 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
-import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Copy, Download, Plus, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, Download, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck, Trash2 } from "lucide-react";
 
 interface AcsInfo {
   tenant: { id: string; name: string; slug: string };
@@ -41,13 +29,6 @@ interface AcsInfo {
   stun_port: number;
   stun_username: string;
   stun_password: string;
-}
-
-interface Tenant {
-  id: string;
-  name: string;
-  slug: string;
-  is_active?: boolean;
 }
 
 /** Copia robusta: funciona también dentro de iframes y sin HTTPS. */
@@ -110,74 +91,22 @@ const Field = ({ label, value }: { label: string; value: string }) => (
 
 const IspAcs = () => {
   const queryClient = useQueryClient();
-  const { role } = useAuth();
-  const isSuperAdmin = role === "super_admin";
-
-  const [tenantId, setTenantId] = useState<string>("");
   const [mode, setMode] = useState<"vpn" | "nat">("vpn");
   const [peerName, setPeerName] = useState("mikrotik-1");
   const [onuNetworks, setOnuNetworks] = useState("10.82.0.0/21");
   const [script, setScript] = useState<string>("");
-  const [newIsp, setNewIsp] = useState({ name: "", slug: "", admin_email: "", admin_password: "" });
-  const [openNew, setOpenNew] = useState(false);
-
-  const { data: tenants } = useQuery({
-    queryKey: ["tenants-list"],
-    enabled: isSuperAdmin,
-    queryFn: async () => (await api<{ data: Tenant[] }>("/tenants")).data,
-  });
-
-  const tenantQuery = tenantId ? `?tenant_id=${tenantId}` : "";
-
   const { data: acs, isLoading } = useQuery({
-    queryKey: ["isp-acs", tenantId],
-    queryFn: async () => (await api<{ data: AcsInfo }>(`/isp/acs${tenantQuery}`)).data,
+    queryKey: ["isp-acs"],
+    queryFn: async () => (await api<{ data: AcsInfo }>("/isp/acs")).data,
   });
 
   const { data: vpn } = useQuery({
-    queryKey: ["isp-vpn", tenantId],
-    queryFn: async () => (await api<{ data: any }>(`/isp/vpn${tenantQuery}`)).data,
-  });
-
-  const refreshAll = () => {
-    queryClient.invalidateQueries({ queryKey: ["isp-acs"] });
-    queryClient.invalidateQueries({ queryKey: ["isp-vpn"] });
-    queryClient.invalidateQueries({ queryKey: ["tenants-list"] });
-  };
-
-  const createIsp = useMutation({
-    mutationFn: () =>
-      api<{ data: Tenant }>("/tenants", {
-        method: "POST",
-        body: {
-          name: newIsp.name,
-          slug: newIsp.slug || undefined,
-          admin_email: newIsp.admin_email || undefined,
-          admin_password: newIsp.admin_password || undefined,
-        },
-      }),
-    onSuccess: (res) => {
-      toast.success("ISP creado");
-      setOpenNew(false);
-      setNewIsp({ name: "", slug: "", admin_email: "", admin_password: "" });
-      setTenantId(res.data.id);
-      refreshAll();
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const toggleIsp = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
-      api(`/tenants/${id}`, { method: "PUT", body: { is_active: active } }),
-    onSuccess: () => {
-      toast.success("Estado del ISP actualizado");
-      refreshAll();
-    },
-    onError: (e: any) => toast.error(e.message),
+    queryKey: ["isp-vpn"],
+    queryFn: async () => (await api<{ data: any }>("/isp/vpn")).data,
   });
 
   const rotate = useMutation({
-    mutationFn: () => api(`/isp/acs/rotate${tenantQuery}`, { method: "POST" }),
+    mutationFn: () => api("/isp/acs/rotate", { method: "POST" }),
     onSuccess: () => {
       toast.success("Nuevo enlace TR-069 generado");
       queryClient.invalidateQueries({ queryKey: ["isp-acs"] });
@@ -187,7 +116,7 @@ const IspAcs = () => {
 
   const generate = useMutation({
     mutationFn: () =>
-      api<{ data: { script: string } }>(`/isp/vpn/script${tenantQuery}`, {
+      api<{ data: { script: string } }>("/isp/vpn/script", {
         method: "POST",
         body: { name: peerName, onu_networks: onuNetworks, mode },
       }),
@@ -200,15 +129,13 @@ const IspAcs = () => {
   });
 
   const removePeer = useMutation({
-    mutationFn: (id: string) => api(`/isp/vpn/${id}${tenantQuery}`, { method: "DELETE" }),
+    mutationFn: (id: string) => api(`/isp/vpn/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       toast.success("VPN eliminada");
       queryClient.invalidateQueries({ queryKey: ["isp-vpn"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
-
-  const activeTenant = tenants?.find((t) => t.id === (tenantId || acs?.tenant.id));
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -217,89 +144,12 @@ const IspAcs = () => {
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Satellite className="h-6 w-6 text-primary" />
-            ISP, TR-069 y VPN
+            TR-069 y VPN
           </h1>
           <p className="text-sm text-muted-foreground">
-            Agrega y activa ISPs, conecta las ONUs tras NAT sin VPN, o genera y elimina túneles L2TP.
+            Conecta las ONUs tras NAT sin VPN, o genera y elimina túneles L2TP hacia el VPS.
           </p>
         </header>
-
-        {isSuperAdmin && (
-          <Card>
-            <CardHeader className="flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>ISPs</CardTitle>
-                <CardDescription>Selecciona el ISP con el que quieres trabajar, actívalo o crea uno nuevo.</CardDescription>
-              </div>
-              <Dialog open={openNew} onOpenChange={setOpenNew}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" /> Agregar ISP
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Nuevo ISP</DialogTitle>
-                    <DialogDescription>Se crea con su propio token TR-069 y su subred de VPN.</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Label>Nombre</Label>
-                      <Input value={newIsp.name} onChange={(e) => setNewIsp({ ...newIsp, name: e.target.value })} placeholder="Suros Comunicaciones" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Identificador (opcional)</Label>
-                      <Input value={newIsp.slug} onChange={(e) => setNewIsp({ ...newIsp, slug: e.target.value })} placeholder="suros" />
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label>Email del administrador (opcional)</Label>
-                        <Input value={newIsp.admin_email} onChange={(e) => setNewIsp({ ...newIsp, admin_email: e.target.value })} placeholder="admin@isp.com" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Contraseña (opcional)</Label>
-                        <Input type="password" value={newIsp.admin_password} onChange={(e) => setNewIsp({ ...newIsp, admin_password: e.target.value })} />
-                      </div>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button onClick={() => createIsp.mutate()} disabled={!newIsp.name || createIsp.isPending}>
-                      {createIsp.isPending ? "Creando…" : "Crear ISP"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-center gap-4">
-              <div className="min-w-[240px] space-y-1.5">
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">ISP activo</Label>
-                <Select value={tenantId || acs?.tenant.id || ""} onValueChange={setTenantId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un ISP" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(tenants ?? []).map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {activeTenant && (
-                <div className="flex items-center gap-2 pt-5">
-                  <Switch
-                    checked={activeTenant.is_active !== false}
-                    onCheckedChange={(v) => toggleIsp.mutate({ id: activeTenant.id, active: v })}
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    {activeTenant.is_active !== false ? "Activo" : "Inactivo"}
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         <Card>
           <CardHeader className="flex-row items-start justify-between gap-4">
