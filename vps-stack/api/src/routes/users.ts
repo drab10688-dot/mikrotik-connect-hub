@@ -27,11 +27,13 @@ usersRouter.get('/', async (req: AuthRequest, res: Response) => {
                 LIMIT 1
               ) AS role
        FROM users u
-       WHERE ($1::uuid IS NULL AND u.tenant_id IS NULL)
+       WHERE $2::boolean = true
+          OR ($1::uuid IS NULL AND u.tenant_id IS NULL)
           OR (u.tenant_id = $1::uuid)
        ORDER BY u.created_at DESC`,
-      [req.tenantId || null]
+      [req.tenantId || null, req.userRole === 'super_admin' && !req.tenantId]
     );
+
 
     res.json({ data: rows });
   } catch (error: any) {
