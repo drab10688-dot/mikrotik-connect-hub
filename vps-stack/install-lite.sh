@@ -191,13 +191,25 @@ echo -e "${YELLOW}Instalando CMS C-Data (TR-069 por WireGuard ${WG_SUBNET%.*}.1)
 CMS_TENANT_TYPE="$CMS_TENANT_TYPE" ACS_HOST="${WG_SUBNET%.*}.1" WG_IP="${WG_SUBNET%.*}.1" \
   bash "$CMS_INSTALLER" < /dev/null
 
-# ── Configuraciones de los peers ──────────────────────────
-CURRENT_STAGE="resumen"
+# ── Generador de configuración para MikroTik ──────────────
+CURRENT_STAGE="script MikroTik"
+MT_SRC="$SCRIPT_DIR/mikrotik-wg.sh"
+if [ ! -s "$MT_SRC" ]; then
+  curl --retry 3 --connect-timeout 15 --max-time 60 -fsSL \
+    -o "$WG_DIR/mikrotik-wg.sh" \
+    "https://raw.githubusercontent.com/drab10688-dot/mikrotik-connect-hub/main/vps-stack/mikrotik-wg.sh" || true
+else
+  cp "$MT_SRC" "$WG_DIR/mikrotik-wg.sh"
+fi
+chmod +x "$WG_DIR/mikrotik-wg.sh" 2>/dev/null || true
+
 echo ""
-echo -e "${CYAN}Configuraciones WireGuard generadas:${NC}"
-docker exec omnisync-wireguard sh -c 'ls /config/peer_* 2>/dev/null' || true
-echo -e "  Ver una config:  ${GREEN}docker exec omnisync-wireguard cat /config/peer_mikrotik1/peer_mikrotik1.conf${NC}"
-echo -e "  Ver un QR:       ${GREEN}docker exec omnisync-wireguard /app/show-peer mikrotik1${NC}"
+echo -e "${CYAN}Peers WireGuard:${NC}"
+echo -e "  Crea los peers desde el panel web y descarga su archivo .conf"
+echo -e "  Script listo para MikroTik (todas las reglas OmniSync):"
+echo -e "    ${GREEN}bash ${WG_DIR}/mikrotik-wg.sh peer-mikrotik1.conf${NC}"
+echo -e "  También puedes pegar la config directamente:  ${GREEN}bash ${WG_DIR}/mikrotik-wg.sh${NC}"
+
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
