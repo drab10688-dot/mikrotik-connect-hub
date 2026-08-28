@@ -73,7 +73,7 @@ const Permissions = () => {
             Permisos por rol
           </h1>
           <p className="text-sm text-muted-foreground">
-            Define qué puede ver y editar cada rol dentro de tu ISP. Aplica solo a los usuarios de tu ISP.
+            Define qué puede ver y editar cada rol dentro del panel.
           </p>
         </header>
 

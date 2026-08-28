@@ -15,13 +15,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
-import { useMyTenant } from "@/hooks/useTenantBranding";
 
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus" },
-  { icon: Radio, label: "TR-069 y VPN", path: "/acs" },
+  { icon: Radio, label: "Credenciales y VPN", path: "/acs" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
@@ -35,11 +34,9 @@ export const Sidebar = () => {
 
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("Omnisync");
-  const { tenant } = useMyTenant();
 
-  // El branding del ISP (multi-empresa) tiene prioridad sobre el logo local.
-  const displayLogo = tenant?.logo_url || customLogo;
-  const displayName = tenant?.name || businessName;
+  const displayLogo = customLogo;
+  const displayName = businessName;
 
 
   useEffect(() => {

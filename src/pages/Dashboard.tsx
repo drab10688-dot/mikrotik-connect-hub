@@ -86,7 +86,7 @@ const Dashboard = () => {
 
   const quickActions = [
     { title: "Gestión de ONUs", description: "Señal, WiFi, PPPoE y alias", icon: Antenna, path: "/onus" },
-    { title: "TR-069 y VPN", description: "Enlace ACS del ISP y script MikroTik", icon: Server, path: "/acs" },
+    { title: "Credenciales y VPN", description: "Datos TR-069, STUN y script MikroTik", icon: Server, path: "/acs" },
     { title: "Configuración", description: "Ajustes del panel", icon: Settings, path: "/settings" },
   ];
 
@@ -133,7 +133,7 @@ const Dashboard = () => {
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Accesos rápidos</CardTitle>
-            <CardDescription>Operaciones frecuentes del ISP</CardDescription>
+            <CardDescription>Operaciones frecuentes</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

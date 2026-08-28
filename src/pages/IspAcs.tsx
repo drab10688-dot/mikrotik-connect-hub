@@ -145,10 +145,10 @@ const IspAcs = () => {
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Satellite className="h-6 w-6 text-primary" />
-            TR-069 y VPN
+            Credenciales TR-069, STUN y VPN
           </h1>
           <p className="text-sm text-muted-foreground">
-            Conecta las ONUs tras NAT sin VPN, o genera y elimina túneles L2TP hacia el VPS.
+            Todos los datos para conectar las ONUs al ACS: URL, usuario, clave, STUN y túnel L2TP.
           </p>
         </header>
 
@@ -157,7 +157,7 @@ const IspAcs = () => {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-primary" />
-                Enlace TR-069 {acs ? `— ${acs.tenant.name}` : ""}
+                Enlace TR-069
               </CardTitle>
               <CardDescription>
                 Con VPN usa la URL del túnel; sin VPN (ONU tras NAT) usa la URL pública con STUN.
@@ -214,7 +214,7 @@ const IspAcs = () => {
               Conexión de las ONUs
             </CardTitle>
             <CardDescription>
-              Elige cómo se conectan las ONUs de este ISP: por túnel L2TP hacia el VPS, o directo tras NAT con STUN.
+              Elige cómo se conectan las ONUs: por túnel L2TP hacia el VPS, o directo tras NAT con STUN.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -294,7 +294,7 @@ const IspAcs = () => {
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">VPNs L2TP creadas</Label>
               {!vpn?.peers?.length ? (
-                <p className="text-sm text-muted-foreground">Todavía no hay túneles creados para este ISP.</p>
+                <p className="text-sm text-muted-foreground">Todavía no hay túneles L2TP creados.</p>
               ) : (
                 <div className="grid gap-2 md:grid-cols-2">
                   {vpn.peers.map((p: any) => (
