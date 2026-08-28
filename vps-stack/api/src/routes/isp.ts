@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
+import { upsertL2tpUser, removeL2tpUser } from '../lib/l2tp';
 
 export const ispRouter = Router();
 export const ispPublicRouter = Router();
@@ -272,12 +273,17 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
       ]
     );
     peer = rows[0];
+    await upsertL2tpUser(peer.username, peer.password);
   } else if (onuNetworks && onuNetworks !== peer.onu_networks) {
     const { rows } = await pool.query(
       `UPDATE tenant_vpn_peers SET onu_networks = $2, updated_at = now() WHERE id = $1 RETURNING *`,
       [peer.id, onuNetworks]
     );
     peer = rows[0];
+    await upsertL2tpUser(peer.username, peer.password);
+  } else {
+    // Reaplica la cuenta por si el servidor VPN se reinstaló
+    await upsertL2tpUser(peer.username, peer.password);
   }
 
   // L2TP sin IPsec (plain L2TP en UDP 1701): más simple y evita problemas
@@ -332,6 +338,10 @@ add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-0
 ispRouter.delete('/vpn/:id', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
-  await pool.query(`DELETE FROM tenant_vpn_peers WHERE id = $1 AND tenant_id = $2`, [req.params.id, tenant.id]);
+  const { rows } = await pool.query(
+    `DELETE FROM tenant_vpn_peers WHERE id = $1 AND tenant_id = $2 RETURNING username`,
+    [req.params.id, tenant.id]
+  );
+  if (rows[0]?.username) await removeL2tpUser(rows[0].username);
   res.json({ success: true });
 });
