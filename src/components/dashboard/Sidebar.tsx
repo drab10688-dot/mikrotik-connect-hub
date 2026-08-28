@@ -11,12 +11,9 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
-import { useSystemResources } from "@/hooks/useMikrotikData";
 import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
-import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
 import { useMyTenant } from "@/hooks/useTenantBranding";
@@ -34,10 +31,7 @@ export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut, isSecretary, isReseller } = useAuth();
-  const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
-  const host = localStorage.getItem("mikrotik_host") || "";
-  const { data: systemInfo } = useSystemResources();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [customLogo, setCustomLogo] = useState<string | null>(null);
@@ -48,8 +42,6 @@ export const Sidebar = () => {
   const displayLogo = tenant?.logo_url || customLogo;
   const displayName = tenant?.name || businessName;
 
-  const systemData = (systemInfo as any[])?.[0];
-  const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
   useEffect(() => {
     const savedLogo = localStorage.getItem("sidebar_logo");
@@ -141,33 +133,25 @@ export const Sidebar = () => {
         <p className="mt-3 text-center text-sm font-semibold truncate">{displayName}</p>
         <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70">
-            <Router className="w-4 h-4" />
-            <span>{host}</span>
+            <Radio className="w-4 h-4" />
+            <span>TR-069 / ACS</span>
           </div>
           <NotificationCenter />
         </div>
         <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground text-center">
-          RouterOS {version}
+          OmniACS · Gestión de ONUs
         </div>
       </div>
 
+
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {loadingAccess || (isSecretary && loadingPermissions) ? (
+        {isSecretary && loadingPermissions ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
           </div>
-        ) : !hasDeviceAccess && !isSecretary ? (
-          <div className="px-4 py-6 space-y-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Shield className="w-5 h-5" />
-              <span className="text-sm font-medium">Sin acceso</span>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              No tienes dispositivos MikroTik asignados. Contacta al administrador.
-            </p>
-          </div>
         ) : (
           <>
+
             {filteredMenuItems.map((item) => (
               <NavLink
                 key={item.path}

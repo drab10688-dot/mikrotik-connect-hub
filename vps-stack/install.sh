@@ -1,20 +1,21 @@
 #!/bin/bash
 # ============================================
-# OmniSync ISP Manager - Instalador VPS
-# Compatible: Ubuntu 20.04, 22.04, 24.04
-#             Debian 11, 12
+# OmniACS — Instalador VPS
+# Panel de gestión de ONUs (TR-069 + VPN L2TP) multi-ISP
+# Compatible: Ubuntu 20.04/22.04/24.04 · Debian 11/12
+#
+# Servicios que levanta:
+#   PostgreSQL · API Node · Nginx · MongoDB · GenieACS · coturn (STUN) · L2TP/IPsec
+# NO instala: PHPNuxBill, FreeRADIUS, Mikhmon, C-Data CMS
 # ============================================
 
 set -e
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
 
 REPO_URL="https://github.com/drab10688-dot/mikrotik-connect-hub.git"
 INSTALL_DIR="/opt/omnisync"
+ONU_NETS="${ONU_NETS:-10.82.0.0/21}"
 
 is_public_ipv4() {
   local ip="$1"
@@ -29,1167 +30,210 @@ detect_public_ip() {
   local detected=""
   for provider in ifconfig.me api.ipify.org icanhazip.com; do
     detected=$(curl -s -4 --max-time 5 "$provider" 2>/dev/null | tr -d '[:space:]' || true)
-    if is_public_ipv4 "$detected"; then
-      echo "$detected"
-      return 0
-    fi
+    if is_public_ipv4 "$detected"; then echo "$detected"; return 0; fi
   done
   return 1
 }
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════╗"
-echo "║       OmniSync ISP Manager Installer         ║"
-echo "║       Docker Stack - All-in-One               ║"
-echo "╠══════════════════════════════════════════════╣"
-echo "║  Compatible:                                  ║"
-echo "║    • Ubuntu 20.04 / 22.04 / 24.04             ║"
-echo "║    • Debian 11 / 12                           ║"
+echo "║   OmniACS — Gestión de ONUs multi-ISP        ║"
+echo "║   TR-069 (GenieACS) + VPN L2TP/IPsec         ║"
 echo "╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# ─── Check root ───────────────────────────────────
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${RED}Error: Ejecuta este script como root (sudo)${NC}"
-  exit 1
+  echo -e "${RED}Error: ejecuta este script como root (sudo)${NC}"; exit 1
 fi
 
-# ─── Check OS ─────────────────────────────────────
-if [ -f /etc/os-release ]; then
-  . /etc/os-release
-  OS_NAME=$ID
-  OS_VERSION=$VERSION_ID
-  echo -e "${GREEN}Sistema detectado: $PRETTY_NAME${NC}"
-  
-  COMPATIBLE=false
-  if [ "$OS_NAME" = "ubuntu" ]; then
-    case "$OS_VERSION" in
-      20.04|22.04|24.04) COMPATIBLE=true ;;
-    esac
-  elif [ "$OS_NAME" = "debian" ]; then
-    case "$OS_VERSION" in
-      11|12) COMPATIBLE=true ;;
-    esac
-  fi
-  
-  if [ "$COMPATIBLE" = false ]; then
-    echo -e "${RED}⚠ Sistema no soportado oficialmente: $PRETTY_NAME${NC}"
-    read -p "¿Deseas continuar de todos modos? (s/N): " FORCE_INSTALL < /dev/tty
-    if [ "$FORCE_INSTALL" != "s" ] && [ "$FORCE_INSTALL" != "S" ]; then
-      exit 1
-    fi
-  fi
-else
-  echo -e "${YELLOW}⚠ No se pudo detectar el sistema operativo${NC}"
-fi
+# ═══ FASE 1: Dependencias ═══
+echo -e "${CYAN}═══ FASE 1/5: Dependencias ═══${NC}"
 
-# ─── Check existing installation ──────────────────
-handle_existing_installation() {
-  if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-    echo ""
-    echo -e "${YELLOW}⚠ OmniSync ya está instalado en este VPS${NC}"
-    echo ""
-    echo "  1) Reinstalar conservando datos (recomendado)"
-    echo "  2) Actualizar código (mantiene datos)"
-    echo "  3) Reinstalar desde cero (elimina todo)"
-    echo "  4) Desinstalar (elimina todo completamente)"
-    echo "  5) Cancelar"
-    echo ""
-    read -p "Selecciona una opción [1-5]: " OPTION < /dev/tty
+command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git curl; }
+command -v openssl >/dev/null 2>&1 || apt-get install -y -qq openssl
+command -v crontab >/dev/null 2>&1 || apt-get install -y -qq cron || true
 
-    case "$OPTION" in
-      1)
-        if [ ! -f "$INSTALL_DIR/reinstall-preserve-data.sh" ]; then
-          echo -e "${RED}No se encontró reinstall-preserve-data.sh. Actualiza el repositorio primero.${NC}"
-          exit 1
-        fi
-        exec bash "$INSTALL_DIR/reinstall-preserve-data.sh"
-        ;;
-
-      2)
-        echo -e "${YELLOW}Actualizando archivos...${NC}"
-        TEMP_DIR=$(mktemp -d)
-        git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
-        # Backup .env
-        cp "$INSTALL_DIR/.env" /tmp/omnisync-env-backup 2>/dev/null || true
-        # Copy new stack files
-        cp -r "$TEMP_DIR"/vps-stack/* "$INSTALL_DIR"/
-        # Restore .env
-        cp /tmp/omnisync-env-backup "$INSTALL_DIR/.env" 2>/dev/null || true
-
-        # Rebuild frontend
-        echo -e "${YELLOW}Recompilando panel web...${NC}"
-        cd "$TEMP_DIR"
-        echo "VITE_API_BASE_URL=/api" > .env.production
-        npm install --legacy-peer-deps 2>/dev/null || npm install
-        npm run build
-        mkdir -p "$INSTALL_DIR/frontend/dist"
-        rm -rf "$INSTALL_DIR/frontend/dist"/*
-        cp -r dist/* "$INSTALL_DIR/frontend/dist"/
-
-        # Regenerate radius configs from .env
-        cd "$INSTALL_DIR"
-        # Asegurar una IP pública real para el endpoint WireGuard.
-        # Reemplaza también valores antiguos 172.x/10.x/192.168.x de Docker/LAN.
-        CURRENT_PUBLIC_IP=$(sed -n 's/^VPS_PUBLIC_IP=//p' .env 2>/dev/null | tail -1 | tr -d '[:space:]')
-        if ! is_public_ipv4 "$CURRENT_PUBLIC_IP"; then
-          DETECTED_IP=$(detect_public_ip || true)
-          if ! is_public_ipv4 "$DETECTED_IP"; then
-            echo -e "${RED}✗ No se pudo detectar la IP pública del VPS.${NC}"
-            echo -e "${YELLOW}Configura VPS_PUBLIC_IP manualmente en $INSTALL_DIR/.env y ejecuta la actualización otra vez.${NC}"
-            exit 1
-          fi
-          sed -i '/^VPS_PUBLIC_IP=/d' .env
-          echo "VPS_PUBLIC_IP=${DETECTED_IP}" >> .env
-        fi
-        source .env 2>/dev/null || true
-        sync_nuxbill_env_file "$INSTALL_DIR/.env"
-        generate_radius_configs
-
-        rm -rf "$TEMP_DIR" /tmp/omnisync-env-backup
-
-        # Regenerate nuxbill init SQL
-        generate_nuxbill_sql
-
-        docker compose build --no-cache api phpnuxbill
-        setup_acs_profile
-        docker compose up -d --build
-        sleep 10
-        if ! ensure_mariadb_accounts; then
-          echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
-          echo -e "${YELLOW}Ejecuta: bash $INSTALL_DIR/repair-nuxbill-auth.sh${NC}"
-          exit 1
-        fi
-        echo -e "${GREEN}✓ Actualización completada${NC}"
-        VPS_IP=$(hostname -I | awk '{print $1}')
-        echo -e "${GREEN}Panel: http://$VPS_IP${NC}"
-        exit 0
-        ;;
-
-      3)
-        echo -e "${RED}⚠ Esto ELIMINARÁ todos los datos y volúmenes actuales.${NC}"
-        read -p "Escribe 'REINSTALAR' para confirmar (Enter para cancelar): " CONFIRM_REINSTALL < /dev/tty
-        if [ "$CONFIRM_REINSTALL" != "REINSTALAR" ]; then
-          echo -e "${YELLOW}Operación cancelada. No se eliminó nada.${NC}"
-          exit 0
-        fi
-        echo -e "${YELLOW}Deteniendo servicios...${NC}"
-        cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
-        cd /root
-        rm -rf "$INSTALL_DIR"
-        echo -e "${GREEN}Instalación anterior eliminada ✓${NC}"
-        ;;
-
-      4)
-        echo -e "${RED}⚠ Esto eliminará TODOS los datos.${NC}"
-        read -p "Escribe 'ELIMINAR' para confirmar: " CONFIRM < /dev/tty
-        if [ "$CONFIRM" = "ELIMINAR" ]; then
-          cd "$INSTALL_DIR" && docker compose down -v 2>/dev/null || true
-          rm -rf "$INSTALL_DIR"
-          echo -e "${GREEN}OmniSync desinstalado ✓${NC}"
-        fi
-        exit 0
-        ;;
-      *)
-        exit 0
-        ;;
-    esac
-  fi
-}
-
-# ═══════════════════════════════════════════════════
-# Helper functions
-# ═══════════════════════════════════════════════════
-
-# Determina si se usa el GenieACS interno (perfil builtin-acs) o uno externo.
-# Si GENIEACS_NBI_URL apunta a una instancia externa (no al servicio interno),
-# no se arrancan omnisync-mongo/omnisync-genieacs para evitar conflictos de puerto.
-# Usa COMPOSE_PROFILES (compatible con todas las versiones de compose v2);
-# el flag --profile no existe en versiones antiguas del plugin.
-setup_acs_profile() {
-  local nbi="${GENIEACS_NBI_URL:-}"
-  if [ -n "$nbi" ] && [ "$nbi" != "http://genieacs:7557" ] && [ "$nbi" != "http://genieacs-nbi:7557" ]; then
-    unset COMPOSE_PROFILES
-  else
-    export COMPOSE_PROFILES=builtin-acs
-  fi
-}
-
-generate_radius_configs() {
-  local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
-  local radius_secret="${RADIUS_SECRET:-testing123}"
-  
-  cat > "$INSTALL_DIR/radius/mods-enabled/sql" << SQLEOF
-sql {
-    dialect = "mysql"
-    driver = "rlm_sql_mysql"
-
-    server = "mariadb"
-    port = 3306
-    login = "radius"
-    password = "${radius_pw}"
-
-    radius_db = "radius"
-
-    acct_table1 = "radacct"
-    acct_table2 = "radacct"
-    postauth_table = "radpostauth"
-    authcheck_table = "radcheck"
-    groupcheck_table = "radgroupcheck"
-    authreply_table = "radreply"
-    groupreply_table = "radgroupreply"
-    usergroup_table = "radusergroup"
-
-    delete_stale_sessions = yes
-    pool {
-        start = 5
-        min = 3
-        max = 10
-        spare = 3
-        uses = 0
-        lifetime = 0
-        idle_timeout = 60
-    }
-
-    read_clients = yes
-    client_table = "nas"
-
-    group_attribute = "SQL-Group"
-
-    sql_user_name = "%{%{Stripped-User-Name}:-%{User-Name}}"
-}
-SQLEOF
-
-  cat > "$INSTALL_DIR/radius/clients.conf" << CLIENTEOF
-client mikrotik {
-    ipaddr = 0.0.0.0/0
-    secret = ${radius_secret}
-    shortname = mikrotik
-    nastype = other
-}
-CLIENTEOF
-}
-
-resolve_nuxbill_password() {
-  if [ -n "${NUXBILL_DB_PASSWORD:-}" ]; then
-    echo "${NUXBILL_DB_PASSWORD}"
-  elif [ -n "${NUXBILL_DB_PASS:-}" ]; then
-    echo "${NUXBILL_DB_PASS}"
-  else
-    echo "changeme_nuxbill"
-  fi
-}
-
-sync_nuxbill_env_file() {
-  local env_file="${1:-$INSTALL_DIR/.env}"
-  local nuxbill_pw
-  local escaped_pw
-  local current_app_url normalized_app_url escaped_app_url vps_ip
-
-  nuxbill_pw="$(resolve_nuxbill_password)"
-  NUXBILL_DB_PASSWORD="$nuxbill_pw"
-  NUXBILL_DB_PASS="$nuxbill_pw"
-
-  [ -f "$env_file" ] || return 0
-
-  escaped_pw="${nuxbill_pw//\\/\\\\}"
-  escaped_pw="${escaped_pw//&/\\&}"
-
-  if grep -q '^NUXBILL_DB_PASSWORD=' "$env_file"; then
-    sed -i "s|^NUXBILL_DB_PASSWORD=.*|NUXBILL_DB_PASSWORD=${escaped_pw}|" "$env_file"
-  else
-    echo "NUXBILL_DB_PASSWORD=${nuxbill_pw}" >> "$env_file"
-  fi
-
-  if grep -q '^NUXBILL_DB_PASS=' "$env_file"; then
-    sed -i "s|^NUXBILL_DB_PASS=.*|NUXBILL_DB_PASS=${escaped_pw}|" "$env_file"
-  else
-    echo "NUXBILL_DB_PASS=${nuxbill_pw}" >> "$env_file"
-  fi
-
-  vps_ip="$(hostname -I | awk '{print $1}')"
-  current_app_url="${NUXBILL_APP_URL:-}"
-
-  if [ -z "$current_app_url" ] && [ -f "$env_file" ]; then
-    current_app_url="$(grep '^NUXBILL_APP_URL=' "$env_file" | cut -d'=' -f2- || true)"
-  fi
-
-  if [ -z "$current_app_url" ]; then
-    normalized_app_url="http://${vps_ip}/nuxbill"
-  else
-    current_app_url="${current_app_url%/}"
-    current_app_url="${current_app_url%/admin}"
-    current_app_url="${current_app_url%/index.php}"
-
-    if [[ "$current_app_url" == *"localhost:8080"* || "$current_app_url" == *"127.0.0.1:8080"* ]]; then
-      normalized_app_url="http://${vps_ip}/nuxbill"
-    elif [[ "$current_app_url" == *"/nuxbill"* ]]; then
-      normalized_app_url="${current_app_url%%/nuxbill*}/nuxbill"
-    elif [[ "$current_app_url" == *":8080" ]]; then
-      normalized_app_url="${current_app_url%:8080}/nuxbill"
-    else
-      normalized_app_url="${current_app_url}/nuxbill"
-    fi
-  fi
-
-  NUXBILL_APP_URL="$normalized_app_url"
-  export NUXBILL_APP_URL
-
-  escaped_app_url="${normalized_app_url//\\/\\\\}"
-  escaped_app_url="${escaped_app_url//&/\\&}"
-
-  if grep -q '^NUXBILL_APP_URL=' "$env_file"; then
-    sed -i "s|^NUXBILL_APP_URL=.*|NUXBILL_APP_URL=${escaped_app_url}|" "$env_file"
-  else
-    echo "NUXBILL_APP_URL=${normalized_app_url}" >> "$env_file"
-  fi
-}
-
-generate_nuxbill_sql() {
-  local nuxbill_pw
-  nuxbill_pw="$(resolve_nuxbill_password)"
-  
-  mkdir -p "$INSTALL_DIR/mariadb-init"
-  cat > "$INSTALL_DIR/mariadb-init/02-nuxbill.sql" << NUXEOF
--- PHPNuxBill Database Initialization
-CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
-GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
--- PHPNuxBill needs access to the radius database for its RADIUS module
-GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
-FLUSH PRIVILEGES;
-NUXEOF
-}
-
-ensure_mariadb_accounts() {
-  local root_pw="${MYSQL_ROOT_PASSWORD:-changeme_mysql}"
-  local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
-  local nuxbill_pw
-  local root_args=()
-  local auth_mode=""
-  local container_root_pw=""
-  nuxbill_pw="$(resolve_nuxbill_password)"
-
-  echo -e "${YELLOW}Sincronizando usuarios MariaDB (radius/nuxbill)...${NC}"
-
-  for _ in $(seq 1 25); do
-    if [ -n "$root_pw" ] && docker exec omnisync-mariadb mariadb -uroot -p"${root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
-      root_args=(-uroot -p"${root_pw}")
-      auth_mode="password"
-      break
-    fi
-
-    if [ -z "$container_root_pw" ]; then
-      container_root_pw="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' omnisync-mariadb 2>/dev/null | awk -F= '/^MYSQL_ROOT_PASSWORD=/{sub(/^MYSQL_ROOT_PASSWORD=/, ""); print; exit}')"
-    fi
-
-    if [ -n "$container_root_pw" ] && [ "$container_root_pw" != "$root_pw" ] \
-      && docker exec omnisync-mariadb mariadb -uroot -p"${container_root_pw}" -e "SELECT 1;" >/dev/null 2>&1; then
-      root_pw="$container_root_pw"
-      root_args=(-uroot -p"${root_pw}")
-      auth_mode="password(container)"
-      MYSQL_ROOT_PASSWORD="$root_pw"
-      if [ -f "$INSTALL_DIR/.env" ]; then
-        if grep -q '^MYSQL_ROOT_PASSWORD=' "$INSTALL_DIR/.env"; then
-          sed -i "s|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=${root_pw}|" "$INSTALL_DIR/.env"
-        else
-          echo "MYSQL_ROOT_PASSWORD=${root_pw}" >> "$INSTALL_DIR/.env"
-        fi
-      fi
-      break
-    fi
-
-    if docker exec omnisync-mariadb mariadb -uroot -e "SELECT 1;" >/dev/null 2>&1; then
-      root_args=(-uroot)
-      auth_mode="socket"
-      break
-    fi
-
-    sleep 2
-  done
-
-  if [ -z "$auth_mode" ]; then
-    echo -e "${YELLOW}⚠ No se pudo autenticar root en MariaDB (password/socket)${NC}"
-    return 1
-  fi
-
-  docker exec omnisync-mariadb mariadb "${root_args[@]}" >/dev/null 2>&1 << SQL
-CREATE DATABASE IF NOT EXISTS radius;
-CREATE DATABASE IF NOT EXISTS phpnuxbill CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-CREATE USER IF NOT EXISTS 'radius'@'%' IDENTIFIED BY '${radius_pw}';
-ALTER USER 'radius'@'%' IDENTIFIED BY '${radius_pw}';
-GRANT ALL PRIVILEGES ON radius.* TO 'radius'@'%';
-CREATE USER IF NOT EXISTS 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
-ALTER USER 'nuxbill'@'%' IDENTIFIED BY '${nuxbill_pw}';
-GRANT ALL PRIVILEGES ON phpnuxbill.* TO 'nuxbill'@'%';
-GRANT ALL PRIVILEGES ON radius.* TO 'nuxbill'@'%';
-FLUSH PRIVILEGES;
-SQL
-
-  if [ $? -eq 0 ]; then
-    echo -e "${GREEN}Usuarios MariaDB sincronizados (root via ${auth_mode}) ✓${NC}"
-    return 0
-  fi
-
-  echo -e "${YELLOW}⚠ Falló la sincronización SQL de usuarios MariaDB${NC}"
-  return 1
-}
-
-ensure_radius_schema() {
-  local radius_pw="${RADIUS_DB_PASSWORD:-changeme_radius}"
-  local schema_file="$INSTALL_DIR/radius/sql/schema.sql"
-
-  [ -f "$schema_file" ] || {
-    echo -e "${YELLOW}⚠ No existe $schema_file${NC}"
-    return 1
-  }
-
-  echo -e "${YELLOW}Verificando tabla nas en base de datos radius...${NC}"
-
-  local has_nas
-  has_nas=$(docker exec omnisync-mariadb mariadb -uradius -p"${radius_pw}" -Nse \
-    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='radius' AND table_name='nas';" 2>/dev/null || echo "0")
-
-  if [ "$has_nas" != "1" ]; then
-    echo -e "${YELLOW}→ Tabla nas no existe, importando schema radius...${NC}"
-    docker exec -i omnisync-mariadb mariadb -uradius -p"${radius_pw}" radius < "$schema_file" 2>/dev/null || true
-
-    has_nas=$(docker exec omnisync-mariadb mariadb -uradius -p"${radius_pw}" -Nse \
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='radius' AND table_name='nas';" 2>/dev/null || echo "0")
-  fi
-
-  if [ "$has_nas" = "1" ]; then
-    echo -e "${GREEN}Tabla nas verificada ✓${NC}"
-    return 0
-  fi
-
-  echo -e "${RED}✗ La tabla nas sigue sin existir${NC}"
-  return 1
-}
-
-is_truthy() {
-  case "${1,,}" in
-    1|true|yes|y|on) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-start_optional_services() {
-  # Servicios opcionales:
-  # - Mikhmon y WireGuard se inician/detienen desde el panel de Servicios VPS
-  echo -e "${CYAN}Servicios opcionales: Mikhmon (Docker), WireGuard (Docker)${NC}"
-}
-
-# Validate existing installation lifecycle actions (reinstall/update/uninstall)
-handle_existing_installation
-
-# ─── Fresh install prompt ─────────────────────────
-if [ ! -d "$INSTALL_DIR" ] || [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
-  echo ""
-  echo -e "${CYAN}════════════════════════════════════════════${NC}"
-  echo -e "${GREEN}   OmniSync — Instalación nueva${NC}"
-  echo -e "${CYAN}════════════════════════════════════════════${NC}"
-  echo -e "${YELLOW}Se instalará OmniSync completo en este VPS:${NC}"
-  echo -e "  • API + Panel web (Nginx)"
-  echo -e "  • PostgreSQL + MariaDB + FreeRADIUS"
-  echo -e "  • PHPNuxBill + GenieACS (ACS integrado)"
-  echo -e "  • WireGuard + Mikhmon (opcionales)"
-  echo ""
-  read -p "¿Instalar OmniSync ahora? (s/N): " CONFIRM_INSTALL < /dev/tty
-  if [ "$CONFIRM_INSTALL" != "s" ] && [ "$CONFIRM_INSTALL" != "S" ]; then
-    echo -e "${YELLOW}Instalación cancelada.${NC}"
-    exit 0
-  fi
-  echo -e "${GREEN}Iniciando instalación...${NC}"
-fi
-
-# ═══════════════════════════════════════════════════
-# FASE 1: Dependencias del sistema
-# ═══════════════════════════════════════════════════
-echo ""
-echo -e "${CYAN}═══ FASE 1/5: Instalando dependencias ═══${NC}"
-
-# Git
-if ! command -v git &> /dev/null; then
-  apt-get update -qq && apt-get install -y -qq git curl
-fi
-
-# Docker
-if ! command -v docker &> /dev/null; then
+if ! command -v docker >/dev/null 2>&1; then
   echo -e "${YELLOW}Instalando Docker...${NC}"
   curl -fsSL https://get.docker.com | sh
-  systemctl enable docker
-  systemctl start docker
-  echo -e "${GREEN}Docker instalado ✓${NC}"
-else
-  echo -e "${GREEN}Docker ya instalado ✓${NC}"
+  systemctl enable docker && systemctl start docker
 fi
+docker compose version >/dev/null 2>&1 || apt-get install -y -qq docker-compose-plugin
 
-# Docker Compose
-if ! docker compose version &> /dev/null; then
-  apt-get update -qq && apt-get install -y -qq docker-compose-plugin
-  echo -e "${GREEN}Docker Compose instalado ✓${NC}"
-fi
-
-# Node.js
-if ! command -v node &> /dev/null; then
+if ! command -v node >/dev/null 2>&1; then
   echo -e "${YELLOW}Instalando Node.js 20...${NC}"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y -qq nodejs
-  echo -e "${GREEN}Node.js instalado ✓${NC}"
-else
-  echo -e "${GREEN}Node.js $(node -v) ya instalado ✓${NC}"
 fi
-
 echo -e "${GREEN}✓ Dependencias listas${NC}"
 
-# ═══════════════════════════════════════════════════
-# FASE 2: Descargar y compilar frontend PRIMERO
-# ═══════════════════════════════════════════════════
+# ═══ FASE 2: Código + panel web ═══
 echo ""
-echo -e "${CYAN}═══ FASE 2/5: Descargando y compilando panel web ═══${NC}"
+echo -e "${CYAN}═══ FASE 2/5: Descargando y compilando el panel ═══${NC}"
 
 TEMP_DIR=$(mktemp -d)
 git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
-echo -e "${GREEN}Código descargado ✓${NC}"
 
-# Copy VPS stack files
 mkdir -p "$INSTALL_DIR"
+[ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" /tmp/omniacs-env-backup
 cp -r "$TEMP_DIR"/vps-stack/* "$INSTALL_DIR"/
-echo -e "${GREEN}Archivos del stack copiados ✓${NC}"
+[ -f /tmp/omniacs-env-backup ] && cp /tmp/omniacs-env-backup "$INSTALL_DIR/.env"
+echo -e "${GREEN}✓ Stack copiado${NC}"
 
-# Build frontend
-echo -e "${YELLOW}Compilando panel web (puede tardar unos minutos)...${NC}"
+echo -e "${YELLOW}Compilando panel web (unos minutos)...${NC}"
 cd "$TEMP_DIR"
 echo "VITE_API_BASE_URL=/api" > .env.production
 npm install --legacy-peer-deps 2>/dev/null || npm install
 npm run build
 
-# Deploy frontend
 FRONTEND_DIR="$INSTALL_DIR/frontend/dist"
 mkdir -p "$FRONTEND_DIR"
-rm -rf "$FRONTEND_DIR"/*
+rm -rf "${FRONTEND_DIR:?}"/*
 cp -r dist/* "$FRONTEND_DIR"/
-echo -e "${GREEN}✓ Panel web compilado y desplegado${NC}"
+cd /root && rm -rf "$TEMP_DIR"
+echo -e "${GREEN}✓ Panel compilado${NC}"
 
-cd /root
-rm -rf "$TEMP_DIR"
-
-# ═══════════════════════════════════════════════════
-# FASE 3: Configuración
-# ═══════════════════════════════════════════════════
+# ═══ FASE 3: Configuración ═══
 echo ""
 echo -e "${CYAN}═══ FASE 3/5: Configuración ═══${NC}"
-
 cd "$INSTALL_DIR"
 
-# Generate secure random secrets
-JWT_SECRET=$(openssl rand -hex 32)
-DB_PASSWORD=$(openssl rand -hex 16)
-RADIUS_DB_PASSWORD=$(openssl rand -hex 16)
-MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)
-NUXBILL_DB_PASSWORD=$(openssl rand -hex 16)
-NUXBILL_DB_PASS="${NUXBILL_DB_PASSWORD}"
-RADIUS_SECRET=$(openssl rand -hex 16)
-echo ""
-echo -e "${YELLOW}Configuración MikroTik (opcional, se puede configurar desde el panel):${NC}"
-read -p "Host/IP del MikroTik (Enter para omitir): " MIKROTIK_HOST < /dev/tty
-MIKROTIK_HOST=${MIKROTIK_HOST:-}
-if [ -n "$MIKROTIK_HOST" ]; then
-  read -p "Puerto API REST (443): " MIKROTIK_PORT < /dev/tty
-  MIKROTIK_PORT=${MIKROTIK_PORT:-443}
-  read -p "Usuario MikroTik (admin): " MIKROTIK_USER < /dev/tty
-  MIKROTIK_USER=${MIKROTIK_USER:-admin}
-  read -sp "Contraseña MikroTik: " MIKROTIK_PASS < /dev/tty
-  echo ""
-else
-  MIKROTIK_PORT=443
-  MIKROTIK_USER=""
-  MIKROTIK_PASS=""
-  echo -e "${CYAN}→ Podrás agregar dispositivos MikroTik desde el panel web${NC}"
-fi
-
-# Public IP used for WireGuard endpoint; never fall back to Docker/LAN addresses.
 VPS_PUBLIC_IP=$(detect_public_ip || true)
 if ! is_public_ipv4 "$VPS_PUBLIC_IP"; then
-  echo -e "${RED}✗ No se pudo detectar una IP pública válida para WireGuard.${NC}"
-  echo -e "${YELLOW}Verifica la salida a Internet/DNS del VPS y vuelve a ejecutar el instalador.${NC}"
-  exit 1
+  echo -e "${RED}✗ No se detectó IP pública válida. Revisa DNS/salida a Internet.${NC}"; exit 1
 fi
-echo -e "${CYAN}→ IP pública detectada: ${VPS_PUBLIC_IP}${NC}"
+echo -e "${CYAN}→ IP pública: ${VPS_PUBLIC_IP}${NC}"
 
-# Create .env with actual passwords
-cat > .env << EOF
-# Auto-generated - $(date)
+if [ ! -f .env ]; then
+  cat > .env << EOF
+# Auto-generado - $(date)
 DB_NAME=omnisync
 DB_USER=omnisync
-DB_PASSWORD=${DB_PASSWORD}
-JWT_SECRET=${JWT_SECRET}
+DB_PASSWORD=$(openssl rand -hex 16)
+JWT_SECRET=$(openssl rand -hex 32)
 JWT_EXPIRES_IN=7d
-MIKROTIK_HOST=${MIKROTIK_HOST}
-MIKROTIK_PORT=${MIKROTIK_PORT}
-MIKROTIK_USER=${MIKROTIK_USER}
-MIKROTIK_PASS=${MIKROTIK_PASS}
-RADIUS_SECRET=${RADIUS_SECRET}
-RADIUS_DB_PASSWORD=${RADIUS_DB_PASSWORD}
-MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-NUXBILL_DB_PASSWORD=${NUXBILL_DB_PASSWORD}
-NUXBILL_DB_PASS=${NUXBILL_DB_PASS}
-NUXBILL_APP_URL=http://${VPS_IP}/nuxbill
+MIKROTIK_HOST=
+MIKROTIK_PORT=443
+MIKROTIK_USER=
+MIKROTIK_PASS=
 GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
 VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
-
 TZ=America/Bogota
 EOF
-
-sync_nuxbill_env_file ".env"
-
-echo -e "${GREEN}.env generado ✓${NC}"
-
-# Generate FreeRADIUS configs with real passwords (no env interpolation in mounted files)
-generate_radius_configs
-echo -e "${GREEN}FreeRADIUS configs generados ✓${NC}"
-
-# Generate NuxBill init SQL with real password
-generate_nuxbill_sql
-echo -e "${GREEN}NuxBill init SQL generado ✓${NC}"
-
-# Create required directories
-mkdir -p nginx/certs
-mkdir -p frontend/dist
-
-# ── Instalar cloudflared (usado por la API Node.js para HTTPS) ──
-echo -e "${YELLOW}Instalando cloudflared para HTTPS del portal cautivo...${NC}"
-if ! command -v cloudflared &> /dev/null; then
-  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-  chmod +x /usr/local/bin/cloudflared
-  echo -e "${GREEN}cloudflared instalado ✓${NC}"
+  echo -e "${GREEN}✓ .env generado${NC}"
 else
-  echo -e "${GREEN}cloudflared ya instalado ✓${NC}"
+  grep -q '^VPS_PUBLIC_IP=' .env && sed -i "s|^VPS_PUBLIC_IP=.*|VPS_PUBLIC_IP=${VPS_PUBLIC_IP}|" .env \
+    || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
+  echo -e "${GREEN}✓ .env existente conservado${NC}"
 fi
 
-# Firewall
-if command -v ufw &> /dev/null; then
-  echo -e "${YELLOW}Abriendo puertos en firewall...${NC}"
-  ufw allow 80/tcp >/dev/null 2>&1
-  ufw allow 443/tcp >/dev/null 2>&1
-  ufw allow 1812/udp >/dev/null 2>&1
-  ufw allow 1813/udp >/dev/null 2>&1
-  ufw allow 7547/tcp >/dev/null 2>&1   # GenieACS CWMP (TR-069)
-  ufw allow 7547/udp >/dev/null 2>&1   # GenieACS STUN/UDP Connection Request
-  ufw allow 3478/tcp >/dev/null 2>&1   # coturn STUN (TCP)
-  ufw allow 3478/udp >/dev/null 2>&1   # coturn STUN (UDP) - NAT traversal
-  ufw allow 7567/tcp >/dev/null 2>&1   # GenieACS File Server
-  ufw allow 3001/tcp >/dev/null 2>&1   # GenieACS UI
-  ufw allow 51820/udp >/dev/null 2>&1  # WireGuard VPN
-  ufw allow 18080/tcp >/dev/null 2>&1  # CMS C-Data (web)
-  # TR-069 / MQTT del CMS: solo por el túnel WireGuard (más rápido y privado)
-  ufw allow in on wg0 to any port 9909 proto tcp >/dev/null 2>&1 || true
-  ufw allow in on wg0 to any port 1883 proto tcp >/dev/null 2>&1 || true
-  ufw allow in on wg0 to any port 7547 >/dev/null 2>&1 || true
-  echo -e "${GREEN}Puertos abiertos (80, 443, 1812/udp, 1813/udp, 7547 tcp+udp, 7567, 3001, 3478 tcp+udp, 51820/udp, 18080) ✓${NC}"
+# shellcheck disable=SC1091
+set -a; . "$INSTALL_DIR/.env"; set +a
+
+mkdir -p nginx/certs frontend/dist scripts
+
+if command -v ufw >/dev/null 2>&1; then
+  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 500/udp 4500/udp 1701/udp; do
+    ufw allow "$p" >/dev/null 2>&1 || true
+  done
+  echo -e "${GREEN}✓ Puertos abiertos en firewall${NC}"
 fi
 
-# ═══════════════════════════════════════════════════
-# FASE 4: Levantar servicios Docker
-# ═══════════════════════════════════════════════════
+# ═══ FASE 4: Docker ═══
 echo ""
-echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios Docker ═══${NC}"
+echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios ═══${NC}"
 
-# Limpiar contenedores huérfanos o en conflicto antes de levantar
-echo -e "${YELLOW}Limpiando contenedores anteriores si existen...${NC}"
 docker compose down --remove-orphans 2>/dev/null || true
-for cname in omnisync-mariadb omnisync-postgres omnisync-api omnisync-nginx omnisync-freeradius omnisync-phpnuxbill omnisync-mariadb-recover omnisync-genieacs omnisync-mongo omnisync-wireguard; do
+# Restos de instalaciones anteriores (NuxBill/RADIUS/Mikhmon/CMS) — ya no se usan
+for cname in omnisync-mariadb omnisync-freeradius omnisync-phpnuxbill omnisync-mikhmon \
+             omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   docker rm -f "$cname" 2>/dev/null || true
 done
-echo -e "${GREEN}✓ Contenedores limpios${NC}"
 
-# ── Liberar puertos de GenieACS si hay una instalación standalone previa ──
 if [ -f /opt/genieacs/docker-compose.yml ]; then
-  echo -e "${YELLOW}Detectado GenieACS standalone en /opt/genieacs — deteniéndolo (OmniSync trae el suyo integrado)...${NC}"
+  echo -e "${YELLOW}Deteniendo GenieACS standalone en /opt/genieacs...${NC}"
   (cd /opt/genieacs && docker compose down 2>/dev/null) || true
 fi
 for gport in 7547 7557 7567 3001 3478; do
   conflict=$(docker ps --format '{{.Names}}\t{{.Ports}}' | grep ":${gport}->" | grep -v '^omnisync-' | cut -f1 || true)
-  if [ -n "$conflict" ]; then
-    echo -e "${YELLOW}Puerto ${gport} ocupado por: ${conflict} — deteniendo${NC}"
-    docker stop $conflict >/dev/null 2>&1 || true
-  fi
+  [ -n "$conflict" ] && docker stop $conflict >/dev/null 2>&1 || true
 done
 
-
-echo -e "${YELLOW}Construyendo contenedores (esto puede tardar varios minutos)...${NC}"
-
-# Build only custom images (api + phpnuxbill)
-docker compose build --no-cache api phpnuxbill
-
-# Start core services (optional services use restart: "no" and are managed from UI)
-# GenieACS interno solo se arranca si no hay un ACS externo configurado
-source "$INSTALL_DIR/.env" 2>/dev/null || true
-setup_acs_profile
+echo -e "${YELLOW}Construyendo API...${NC}"
+docker compose build api
 docker compose up -d 2>&1 | tail -5
 
-# Wait for services to stabilize
-echo -e "${YELLOW}Esperando 20 segundos para estabilización...${NC}"
+echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
 sleep 20
 
-# Auto-recuperación rápida si PHPNuxBill quedó caído (evita 502 en /nuxbill)
-if ! docker ps --format '{{.Names}}' | grep -q '^omnisync-phpnuxbill$'; then
-  echo -e "${YELLOW}PHPNuxBill no está arriba, reintentando arranque...${NC}"
-  docker compose up -d --build phpnuxbill
-  sleep 12
-fi
-
-if ! ensure_mariadb_accounts; then
-  echo -e "${RED}✗ Error crítico sincronizando MariaDB (nuxbill/radius)${NC}"
-  echo -e "${YELLOW}Ejecuta: bash $INSTALL_DIR/repair-nuxbill-auth.sh${NC}"
-  exit 1
-fi
-
-# Import RADIUS schema (tabla nas) si falta
-ensure_radius_schema || true
-
-# ── Migrate PostgreSQL schema (nuevas tablas en instalaciones existentes) ──
-echo -e "${YELLOW}Verificando migraciones PostgreSQL...${NC}"
-sleep 5
-docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
-CREATE TABLE IF NOT EXISTS portal_ads (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
-  created_by UUID NOT NULL REFERENCES users(id),
-  title TEXT NOT NULL, description TEXT, image_url TEXT, link_url TEXT,
-  advertiser_name TEXT NOT NULL, advertiser_phone TEXT, advertiser_email TEXT,
-  position TEXT DEFAULT 'banner', is_active BOOLEAN DEFAULT true, priority INTEGER DEFAULT 0,
-  start_date DATE, end_date DATE, impressions INTEGER DEFAULT 0, clicks INTEGER DEFAULT 0,
-  monthly_fee NUMERIC DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_portal_ads_mikrotik ON portal_ads(mikrotik_id);
-CREATE INDEX IF NOT EXISTS idx_portal_ads_active ON portal_ads(is_active, mikrotik_id);
-" 2>/dev/null && echo -e "${GREEN}✓ Migraciones PostgreSQL OK${NC}" || echo -e "${YELLOW}⚠ Migraciones PostgreSQL skip (tabla ya existe)${NC}"
-
-# Add missing columns to mikrotik_devices for existing installations
-docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
-ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS latitude TEXT;
-ALTER TABLE mikrotik_devices ADD COLUMN IF NOT EXISTS longitude TEXT;
-" 2>/dev/null && echo -e "${GREEN}✓ Columnas mikrotik_devices actualizadas${NC}" || true
-
-# Asistentes: dispositivo opcional (NULL = todos) + permisos granulares nuevos
-docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "
-ALTER TABLE secretary_assignments ALTER COLUMN mikrotik_id DROP NOT NULL;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_clients BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_edit_clients BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_clients BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_record_payments BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_payment_history BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_reactivate_services BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_invoices BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_edit_invoices BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_invoices BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_send_invoices BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_reports_dashboard BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_export_reports BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_hotspot_users BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_edit_hotspot_users BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_hotspot_users BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_vouchers BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_sell_vouchers BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_print_vouchers BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_hotspot_accounting BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_hotspot_reports BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_address_list BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_delete_address_list BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_create_backup BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_restore_backup BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_vps BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_vps_docker BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_radius BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_radius_users BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_view_radius_stats BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_onu BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_configure_onu_wifi BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_reboot_onu BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_settings BOOLEAN DEFAULT true;
-ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS can_manage_diagnostics BOOLEAN DEFAULT true;
-" 2>/dev/null && echo -e "${GREEN}✓ Permisos de asistentes actualizados${NC}" || true
-
-
-# Reiniciar PHPNuxBill y FreeRADIUS para que tomen las tablas recién creadas
-echo -e "${YELLOW}Reiniciando PHPNuxBill y FreeRADIUS...${NC}"
-docker compose restart phpnuxbill freeradius
-sleep 5
-
-# Servicios opcionales disponibles desde el panel
-start_optional_services
-sleep 5
-
-
-# ── Configurar red WireGuard para acceso API a MikroTiks remotos ──
-setup_wireguard_networking() {
-  if ! docker ps --format '{{.Names}}' | grep -q '^omnisync-wireguard$'; then
-    echo -e "${CYAN}ℹ WireGuard no activo, omitiendo configuración de red VPN${NC}"
-    return 0
-  fi
-
-  echo -e "${YELLOW}Configurando red VPN para acceso a MikroTiks remotos...${NC}"
-
-  # Conectar WireGuard a la red del stack si no lo está
-  docker network connect omnisync_omnisync-net omnisync-wireguard 2>/dev/null || true
-
-  # Obtener IP del contenedor WireGuard en la red del stack
-  local WG_IP
-  WG_IP=$(docker inspect omnisync-wireguard --format '{{range $k,$v := .NetworkSettings.Networks}}{{if eq $k "omnisync_omnisync-net"}}{{$v.IPAddress}}{{end}}{{end}}' 2>/dev/null)
-
-  if [ -z "$WG_IP" ]; then
-    WG_IP=$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $NF}')
-  fi
-
-  if [ -n "$WG_IP" ]; then
-    # Ruta en el contenedor API hacia la subred VPN (MikroTiks remotos)
-    docker exec omnisync-api ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null && \
-      echo -e "${GREEN}✓ Ruta VPN configurada (10.13.13.0/24 via $WG_IP)${NC}" || \
-      echo -e "${YELLOW}⚠ No se pudo configurar ruta VPN${NC}"
-
-    # Rutas HOST hacia la subred VPN y redes remotas (remote_networks) para que
-    # GenieACS y el resto de contenedores alcancen ONUs/MikroTiks por el túnel WG.
-    # Se exponen a nivel host (no dentro de GenieACS, que carece de NET_ADMIN).
-    ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null && \
-      echo -e "${GREEN}✓ Ruta host VPN (10.13.13.0/24 via $WG_IP)${NC}"
-
-    local REMOTE_NETS
-    REMOTE_NETS=$(docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAc \
-      "SELECT DISTINCT remote_networks FROM vpn_peers WHERE is_active=true AND remote_networks IS NOT NULL" 2>/dev/null)
-    REMOTE_NETS="$REMOTE_NETS ${ONU_NETS:-}"
-    if [ -n "${REMOTE_NETS// /}" ]; then
-      echo "$REMOTE_NETS" | tr ', ' '\n\n' | while read -r net; do
-        [ -z "$net" ] && continue
-        ip route replace "$net" via "$WG_IP" 2>/dev/null && \
-          echo -e "${GREEN}✓ Ruta host red remota ($net via $WG_IP)${NC}"
-      done
-    fi
-
-    # Configurar iptables en WireGuard para forwarding (eth0 <-> wg0) y
-    # MASQUERADE del tráfico que sale por el túnel. Sin el MASQUERADE de
-    # salida (-o wg0) las ONU/MikroTik no saben devolver los paquetes del VPS.
-    docker exec omnisync-wireguard sh -c '
-      iptables -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -o wg0 -j ACCEPT
-      iptables -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -j ACCEPT
-      iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
-    ' 2>/dev/null && \
-      echo -e "${GREEN}✓ Forwarding VPN configurado${NC}" || \
-      echo -e "${YELLOW}⚠ No se pudo configurar forwarding VPN${NC}"
-
-    # Script de auto-curación: reaplica las rutas host si el contenedor WG
-    # reinicia y cambia de IP. Se ejecuta cada minuto desde cron.
-    local REFRESH_SCRIPT="$INSTALL_DIR/scripts/refresh-vpn-routes.sh"
-    mkdir -p "$INSTALL_DIR/scripts"
-    cat > "$REFRESH_SCRIPT" <<ROUTE_EOF
-#!/bin/bash
-# Reaplica rutas host + NAT hacia la subred VPN y redes remotas
-# (remote_networks) via el contenedor WireGuard. Idempotente.
-EXTRA_NETS="${ONU_NETS:-}"
-ROUTE_EOF
-    cat >> "$REFRESH_SCRIPT" <<'ROUTE_EOF'
-WG_IP=$(docker inspect omnisync-wireguard --format '{{range $k,$v := .NetworkSettings.Networks}}{{if eq $k "omnisync_omnisync-net"}}{{$v.IPAddress}}{{end}}{{end}}' 2>/dev/null)
-[ -z "$WG_IP" ] && WG_IP=$(docker inspect omnisync-wireguard --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $NF}')
-[ -z "$WG_IP" ] && exit 0
-# Subred VPN base (host + contenedor API)
-ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null
-docker exec omnisync-api ip route replace 10.13.13.0/24 via "$WG_IP" 2>/dev/null
-# Redes remotas declaradas en los peers activos (+ ONU_NETS manuales)
-NETWORKS=$(docker exec omnisync-postgres psql -U omnisync -d omnisync -tAc \
-  "SELECT DISTINCT remote_networks FROM vpn_peers WHERE is_active=true AND remote_networks IS NOT NULL" 2>/dev/null)
-echo "$NETWORKS $EXTRA_NETS" | tr ', ' '\n\n' | while read -r net; do
-  [ -z "$net" ] && continue
-  ip route replace "$net" via "$WG_IP" 2>/dev/null
-done
-# Forwarding + NAT dentro del contenedor WireGuard (se pierde al reiniciarlo)
-docker exec omnisync-wireguard sh -c '
-  iptables -C FORWARD -o wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -o wg0 -j ACCEPT
-  iptables -C FORWARD -i wg0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -j ACCEPT
-  iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
-' >/dev/null 2>&1
-ROUTE_EOF
-    chmod +x "$REFRESH_SCRIPT"
-    # Cron cada minuto (idempotente)
-    ( crontab -l 2>/dev/null | grep -v "refresh-vpn-routes.sh" ; \
-      echo "* * * * * $REFRESH_SCRIPT >/dev/null 2>&1" ) | crontab -
-    # Aplicar rutas ahora también
-    "$REFRESH_SCRIPT" >/dev/null 2>&1
-
-  else
-    echo -e "${YELLOW}⚠ No se pudo detectar IP del contenedor WireGuard${NC}"
-  fi
-}
-
-setup_wireguard_networking
-
-# ── VPN principal: L2TP/IPsec (WireGuard queda como alternativa) ──
-if [ "${SKIP_L2TP:-0}" != "1" ]; then
-  echo ""
-  echo -e "${CYAN}═══ VPN principal: L2TP/IPsec ═══${NC}"
-  if VPS_PUBLIC_IP="$VPS_IP" bash "$INSTALL_DIR/vps-stack/install-l2tp.sh" --onu-nets "${ONU_NETS:-10.82.0.0/21}"; then
-    echo -e "${GREEN}✓ VPN L2TP/IPsec lista — script MikroTik en /opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC}"
-  else
-    echo -e "${YELLOW}⚠ No se pudo levantar L2TP; puedes reintentar: bash $INSTALL_DIR/vps-stack/install-l2tp.sh${NC}"
-  fi
-fi
-
-
-# ═══════════════════════════════════════════════════
-# FASE 5: Verificación de servicios
-# ═══════════════════════════════════════════════════
-echo ""
-echo -e "${CYAN}═══ FASE 5/5: Verificando servicios ═══${NC}"
-
-TOTAL_OK=0
-TOTAL_FAIL=0
-FAILED_SERVICES=""
-
-check_service() {
-  local name=$1
-  local container=$2
-  
-  if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-    local status=$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null)
-    if [ "$status" = "running" ]; then
-      echo -e "  ${GREEN}✓ $name${NC}"
-      TOTAL_OK=$((TOTAL_OK + 1))
-      return 0
-    fi
-  fi
-  
-  echo -e "  ${RED}✗ $name — FALLO${NC}"
-  local svc_name=$(echo "$container" | sed 's/omnisync-//')
-  echo -e "    ${YELLOW}Últimas líneas de log:${NC}"
-  docker compose logs "$svc_name" --tail 5 2>/dev/null | sed 's/^/    /'
-  TOTAL_FAIL=$((TOTAL_FAIL + 1))
-  FAILED_SERVICES="$FAILED_SERVICES $name"
-  return 1
-}
-
-check_service "PostgreSQL"  "omnisync-postgres"
-check_service "API Backend" "omnisync-api"
-check_service "Nginx"       "omnisync-nginx"
-check_service "MariaDB"     "omnisync-mariadb"
-check_service "FreeRADIUS"  "omnisync-freeradius"
-check_service "PHPNuxBill"  "omnisync-phpnuxbill"
-
-# GenieACS interno es parte del core cuando no hay ACS externo configurado
-GENIEACS_EXTERNAL=0
-if [ -n "${GENIEACS_NBI_URL:-}" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs:7557" ] && [ "${GENIEACS_NBI_URL}" != "http://genieacs-nbi:7557" ]; then
-  GENIEACS_EXTERNAL=1
-fi
-if [ "$GENIEACS_EXTERNAL" = "0" ]; then
-  check_service "MongoDB (ACS)" "omnisync-mongo"
-  check_service "GenieACS TR-069" "omnisync-genieacs"
-  check_service "coturn (STUN)" "omnisync-coturn"
-
-  # No basta con que el contenedor figure como running: valida los servicios
-  # que usa la ONU y el panel. CWMP responde 405 a GET cuando está sano.
-  ACS_CWMP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7547 2>/dev/null || true)
-  if [ "$ACS_CWMP_STATUS" = "405" ]; then
-    echo -e "  ${GREEN}✓ GenieACS CWMP responde en :7547${NC}"
-  else
-    echo -e "  ${RED}✗ GenieACS CWMP no responde correctamente (HTTP ${ACS_CWMP_STATUS:-000})${NC}"
-    docker logs omnisync-genieacs --tail 10 2>/dev/null | sed 's/^/    /'
-    TOTAL_FAIL=$((TOTAL_FAIL + 1))
-    FAILED_SERVICES="$FAILED_SERVICES GenieACS-CWMP"
-  fi
-
-  ACS_NBI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7557/devices/?projection=_id 2>/dev/null || true)
-  if [ "$ACS_NBI_STATUS" = "200" ]; then
-    echo -e "  ${GREEN}✓ GenieACS NBI responde en :7557${NC}"
-  else
-    echo -e "  ${RED}✗ GenieACS NBI no responde correctamente (HTTP ${ACS_NBI_STATUS:-000})${NC}"
-    TOTAL_FAIL=$((TOTAL_FAIL + 1))
-    FAILED_SERVICES="$FAILED_SERVICES GenieACS-NBI"
-  fi
-fi
-
-echo ""
-echo -e "  Resultado: ${GREEN}$TOTAL_OK OK${NC} / ${RED}$TOTAL_FAIL fallidos${NC}"
-
-echo ""
-echo -e "${CYAN}Gestión de ONUs (TR-069):${NC}"
-if [ "$GENIEACS_EXTERNAL" = "1" ]; then
-  echo -e "  ${GREEN}✓ GenieACS externo — NBI: ${GENIEACS_NBI_URL}${NC}"
-else
-  echo -e "  ${GREEN}✓ GenieACS integrado — UI: http://$VPS_IP:3001 (admin/admin)${NC}"
-  echo -e "  ${GREEN}  ACS URL recomendada (WireGuard): http://10.13.13.1:7547${NC}"
-  echo -e "  ${GREEN}  ACS URL alterna (IP pública):    http://$VPS_IP:7547${NC}"
-  echo -e "  ${GREEN}  STUN (coturn) p/ Connection Request: $VPS_IP:3478 (acs/acs)${NC}"
-  echo -e "  ${GREEN}  Panel gráfico OmniSync: http://$VPS_IP/onu-management${NC}"
-fi
-
-echo ""
-echo -e "${CYAN}CMS C-Data (OLT/ONU):${NC}"
-echo -e "  Instalar/actualizar: ${GREEN}bash $INSTALL_DIR/install-cms.sh${NC}"
-echo -e "  Web: ${GREEN}http://$VPS_IP:18080${NC} (root/adminisp) · Panel: ${GREEN}http://$VPS_IP/cms/${NC}"
-echo -e "  TR-069 por WireGuard: ${GREEN}http://10.13.13.1:9909/v1/acs${NC} · MQTT ${GREEN}10.13.13.1:1883${NC}"
-
-# Check optional services (informational only)
-echo ""
-echo -e "${CYAN}Servicios opcionales:${NC}"
-
-echo -e "  ${YELLOW}ℹ Mikhmon (Hotspot Monitor) — iniciar desde panel${NC}"
-echo -e "  ${YELLOW}ℹ WireGuard (VPN) — iniciar desde panel${NC}"
-
-# Test HTTP endpoints — wait for nginx to be ready
-echo ""
-echo -e "${CYAN}Probando endpoints HTTP (esperando que estén listos)...${NC}"
-
-HTTP_OK=0
-HTTP_FAIL=0
-FAILED_ENDPOINTS=""
-
-test_endpoint() {
-  local name=$1
-  local url=$2
-  local service=${3:-}
-  local status="000"
-  local attempt
-
-  # Retry up to 5 times with 3s delay
-  for attempt in 1 2 3 4 5; do
-    status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null) || true
-    # If we got a real HTTP status, break
-    if [ "$status" != "000" ] && [ -n "$status" ]; then
-      break
-    fi
-    sleep 3
+# Migraciones idempotentes (esquema multi-ISP / ONUs)
+if [ -d "$INSTALL_DIR/db/migrations" ]; then
+  for f in "$INSTALL_DIR"/db/migrations/*.sql; do
+    [ -f "$f" ] || continue
+    docker exec -i omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" < "$f" >/dev/null 2>&1 \
+      && echo -e "${GREEN}✓ Migración $(basename "$f")${NC}" \
+      || echo -e "${YELLOW}⚠ Migración $(basename "$f") omitida${NC}"
   done
+fi
 
-  # Default to 000 if empty
-  [ -z "$status" ] && status="000"
+# ═══ VPN principal: L2TP/IPsec ═══
+echo ""
+echo -e "${CYAN}═══ VPN principal: L2TP/IPsec ═══${NC}"
+if VPS_PUBLIC_IP="$VPS_PUBLIC_IP" bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets "$ONU_NETS"; then
+  echo -e "${GREEN}✓ VPN L2TP lista — script MikroTik en /opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC}"
+else
+  echo -e "${YELLOW}⚠ L2TP no se levantó; reintenta: bash $INSTALL_DIR/install-l2tp.sh${NC}"
+fi
 
-  if [ "$status" -ge 200 ] 2>/dev/null && [ "$status" -lt 400 ] 2>/dev/null; then
-    echo -e "  ${GREEN}✓ $name — HTTP $status${NC}"
-    HTTP_OK=$((HTTP_OK + 1))
+# ═══ FASE 5: Verificación ═══
+echo ""
+echo -e "${CYAN}═══ FASE 5/5: Verificación ═══${NC}"
+
+TOTAL_FAIL=0
+check_service() {
+  local name=$1 container=$2
+  if [ "$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null)" = "running" ]; then
+    echo -e "  ${GREEN}✓ $name${NC}"
   else
-    echo -e "  ${RED}✗ $name — HTTP $status${NC}"
-    HTTP_FAIL=$((HTTP_FAIL + 1))
-    FAILED_ENDPOINTS="$FAILED_ENDPOINTS $name"
-
-    if [ -n "$service" ]; then
-      echo -e "    ${YELLOW}Últimas líneas de $service:${NC}"
-      docker compose logs "$service" --tail 5 2>/dev/null | sed 's/^/    /'
-    fi
+    echo -e "  ${RED}✗ $name — FALLO${NC}"
+    docker logs "$container" --tail 8 2>&1 | sed 's/^/    /'
+    TOTAL_FAIL=$((TOTAL_FAIL + 1))
   fi
 }
 
-test_endpoint "Panel Web"        "http://localhost" "nginx"
-test_endpoint "API Health"       "http://localhost/api/health" "api"
-test_endpoint "PHPNuxBill Admin" "http://localhost/nuxbill/admin" "phpnuxbill"
+check_service "PostgreSQL"      "omnisync-postgres"
+check_service "API Backend"     "omnisync-api"
+check_service "Nginx"           "omnisync-nginx"
+check_service "MongoDB (ACS)"   "omnisync-mongo"
+check_service "GenieACS TR-069" "omnisync-genieacs"
+check_service "coturn (STUN)"   "omnisync-coturn"
+check_service "VPN L2TP/IPsec"  "omnisync-l2tp"
 
-echo ""
-echo -e "  Resultado HTTP: ${GREEN}$HTTP_OK OK${NC} / ${RED}$HTTP_FAIL fallidos${NC}"
-
-if [ "$HTTP_FAIL" -gt 0 ]; then
-  echo -e "${YELLOW}  Endpoints con fallo:${FAILED_ENDPOINTS}${NC}"
+ACS_CWMP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7547 2>/dev/null || true)
+if [ "$ACS_CWMP_STATUS" = "405" ]; then
+  echo -e "  ${GREEN}✓ GenieACS CWMP responde en :7547${NC}"
+else
+  echo -e "  ${YELLOW}⚠ GenieACS CWMP HTTP ${ACS_CWMP_STATUS:-000} (revisa logs)${NC}"
 fi
 
-if [ "$TOTAL_FAIL" -gt 0 ] || [ "$HTTP_FAIL" -gt 0 ]; then
-  echo ""
-  echo -e "${RED}╔══════════════════════════════════════════════════════════╗"
-  echo "║  ✗ Instalación incompleta: hay servicios/endpoints caídos"
-  echo "║  Servicios:${FAILED_SERVICES}"
-  echo "║  Endpoints:${FAILED_ENDPOINTS}"
-  echo "║                                                          "
-  echo "║  Revisar:   cd $INSTALL_DIR && docker compose ps         "
-  echo "║  Ver logs:  cd $INSTALL_DIR && docker compose logs --tail=100"
-  echo "║  Reintentar:cd $INSTALL_DIR && docker compose up -d --build"
-  echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
-  exit 1
+echo ""
+if [ "$TOTAL_FAIL" -eq 0 ]; then
+  echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
+  echo -e "${GREEN}║        OmniACS instalado correctamente       ║${NC}"
+  echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
+else
+  echo -e "${YELLOW}Instalación terminada con ${TOTAL_FAIL} servicio(s) en fallo.${NC}"
 fi
 
-# ═══════════════════════════════════════════════════
-# Resumen final
-# ═══════════════════════════════════════════════════
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗"
-echo "║           ¡Instalación completada! ✓                    ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║                                                          ║"
-echo "║  🌐 ACCESOS                                               ║"
-echo "║  ─────────────────────────────────────────────           ║"
-echo "║  Panel Web:      http://$VPS_IP                            "
-echo "║  API Health:     http://$VPS_IP/api/health                 "
-echo "║  PHPNuxBill:     http://$VPS_IP/nuxbill/admin             "
-echo "║  Portal Cautivo: http://$VPS_IP/portal                    "
-echo "║                                                          ║"
-echo "║  📡 SERVICIOS OPCIONALES                                  ║"
-echo "║  ─────────────────────────────────────────────           ║"
-echo "║  GenieACS (ONUs):  http://$VPS_IP:3001 | ACS :7547      "
-echo "║  Mikhmon y WireGuard: Servicios VPS → Docker            ║"
-echo "║                                                          ║"
-echo "║  🔒 HTTPS (Cloudflare Tunnel)                             ║"
-echo "║  ─────────────────────────────────────────────           ║"
-echo "║  cloudflared: $(cloudflared --version 2>/dev/null | head -1 || echo 'instalado')"
-echo "║                                                          ║"
-echo "║  Para activar HTTPS:                                     ║"
-echo "║  1. Ve a Servicios VPS → Cloudflare                      ║"
-echo "║  2. Haz clic en 'Instalar cloudflared' (si no lo está)   ║"
-echo "║  3. Haz clic en 'Iniciar' para obtener la URL HTTPS      ║"
-echo "║                                                          ║"
-echo "║  🔑 CREDENCIALES                                          ║"
-echo "║  ─────────────────────────────────────────────           ║"
-echo "║  OmniSync Panel:                                         ║"
-echo "║    Email:    admin@omnisync.local                         ║"
-echo "║    Pass:     admin123                                     ║"
-echo "║                                                          ║"
-echo "║  PHPNuxBill:                                             ║"
-echo "║    Usuario:  admin                                       ║"
-echo "║    Pass:     admin                                       ║"
-echo "║                                                          ║"
-echo "║  PostgreSQL:                                             ║"
-echo "║    DB: omnisync | User: omnisync                         ║"
-echo "║    Pass: ${DB_PASSWORD}                                  "
-echo "║                                                          ║"
-echo "║  MariaDB (RADIUS):                                      ║"
-echo "║    DB: radius | User: radius                             ║"
-echo "║    Pass: ${RADIUS_DB_PASSWORD}                           "
-echo "║                                                          ║"
-echo "║  📡 CONFIGURAR MIKROTIK HOTSPOT                          ║"
-echo "║  ─────────────────────────────────────────────           ║"
-echo "║  1. IP → Hotspot → Server Profiles → tu_perfil           ║"
-echo "║     Login Page: http://$VPS_IP/portal                    ║"
-echo "║                                                          ║"
-echo "║  2. IP → Hotspot → Walled Garden → Add:                  ║"
-echo "║     Dst. Host: $VPS_IP                                   ║"
-echo "║     Action: allow                                        ║"
-echo "║                                                          ║"
-echo "║  3. Cuando actives el tunnel HTTPS, agregar también:     ║"
-echo "║     Dst. Host: *.trycloudflare.com                       ║"
-echo "║     Action: allow                                        ║"
-echo "║                                                          ║"
-echo "║  ⚠️  CAMBIA LAS CONTRASEÑAS DEL PANEL INMEDIATAMENTE     ║"
-echo "║                                                          ║"
-echo "╚══════════════════════════════════════════════════════════╝${NC}"
+echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
+echo -e "  GenieACS UI:      ${GREEN}http://${VPS_PUBLIC_IP}:3001${NC}  (admin/admin)"
+echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/${NC}"
+echo -e "  TR-069 público:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/${NC}"
+echo -e "  Credenciales VPN: ${GREEN}/opt/omnisync-l2tp/vpn.conf${NC}"
+echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (o genéralo desde el panel → TR-069 y VPN)"
 echo ""
-echo -e "${YELLOW}Comandos útiles:${NC}"
-echo "  Estado:          cd $INSTALL_DIR && docker compose ps"
-echo "  Logs:            cd $INSTALL_DIR && docker compose logs -f"
-echo "  Reiniciar:       cd $INSTALL_DIR && docker compose restart"
-echo "  Reconstruir:     cd $INSTALL_DIR && docker compose up -d --build"
+echo -e "  Logs:        ${CYAN}cd $INSTALL_DIR && docker compose logs -f${NC}"
+echo -e "  Reconstruir: ${CYAN}cd $INSTALL_DIR && docker compose up -d --build${NC}"
 echo ""
-echo -e "${YELLOW}⚠ MikroTik por VPN L2TP/IPsec (VPN principal):${NC}"
-echo "  1) Genera el script desde el panel:  TR-069 y VPN → Generar script"
-echo "     (o usa el genérico: cat /opt/omnisync-l2tp/mikrotik-l2tp.rsc)"
-echo "  2) Pega el script completo en la terminal de la MikroTik"
-echo "  3) Verifica en la MikroTik: ping 192.168.42.1 count=4"
-echo ""
-echo -e "${YELLOW}TR-069 en las ONUs (GenieACS):${NC}"
-echo "  ACS URL:            http://192.168.42.1:7547/   (por la VPN, recomendado)"
-echo "  ACS URL alterna:    http://$VPS_IP:7547/"
-echo "  ACS User / Pass:    omnisync / omnisync"
-echo "  ConnReq User/Pass:  omnisync / omnisync"
-echo "  Periodic Inform:    Enable=true, Interval=60"
-echo "  STUN:               Disabled (no hace falta con la VPN)"
-echo "  UI GenieACS:        http://$VPS_IP:3001 (admin/admin)"
-
-echo ""
-echo -e "${CYAN}Reinstalar:${NC}"
-echo "  curl -fsSL https://raw.githubusercontent.com/drab10688-dot/mikrotik-connect-hub/main/vps-stack/install.sh | sudo bash"
-

@@ -1,4 +1,4 @@
-# OmniSync Docker Stack
+# OmniACS Docker Stack — Gestión de ONUs (TR-069 + VPN L2TP) multi-ISP
 
 services:
   # ============================================
@@ -48,32 +48,17 @@ services:
       MIKROTIK_PORT: ${MIKROTIK_PORT:-443}
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
-      RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
       BACKUP_DIR: /opt/omnisync/backups
-      NUXBILL_DB_HOST: mariadb
-      NUXBILL_DB_PORT: 3306
-      NUXBILL_DB_USER: ${NUXBILL_DB_USER:-nuxbill}
-      NUXBILL_DB_PASS: ${NUXBILL_DB_PASS:-}
-      NUXBILL_DB_PASSWORD: ${NUXBILL_DB_PASSWORD:-}
-      NUXBILL_DB_NAME: ${NUXBILL_DB_NAME:-phpnuxbill}
-      RADIUS_DB_HOST: mariadb
-      RADIUS_DB_PORT: "3306"
-      RADIUS_DB_USER: radius
-      RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
-      RADIUS_DB_NAME: radius
-      RADIUS_PUBLIC_HOST: ${RADIUS_PUBLIC_HOST:-}
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
       VPS_PUBLIC_IP: ${VPS_PUBLIC_IP:-}
       L2TP_HOST: ${L2TP_HOST:-}
       L2TP_IPSEC_PSK: ${L2TP_IPSEC_PSK:-}
       L2TP_TUNNEL_NET: ${L2TP_TUNNEL_NET:-192.168.42.0/24}
       VPN_SERVER_IP: ${VPN_SERVER_IP:-192.168.42.1}
-
     ports:
       - "3000:3000"
     volumes:
       - backup_data:/opt/omnisync/backups
-      - /usr/local/bin/cloudflared:/usr/local/bin/cloudflared:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       postgres:
@@ -103,143 +88,13 @@ services:
       - "host.docker.internal:host-gateway"
 
   # ============================================
-  # MariaDB - Base de datos para FreeRADIUS + NuxBill
-  # ============================================
-  mariadb:
-    image: mariadb:11
-    container_name: omnisync-mariadb
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme_mysql}
-      MYSQL_DATABASE: radius
-      MYSQL_USER: radius
-      MYSQL_PASSWORD: ${RADIUS_DB_PASSWORD:-changeme_radius}
-    volumes:
-      - mariadb_data:/var/lib/mysql
-      - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./mariadb-init/02-nuxbill.sql:/docker-entrypoint-initdb.d/02-nuxbill.sql
-    ports:
-      - "3306:3306"
-    networks:
-      - omnisync-net
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ============================================
-  # FreeRADIUS - Autenticación RADIUS
-  # ============================================
-  freeradius:
-    image: freeradius/freeradius-server:latest
-    container_name: omnisync-freeradius
-    restart: unless-stopped
-    ports:
-      - "1812:1812/udp"
-      - "1813:1813/udp"
-    volumes:
-      - ./radius/clients.conf:/etc/freeradius/clients.conf:ro
-      - ./radius/mods-enabled/sql:/etc/freeradius/mods-enabled/sql:ro
-      - ./radius/sites-enabled/default:/etc/freeradius/sites-enabled/default:ro
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # PHPNuxBill - Billing Hotspot MikroTik
-  # ============================================
-  phpnuxbill:
-    build:
-      context: ./phpnuxbill
-      dockerfile: Dockerfile
-    container_name: omnisync-phpnuxbill
-    restart: unless-stopped
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    volumes:
-      - nuxbill_uploads:/var/www/nuxbill/system/uploads
-      - nuxbill_cache:/var/www/nuxbill/system/cache
-      - nuxbill_ui_cache:/var/www/nuxbill/ui/cache
-      - nuxbill_themes:/var/www/nuxbill/ui/themes
-      - nuxbill_pages:/var/www/nuxbill/pages
-      - ./radius/sql/schema.sql:/docker-entrypoint-initdb.d/radius-schema.sql:ro
-    environment:
-      NUXBILL_DB_HOST: mariadb
-      NUXBILL_DB_USER: nuxbill
-      NUXBILL_DB_PASS: ${NUXBILL_DB_PASS:-}
-      NUXBILL_DB_PASSWORD: ${NUXBILL_DB_PASSWORD:-}
-      NUXBILL_DB_NAME: phpnuxbill
-      NUXBILL_APP_URL: ${NUXBILL_APP_URL:-http://localhost/nuxbill}
-      RADIUS_DB_HOST: mariadb
-      RADIUS_DB_PORT: "3306"
-      RADIUS_DB_USER: radius
-      RADIUS_DB_PASS: ${RADIUS_DB_PASSWORD:-changeme_radius}
-      RADIUS_DB_NAME: radius
-      MIKROTIK_HOST: ${MIKROTIK_HOST:-192.168.88.1}
-      MIKROTIK_PORT: ${MIKROTIK_PORT:-8728}
-      MIKROTIK_USER: ${MIKROTIK_USER:-admin}
-      MIKROTIK_PASS: ${MIKROTIK_PASS:-}
-      RADIUS_SECRET: ${RADIUS_SECRET:-testing123}
-      TZ: ${TZ:-America/Bogota}
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # Mikhmon V3 - MikroTik Hotspot Monitor
-  # Iniciar/detener desde el panel de Servicios VPS
-  # ============================================
-  mikhmon:
-    image: rizkikotet/mikhmon:latest
-    container_name: omnisync-mikhmon
-    restart: "no"
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: ${TZ:-America/Bogota}
-    ports:
-      - "8888:80"
-    networks:
-      - omnisync-net
-
-  # ============================================
-  # WireGuard VPN - Acceso remoto a redes MikroTik
-  # Iniciar/detener desde el panel de Servicios VPS
-  # ============================================
-  wireguard:
-    image: lscr.io/linuxserver/wireguard:latest
-    container_name: omnisync-wireguard
-    restart: "no"
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: ${TZ:-America/Bogota}
-    volumes:
-      - wireguard_config:/config
-    ports:
-      - "${WG_PORT:-51820}:51820/udp"
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-      - net.ipv4.ip_forward=1
-    networks:
-      - omnisync-net
-
-  # ============================================
   # MongoDB - Base de datos para GenieACS (TR-069)
   # ============================================
   mongo:
     # GenieACS 1.2.16 de esta imagen fue validado con MongoDB 4.4.
-    # No subir esta versión sin validar primero el registro CWMP de una ONU real.
     image: mongo:4.4
     container_name: omnisync-mongo
     restart: unless-stopped
-    profiles: ["builtin-acs"]
     volumes:
       - mongo_data:/data/db
     networks:
@@ -258,7 +113,6 @@ services:
     image: drumsergio/genieacs:latest
     container_name: omnisync-genieacs
     restart: unless-stopped
-    profiles: ["builtin-acs"]
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo:27017/genieacs
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_JWT_SECRET:-changeme_genieacs_jwt_secret}
@@ -266,32 +120,25 @@ services:
       GENIEACS_NBI_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_FS_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
-      # STUN/UDP Connection Request: GenieACS envía el UDP ConnReq desde el
-      # mismo puerto (3478) que usa coturn, para que el NAT del cliente acepte
-      # el paquete (full-cone / port-restricted NAT).
       GENIEACS_UDP_CONNECTION_REQUEST_PORT: "3478"
     ports:
       - "7547:7547"          # CWMP TCP (las ONUs se conectan aquí)
       - "7547:7547/udp"      # CWMP UDP / STUN (Connection Request NAT traversal)
       - "7567:7567"          # File Server (firmware/config)
-      - "7557:7557"          # NBI (API GenieACS y onu-ctl.sh)
+      - "7557:7557"          # NBI (API GenieACS)
       - "3001:3000"          # UI GenieACS
-
     depends_on:
       - mongo
     networks:
       - omnisync-net
 
   # ============================================
-  # coturn - Servidor STUN (NAT traversal para
-  # UDP Connection Request de GenieACS)
-  # STUN :3478 (udp+tcp) | credenciales fijas
+  # coturn - STUN (NAT traversal para ONUs sin VPN)
   # ============================================
   coturn:
     image: coturn/coturn:latest
     container_name: omnisync-coturn
     restart: unless-stopped
-    profiles: ["builtin-acs"]
     network_mode: host
     command:
       - --listening-port=3478
@@ -307,18 +154,37 @@ services:
     logging:
       driver: "none"
 
+  # ============================================
+  # WireGuard VPN - alternativa a L2TP (opcional)
+  # Iniciar sólo si se necesita: docker compose --profile wireguard up -d
+  # ============================================
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: omnisync-wireguard
+    restart: "no"
+    profiles: ["wireguard"]
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ:-America/Bogota}
+    volumes:
+      - wireguard_config:/config
+    ports:
+      - "${WG_PORT:-51820}:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    networks:
+      - omnisync-net
+
 volumes:
   postgres_data:
-  mariadb_data:
   backup_data:
-  nuxbill_uploads:
-  nuxbill_cache:
-  nuxbill_ui_cache:
-  nuxbill_themes:
-  nuxbill_pages:
   wireguard_config:
   mongo_data:
-
 
 networks:
   omnisync-net:
