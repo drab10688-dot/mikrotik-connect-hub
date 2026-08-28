@@ -95,9 +95,10 @@ const IspAcs = () => {
   const [peerName, setPeerName] = useState("mikrotik-1");
   const [onuNetworks, setOnuNetworks] = useState("10.82.0.0/21");
   const [script, setScript] = useState<string>("");
-  const { data: acs, isLoading } = useQuery({
+  const { data: acs, isLoading, error: acsError, refetch: refetchAcs } = useQuery({
     queryKey: ["isp-acs"],
     queryFn: async () => (await api<{ data: AcsInfo }>("/isp/acs")).data,
+    retry: 1,
   });
 
   const { data: vpn } = useQuery({
@@ -168,8 +169,18 @@ const IspAcs = () => {
             </Button>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            {isLoading || !acs ? (
+            {isLoading ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
+            ) : !acs ? (
+              <div className="md:col-span-2 space-y-2">
+                <p className="text-sm text-destructive">
+                  No se pudo obtener el enlace TR-069{(acsError as any)?.message ? `: ${(acsError as any).message}` : ""}
+                </p>
+                <Button variant="outline" size="sm" onClick={() => refetchAcs()}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reintentar
+                </Button>
+              </div>
             ) : (
               <>
                 <Field label="ACS URL (por VPN)" value={acs.vpn_url} />
