@@ -32,7 +32,7 @@ const App = () => (
 
           {/* Panel de gestión de ONUs */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu"><Onus /></ProtectedRoute>} /></ProtectedRoute>} />
+          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu"><Onus /></ProtectedRoute>} />
           <Route path="/acs" element={<ProtectedRoute><IspAcs /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings"><Settings /></ProtectedRoute>} />
           <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics"><Diagnostics /></ProtectedRoute>} />
@@ -40,7 +40,7 @@ const App = () => (
           {/* Administración multi-ISP */}
           <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin><Permissions /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
-          <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} /></ProtectedRoute>} /></ProtectedRoute>} />
+          <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
           <Route path="/admin/tenants" element={<ProtectedRoute requireSuperAdmin><TenantsAdmin /></ProtectedRoute>} />
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
