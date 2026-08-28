@@ -169,7 +169,9 @@ export default function SimpleOnuPanel() {
           rxPower: e.rxPower ?? null,
           txPower: e.txPower ?? null,
           lastInform: e.lastInform ?? null,
+          radios: Array.isArray(e.radios) ? e.radios : [],
         };
+
         if (e.alias) aliasMap[e.deviceId] = e.alias;
         if (e.pppoeUsername) nameMap[e.deviceId] = e.pppoeUsername;
       });
