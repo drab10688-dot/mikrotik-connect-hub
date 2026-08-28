@@ -65,6 +65,8 @@ function acsUrls(tenant: any, req: Request) {
     token: tenant.acs_token,
     // URL pública por ISP (igual que hace CMS: un link TR-069 por cada ISP)
     public_url: `http://${host}/tr069/${tenant.acs_token}/`,
+    // Acceso directo al CWMP sin VPN (ONU tras NAT, usando STUN)
+    nat_url: `http://${host}:7547/tr069/${tenant.acs_token}/`,
     // URL preferida: dentro del túnel VPN, más rápida y sin exponer el ACS
     vpn_url: `http://${VPN_SERVER_IP}:7547/tr069/${tenant.acs_token}/`,
     acs_username: 'omnisync',
@@ -73,8 +75,13 @@ function acsUrls(tenant: any, req: Request) {
     connection_request_password: tenant.acs_token,
     inform_interval: 60,
     stun_enable: false,
+    stun_host: host,
+    stun_port: 3478,
+    stun_username: 'acs',
+    stun_password: 'acs',
   };
 }
+
 
 // ─── Resolución pública del token (usada por el ACS/provisión) ───
 ispPublicRouter.get('/tr069/:token', async (req: Request, res: Response) => {
