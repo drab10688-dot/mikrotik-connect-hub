@@ -141,15 +141,16 @@ export const Sidebar = () => {
         <p className="mt-3 text-center text-sm font-semibold truncate">{displayName}</p>
         <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70">
-            <Router className="w-4 h-4" />
-            <span>{host}</span>
+            <Radio className="w-4 h-4" />
+            <span>TR-069 / ACS</span>
           </div>
           <NotificationCenter />
         </div>
         <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground text-center">
-          RouterOS {version}
+          OmniACS · Gestión de ONUs
         </div>
       </div>
+
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {isSecretary && loadingPermissions ? (
