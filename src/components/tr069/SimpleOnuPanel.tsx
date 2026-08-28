@@ -203,7 +203,7 @@ export default function SimpleOnuPanel() {
     return () => window.clearInterval(t);
   }, [load]);
   useEffect(() => {
-    const t = window.setInterval(() => setTick((n) => n + 1), 30000);
+    const t = window.setInterval(() => setTick((n) => n + 1), 10000);
     return () => window.clearInterval(t);
   }, []);
 
