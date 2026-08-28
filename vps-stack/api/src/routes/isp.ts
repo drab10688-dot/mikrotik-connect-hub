@@ -80,16 +80,16 @@ function acsUrls(tenant: any, req: Request) {
     nat_url: `http://${host}:7547/tr069/${tenant.acs_token}/`,
     // URL preferida: dentro del túnel VPN, más rápida y sin exponer el ACS
     vpn_url: `http://${VPN_SERVER_IP}:7547/tr069/${tenant.acs_token}/`,
-    acs_username: 'omnisync',
-    acs_password: tenant.acs_token,
-    connection_request_username: 'omnisync',
-    connection_request_password: tenant.acs_token,
-    inform_interval: 60,
+    acs_username: tenant.acs_username || 'omnisync',
+    acs_password: tenant.acs_password || tenant.acs_token,
+    connection_request_username: tenant.cr_username || 'omnisync',
+    connection_request_password: tenant.cr_password || tenant.acs_token,
+    inform_interval: tenant.inform_interval || 60,
     stun_enable: false,
-    stun_host: host,
-    stun_port: 3478,
-    stun_username: 'acs',
-    stun_password: 'acs',
+    stun_host: tenant.stun_host || host,
+    stun_port: tenant.stun_port || 3478,
+    stun_username: tenant.stun_username || 'acs',
+    stun_password: tenant.stun_password || 'acs',
   };
 }
 
@@ -122,15 +122,44 @@ ispRouter.get('/acs', async (req: AuthRequest, res: Response) => {
   });
 });
 
-ispRouter.post('/acs/rotate', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+// Edición manual de credenciales TR-069 / STUN (el token NO se rota).
+ispRouter.put('/acs/credentials', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
-  const token = crypto.randomBytes(8).toString('hex');
-  const { rows } = await pool.query(
-    `UPDATE tenants SET acs_token = $2, updated_at = now() WHERE id = $1 RETURNING *`,
-    [tenant.id, token]
-  );
-  res.json({ data: acsUrls(rows[0], req) });
+  const b = req.body || {};
+  const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const num = (v: any) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : null);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE tenants SET
+         acs_username = COALESCE($2, acs_username),
+         acs_password = COALESCE($3, acs_password),
+         cr_username = COALESCE($4, cr_username),
+         cr_password = COALESCE($5, cr_password),
+         stun_host = COALESCE($6, stun_host),
+         stun_port = COALESCE($7, stun_port),
+         stun_username = COALESCE($8, stun_username),
+         stun_password = COALESCE($9, stun_password),
+         inform_interval = COALESCE($10, inform_interval),
+         updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [
+        tenant.id,
+        str(b.acs_username),
+        str(b.acs_password),
+        str(b.connection_request_username),
+        str(b.connection_request_password),
+        str(b.stun_host),
+        num(b.stun_port),
+        str(b.stun_username),
+        str(b.stun_password),
+        num(b.inform_interval),
+      ]
+    );
+    res.json({ data: acsUrls(rows[0], req) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ─── Permisos por rol y sección ─────────────────────────────

@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Copy, Download, RefreshCw, Router as RouterIcon, Satellite, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, RefreshCw, Router as RouterIcon, Satellite, Save, ShieldCheck, Trash2 } from "lucide-react";
 
 interface AcsInfo {
   tenant: { id: string; name: string; slug: string };
@@ -77,14 +77,31 @@ const downloadScript = (value: string, name: string) => {
   URL.revokeObjectURL(url);
 };
 
-const Field = ({ label, value }: { label: string; value: string }) => (
+const Field = ({
+  label,
+  value,
+  editable = false,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  editable?: boolean;
+  onChange?: (v: string) => void;
+}) => (
   <div className="space-y-1.5">
     <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
     <div className="flex gap-2">
-      <Input readOnly value={value} className="font-mono text-sm" />
-      <Button variant="outline" size="icon" onClick={() => copy(value)} aria-label={`Copiar ${label}`}>
-        <Copy className="h-4 w-4" />
-      </Button>
+      <Input
+        readOnly={!editable}
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        className="font-mono text-sm"
+      />
+      {!editable && (
+        <Button variant="outline" size="icon" onClick={() => copy(value)} aria-label={`Copiar ${label}`}>
+          <Copy className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   </div>
 );
@@ -106,10 +123,30 @@ const IspAcs = () => {
     queryFn: async () => (await api<{ data: any }>("/isp/vpn")).data,
   });
 
-  const rotate = useMutation({
-    mutationFn: () => api("/isp/acs/rotate", { method: "POST" }),
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({});
+
+  const startEdit = () => {
+    if (!acs) return;
+    setForm({
+      acs_username: acs.acs_username || "",
+      acs_password: acs.acs_password || "",
+      connection_request_username: acs.connection_request_username || "",
+      connection_request_password: acs.connection_request_password || "",
+      stun_host: acs.stun_host || "",
+      stun_port: String(acs.stun_port ?? ""),
+      stun_username: acs.stun_username || "",
+      stun_password: acs.stun_password || "",
+      inform_interval: String(acs.inform_interval ?? ""),
+    });
+    setEditing(true);
+  };
+
+  const saveCreds = useMutation({
+    mutationFn: () => api("/isp/acs/credentials", { method: "PUT", body: form }),
     onSuccess: () => {
-      toast.success("Nuevo enlace TR-069 generado");
+      toast.success("Credenciales actualizadas");
+      setEditing(false);
       queryClient.invalidateQueries({ queryKey: ["isp-acs"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -163,10 +200,24 @@ const IspAcs = () => {
                 Con VPN usa la URL del túnel; sin VPN (ONU tras NAT) usa la URL pública con STUN.
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={() => rotate.mutate()} disabled={rotate.isPending}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Rotar enlace
-            </Button>
+            {acs && (
+              editing ? (
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => setEditing(false)} disabled={saveCreds.isPending}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={() => saveCreds.mutate()} disabled={saveCreds.isPending}>
+                    <Save className="h-4 w-4 mr-2" />
+                    {saveCreds.isPending ? "Guardando…" : "Guardar"}
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" onClick={startEdit}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Editar credenciales
+                </Button>
+              )
+            )}
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             {isLoading ? (
@@ -185,12 +236,28 @@ const IspAcs = () => {
               <>
                 <Field label="ACS URL (por VPN)" value={acs.vpn_url} />
                 <Field label="ACS URL (sin VPN — tras NAT)" value={acs.nat_url} />
-                <Field label="Usuario ACS" value={acs.acs_username} />
-                <Field label="Clave ACS" value={acs.acs_password} />
-                <Field label="Connection Request usuario" value={acs.connection_request_username} />
-                <Field label="Connection Request clave" value={acs.connection_request_password} />
-                <Field label="Servidor STUN (sin VPN)" value={`${acs.stun_host}:${acs.stun_port}`} />
-                <Field label="STUN usuario / clave" value={`${acs.stun_username} / ${acs.stun_password}`} />
+                {editing ? (
+                  <>
+                    <Field label="Usuario ACS" value={form.acs_username} editable onChange={(v) => setForm((f) => ({ ...f, acs_username: v }))} />
+                    <Field label="Clave ACS" value={form.acs_password} editable onChange={(v) => setForm((f) => ({ ...f, acs_password: v }))} />
+                    <Field label="Connection Request usuario" value={form.connection_request_username} editable onChange={(v) => setForm((f) => ({ ...f, connection_request_username: v }))} />
+                    <Field label="Connection Request clave" value={form.connection_request_password} editable onChange={(v) => setForm((f) => ({ ...f, connection_request_password: v }))} />
+                    <Field label="Host STUN" value={form.stun_host} editable onChange={(v) => setForm((f) => ({ ...f, stun_host: v }))} />
+                    <Field label="Puerto STUN" value={form.stun_port} editable onChange={(v) => setForm((f) => ({ ...f, stun_port: v }))} />
+                    <Field label="STUN usuario" value={form.stun_username} editable onChange={(v) => setForm((f) => ({ ...f, stun_username: v }))} />
+                    <Field label="STUN clave" value={form.stun_password} editable onChange={(v) => setForm((f) => ({ ...f, stun_password: v }))} />
+                    <Field label="Intervalo Inform (s)" value={form.inform_interval} editable onChange={(v) => setForm((f) => ({ ...f, inform_interval: v }))} />
+                  </>
+                ) : (
+                  <>
+                    <Field label="Usuario ACS" value={acs.acs_username} />
+                    <Field label="Clave ACS" value={acs.acs_password} />
+                    <Field label="Connection Request usuario" value={acs.connection_request_username} />
+                    <Field label="Connection Request clave" value={acs.connection_request_password} />
+                    <Field label="Servidor STUN (sin VPN)" value={`${acs.stun_host}:${acs.stun_port}`} />
+                    <Field label="STUN usuario / clave" value={`${acs.stun_username} / ${acs.stun_password}`} />
+                  </>
+                )}
                 <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-1">
                   <Badge className="bg-success text-success-foreground hover:bg-success">Token activo</Badge>
                   <code className="rounded-md border bg-muted px-2 py-1 font-mono text-xs">
