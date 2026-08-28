@@ -376,6 +376,32 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self._send(500, f"Error: {e}")
 
+    def do_PATCH(self):  # noqa: N802
+        if not self._auth_ok():
+            return self._deny()
+        if self.path.split("?")[0] != "/api/peers":
+            return self._send(404, "no encontrado")
+        try:
+            q = self._query()
+            action = q.get("action", "")
+            if action not in ("enable", "disable"):
+                return self._send(400, "acción inválida")
+            client_action(q.get("id", ""), action)
+            self._send(200, json.dumps({"ok": True}), "application/json")
+        except Exception as e:  # noqa: BLE001
+            self._send(500, f"Error: {e}")
+
+    def do_DELETE(self):  # noqa: N802
+        if not self._auth_ok():
+            return self._deny()
+        if self.path.split("?")[0] != "/api/peers":
+            return self._send(404, "no encontrado")
+        try:
+            client_action(self._query().get("id", ""), "delete")
+            self._send(200, json.dumps({"ok": True}), "application/json")
+        except Exception as e:  # noqa: BLE001
+            self._send(500, f"Error: {e}")
+
 
 if __name__ == "__main__":
     print(f"OmniSync MT panel en :{PANEL_PORT} (wg-easy: {WG_API})", flush=True)
