@@ -205,12 +205,12 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
 
   let peer = existing.rows[0];
   if (!peer) {
-    const base = String(tenant.vpn_subnet || '10.13.13.0/24').split('/')[0].split('.').slice(0, 3).join('.');
+    // IP fija dentro del pool L2TP (única en todo el servidor VPN)
+    const base = L2TP_TUNNEL_NET.split('/')[0].split('.').slice(0, 3).join('.');
     const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM tenant_vpn_peers WHERE tenant_id = $1`,
-      [tenant.id]
+      `SELECT COUNT(*)::int AS total FROM tenant_vpn_peers`
     );
-    const tunnelIp = `${base}.${2 + countRows[0].total}`;
+    const tunnelIp = `${base}.${10 + countRows[0].total}`;
     const { rows } = await pool.query(
       `INSERT INTO tenant_vpn_peers (tenant_id, name, vpn_type, tunnel_ip, psk, username, password, onu_networks)
        VALUES ($1, $2, 'l2tp', $3, $4, $5, $6, $7) RETURNING *`,
@@ -218,7 +218,7 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
         tenant.id,
         name,
         tunnelIp,
-        crypto.randomBytes(16).toString('hex'),
+        L2TP_IPSEC_PSK || crypto.randomBytes(16).toString('hex'),
         `${tenant.slug}-${name}`,
         crypto.randomBytes(12).toString('hex'),
         onuNetworks,
@@ -233,42 +233,56 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
     peer = rows[0];
   }
 
+  // El servidor L2TP usa un único IPsec PSK compartido para todos los routers.
+  const psk = L2TP_IPSEC_PSK || peer.psk;
   const acs = acsUrls(tenant, req);
   const script = `# ============================================================
 # OmniSync — ${tenant.name}
-# Túnel L2TP/IPsec + acceso API + ruta hacia las ONUs
-# Pegar completo en la terminal de RouterOS v7
+# VPN L2TP/IPsec + acceso API + ruta hacia las ONUs
+# Pegar completo en la terminal de RouterOS v6/v7
 # ============================================================
 
+# 1) Túnel L2TP/IPsec hacia el VPS
 /interface l2tp-client
 remove [find name="omnisync"]
 add name="omnisync" connect-to=${serverHost} user="${peer.username}" password="${peer.password}" \\
-    profile=default-encryption use-ipsec=yes ipsec-secret="${peer.psk}" \\
-    add-default-route=no disabled=no comment="OmniSync"
+    profile=default-encryption use-ipsec=yes ipsec-secret="${psk}" \\
+    add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniSync"
 
+# 2) Firewall: permitir la VPN y la API desde el VPS
 /ip firewall filter
-remove [find comment="omnisync-api"]
-add chain=input protocol=tcp dst-port=8728,8729,443 in-interface=omnisync \\
+remove [find comment~"omnisync"]
+add chain=input protocol=udp dst-port=1701,500,4500 action=accept \\
+    comment="omnisync-l2tp" place-before=0
+add chain=input in-interface="omnisync" action=accept \\
+    comment="omnisync-vpn-in" place-before=0
+add chain=input protocol=tcp dst-port=8728,8729,8291 in-interface="omnisync" \\
     action=accept comment="omnisync-api" place-before=0
+add chain=forward in-interface="omnisync" action=accept \\
+    comment="omnisync-forward" place-before=0
 
+# 3) Servicios de administración
 /ip service
-set api disabled=no
-set api-ssl disabled=no
+set api disabled=no port=8728
+set api-ssl disabled=no port=8729
+set winbox disabled=no port=8291
 
-# Deja que el VPS alcance la red de administración de las ONUs
+# 4) Que el VPS alcance la red de administración de las ONUs
 /ip firewall nat
 remove [find comment="omnisync-onu"]
-add chain=srcnat out-interface-list=all dst-address=${onuNetworks} \\
+add chain=srcnat src-address=${L2TP_TUNNEL_NET} dst-address=${onuNetworks} \\
     action=masquerade comment="omnisync-onu"
 
-# TR-069 de las ONUs de este ISP:
+# 5) TR-069 de las ONUs de este ISP
 #   ACS URL (por VPN) : ${acs.vpn_url}
 #   ACS URL (público) : ${acs.public_url}
 #   Usuario / clave   : ${acs.acs_username} / ${acs.acs_password}
-#   Inform periódico  : 60s   |   STUN: desactivado
+#   Connection Req.   : ${acs.connection_request_username} / ${acs.connection_request_password}
+#   Inform periódico  : 60s   |   STUN: desactivado (se usa la VPN)
 # ============================================================
-:put "OmniSync: túnel configurado. Tunnel IP asignada: ${peer.tunnel_ip}"
+:put "OmniSync: tunel L2TP configurado. IP asignada: ${peer.tunnel_ip}"
 `;
+
 
   res.json({
     data: {
