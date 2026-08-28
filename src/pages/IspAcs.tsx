@@ -95,20 +95,18 @@ const IspAcs = () => {
   const [peerName, setPeerName] = useState("mikrotik-1");
   const [onuNetworks, setOnuNetworks] = useState("10.82.0.0/21");
   const [script, setScript] = useState<string>("");
-  const tenantQuery = "";
-
   const { data: acs, isLoading } = useQuery({
     queryKey: ["isp-acs"],
-    queryFn: async () => (await api<{ data: AcsInfo }>(`/isp/acs${tenantQuery}`)).data,
+    queryFn: async () => (await api<{ data: AcsInfo }>("/isp/acs")).data,
   });
 
   const { data: vpn } = useQuery({
     queryKey: ["isp-vpn"],
-    queryFn: async () => (await api<{ data: any }>(`/isp/vpn${tenantQuery}`)).data,
+    queryFn: async () => (await api<{ data: any }>("/isp/vpn")).data,
   });
 
   const rotate = useMutation({
-    mutationFn: () => api(`/isp/acs/rotate${tenantQuery}`, { method: "POST" }),
+    mutationFn: () => api("/isp/acs/rotate", { method: "POST" }),
     onSuccess: () => {
       toast.success("Nuevo enlace TR-069 generado");
       queryClient.invalidateQueries({ queryKey: ["isp-acs"] });
@@ -118,7 +116,7 @@ const IspAcs = () => {
 
   const generate = useMutation({
     mutationFn: () =>
-      api<{ data: { script: string } }>(`/isp/vpn/script${tenantQuery}`, {
+      api<{ data: { script: string } }>("/isp/vpn/script", {
         method: "POST",
         body: { name: peerName, onu_networks: onuNetworks, mode },
       }),
@@ -131,7 +129,7 @@ const IspAcs = () => {
   });
 
   const removePeer = useMutation({
-    mutationFn: (id: string) => api(`/isp/vpn/${id}${tenantQuery}`, { method: "DELETE" }),
+    mutationFn: (id: string) => api(`/isp/vpn/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       toast.success("VPN eliminada");
       queryClient.invalidateQueries({ queryKey: ["isp-vpn"] });
@@ -146,10 +144,10 @@ const IspAcs = () => {
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Satellite className="h-6 w-6 text-primary" />
-            ISP, TR-069 y VPN
+            TR-069 y VPN
           </h1>
           <p className="text-sm text-muted-foreground">
-            Agrega y activa ISPs, conecta las ONUs tras NAT sin VPN, o genera y elimina túneles L2TP.
+            Conecta las ONUs tras NAT sin VPN, o genera y elimina túneles L2TP hacia el VPS.
           </p>
         </header>
 
