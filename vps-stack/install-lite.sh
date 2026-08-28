@@ -170,6 +170,7 @@ CURRENT_STAGE="firewall"
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp        >/dev/null 2>&1 || true
   ufw allow ${WG_PORT}/udp >/dev/null 2>&1 || true
+  ufw allow ${WG_WEB_PORT}/tcp >/dev/null 2>&1 || true  # panel web WireGuard
   ufw allow 18080/tcp     >/dev/null 2>&1 || true   # web del CMS
   # TR-069 y MQTT solo por el túnel
   ufw allow in on wg0 to any port 9909 >/dev/null 2>&1 || true
