@@ -14,8 +14,6 @@ import { Router, Wifi, Loader2, CircleCheck, CircleX, AlertCircle, Copy } from "
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
-import { CloudflareConfig } from "@/components/settings/CloudflareConfig";
-import { VpsDockerManager } from "@/components/settings/VpsDockerManager";
 
 interface DiagnosticCheck {
   ok: boolean | null;
@@ -275,8 +273,6 @@ export default function Settings() {
             </Card>
           )}
 
-          <CloudflareConfig mikrotikId={selectedDevice || null} mikrotikDevice={null} />
-          <VpsDockerManager mikrotikId={selectedDevice || null} />
         </div>
       </div>
     </div>
