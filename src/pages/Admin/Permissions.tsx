@@ -13,13 +13,15 @@ type Perm = { role: string; section: string; can_view: boolean; can_edit: boolea
 
 const ROLES = ["admin", "user", "secretary", "reseller"];
 const LABELS: Record<string, string> = {
-  onus: "ONUs",
-  wifi: "WiFi",
-  pppoe: "PPPoE",
-  red: "Red",
-  firmware: "Firmware",
-  vpn: "VPN",
+  dashboard: "Dashboard",
+  onus: "Gestión de ONUs",
+  wifi: "Wi-Fi dual band",
+  pppoe: "Red / PPPoE",
+  vpn: "Credenciales y VPN",
+  configuracion: "Configuración",
+  diagnostico: "Diagnóstico API",
   usuarios: "Usuarios",
+  roles: "Roles y permisos",
 };
 
 const Permissions = () => {
