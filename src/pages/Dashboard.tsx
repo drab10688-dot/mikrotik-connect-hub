@@ -67,24 +67,17 @@ const Dashboard = () => {
   const quickActions = [
     {
       title: "Usuarios Hotspot",
-      description: "Administrar usuarios y perfiles",
-      icon: Users,
-      path: "/users",
+      description: "Ver y configurar ONUs por TR-069",
+      icon: Wifi,
+      path: "/onus",
       color: "bg-blue-500",
     },
     {
-      title: "Generar Vouchers",
-      description: "Crear códigos de acceso",
-      icon: Ticket,
-      path: "/vouchers",
+      title: "TR-069 y VPN",
+      description: "Enlace TR-069 del ISP y script MikroTik",
+      icon: Server,
+      path: "/acs",
       color: "bg-purple-500",
-    },
-    {
-      title: "Gestión PPPoE",
-      description: "Administrar conexiones PPPoE",
-      icon: Wifi,
-      path: "/ppp",
-      color: "bg-green-500",
     },
     {
       title: "Configuración",
@@ -147,10 +140,10 @@ const Dashboard = () => {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => navigate("/vps-services")}
+                  onClick={() => navigate("/acs")}
                 >
                   <Server className="w-4 h-4 mr-2" />
-                  Servicios VPS / WireGuard
+                  TR-069 y VPN del ISP
                 </Button>
               )}
             </CardContent>
@@ -422,7 +415,7 @@ const Dashboard = () => {
                     <Button 
                       variant="ghost" 
                       className="w-full mt-2"
-                      onClick={() => navigate("/ppp")}
+                      onClick={() => navigate("/onus")}
                     >
                       Ver todos ({pppoeActive.length})
                     </Button>
