@@ -14,11 +14,25 @@ usersRouter.get('/', async (req: AuthRequest, res: Response) => {
 
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.is_active, u.created_at, u.tenant_id,
-              ur.role
+              (
+                SELECT ur.role::text FROM user_roles ur
+                WHERE ur.user_id = u.id
+                ORDER BY CASE ur.role::text
+                  WHEN 'super_admin' THEN 1
+                  WHEN 'admin' THEN 2
+                  WHEN 'secretary' THEN 3
+                  WHEN 'reseller' THEN 4
+                  ELSE 5
+                END
+                LIMIT 1
+              ) AS role
        FROM users u
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
-       ORDER BY u.created_at DESC`
+       WHERE ($1::uuid IS NULL AND u.tenant_id IS NULL)
+          OR (u.tenant_id = $1::uuid)
+       ORDER BY u.created_at DESC`,
+      [req.tenantId || null]
     );
+
     res.json({ data: rows });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
