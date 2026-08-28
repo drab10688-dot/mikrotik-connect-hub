@@ -617,6 +617,71 @@ devicesRouter.delete('/resellers/:assignmentId', requireRole('super_admin', 'adm
   }
 });
 
+
+// ─── Columnas de permisos de asistentes ───────────────────
+// Instalaciones antiguas no tienen las columnas nuevas (RADIUS, ONU,
+// Configuración, Diagnóstico). Se crean al vuelo y se cachea la lista real
+// para no intentar escribir columnas inexistentes (eso rompía "Asignar").
+const SECRETARY_PERM_COLUMNS = [
+  'can_manage_pppoe','can_create_pppoe','can_edit_pppoe','can_delete_pppoe','can_disconnect_pppoe','can_toggle_pppoe',
+  'can_manage_queues','can_create_queues','can_edit_queues','can_delete_queues','can_toggle_queues','can_suspend_queues','can_reactivate_queues',
+  'can_manage_clients','can_create_clients','can_edit_clients','can_delete_clients',
+  'can_manage_payments','can_record_payments','can_view_payment_history','can_reactivate_services',
+  'can_manage_billing','can_create_invoices','can_edit_invoices','can_delete_invoices','can_send_invoices',
+  'can_manage_reports','can_view_reports_dashboard','can_export_reports',
+  'can_manage_hotspot','can_create_hotspot_users','can_edit_hotspot_users','can_delete_hotspot_users',
+  'can_manage_vouchers','can_sell_vouchers','can_print_vouchers','can_view_hotspot_accounting','can_view_hotspot_reports',
+  'can_manage_address_list','can_create_address_list','can_delete_address_list',
+  'can_manage_backup','can_create_backup','can_restore_backup',
+  'can_manage_vps_services','can_view_vps','can_manage_vps_docker',
+  'can_manage_radius','can_manage_radius_users','can_view_radius_stats',
+  'can_manage_onu','can_configure_onu_wifi','can_reboot_onu',
+  'can_manage_settings','can_manage_diagnostics',
+];
+
+let permColumnsCache: Set<string> | null = null;
+
+async function getSecretaryPermColumns(): Promise<Set<string>> {
+  if (permColumnsCache) return permColumnsCache;
+
+  for (const col of SECRETARY_PERM_COLUMNS) {
+    try {
+      await pool.query(
+        `ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS ${col} BOOLEAN DEFAULT true`
+      );
+    } catch (error) {
+      console.error(`⚠️ No se pudo crear la columna ${col}:`, error);
+    }
+  }
+
+  // El ON CONFLICT necesita el índice único; en instalaciones antiguas puede faltar.
+  try {
+    await pool.query(
+      `DELETE FROM secretary_assignments sa
+        WHERE sa.ctid <> (
+          SELECT max(b.ctid) FROM secretary_assignments b
+           WHERE b.secretary_id = sa.secretary_id
+             AND b.mikrotik_id IS NOT DISTINCT FROM sa.mikrotik_id
+        )`
+    );
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS secretary_assignments_secretary_mikrotik_key
+         ON secretary_assignments (secretary_id, mikrotik_id)`
+    );
+  } catch (error) {
+    console.error('⚠️ No se pudo crear el índice único de asignaciones:', error);
+  }
+
+
+
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'secretary_assignments' AND column_name LIKE 'can\\_%'`
+  );
+  permColumnsCache = new Set(rows.map((r: any) => r.column_name));
+  return permColumnsCache;
+}
+
 // ─── Secretary Assignments ────────────────────
 devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Response) => {
   try {
@@ -644,16 +709,19 @@ devicesRouter.get('/:id/secretaries', requireRole('super_admin', 'admin'), async
     const isSuper = req.userRole === 'super_admin';
 
     if (id === 'all') {
+      // El super admin ve todo dentro de su ISP; el global solo lo sin-ISP.
       const { rows } = await pool.query(
         isSuper
           ? `SELECT sa.*, u.email, u.full_name
              FROM secretary_assignments sa
-             LEFT JOIN users u ON u.id = sa.secretary_id`
+             LEFT JOIN users u ON u.id = sa.secretary_id
+             WHERE ($1::uuid IS NULL AND u.tenant_id IS NULL)
+                OR u.tenant_id = $1::uuid`
           : `SELECT sa.*, u.email, u.full_name
              FROM secretary_assignments sa
              LEFT JOIN users u ON u.id = sa.secretary_id
              WHERE sa.assigned_by = $1`,
-        isSuper ? [] : [req.userId]
+        isSuper ? [req.tenantId || null] : [req.userId]
       );
       return res.json({ data: rows });
     }
@@ -696,13 +764,31 @@ devicesRouter.post('/:id/secretaries', requireRole('super_admin', 'admin'), asyn
       if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
     }
 
-    const permKeys = Object.keys(rest).filter((k) => /^can_[a-z0-9_]+$/.test(k));
+    const validColumns = await getSecretaryPermColumns();
+    const permKeys = Object.keys(rest).filter(
+      (k) => /^can_[a-z0-9_]+$/.test(k) && validColumns.has(k)
+    );
+
+    // Una asignación global (mikrotik_id NULL) no la deduplica el UNIQUE de
+    // Postgres, así que se limpia antes para no crear filas repetidas.
+    if (!mikrotikId) {
+      await pool.query(
+        'DELETE FROM secretary_assignments WHERE secretary_id = $1 AND mikrotik_id IS NULL',
+        [secretary_id]
+      );
+    }
+
     const columns = ['secretary_id', 'mikrotik_id', 'assigned_by', ...permKeys];
     const values: any[] = [secretary_id, mikrotikId, req.userId, ...permKeys.map((k) => rest[k] === true)];
     const placeholders = values.map((_, i) => `$${i + 1}`).join(',');
+    const updates = permKeys.map((k) => `${k} = EXCLUDED.${k}`).join(', ');
 
     const { rows } = await pool.query(
-      `INSERT INTO secretary_assignments (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+      `INSERT INTO secretary_assignments (${columns.join(', ')})
+       VALUES (${placeholders})
+       ON CONFLICT (secretary_id, mikrotik_id) DO UPDATE
+         SET assigned_by = EXCLUDED.assigned_by${updates ? `, ${updates}` : ''}
+       RETURNING *`,
       values
     );
     res.status(201).json({ data: rows[0] });
@@ -726,12 +812,13 @@ devicesRouter.put('/secretaries/:assignmentId', requireRole('super_admin', 'admi
       return res.status(403).json({ error: 'No puedes modificar esta asignación' });
     }
 
+    const validColumns = await getSecretaryPermColumns();
     const setClauses: string[] = [];
     const values: any[] = [];
     let i = 1;
 
     for (const [key, value] of Object.entries(fields)) {
-      if (/^can_[a-z0-9_]+$/.test(key)) {
+      if (/^can_[a-z0-9_]+$/.test(key) && validColumns.has(key)) {
         setClauses.push(`${key} = $${i}`);
         values.push(value === true);
         i++;
