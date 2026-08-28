@@ -63,36 +63,32 @@ PUBIP="${VPS_PUBLIC_IP:-$(curl -4 -s --max-time 8 https://ifconfig.me || curl -4
 MT="$DIR/mikrotik-l2tp.rsc"
 cat > "$MT" <<EOF
 # ============================================
-# OmniSync L2TP/IPsec — RouterOS v6/v7
+# OmniACS L2TP/IPsec — RouterOS v6/v7
 # Pegar completo en la terminal de la MikroTik
 # ============================================
+
+# 1) Túnel L2TP/IPsec hacia el VPS
 /interface l2tp-client
-remove [find name="l2tp-omnisync"]
-add name="l2tp-omnisync" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
-    use-ipsec=yes ipsec-secret="$VPN_IPSEC_PSK" disabled=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=30 comment="OmniSync VPN"
+remove [find name="OmniACS-VPN"]
+add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
+    profile=default-encryption use-ipsec=yes ipsec-secret="$VPN_IPSEC_PSK" \\
+    add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniACS VPN"
 
-/interface list member
-add list=LAN interface="l2tp-omnisync" comment="OmniSync VPN"
+# 2) Ruta hacia el ACS (VPS) por el túnel
+/ip route
+add dst-address=$TUNNEL_SRV/32 gateway="OmniACS-VPN" comment="Ruta hacia ACS"
 
-/ip firewall filter
-remove [find comment~"OmniSync"]
-add chain=input protocol=udp dst-port=1701,500,4500 action=accept comment="OmniSync L2TP" place-before=0
-add chain=input in-interface="l2tp-omnisync" action=accept comment="OmniSync VPN in" place-before=0
-add chain=forward in-interface="l2tp-omnisync" action=accept comment="OmniSync VPN forward" place-before=0
-
-/ip service
-set api disabled=no port=8728
-set api-ssl disabled=no port=8729
-set winbox disabled=no port=8291
-
-# Permitir que el VPS llegue a la red de administración de las ONUs
+# 3) NAT para que el ACS llegue directo al segmento de las ONUs
 /ip firewall nat
-remove [find comment="OmniSync VPN -> ONUs"]
-add chain=srcnat src-address=$TUNNEL_NET dst-address=$ONU_NETS action=masquerade \\
-    comment="OmniSync VPN -> ONUs"
+add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-:put "OmniSync: túnel L2TP configurado hacia $PUBIP"
+# 4) TR-069 de las ONUs
+#   ACS URL (por VPN) : http://$TUNNEL_SRV:7547/
+#   ACS URL (público) : http://$PUBIP:7547/
+#   Usuario / clave   : omnisync / <token-del-ISP>
+#   Inform periódico  : 60s   |   STUN: desactivado (se usa la VPN)
+# ============================================
+:put "OmniACS: túnel L2TP configurado hacia $PUBIP"
 EOF
 ok "Script MikroTik generado: $MT"
 
