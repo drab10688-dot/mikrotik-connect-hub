@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
 import SignalGauge from "@/components/onu/SignalGauge";
-import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag } from "lucide-react";
+import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag, Wifi } from "lucide-react";
 
 interface RadioInfo {
   index: string;
