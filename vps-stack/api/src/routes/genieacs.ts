@@ -977,8 +977,14 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
       });
     } catch { /* si falla la consulta, usamos el fallback */ }
 
-    // Fallback seguro: refrescar el nodo WAN completo (siempre existe en TR-069 IGD)
-    const targets = existing.length ? existing : ['InternetGatewayDevice.WANDevice'];
+    // Siempre se refresca el árbol WAN (donde vive la PON en cualquier vendor)
+    // y las radios WiFi, para que la UI muestre señal y SSID activos.
+    const targets = Array.from(new Set([
+      ...existing,
+      'InternetGatewayDevice.WANDevice',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
+    ]));
+
 
     const results: any[] = [];
     for (const objectName of targets) {
@@ -1007,40 +1013,20 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
 
 
 // ─── Overview rápido: una sola consulta al ACS (lista + señal + PPPoE) ──
+// Proyección amplia: se traen subárboles completos para soportar cualquier
+// fabricante (Realtek, V-SOL, Zyxel, Huawei, ZTE, C-Data…) sin rutas fijas.
 const FAST_PROJECTION = [
   '_id', '_deviceId', '_lastInform',
-  'InternetGatewayDevice.DeviceInfo.Manufacturer',
-  'InternetGatewayDevice.DeviceInfo.ModelName',
-  'InternetGatewayDevice.DeviceInfo.ProductClass',
-  'InternetGatewayDevice.DeviceInfo.SerialNumber',
-  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower',
-  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.X_HW_PONInfo.RXPower',
-  'InternetGatewayDevice.X_HW_PONInfo.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower',
-  'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower',
-  'Device.Optical.Interface.1.Stats.SignalStrength',
-  'Device.Optical.Interface.1.Stats.TransmitPower',
-  'Device.Optical.Interface.1.RxPower',
-  'Device.Optical.Interface.1.TxPower',
-  'Device.DeviceInfo.Manufacturer',
-  'Device.DeviceInfo.ModelName',
-  'Device.DeviceInfo.SerialNumber',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ConnectionStatus',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANPPPConnection.1.Username',
-  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.WANPPPConnection.1.Username',
+  'InternetGatewayDevice.DeviceInfo',
+  'InternetGatewayDevice.WANDevice',
+  'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
+  'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
+  'InternetGatewayDevice.X_HW_PONInfo',
+  'Device.DeviceInfo',
+  'Device.Optical',
+  'Device.WiFi',
 ].join(',');
+
 
 function sanitizePower(val: any): number | null {
   let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
@@ -1073,6 +1059,75 @@ function firstPppoeUsername(device: any): string | null {
   return null;
 }
 
+// Busca en profundidad cualquier parámetro óptico sin depender del fabricante.
+function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): any {
+  if (!obj || typeof obj !== 'object' || depth < 0) return undefined;
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_')) continue;
+    if (keyMatch.test(k)) {
+      const val = v?._value ?? (typeof v === 'number' || typeof v === 'string' ? v : undefined);
+      if (val !== undefined && val !== null && String(val) !== '') {
+        const num = sanitizePower(val);
+        if (num !== null) return num;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_') || !v || typeof v !== 'object') continue;
+    const found = deepFindPower(v, keyMatch, depth - 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
+const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+
+export interface RadioInfo {
+  index: string;
+  ssid: string | null;
+  enabled: boolean;
+  channel: number | null;
+  band: '2.4GHz' | '5GHz';
+  password: string | null;
+}
+
+// Resumen de radios WiFi (cuál SSID está activo y en qué banda).
+function wifiRadios(device: any): RadioInfo[] {
+  const wlan =
+    device?.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration || {};
+  const radios: RadioInfo[] = [];
+  for (const key of Object.keys(wlan)) {
+    if (key.startsWith('_')) continue;
+    const r = wlan[key] || {};
+    const ssid = r?.SSID?._value ?? null;
+    const enabledRaw = r?.Enable?._value;
+    const channel = Number(r?.Channel?._value);
+    const standard = String(r?.Standard?._value || r?.X_BandType?._value || '');
+    const freqBand = String(r?.OperatingFrequencyBand?._value || '');
+    const is5 =
+      /5/.test(freqBand) ||
+      /a$|ac|ax/i.test(standard) && Number.isFinite(channel) && channel > 14 ||
+      (Number.isFinite(channel) && channel > 14);
+    const password =
+      r?.KeyPassphrase?._value ??
+      r?.PreSharedKey?.['1']?.KeyPassphrase?._value ??
+      r?.PreSharedKey?.['1']?.PreSharedKey?._value ??
+      null;
+    if (ssid === null && enabledRaw === undefined) continue;
+    radios.push({
+      index: key,
+      ssid: ssid !== null ? String(ssid) : null,
+      enabled: enabledRaw === true || String(enabledRaw) === 'true' || String(enabledRaw) === '1',
+      channel: Number.isFinite(channel) ? channel : null,
+      band: is5 ? '5GHz' : '2.4GHz',
+      password: password !== null ? String(password) : null,
+    });
+  }
+  return radios;
+}
+
+
 genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
   try {
     const devices: any[] = (await genieFetch(`/devices/?projection=${encodeURIComponent(FAST_PROJECTION)}`)) || [];
@@ -1092,27 +1147,20 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
       const rx = sanitizePower(
         getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
         ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
         ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
-        ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
-      );
+      ) ?? deepFindPower(device, RX_KEY) ?? null;
+
       const tx = sanitizePower(
         getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
         ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.TXPower')
         ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
         ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
-        ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
-      );
+      ) ?? deepFindPower(device, TX_KEY) ?? null;
+
+      const radios = wifiRadios(device);
 
       return {
         deviceId: device._id,
@@ -1121,10 +1169,13 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
         serial: di?.SerialNumber?._value || meta?._SerialNumber || (idParts.length >= 3 ? idParts.slice(2).join('-') : '-'),
         rxPower: rx,
         txPower: tx,
+        radios,
+        activeSsids: radios.filter((r) => r.enabled && r.ssid).map((r) => `${r.ssid} (${r.band})`),
         pppoeUsername: firstPppoeUsername(device),
         alias: aliases[device._id] || null,
         lastInform: device?._lastInform || null,
       };
+
     });
 
     const scope = await getAcsScope(req);
@@ -1184,8 +1235,9 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
         return 'critical';
       };
 
-      const rxNorm = normalizePower(rxPower);
-      const txNorm = normalizePower(txPower);
+      const rxNorm = normalizePower(rxPower) ?? deepFindPower(device, RX_KEY) ?? null;
+      const txNorm = normalizePower(txPower) ?? deepFindPower(device, TX_KEY) ?? null;
+
 
       const idParts = String(device?._id || '').split('-');
       const serialFromId = idParts.length >= 3 ? idParts.slice(2).join('-') : null;

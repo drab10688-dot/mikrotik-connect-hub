@@ -8,7 +8,16 @@ import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
 import SignalGauge from "@/components/onu/SignalGauge";
-import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag } from "lucide-react";
+import { Loader2, RotateCcw, Signal, Router, ChevronDown, ChevronUp, Network, Eye, EyeOff, Pencil, Check, X, Tag, Wifi } from "lucide-react";
+
+interface RadioInfo {
+  index: string;
+  ssid: string | null;
+  enabled: boolean;
+  channel: number | null;
+  band: "2.4GHz" | "5GHz";
+  password: string | null;
+}
 
 interface SignalEntry {
   deviceId: string;
@@ -18,7 +27,9 @@ interface SignalEntry {
   rxPower: number | null;
   txPower: number | null;
   lastInform: string | null;
+  radios?: RadioInfo[];
 }
+
 
 function signalColor(dbm: number | null) {
   if (dbm === null || dbm === undefined) return "text-muted-foreground";
@@ -158,7 +169,9 @@ export default function SimpleOnuPanel() {
           rxPower: e.rxPower ?? null,
           txPower: e.txPower ?? null,
           lastInform: e.lastInform ?? null,
+          radios: Array.isArray(e.radios) ? e.radios : [],
         };
+
         if (e.alias) aliasMap[e.deviceId] = e.alias;
         if (e.pppoeUsername) nameMap[e.deviceId] = e.pppoeUsername;
       });
@@ -338,6 +351,37 @@ export default function SimpleOnuPanel() {
                       </Badge>
                       <span>{sinceLabel(sig?.lastInform)}</span>
                     </div>
+                    {(() => {
+                      const radios = (sig?.radios || []).filter((r) => r.ssid);
+                      const active = radios.filter((r) => r.enabled);
+                      if (!radios.length) {
+                        return (
+                          <p className="text-[11px] text-muted-foreground">
+                            WiFi sin datos — abra “Configurar” y pulse leer/actualizar.
+                          </p>
+                        );
+                      }
+                      return (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {radios.map((r) => (
+                            <Badge
+                              key={r.index}
+                              variant={r.enabled ? "default" : "secondary"}
+                              className="text-[10px] font-normal"
+                            >
+                              <Wifi className="w-3 h-3 mr-1" />
+                              {r.ssid} · {r.band}
+                              {r.channel ? ` · ch ${r.channel}` : ""}
+                              {r.enabled ? "" : " · apagada"}
+                            </Badge>
+                          ))}
+                          {active.length === 0 && (
+                            <span className="text-[11px] text-destructive">Ninguna radio activa</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                   </div>
                   <div className="flex items-center gap-3">
                     <div className={offline ? "opacity-40 grayscale" : ""}>
