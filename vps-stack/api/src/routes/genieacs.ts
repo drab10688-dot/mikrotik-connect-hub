@@ -1053,6 +1053,75 @@ function firstPppoeUsername(device: any): string | null {
   return null;
 }
 
+// Busca en profundidad cualquier parámetro óptico sin depender del fabricante.
+function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): any {
+  if (!obj || typeof obj !== 'object' || depth < 0) return undefined;
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_')) continue;
+    if (keyMatch.test(k)) {
+      const val = v?._value ?? (typeof v === 'number' || typeof v === 'string' ? v : undefined);
+      if (val !== undefined && val !== null && String(val) !== '') {
+        const num = sanitizePower(val);
+        if (num !== null) return num;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries<any>(obj)) {
+    if (k.startsWith('_') || !v || typeof v !== 'object') continue;
+    const found = deepFindPower(v, keyMatch, depth - 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
+const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+
+export interface RadioInfo {
+  index: string;
+  ssid: string | null;
+  enabled: boolean;
+  channel: number | null;
+  band: '2.4GHz' | '5GHz';
+  password: string | null;
+}
+
+// Resumen de radios WiFi (cuál SSID está activo y en qué banda).
+function wifiRadios(device: any): RadioInfo[] {
+  const wlan =
+    device?.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration || {};
+  const radios: RadioInfo[] = [];
+  for (const key of Object.keys(wlan)) {
+    if (key.startsWith('_')) continue;
+    const r = wlan[key] || {};
+    const ssid = r?.SSID?._value ?? null;
+    const enabledRaw = r?.Enable?._value;
+    const channel = Number(r?.Channel?._value);
+    const standard = String(r?.Standard?._value || r?.X_BandType?._value || '');
+    const freqBand = String(r?.OperatingFrequencyBand?._value || '');
+    const is5 =
+      /5/.test(freqBand) ||
+      /a$|ac|ax/i.test(standard) && Number.isFinite(channel) && channel > 14 ||
+      (Number.isFinite(channel) && channel > 14);
+    const password =
+      r?.KeyPassphrase?._value ??
+      r?.PreSharedKey?.['1']?.KeyPassphrase?._value ??
+      r?.PreSharedKey?.['1']?.PreSharedKey?._value ??
+      null;
+    if (ssid === null && enabledRaw === undefined) continue;
+    radios.push({
+      index: key,
+      ssid: ssid !== null ? String(ssid) : null,
+      enabled: enabledRaw === true || String(enabledRaw) === 'true' || String(enabledRaw) === '1',
+      channel: Number.isFinite(channel) ? channel : null,
+      band: is5 ? '5GHz' : '2.4GHz',
+      password: password !== null ? String(password) : null,
+    });
+  }
+  return radios;
+}
+
+
 genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
   try {
     const devices: any[] = (await genieFetch(`/devices/?projection=${encodeURIComponent(FAST_PROJECTION)}`)) || [];
