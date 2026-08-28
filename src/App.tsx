@@ -7,6 +7,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
+import Onus from "./pages/Onus";
 import OnuManagement from "./pages/OnuManagement";
 import IspAcs from "./pages/IspAcs";
 import Permissions from "./pages/Admin/Permissions";
@@ -34,8 +35,8 @@ const App = () => (
 
           {/* Panel de gestión de ONUs */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu"><OnuManagement /></ProtectedRoute>} />
-          <Route path="/onu-management" element={<Navigate to="/onus" replace />} />
+          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu"><Onus /></ProtectedRoute>} />
+          <Route path="/onu-management" element={<ProtectedRoute permission="can_manage_onu"><OnuManagement /></ProtectedRoute>} />
           <Route path="/acs" element={<ProtectedRoute><IspAcs /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings"><Settings /></ProtectedRoute>} />
           <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics"><Diagnostics /></ProtectedRoute>} />

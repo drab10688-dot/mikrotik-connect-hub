@@ -11,12 +11,9 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
-import { useSystemResources } from "@/hooks/useMikrotikData";
 import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserDeviceAccess } from "@/hooks/useUserDeviceAccess";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
-import { Shield } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
 import { useMyTenant } from "@/hooks/useTenantBranding";
@@ -34,10 +31,7 @@ export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut, isSecretary, isReseller } = useAuth();
-  const { hasDeviceAccess, isLoading: loadingAccess } = useUserDeviceAccess();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
-  const host = localStorage.getItem("mikrotik_host") || "";
-  const { data: systemInfo } = useSystemResources();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [customLogo, setCustomLogo] = useState<string | null>(null);
@@ -48,8 +42,6 @@ export const Sidebar = () => {
   const displayLogo = tenant?.logo_url || customLogo;
   const displayName = tenant?.name || businessName;
 
-  const systemData = (systemInfo as any[])?.[0];
-  const version = systemData?.version?.split(' ')[0] || localStorage.getItem("mikrotik_version") || "v7";
 
   useEffect(() => {
     const savedLogo = localStorage.getItem("sidebar_logo");
