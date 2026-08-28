@@ -24,12 +24,21 @@ async function getTenant(tenantId: string) {
 
 /** Devuelve el ISP del usuario, generando token TR-069 y subred si faltan. */
 async function ensureTenant(req: AuthRequest, res: Response) {
-  const tenantId = (req.query.tenant_id as string) || req.tenantId;
+  let tenantId = (req.query.tenant_id as string) || req.tenantId;
+
+  // Instalación de un solo ISP: si el usuario no tiene ISP asignado se usa
+  // (o se crea) el ISP por defecto, para no dejar la página cargando.
   if (!tenantId) {
-    res.status(400).json({ error: 'Tu usuario no pertenece a ningún ISP' });
-    return null;
-  }
-  if (req.userRole !== 'super_admin' && tenantId !== req.tenantId) {
+    const { rows } = await pool.query(`SELECT id FROM tenants ORDER BY created_at LIMIT 1`);
+    if (rows[0]) {
+      tenantId = rows[0].id;
+    } else {
+      const created = await pool.query(
+        `INSERT INTO tenants (name, slug) VALUES ('OmniSync', 'omnisync') RETURNING id`
+      );
+      tenantId = created.rows[0].id;
+    }
+  } else if (req.userRole !== 'super_admin' && tenantId !== req.tenantId) {
     res.status(403).json({ error: 'Sin acceso a este ISP' });
     return null;
   }
@@ -39,6 +48,7 @@ async function ensureTenant(req: AuthRequest, res: Response) {
     res.status(404).json({ error: 'ISP no encontrado' });
     return null;
   }
+
 
   if (!tenant.acs_token || !tenant.vpn_subnet) {
     const token = tenant.acs_token || crypto.randomBytes(8).toString('hex');
