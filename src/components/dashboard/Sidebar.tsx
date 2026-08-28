@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
@@ -136,7 +135,6 @@ export const Sidebar = () => {
             <Radio className="w-4 h-4" />
             <span>TR-069 / ACS</span>
           </div>
-          <NotificationCenter />
         </div>
         <div className="mt-2 px-2 py-1 bg-sidebar-accent rounded text-xs text-sidebar-accent-foreground text-center">
           OmniACS · Gestión de ONUs
