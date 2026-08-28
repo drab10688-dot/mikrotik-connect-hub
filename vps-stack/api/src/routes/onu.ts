@@ -152,7 +152,7 @@ onuRouter.put('/:mikrotikId/:onuId', async (req: AuthRequest, res: Response) => 
 
     if (updates.length === 0) return res.status(400).json({ error: 'No hay campos para actualizar' });
 
-    values.push(onuId, mikrotikId);
+    values.push(onuId, mikrotikId, req.tenantId || null);
     const result = await pool.query(
       `UPDATE onu_devices SET ${updates.join(', ')}
         WHERE id = $${idx++} AND mikrotik_id = $${idx++}
