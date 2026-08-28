@@ -12,7 +12,7 @@ import IspAcs from "./pages/IspAcs";
 import Permissions from "./pages/Admin/Permissions";
 import UsersAdmin from "./pages/Admin/Users";
 import RegisterUser from "./pages/Admin/RegisterUser";
-import TenantsAdmin from "./pages/Admin/Tenants";
+
 import NotFound from "./pages/NotFound";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
@@ -37,11 +37,11 @@ const App = () => (
           <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings"><Settings /></ProtectedRoute>} />
           <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics"><Diagnostics /></ProtectedRoute>} />
 
-          {/* Administración multi-ISP */}
+          {/* Administración */}
           <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin><Permissions /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
-          <Route path="/admin/tenants" element={<ProtectedRoute requireSuperAdmin><TenantsAdmin /></ProtectedRoute>} />
+          
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
