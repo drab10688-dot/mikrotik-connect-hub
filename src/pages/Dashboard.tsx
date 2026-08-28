@@ -33,13 +33,6 @@ const isOffline = (lastInform: string | null) => {
   return Date.now() - t > OFFLINE_AFTER_MS;
 };
 
-const signalTone = (dbm: number | null) => {
-  if (dbm === null) return "text-muted-foreground";
-  if (dbm > -20) return "text-emerald-500";
-  if (dbm > -25) return "text-amber-500";
-  return "text-destructive";
-};
-
 const sinceLabel = (lastInform: string | null) => {
   if (!lastInform) return "sin reportes";
   const diff = Date.now() - new Date(lastInform).getTime();
@@ -183,7 +176,7 @@ const Dashboard = () => {
                     <TableHead>ONU</TableHead>
                     <TableHead>PPPoE</TableHead>
                     <TableHead>WiFi</TableHead>
-                    <TableHead>RX</TableHead>
+                    <TableHead className="min-w-[150px]">Potencia óptica</TableHead>
                     <TableHead className="text-right">Estado</TableHead>
                   </TableRow>
                 </TableHeader>
