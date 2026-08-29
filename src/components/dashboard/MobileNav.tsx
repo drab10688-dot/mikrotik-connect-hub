@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import omnisyncBrand from "@/assets/omnisync-brand.png.asset.json";
+import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import { Menu, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,12 +45,8 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
         <img
           src={logo ?? omnisyncLogo}
           alt={name}
-          className="w-9 h-9 rounded-lg object-contain shrink-0"
+          className="h-9 w-auto max-w-[140px] object-contain shrink-0"
         />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold leading-tight truncate">{name}</p>
-          <p className="text-[10px] text-sidebar-foreground/60 truncate">OmniACS · TR-069</p>
-        </div>
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
