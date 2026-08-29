@@ -141,14 +141,16 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
       `UPDATE tenants SET
          name = COALESCE($2, name),
          slug = COALESCE($3, slug),
-         logo_url = COALESCE($4, logo_url),
+         logo_url = CASE WHEN $4::text IS NULL THEN logo_url
+                         WHEN $4::text = '' THEN NULL ELSE $4::text END,
          primary_color = COALESCE($5, primary_color),
          is_active = COALESCE($6, is_active),
          onu_limit = CASE WHEN $7::int IS NULL THEN onu_limit
                           WHEN $7::int <= 0 THEN NULL ELSE $7::int END,
          updated_at = now()
        WHERE id = $1 RETURNING *`,
-      [req.params.id, name || null, slug ? slugify(slug) : null, logo_url || null, primary_color || null,
+      [req.params.id, name || null, slug ? slugify(slug) : null,
+       logo_url === undefined || logo_url === null ? null : String(logo_url), primary_color || null,
        typeof is_active === 'boolean' ? is_active : null,
        onu_limit === undefined || onu_limit === null || onu_limit === '' ? null : Math.floor(Number(onu_limit))]
     );

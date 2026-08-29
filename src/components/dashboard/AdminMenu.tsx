@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Shield, Users } from 'lucide-react';
+import { Shield, Users, Building2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 export const AdminMenu = () => {
@@ -13,6 +13,15 @@ export const AdminMenu = () => {
         Administración
       </h3>
       <div className="space-y-1">
+        {isSuperAdmin && (
+          <Link
+            to="/admin/isps"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
+          >
+            <Building2 className="h-4 w-4" />
+            <span>ISPs</span>
+          </Link>
+        )}
         {isSuperAdmin && (
           <Link
             to="/admin/users"

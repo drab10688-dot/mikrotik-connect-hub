@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./pages/Auth/Login";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import Isps from "./pages/Admin/Isps";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Diagnostics from "./pages/Diagnostics";
@@ -39,6 +40,7 @@ const App = () => (
 
           {/* Administración */}
           <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin><Permissions /></ProtectedRoute>} />
+          <Route path="/admin/isps" element={<ProtectedRoute requireSuperAdmin><Isps /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
           
