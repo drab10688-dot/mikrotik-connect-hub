@@ -106,6 +106,157 @@ netAccessRouter.put('/web-ports', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ─── Credenciales de los APs/antenas (por ISP) ──────────────────
+netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, ip, name, brand, username, port, protocol
+         FROM ap_credentials
+        WHERE tenant_id IS NOT DISTINCT FROM $1
+        ORDER BY ip`,
+      [req.tenantId ?? null]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+netAccessRouter.put('/ap-credentials', async (req: AuthRequest, res: Response) => {
+  try {
+    const { ip, name, brand, username, password, port, protocol } = req.body || {};
+    if (!ip || !IPV4.test(String(ip))) {
+      return res.status(400).json({ success: false, error: 'IP del AP inválida' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (tenant_id, ip) DO UPDATE SET
+         name = EXCLUDED.name,
+         brand = EXCLUDED.brand,
+         username = EXCLUDED.username,
+         password = COALESCE(NULLIF(EXCLUDED.password, ''), ap_credentials.password),
+         port = EXCLUDED.port,
+         protocol = EXCLUDED.protocol,
+         updated_at = now()
+       RETURNING id, ip, name, brand, username, port, protocol`,
+      [
+        req.tenantId ?? null,
+        String(ip),
+        name || null,
+        brand || 'otro',
+        username || null,
+        password || '',
+        Number(port) > 0 ? Number(port) : null,
+        protocol === 'https' ? 'https' : 'http',
+      ]
+    );
+    res.json({ success: true, data: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+netAccessRouter.delete('/ap-credentials/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    await pool.query(`DELETE FROM ap_credentials WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $2`, [
+      req.params.id,
+      req.tenantId ?? null,
+    ]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+async function apTarget(tenantId: string | null | undefined, ip: string, brandHint?: string): Promise<ApTarget> {
+  const ports = await tenantWebPorts(tenantId);
+  const { rows } = await pool.query(
+    `SELECT ip, brand, username, password, port, protocol
+       FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1 AND ip = $2`,
+    [tenantId ?? null, ip]
+  );
+  const saved = rows[0];
+  const brand = (saved?.brand || brandHint || 'otro') as string;
+  const fallback = ports[brand] || ports.otro;
+  return {
+    ip,
+    brand,
+    port: saved?.port || fallback.port,
+    protocol: (saved?.protocol || fallback.protocol) as 'http' | 'https',
+    username: saved?.username || (brand === 'ubiquiti' ? 'ubnt' : 'admin'),
+    password: saved?.password || '',
+  };
+}
+
+// Clientes/señal leídos directamente desde un AP detrás del router
+netAccessRouter.get('/:mikrotikId/ap/:ip/clients', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const ip = String(req.params.ip);
+    if (!IPV4.test(ip)) return res.status(400).json({ success: false, error: 'IP inválida' });
+
+    const target = await apTarget(req.tenantId, ip, String(req.query.brand || ''));
+    const clients = await readApClients(target);
+    res.json({
+      success: true,
+      data: {
+        ip,
+        brand: target.brand,
+        port: target.port,
+        protocol: target.protocol,
+        total: clients.length,
+        clients,
+      },
+    });
+  } catch (error: any) {
+    res.status(502).json({ success: false, error: error.message });
+  }
+});
+
+// Señal wireless del propio router MikroTik (si tiene clientes asociados)
+netAccessRouter.get('/:mikrotikId/wireless', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const config = await getDeviceConfig(pool, mikrotikId);
+    const paths = [
+      '/rest/interface/wireless/registration-table',
+      '/rest/interface/wifi/registration-table',
+      '/rest/interface/wifiwave2/registration-table',
+    ];
+    let list: any[] = [];
+    for (const path of paths) {
+      const data = await mikrotikRequest(config, path).catch(() => null);
+      if (Array.isArray(data) && data.length) { list = data; break; }
+    }
+
+    const clients = list.map((r: any) => {
+      const signal = Number(String(r['signal-strength'] ?? r.signal ?? '').split('@')[0]) || null;
+      const snr = Number(r['signal-to-noise']) || null;
+      return {
+        mac: r['mac-address'] || null,
+        name: r.comment || r['last-ip'] || r.interface || null,
+        interface: r.interface || null,
+        signal,
+        snr,
+        ccq: Number(r['tx-ccq']) || null,
+        tx_rate: r['tx-rate'] || null,
+        rx_rate: r['rx-rate'] || null,
+        uptime: r.uptime || null,
+        quality: signalQuality(signal, snr),
+      };
+    });
+
+    res.json({ success: true, data: { total: clients.length, clients } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ─── PPPoE por VPN (secrets + sesiones activas unificados) ──────
 netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response) => {
   try {
