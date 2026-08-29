@@ -90,6 +90,67 @@ export default function Network() {
     onError: (e: any) => toast.error(e.message || "No se pudieron guardar los puertos"),
   });
 
+  // ─── Credenciales de APs + señal consolidada ───
+  const [showApForm, setShowApForm] = useState(false);
+  const [apForm, setApForm] = useState<{ id?: string; ip: string; name: string; brand: string; username: string; password: string; port: string }>({
+    ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "",
+  });
+
+  const { data: apCreds, isLoading: apCredsLoading } = useQuery({
+    queryKey: ["ap-credentials"],
+    queryFn: () => netAccessApi.listApCredentials(),
+  });
+
+  const apCredList = (apCreds || []) as any[];
+
+  // Lee los clientes de todos los APs guardados en paralelo
+  const { data: allApClientsRaw, isFetching: allApsFetching, error: allApClientsError, refetch: refetchAllAps } = useQuery({
+    queryKey: ["ap-all-clients", deviceId],
+    queryFn: async () => {
+      if (!deviceId || !apCredList.length) return {};
+      const entries = await Promise.allSettled(
+        apCredList.map((c) => netAccessApi.apClients(deviceId, c.ip, c.brand).then((r: any) => [c.ip, r.clients ?? []] as const))
+      );
+      const map: Record<string, any[]> = {};
+      entries.forEach((e, i) => {
+        if (e.status === "fulfilled") map[apCredList[i].ip] = e.value[1];
+        else map[apCredList[i].ip] = [];
+      });
+      return map;
+    },
+    enabled: !!deviceId && apCredList.length > 0,
+    refetchInterval: 30_000,
+  });
+
+  const allApClients = (allApClientsRaw || {}) as Record<string, any[]>;
+
+  const saveAp = useMutation({
+    mutationFn: () => {
+      const { id, ...payload } = apForm;
+      return netAccessApi.saveApCredentials({
+        ...payload,
+        name: payload.name || null,
+        port: payload.port ? Number(payload.port) : null,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Credenciales del AP guardadas");
+      qc.invalidateQueries({ queryKey: ["ap-credentials"] });
+      setShowApForm(false);
+      setApForm({ ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "" });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudieron guardar"),
+  });
+
+  const deleteAp = useMutation({
+    mutationFn: (id: string) => netAccessApi.deleteApCredentials(id),
+    onSuccess: () => {
+      toast.success("AP eliminado");
+      qc.invalidateQueries({ queryKey: ["ap-credentials"] });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudo eliminar"),
+  });
+
   const secrets = pppoe?.secrets ?? [];
   const equipos = netDevices?.devices ?? [];
 
