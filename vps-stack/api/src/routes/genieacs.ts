@@ -19,8 +19,51 @@ function nbiAuthHeader(): Record<string, string> {
   return { Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}` };
 }
 
+// Cuando una tarea falla, GenieACS marca un "fault" en el canal del dispositivo
+// y RETIENE todas las tareas siguientes hasta que expira el backoff (minutos).
+// Ese es el motivo típico de "la orden tarda mucho en aplicarse" cuando la ONU
+// sí está informando. Antes de encolar una orden nueva limpiamos faults y
+// tareas viejas pendientes para que la sesión CWMP ejecute solo lo actual.
+const backlogCleared = new Map<string, number>();
+
+async function clearDeviceBacklog(deviceId: string) {
+  const now = Date.now();
+  const last = backlogCleared.get(deviceId) || 0;
+  if (now - last < 3000) return; // evita repetir en lotes de tareas
+  backlogCleared.set(deviceId, now);
+
+  const q = encodeURIComponent(JSON.stringify({ device: deviceId }));
+  try {
+    const faults = await genieFetch(`/faults/?query=${q}`);
+    for (const f of Array.isArray(faults) ? faults : []) {
+      if (f?._id) {
+        await genieFetch(`/faults/${encodeURIComponent(f._id)}`, { method: 'DELETE' }).catch(() => {});
+      }
+    }
+  } catch { /* ignorar */ }
+
+  try {
+    const tasks = await genieFetch(`/tasks/?query=${q}`);
+    const list = Array.isArray(tasks) ? tasks : [];
+    for (const t of list) {
+      // Solo se descartan tareas atascadas (con fault o antiguas), no las recién creadas.
+      const ts = t?.timestamp ? new Date(t.timestamp).getTime() : 0;
+      const stale = t?.fault || !ts || now - ts > 60_000;
+      if (stale && t?._id) {
+        await genieFetch(`/tasks/${encodeURIComponent(t._id)}`, { method: 'DELETE' }).catch(() => {});
+      }
+    }
+  } catch { /* ignorar */ }
+}
+
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
 async function genieFetch(path: string, options: RequestInit = {}) {
+  const taskPost = String(options.method || 'GET').toUpperCase() === 'POST'
+    && /^\/devices\/([^/]+)\/tasks/.test(path);
+  if (taskPost) {
+    const m = path.match(/^\/devices\/([^/]+)\/tasks/);
+    if (m) await clearDeviceBacklog(decodeURIComponent(m[1]));
+  }
   const res = await fetch(`${GENIEACS_NBI}${path}`, {
     ...options,
     headers: {
