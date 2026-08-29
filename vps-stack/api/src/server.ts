@@ -86,6 +86,14 @@ cron.schedule('0 3 * * *', () => {
     .then(n => console.log(`[CRON] ACS signal cleanup: ${n} registros`))
     .catch(e => console.error('[CRON] ACS cleanup error:', e.message));
   runSignalCleanupCron(pool);
+  cleanupPppoeEvents(pool)
+    .then(n => console.log(`[CRON] PPPoE events cleanup: ${n} registros`))
+    .catch(e => console.error('[CRON] PPPoE cleanup error:', e.message));
+});
+
+// Cron: monitor de sesiones PPPoE (detecta desconexiones) cada minuto
+cron.schedule('* * * * *', () => {
+  runPppoeMonitor(pool).catch(e => console.error('[CRON] PPPoE monitor error:', e.message));
 });
 
 app.listen(PORT, () => {
