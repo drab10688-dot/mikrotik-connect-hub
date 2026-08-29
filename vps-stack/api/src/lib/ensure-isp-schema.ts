@@ -158,6 +158,90 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
      )`,
     `CREATE INDEX IF NOT EXISTS pppoe_events_idx ON pppoe_events(mikrotik_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS pppoe_events_user_idx ON pppoe_events(mikrotik_id, username, created_at DESC)`,
+
+    // Módulos conmutables por ISP: TR-069 y acceso web directo a la ONU
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_tr069 BOOLEAN NOT NULL DEFAULT true`,
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onu_web BOOLEAN NOT NULL DEFAULT true`,
+
+    // Perfiles web aprendidos por modelo de ONU (reutilizables)
+    `CREATE TABLE IF NOT EXISTS onu_web_profiles (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       name TEXT NOT NULL,
+       brand TEXT NOT NULL DEFAULT 'desconocida',
+       model_match TEXT,
+       login_type TEXT NOT NULL DEFAULT 'form',
+       login_path TEXT,
+       login_method TEXT NOT NULL DEFAULT 'post',
+       user_field TEXT DEFAULT 'username',
+       pass_field TEXT DEFAULT 'password',
+       login_extra JSONB,
+       wifi_path TEXT,
+       wifi_method TEXT DEFAULT 'post',
+       wifi_fields JSONB,
+       pppoe_path TEXT,
+       pppoe_method TEXT DEFAULT 'post',
+       pppoe_fields JSONB,
+       success_hint TEXT,
+       verified BOOLEAN NOT NULL DEFAULT false,
+       times_used INTEGER NOT NULL DEFAULT 0,
+       learned_from TEXT,
+       created_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS onu_web_profiles_tenant_idx ON onu_web_profiles(tenant_id)`,
+
+    // Credenciales web de las ONUs (ip NULL = credencial global del ISP)
+    `CREATE TABLE IF NOT EXISTS onu_web_credentials (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       ip TEXT,
+       name TEXT,
+       username TEXT NOT NULL DEFAULT 'admin',
+       password TEXT,
+       port INTEGER,
+       protocol TEXT NOT NULL DEFAULT 'http',
+       profile_id UUID REFERENCES onu_web_profiles(id) ON DELETE SET NULL,
+       model TEXT,
+       created_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS onu_web_credentials_key
+       ON onu_web_credentials(tenant_id, COALESCE(ip, ''))`,
+
+    // Historial de accesos web a ONUs
+    `CREATE TABLE IF NOT EXISTS onu_web_events (
+       id BIGSERIAL PRIMARY KEY,
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       ip TEXT,
+       event_type TEXT NOT NULL,
+       detail TEXT,
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       created_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS onu_web_events_idx ON onu_web_events(tenant_id, created_at DESC)`,
+
+    // Permisos individuales por usuario (anulan los del rol)
+    `CREATE TABLE IF NOT EXISTS user_permissions (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       section TEXT NOT NULL,
+       can_view BOOLEAN NOT NULL DEFAULT false,
+       can_edit BOOLEAN NOT NULL DEFAULT false,
+       created_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now(),
+       UNIQUE (user_id, section)
+     )`,
+    `CREATE INDEX IF NOT EXISTS user_permissions_user_idx ON user_permissions(user_id)`,
+
+    // Nuevas secciones de permisos para los roles existentes
+    `INSERT INTO role_permissions (tenant_id, role, section, can_view, can_edit)
+     SELECT t.id, r.role, s.section, r.role IN ('admin','user'), r.role = 'admin'
+       FROM tenants t
+       CROSS JOIN (VALUES ('admin'), ('user'), ('secretary'), ('reseller')) AS r(role)
+       CROSS JOIN (VALUES ('onu_web'),('acs')) AS s(section)
+     ON CONFLICT (tenant_id, role, section) DO NOTHING`,
   ];
 
 

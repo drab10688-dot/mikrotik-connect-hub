@@ -12,6 +12,8 @@ export const ispPublicRouter = Router();
 export const SECTIONS = [
   'dashboard',
   'onus',
+  'onu_web',
+  'acs',
   'wifi',
   'pppoe',
   'vpn',
@@ -218,12 +220,64 @@ ispRouter.put('/permissions', requireRole('super_admin', 'admin'), async (req: A
   }
 });
 
+// ─── Permisos individuales por usuario (anulan los del rol) ─
+ispRouter.get('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+  const tenant = await ensureTenant(req, res);
+  if (!tenant) return;
+  const { rows } = await pool.query(
+    `SELECT section, can_view, can_edit FROM user_permissions
+      WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
+    [req.params.userId, tenant.id]
+  );
+  res.json({ data: { sections: SECTIONS, permissions: rows } });
+});
+
+ispRouter.put('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+  const tenant = await ensureTenant(req, res);
+  if (!tenant) return;
+  const items = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const item of items) {
+      if (!SECTIONS.includes(item.section)) continue;
+      await client.query(
+        `INSERT INTO user_permissions (user_id, tenant_id, section, can_view, can_edit)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, section)
+         DO UPDATE SET can_view = EXCLUDED.can_view, can_edit = EXCLUDED.can_edit,
+                       tenant_id = EXCLUDED.tenant_id, updated_at = now()`,
+        [req.params.userId, tenant.id, item.section, !!item.can_view, !!item.can_edit]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 /** Middleware: exige permiso de sección (super_admin siempre pasa). */
 export function requireSection(section: Section, edit = false) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (req.userRole === 'super_admin') return next();
     if (!req.tenantId) return next(); // instalación sin multi-ISP
     try {
+      // 1) Permiso individual del usuario (tiene prioridad)
+      const { rows: own } = await pool.query(
+        `SELECT can_view, can_edit FROM user_permissions
+          WHERE user_id = $1 AND section = $2 LIMIT 1`,
+        [req.userId, section]
+      ).catch(() => ({ rows: [] as any[] }) as any);
+      if (own[0]) {
+        if (edit ? own[0].can_edit : own[0].can_view) return next();
+        return res.status(403).json({ error: `Sin permiso para ${section}` });
+      }
+
+      // 2) Permiso del rol dentro del ISP
       const { rows } = await pool.query(
         `SELECT can_view, can_edit FROM role_permissions
          WHERE tenant_id = $1 AND role = $2 AND section = $3 LIMIT 1`,
@@ -235,6 +289,29 @@ export function requireSection(section: Section, edit = false) {
       return res.status(403).json({ error: `Sin permiso para ${section}` });
     } catch {
       return next(); // tabla ausente: no romper instalaciones antiguas
+    }
+  };
+}
+
+/** Middleware: exige que el ISP tenga activo el módulo (TR-069 / web ONU). */
+export function requireModule(column: 'enable_tr069' | 'enable_onu_web') {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.tenantId) return next();
+    try {
+      const { rows } = await pool.query(
+        `SELECT COALESCE(${column}, true) AS enabled FROM tenants WHERE id = $1`,
+        [req.tenantId]
+      );
+      if (rows[0] && rows[0].enabled === false) {
+        return res.status(403).json({
+          error: column === 'enable_tr069'
+            ? 'TR-069 está desactivado para este ISP'
+            : 'El acceso web directo a ONUs está desactivado para este ISP',
+        });
+      }
+      return next();
+    } catch {
+      return next();
     }
   };
 }

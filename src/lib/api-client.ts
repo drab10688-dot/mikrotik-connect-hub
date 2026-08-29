@@ -311,3 +311,22 @@ export const netAccessApi = {
   deleteApCredentials: async (id: string) =>
     unwrapData<any>(await apiDelete<any>(`/netaccess/ap-credentials/${id}`)),
 };
+
+// ─── Acceso web directo a la ONU (sin TR-069) con perfiles aprendidos ───
+export const onuWebApi = {
+  listCredentials: async () => unwrapData<any>(await apiGet<any>('/onu-web/credentials')),
+  saveCredentials: async (payload: any) =>
+    unwrapData<any>(await apiPut<any>('/onu-web/credentials', payload)),
+  deleteCredentials: async (id: string) =>
+    unwrapData<any>(await apiDelete<any>(`/onu-web/credentials/${id}`)),
+  listProfiles: async () => unwrapData<any>(await apiGet<any>('/onu-web/profiles')),
+  createProfile: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/profiles', payload)),
+  updateProfile: async (id: string, payload: any) =>
+    unwrapData<any>(await apiPut<any>(`/onu-web/profiles/${id}`, payload)),
+  deleteProfile: async (id: string) => unwrapData<any>(await apiDelete<any>(`/onu-web/profiles/${id}`)),
+  probe: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/probe', payload)),
+  browse: async (ip: string, path = '/') =>
+    unwrapData<any>(await apiGet<any>(`/onu-web/browse?ip=${encodeURIComponent(ip)}&path=${encodeURIComponent(path)}`)),
+  apply: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/apply', payload)),
+  events: async () => unwrapData<any>(await apiGet<any>('/onu-web/events')),
+};

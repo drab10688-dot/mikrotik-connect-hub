@@ -40,6 +40,8 @@ tenantsRouter.get('/me', async (req: AuthRequest, res: Response) => {
       `SELECT id, slug, name, logo_url, primary_color,
               COALESCE(enable_onus, true) AS enable_onus,
               COALESCE(enable_mikrotik, true) AS enable_mikrotik,
+              COALESCE(enable_tr069, true) AS enable_tr069,
+              COALESCE(enable_onu_web, true) AS enable_onu_web,
               web_ports
          FROM tenants WHERE id = $1`,
       [req.tenantId]
@@ -144,7 +146,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, slug, logo_url, primary_color, is_active, onu_limit,
-            enable_onus, enable_mikrotik, web_ports } = req.body;
+            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
@@ -158,6 +160,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          enable_onus = COALESCE($8::boolean, enable_onus),
          enable_mikrotik = COALESCE($9::boolean, enable_mikrotik),
          web_ports = COALESCE($10::jsonb, web_ports),
+         enable_tr069 = COALESCE($11::boolean, enable_tr069),
+         enable_onu_web = COALESCE($12::boolean, enable_onu_web),
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null,
@@ -166,7 +170,9 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
        onu_limit === undefined || onu_limit === null || onu_limit === '' ? null : Math.floor(Number(onu_limit)),
        typeof enable_onus === 'boolean' ? enable_onus : null,
        typeof enable_mikrotik === 'boolean' ? enable_mikrotik : null,
-       web_ports ? JSON.stringify(web_ports) : null]
+       web_ports ? JSON.stringify(web_ports) : null,
+       typeof enable_tr069 === 'boolean' ? enable_tr069 : null,
+       typeof enable_onu_web === 'boolean' ? enable_onu_web : null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);

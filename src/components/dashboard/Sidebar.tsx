@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
   ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
   UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
-  Server, Radio, Antenna, Building2
+  Server, Radio, Antenna, Building2, Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -25,6 +25,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus" as const },
   { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik" as const },
+  { icon: Globe, label: "Acceso web ONU", path: "/onu-web", module: "onu_web" as const },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
@@ -83,16 +84,19 @@ export const Sidebar = () => {
   const secretaryPermMap: Record<string, string> = {
     '/onus': 'can_manage_onu',
     '/acs': 'can_manage_onu',
+    '/onu-web': 'can_manage_onu',
     '/mikrotik': 'can_manage_pppoe',
     '/settings': 'can_manage_settings',
     '/diagnostics': 'can_manage_diagnostics',
   };
 
   // Módulos habilitados por el super admin para este ISP
-  const moduleEnabled = (module?: "onus" | "mikrotik") => {
+  const moduleEnabled = (module?: "onus" | "mikrotik" | "onu_web") => {
     if (!module) return true;
     if (!tenant) return true;
-    return module === "onus" ? tenant.enable_onus !== false : tenant.enable_mikrotik !== false;
+    if (module === "onus") return tenant.enable_onus !== false;
+    if (module === "onu_web") return tenant.enable_onu_web !== false;
+    return tenant.enable_mikrotik !== false;
   };
 
   // El super admin usa el panel solo para administrar ISPs
