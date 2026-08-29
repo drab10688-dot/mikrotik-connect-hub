@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import omnisyncBrand from "@/assets/omnisync-brand.png.asset.json";
+import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,

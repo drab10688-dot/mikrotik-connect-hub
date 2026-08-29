@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import omnisyncBrand from "@/assets/omnisync-brand.png.asset.json";
+import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import { Menu, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
