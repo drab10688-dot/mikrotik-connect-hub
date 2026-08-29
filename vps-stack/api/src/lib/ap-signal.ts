@@ -161,8 +161,7 @@ async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
       username: target.username || 'ubnt',
       password: target.password || 'ubnt',
       uri: '/status.cgi',
-ними: '',
-    } as any).toString(),
+    }).toString(),
   }).catch((e) => { throw new Error(`No se pudo iniciar sesión en airOS: ${e.message}`); });
 
   const setCookie = ([] as string[]).concat((login.headers['set-cookie'] as any) || []);
