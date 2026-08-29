@@ -420,6 +420,20 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
   }
 });
 
+// WPA/WPA2 exige clave de 8 a 63 caracteres ASCII imprimibles. Si se envía
+// una más corta, la ONU responde 9007 "Invalid parameter value" y GenieACS
+// bloquea la cola de tareas del dispositivo.
+function wifiPasswordError(password: string): string | null {
+  if (typeof password !== 'string') return 'Contraseña WiFi inválida';
+  if (password.length < 8 || password.length > 63) {
+    return 'La contraseña WiFi debe tener entre 8 y 63 caracteres (requisito WPA2)';
+  }
+  if (!/^[\x20-\x7E]+$/.test(password)) {
+    return 'La contraseña WiFi solo admite caracteres ASCII imprimibles (sin tildes ni ñ)';
+  }
+  return null;
+}
+
 // ─── Set WiFi parameters (SSID + Password) ──────────────
 genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Response) => {
   try {
@@ -428,6 +442,10 @@ genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Res
 
     if (!ssid && !password) {
       return res.status(400).json({ error: 'Debe enviar ssid o password' });
+    }
+    if (password) {
+      const pwErr = wifiPasswordError(password);
+      if (pwErr) return res.status(400).json({ error: pwErr });
     }
 
     const wlanIndex = band === '5g' ? '2' : '1';
@@ -2310,6 +2328,10 @@ genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Res
 
     if (!path || typeof path !== 'string' || !/^(InternetGatewayDevice|Device)\./.test(path)) {
       return res.status(400).json({ error: 'path de la radio inválido' });
+    }
+    if (password) {
+      const pwErr = wifiPasswordError(password);
+      if (pwErr) return res.status(400).json({ error: pwErr });
     }
 
     // Leemos el árbol real para enviar SOLO parámetros existentes.

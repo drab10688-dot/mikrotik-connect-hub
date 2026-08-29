@@ -94,9 +94,18 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     window.setTimeout(load, 4000);
   };
 
+  const passwordError = (pw: string) => {
+    if (!pw) return null;
+    if (pw.length < 8 || pw.length > 63) return "Debe tener entre 8 y 63 caracteres (WPA2)";
+    if (!/^[\x20-\x7E]+$/.test(pw)) return "Sin tildes, ñ ni emojis (solo ASCII)";
+    return null;
+  };
+
   const saveRadio = async (radio: Radio) => {
     const form = forms[radio.path];
     if (!form) return;
+    const pwErr = passwordError(form.password);
+    if (pwErr) { toast.error(`Contraseña WiFi inválida: ${pwErr}`); return; }
     setBusy(radio.path);
     try {
       const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/wlan`, {
@@ -289,6 +298,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                           type={showPass[radio.path] ? "text" : "password"}
                           value={form.password}
                           onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, password: e.target.value } }))}
+                          aria-invalid={!!passwordError(form.password)}
                         />
                         <Button
                           size="sm" variant="ghost" className="h-8 px-2"
@@ -297,6 +307,9 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                           {showPass[radio.path] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                         </Button>
                       </div>
+                      {passwordError(form.password) && (
+                        <p className="text-[11px] text-destructive">{passwordError(form.password)}</p>
+                      )}
                     </div>
                     <div className="flex gap-2 items-end">
                       <div className="space-y-1 w-24">
