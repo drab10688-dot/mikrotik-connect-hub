@@ -186,5 +186,7 @@ export const Sidebar = () => {
         </Button>
       </div>
     </div>
+    </>
   );
+
 };
