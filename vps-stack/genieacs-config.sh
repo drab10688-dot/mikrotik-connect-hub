@@ -271,13 +271,15 @@ vparam PppoeUser   "$VP_PPPOEUSER"
 vparam PppoeStatus "$VP_PPPOESTATUS"
 
 
-# ---------------- Preset de refresco periódico ----------------
+# ---------------- Preset periódico liviano ----------------
+# No refrescar árboles completos en cada Inform. En ONUs con muchos parámetros
+# eso ocupa la sesión CWMP y retrasa órdenes interactivas (WiFi/PPPoE). La API
+# solicita refreshObject solo cuando el operador pulsa actualizar.
 read -r -d '' PROV <<'EOF' || true
-declare("InternetGatewayDevice.DeviceInfo.*", {value: Date.now() - 300000});
-declare("InternetGatewayDevice.LANDevice.1.WLANConfiguration.*.*", {value: Date.now() - 300000});
-declare("InternetGatewayDevice.WANDevice.*.*", {value: Date.now() - 300000});
 declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
 declare("InternetGatewayDevice.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: 300});
+declare("Device.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
+declare("Device.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: 300});
 EOF
 
 curl -sf -X PUT "$NBI_URL/provisions/omnisync-refresh" -H 'Content-Type: text/plain' \
@@ -287,32 +289,25 @@ curl -sf -X PUT "$NBI_URL/presets/omnisync-refresh" -H 'Content-Type: applicatio
   --data '{"weight":0,"precondition":"{}","configurations":[{"type":"provision","name":"omnisync-refresh"}]}' \
   >/dev/null && c_ok "Preset omnisync-refresh" || c_err "Preset falló"
 
-# ---------------- TR-069 por WireGuard (no por IP pública) ----------------
-# Las ONUs llegan al VPS por el túnel MikroTik ↔ WireGuard: menos latencia y
-# el Connection Request funciona sin STUN porque no hay NAT de por medio.
-# Override:  ACS_HOST=<ip>  bash genieacs-config.sh
-WG_IP="${WG_IP:-10.13.13.1}"
-ACS_HOST="${ACS_HOST:-$WG_IP}"
-ACS_PORT="${ACS_PORT:-7547}"
-ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-60}"
+# ---------------- Ajustes seguros para transporte VPN ----------------
+# La URL y las credenciales NO se fuerzan aquí: son distintas por ISP y deben
+# conservar el token /tr069/<token>/ configurado en cada ONU. Sobrescribirlas
+# globalmente rompe el aislamiento y también el Connection Request inmediato.
+ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-300}"
 
 PROV_WG=$(cat <<EOF
-// Apunta el CPE al ACS a través del túnel WireGuard
-declare("InternetGatewayDevice.ManagementServer.URL", {value: Date.now()}, {value: "http://${ACS_HOST}:${ACS_PORT}/"});
-declare("Device.ManagementServer.URL", {value: Date.now()}, {value: "http://${ACS_HOST}:${ACS_PORT}/"});
 declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
 declare("InternetGatewayDevice.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
-// El usuario del Connection Request es fijo; la contraseña la sincroniza el
-// backend con el token ACS de cada ISP (no se fuerza aquí para no pisarla).
-declare("InternetGatewayDevice.ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "omnisync"});
-declare("Device.ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "omnisync"});
+declare("Device.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
+declare("Device.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
 // Sin NAT dentro del túnel: STUN no es necesario
 declare("InternetGatewayDevice.ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
+declare("Device.ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
 EOF
 )
 
 curl -sf -X PUT "$NBI_URL/provisions/omnisync-acs-wg" -H 'Content-Type: text/plain' \
-  --data-binary "$PROV_WG" >/dev/null && c_ok "Provision omnisync-acs-wg (ACS ${ACS_HOST}:${ACS_PORT})" \
+  --data-binary "$PROV_WG" >/dev/null && c_ok "Provision omnisync-acs-wg (VPN, sin sobrescribir URL/credenciales)" \
   || c_err "Provision omnisync-acs-wg falló"
 
 curl -sf -X PUT "$NBI_URL/presets/omnisync-acs-wg" -H 'Content-Type: application/json' \
