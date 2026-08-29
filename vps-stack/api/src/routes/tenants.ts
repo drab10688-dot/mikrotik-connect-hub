@@ -146,7 +146,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, slug, logo_url, primary_color, is_active, onu_limit,
-            enable_onus, enable_mikrotik, web_ports } = req.body;
+            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
