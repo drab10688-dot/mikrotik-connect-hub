@@ -160,6 +160,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          enable_onus = COALESCE($8::boolean, enable_onus),
          enable_mikrotik = COALESCE($9::boolean, enable_mikrotik),
          web_ports = COALESCE($10::jsonb, web_ports),
+         enable_tr069 = COALESCE($11::boolean, enable_tr069),
+         enable_onu_web = COALESCE($12::boolean, enable_onu_web),
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null,
