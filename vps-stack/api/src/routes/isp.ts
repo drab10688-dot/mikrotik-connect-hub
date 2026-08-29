@@ -312,17 +312,17 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
       ]
     );
     peer = rows[0];
-    await upsertL2tpUser(peer.username, peer.password);
+    await upsertL2tpUser(peer.username, peer.password, peer.tunnel_ip, peer.onu_networks);
   } else if (onuNetworks && onuNetworks !== peer.onu_networks) {
     const { rows } = await pool.query(
       `UPDATE tenant_vpn_peers SET onu_networks = $2, updated_at = now() WHERE id = $1 RETURNING *`,
       [peer.id, onuNetworks]
     );
     peer = rows[0];
-    await upsertL2tpUser(peer.username, peer.password);
+    await upsertL2tpUser(peer.username, peer.password, peer.tunnel_ip, peer.onu_networks);
   } else {
     // Reaplica la cuenta por si el servidor VPN se reinstaló
-    await upsertL2tpUser(peer.username, peer.password);
+    await upsertL2tpUser(peer.username, peer.password, peer.tunnel_ip, peer.onu_networks);
   }
 
   // L2TP sin IPsec (plain L2TP en UDP 1701): más simple y evita problemas
