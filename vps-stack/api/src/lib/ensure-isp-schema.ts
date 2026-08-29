@@ -129,6 +129,35 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        UNIQUE (tenant_id, ip)
      )`,
     `CREATE INDEX IF NOT EXISTS ap_credentials_tenant_idx ON ap_credentials(tenant_id)`,
+
+    // Estado actual de cada sesión PPPoE (para detectar caídas)
+    `CREATE TABLE IF NOT EXISTS pppoe_sessions (
+       mikrotik_id UUID NOT NULL,
+       username TEXT NOT NULL,
+       is_online BOOLEAN NOT NULL DEFAULT false,
+       address TEXT,
+       caller_id TEXT,
+       service TEXT,
+       session_id TEXT,
+       last_up TIMESTAMPTZ,
+       last_down TIMESTAMPTZ,
+       last_seen TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (mikrotik_id, username)
+     )`,
+
+    // Historial de conexiones/desconexiones PPPoE
+    `CREATE TABLE IF NOT EXISTS pppoe_events (
+       id BIGSERIAL PRIMARY KEY,
+       mikrotik_id UUID NOT NULL,
+       username TEXT NOT NULL,
+       event TEXT NOT NULL,
+       address TEXT,
+       caller_id TEXT,
+       uptime TEXT,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS pppoe_events_idx ON pppoe_events(mikrotik_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS pppoe_events_user_idx ON pppoe_events(mikrotik_id, username, created_at DESC)`,
   ];
 
 
