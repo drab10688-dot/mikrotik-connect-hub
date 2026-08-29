@@ -23,11 +23,13 @@ import { Receipt } from "lucide-react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Antenna, label: "Gestión de ONUs", path: "/onus" },
+  { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus" as const },
+  { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik" as const },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
+
 
 export const Sidebar = () => {
   const navigate = useNavigate();
