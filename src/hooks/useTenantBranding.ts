@@ -8,6 +8,9 @@ export interface TenantBranding {
   name: string;
   logo_url?: string | null;
   primary_color?: string | null;
+  enable_onus?: boolean;
+  enable_mikrotik?: boolean;
+  web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
 }
 
 const STORAGE_KEY = 'omnisync_tenant_slug';

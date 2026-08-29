@@ -37,7 +37,11 @@ tenantsRouter.get('/me', async (req: AuthRequest, res: Response) => {
   try {
     if (!req.tenantId) return res.json({ data: null });
     const { rows } = await pool.query(
-      `SELECT id, slug, name, logo_url, primary_color FROM tenants WHERE id = $1`,
+      `SELECT id, slug, name, logo_url, primary_color,
+              COALESCE(enable_onus, true) AS enable_onus,
+              COALESCE(enable_mikrotik, true) AS enable_mikrotik,
+              web_ports
+         FROM tenants WHERE id = $1`,
       [req.tenantId]
     );
     res.json({ data: rows[0] || null });
@@ -89,7 +93,8 @@ tenantsRouter.get('/', requireRole('super_admin'), async (_req: AuthRequest, res
 tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
   try {
-    const { name, slug, logo_url, primary_color, onu_limit, admin_email, admin_password, admin_name } = req.body;
+    const { name, slug, logo_url, primary_color, onu_limit, admin_email, admin_password, admin_name,
+            enable_onus, enable_mikrotik } = req.body;
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' });
 
     const finalSlug = slugify(slug || name);
@@ -98,13 +103,15 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     await client.query('BEGIN');
     const { rows } = await client.query(
       `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit,
+                            enable_onus, enable_mikrotik,
                             acs_token, vpn_subnet)
-       VALUES ($1, $2, $3, $4, $5,
+       VALUES ($1, $2, $3, $4, $5, $6, $7,
                encode(gen_random_bytes(8), 'hex'),
                '10.13.' || (13 + (SELECT COUNT(*) + 1 FROM tenants))::text || '.0/24')
        RETURNING *`,
       [name, finalSlug, logo_url || null, primary_color || null,
-       Number.isFinite(Number(onu_limit)) && Number(onu_limit) > 0 ? Math.floor(Number(onu_limit)) : null]
+       Number.isFinite(Number(onu_limit)) && Number(onu_limit) > 0 ? Math.floor(Number(onu_limit)) : null,
+       enable_onus !== false, enable_mikrotik !== false]
     );
     const tenant = rows[0];
 
@@ -136,7 +143,8 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { name, slug, logo_url, primary_color, is_active, onu_limit } = req.body;
+    const { name, slug, logo_url, primary_color, is_active, onu_limit,
+            enable_onus, enable_mikrotik, web_ports } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
@@ -147,12 +155,18 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          is_active = COALESCE($6, is_active),
          onu_limit = CASE WHEN $7::int IS NULL THEN onu_limit
                           WHEN $7::int <= 0 THEN NULL ELSE $7::int END,
+         enable_onus = COALESCE($8::boolean, enable_onus),
+         enable_mikrotik = COALESCE($9::boolean, enable_mikrotik),
+         web_ports = COALESCE($10::jsonb, web_ports),
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null,
        logo_url === undefined || logo_url === null ? null : String(logo_url), primary_color || null,
        typeof is_active === 'boolean' ? is_active : null,
-       onu_limit === undefined || onu_limit === null || onu_limit === '' ? null : Math.floor(Number(onu_limit))]
+       onu_limit === undefined || onu_limit === null || onu_limit === '' ? null : Math.floor(Number(onu_limit)),
+       typeof enable_onus === 'boolean' ? enable_onus : null,
+       typeof enable_mikrotik === 'boolean' ? enable_mikrotik : null,
+       web_ports ? JSON.stringify(web_ports) : null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);

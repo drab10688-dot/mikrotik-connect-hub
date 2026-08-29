@@ -23,11 +23,13 @@ import { Receipt } from "lucide-react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Antenna, label: "Gestión de ONUs", path: "/onus" },
+  { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus" as const },
+  { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik" as const },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
 ];
+
 
 export const Sidebar = () => {
   const navigate = useNavigate();
@@ -81,8 +83,16 @@ export const Sidebar = () => {
   const secretaryPermMap: Record<string, string> = {
     '/onus': 'can_manage_onu',
     '/acs': 'can_manage_onu',
+    '/mikrotik': 'can_manage_pppoe',
     '/settings': 'can_manage_settings',
     '/diagnostics': 'can_manage_diagnostics',
+  };
+
+  // Módulos habilitados por el super admin para este ISP
+  const moduleEnabled = (module?: "onus" | "mikrotik") => {
+    if (!module) return true;
+    if (!tenant) return true;
+    return module === "onus" ? tenant.enable_onus !== false : tenant.enable_mikrotik !== false;
   };
 
   // El super admin usa el panel solo para administrar ISPs
@@ -90,10 +100,12 @@ export const Sidebar = () => {
     { icon: Building2, label: "Panel de ISPs", path: "/admin/isps" },
   ];
 
+  const moduleMenuItems = menuItems.filter((item) => moduleEnabled((item as any).module));
+
   const filteredMenuItems = isSuperAdmin
     ? superAdminMenu
     : isSecretary
-    ? menuItems.filter(item => {
+    ? moduleMenuItems.filter(item => {
         // Always show dashboard
         if (item.path === '/dashboard') return true;
         if (!currentPerms) return false;
@@ -101,7 +113,8 @@ export const Sidebar = () => {
         if (permKey) return currentPerms?.[permKey] === true;
         return false;
       })
-    : menuItems;
+    : moduleMenuItems;
+
 
 
   const handleLogout = async () => {
