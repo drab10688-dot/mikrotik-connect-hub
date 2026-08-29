@@ -165,10 +165,10 @@ interface AcsScope {
   usernames: Set<string>;
 }
 
-// Modo ISP único: todas las ONUs del ACS son visibles para cualquier
-// usuario autenticado (sin aislamiento por tenant). Desactivar con
-// ACS_SINGLE_ISP=false para volver al aislamiento multi-ISP.
-const SINGLE_ISP = (process.env.ACS_SINGLE_ISP ?? 'true') !== 'false';
+// Multi-ISP: cada ISP solo ve las ONUs que informan por SU enlace TR-069
+// (o desde las redes declaradas en su VPN). Para volver a modo ISP único
+// basta con ACS_SINGLE_ISP=true.
+const SINGLE_ISP = (process.env.ACS_SINGLE_ISP ?? 'false') === 'true';
 
 async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   const empty: AcsScope = {
@@ -180,12 +180,20 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
 
   if (SINGLE_ISP) return { ...empty, unrestricted: true };
 
-  const deviceIds = await getAccessibleDeviceIds(req);
-  if (deviceIds === null) return { ...empty, unrestricted: true };
+  // El super_admin ve todo el ACS; los usuarios de un ISP, solo lo suyo.
+  if (req.userRole === 'super_admin') return { ...empty, unrestricted: true };
 
-  // Aislamiento multi-ISP: ONUs registradas al tenant del usuario, aunque
-  // todavía no estén asociadas a una MikroTik concreta.
+  const deviceIds = (await getAccessibleDeviceIds(req)) ?? [];
+
+  // Propiedad automática de la ONU según el enlace TR-069 / red del ISP
   if (req.tenantId) {
+    try {
+      await syncAcsOwnership();
+      const ids = await tenantAcsDeviceIds(req.tenantId);
+      ids.forEach((id) => empty.ids.add(id));
+    } catch { /* ACS no disponible: se sigue con lo registrado en la BD */ }
+
+    // ONUs registradas manualmente al ISP
     try {
       const { rows } = await pool.query(
         `SELECT acs_device_id, serial_number, pppoe_username
@@ -199,6 +207,7 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
       });
     } catch { /* columna/tabla opcional */ }
   }
+
 
   if (!deviceIds.length) return empty;
 
