@@ -264,6 +264,23 @@ function IspCard({
           </div>
         </div>
 
+        <div className="rounded-lg border bg-muted/40 p-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">
+            Enlace de acceso del ISP (muestra su propio logo)
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="text-xs break-all flex-1">{portalLink(isp.slug)}</code>
+            <Button size="icon" variant="ghost" onClick={() => copy(portalLink(isp.slug))}>
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button size="icon" variant="ghost" asChild>
+              <a href={portalLink(isp.slug)} target="_blank" rel="noreferrer">
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Badge variant="outline" className="gap-1">
             <Antenna className="w-3.5 h-3.5" />
