@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
   ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
   UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
-  Server, Radio, Antenna
+  Server, Radio, Antenna, Building2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -32,7 +32,7 @@ const menuItems = [
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut, isSecretary, isReseller } = useAuth();
+  const { signOut, isSecretary, isReseller, isSuperAdmin } = useAuth();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,7 +85,14 @@ export const Sidebar = () => {
     '/diagnostics': 'can_manage_diagnostics',
   };
 
-  const filteredMenuItems = isSecretary
+  // El super admin usa el panel solo para administrar ISPs
+  const superAdminMenu = [
+    { icon: Building2, label: "Panel de ISPs", path: "/admin/isps" },
+  ];
+
+  const filteredMenuItems = isSuperAdmin
+    ? superAdminMenu
+    : isSecretary
     ? menuItems.filter(item => {
         // Always show dashboard
         if (item.path === '/dashboard') return true;

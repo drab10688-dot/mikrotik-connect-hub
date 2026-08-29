@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/hooks/useAuth";
 import KpiCard, { KpiTone } from "@/components/dashboard/KpiCard";
 import OpticalMeter from "@/components/onu/OpticalMeter";
 import { Antenna, Wifi, Server, Settings, Activity, SignalHigh, SignalLow, RefreshCw } from "lucide-react";
@@ -54,6 +55,12 @@ const sinceLabel = (lastInform: string | null) => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
+
+  useEffect(() => {
+    if (isSuperAdmin) navigate("/admin/isps", { replace: true });
+  }, [isSuperAdmin, navigate]);
+
   const [devices, setDevices] = useState<OverviewEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [acsOnline, setAcsOnline] = useState<boolean | null>(null);

@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { tenantsApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Building2, Copy, Plus, Save, Trash2, Antenna } from "lucide-react";
+import { Building2, Copy, Plus, Save, Trash2, Antenna, ExternalLink } from "lucide-react";
 
 interface Isp {
   id: string;
@@ -38,6 +38,9 @@ const copy = async (value: string) => {
 
 const acsLink = (token: string | null) =>
   token ? `${window.location.origin.replace(/\/$/, "")}/tr069/${token}/` : "—";
+
+const portalLink = (slug: string) =>
+  `${window.location.origin.replace(/\/$/, "")}/isp/${slug}`;
 
 export default function Isps() {
   const qc = useQueryClient();
@@ -257,6 +260,23 @@ function IspCard({
             <code className="text-xs break-all flex-1">{acsLink(isp.acs_token)}</code>
             <Button size="icon" variant="ghost" onClick={() => copy(acsLink(isp.acs_token))}>
               <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-muted/40 p-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">
+            Enlace de acceso del ISP (muestra su propio logo)
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="text-xs break-all flex-1">{portalLink(isp.slug)}</code>
+            <Button size="icon" variant="ghost" onClick={() => copy(portalLink(isp.slug))}>
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button size="icon" variant="ghost" asChild>
+              <a href={portalLink(isp.slug)} target="_blank" rel="noreferrer">
+                <ExternalLink className="w-4 h-4" />
+              </a>
             </Button>
           </div>
         </div>
