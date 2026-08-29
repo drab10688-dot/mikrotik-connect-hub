@@ -13,7 +13,8 @@ import { devicesApi, netAccessApi, getApiBaseUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
-  Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2,
+  Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
+  AlertTriangle, PlugZap,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 
