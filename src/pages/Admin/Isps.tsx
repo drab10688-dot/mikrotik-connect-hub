@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { tenantsApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Building2, Copy, Plus, Save, Trash2, Antenna } from "lucide-react";
+import { Building2, Copy, Plus, Save, Trash2, Antenna, ExternalLink } from "lucide-react";
 
 interface Isp {
   id: string;
