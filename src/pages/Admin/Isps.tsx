@@ -39,6 +39,9 @@ const copy = async (value: string) => {
 const acsLink = (token: string | null) =>
   token ? `${window.location.origin.replace(/\/$/, "")}/tr069/${token}/` : "—";
 
+const portalLink = (slug: string) =>
+  `${window.location.origin.replace(/\/$/, "")}/isp/${slug}`;
+
 export default function Isps() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
