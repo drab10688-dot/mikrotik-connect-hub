@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import omnisyncLogo from '@/assets/omnisync-logo.png';
-import omnisyncSphere from '@/assets/omnisync-sphere.png';
+import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
+const omnisyncLogoFull = omnisyncLogoAsset.url;
 import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
 
 export default function Login() {
@@ -76,13 +76,11 @@ export default function Login() {
         
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           <div className="mb-8 animate-fade-in">
-             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-1 hover:scale-105 transition-transform duration-500">
-               <img 
-                 src={brandLogo || omnisyncSphere} 
-                 alt={brandName} 
-                 className="w-full h-full object-cover rounded-full"
-               />
-             </div>
+            <img 
+              src={brandLogo || omnisyncLogoFull} 
+              alt={brandName} 
+              className="h-40 md:h-52 lg:h-60 w-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
+            />
           </div>
           
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
@@ -144,13 +142,11 @@ export default function Login() {
         </Button>
 
          <div className="mb-6 animate-fade-in">
-           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
-             <img 
-               src={brandLogo || omnisyncLogo} 
-               alt={brandName} 
-               className="w-full h-full object-cover rounded-full"
-             />
-           </div>
+           <img 
+             src={brandLogo || omnisyncLogoFull} 
+             alt={brandName} 
+             className="h-24 md:h-28 w-auto object-contain drop-shadow-xl"
+           />
          </div>
 
         <Card className="w-full max-w-md shadow-2xl border-slate-700/50 bg-slate-800/80 backdrop-blur-xl animate-fade-in">
