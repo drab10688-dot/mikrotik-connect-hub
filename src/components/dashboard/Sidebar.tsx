@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AdminMenu } from "./AdminMenu";
+import { MobileNav } from "./MobileNav";
+
 import { useAuth } from "@/hooks/useAuth";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useState, useEffect, useRef } from "react";
