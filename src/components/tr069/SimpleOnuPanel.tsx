@@ -275,7 +275,8 @@ export default function SimpleOnuPanel() {
         body: { username: form.username, password: form.password },
       });
       toast.success(res?.message || "PPPoE enviado a la ONU");
-      setTimeout(() => loadPppoe(deviceId), 8000);
+      setTimeout(() => loadPppoe(deviceId), 1500);
+      setTimeout(() => loadPppoe(deviceId), 4000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
