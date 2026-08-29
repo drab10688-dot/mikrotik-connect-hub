@@ -352,6 +352,95 @@ netAccessRouter.get('/:mikrotikId/ethernet', async (req: AuthRequest, res: Respo
   }
 });
 
+// ─── Alertas de cable LAN desconectado (router + clientes) ──────
+netAccessRouter.get('/:mikrotikId/lan-alerts', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const config = await getDeviceConfig(pool, mikrotikId);
+
+    const [ethRaw, secretsRaw, activeRaw, sessionsRes] = await Promise.all([
+      mikrotikRequest(config, '/rest/interface/ethernet').catch(() => []),
+      mikrotikRequest(config, '/rest/ppp/secret').catch(() => []),
+      mikrotikRequest(config, '/rest/ppp/active').catch(() => []),
+      pool
+        .query(
+          `SELECT username, is_online, address, caller_id, last_up, last_down, last_seen
+             FROM pppoe_sessions WHERE mikrotik_id = $1`,
+          [mikrotikId]
+        )
+        .catch(() => ({ rows: [] as any[] })),
+    ]);
+
+    const now = Date.now();
+    const sessions = new Map<string, any>(
+      (sessionsRes.rows || []).map((r: any) => [String(r.username), r])
+    );
+    const activeNames = new Set(asArray(activeRaw).map((a: any) => String(a.name)));
+
+    // 1) Puertos del router sin cable / con enlace degradado
+    const portAlerts = asArray(ethRaw)
+      .filter((e: any) => !(e.disabled === 'true' || e.disabled === true))
+      .filter((e: any) => e.running !== 'true' && e.running !== true)
+      .map((e: any) => ({
+        type: 'puerto' as const,
+        severity: 'critica' as const,
+        name: e.name,
+        comment: e.comment || null,
+        message: 'Cable LAN desconectado en el puerto del router',
+        last_link_down: e['last-link-down-time'] || null,
+        link_downs: Number(e['link-downs'] ?? 0) || 0,
+      }));
+
+    // 2) Clientes PPPoE caídos (cable/ONU desconectada del lado del cliente)
+    const clientAlerts = asArray(secretsRaw)
+      .filter((s: any) => !(s.disabled === 'true' || s.disabled === true))
+      .filter((s: any) => !activeNames.has(String(s.name)))
+      .map((s: any) => {
+        const sess = sessions.get(String(s.name));
+        const lastDown = sess?.last_down ? new Date(sess.last_down) : null;
+        const minutesDown = lastDown ? Math.max(0, Math.round((now - lastDown.getTime()) / 60000)) : null;
+        const severity =
+          minutesDown === null ? 'media' : minutesDown >= 60 ? 'critica' : minutesDown >= 10 ? 'alta' : 'media';
+        return {
+          type: 'cliente' as const,
+          severity,
+          name: s.name,
+          comment: s.comment || null,
+          profile: s.profile || null,
+          address: sess?.address || s['remote-address'] || null,
+          caller_id: sess?.caller_id || null,
+          last_down: sess?.last_down || null,
+          last_up: sess?.last_up || null,
+          minutes_down: minutesDown,
+          message:
+            minutesDown === null
+              ? 'Cliente sin conexión (sin sesión PPPoE activa)'
+              : `Sin enlace hace ${minutesDown} min — posible cable LAN/ONU desconectada`,
+        };
+      })
+      .sort((a, b) => (b.minutes_down ?? 1e9) - (a.minutes_down ?? 1e9));
+
+    const alerts = [...portAlerts, ...clientAlerts];
+
+    res.json({
+      success: true,
+      data: {
+        generated_at: new Date().toISOString(),
+        total: alerts.length,
+        ports_down: portAlerts.length,
+        clients_down: clientAlerts.length,
+        critical: alerts.filter((a) => a.severity === 'critica').length,
+        alerts,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // ─── Informe de desconexiones PPPoE ─────────────────────────────
 netAccessRouter.get('/:mikrotikId/pppoe-events', async (req: AuthRequest, res: Response) => {
   try {

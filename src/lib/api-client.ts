@@ -299,6 +299,8 @@ export const netAccessApi = {
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/ethernet`)),
   pppoeEvents: async (mikrotikId: string, days = 7) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/pppoe-events?days=${days}`)),
+  lanAlerts: async (mikrotikId: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/lan-alerts`)),
   apClients: async (mikrotikId: string, ip: string, brand?: string) =>
     unwrapData<any>(
       await apiGet<any>(`/netaccess/${mikrotikId}/ap/${ip}/clients${brand ? `?brand=${brand}` : ''}`)
