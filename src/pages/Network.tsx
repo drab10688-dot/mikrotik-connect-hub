@@ -13,9 +13,17 @@ import { devicesApi, netAccessApi, getApiBaseUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
-  Monitor, Save, Loader2, Antenna, SignalHigh,
+  Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
+
+const AP_QUALITY: Record<string, { label: string; className: string }> = {
+  excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
+  buena: { label: "Buena", className: "bg-sky-500/15 text-sky-500 border-sky-500/30" },
+  regular: { label: "Regular", className: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
+  mala: { label: "Mala", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  desconocida: { label: "Sin datos", className: "bg-muted text-muted-foreground" },
+};
 
 interface WebPortCfg { port: number; protocol: "http" | "https" }
 
@@ -80,6 +88,67 @@ export default function Network() {
       qc.invalidateQueries({ queryKey: ["net-equipos"] });
     },
     onError: (e: any) => toast.error(e.message || "No se pudieron guardar los puertos"),
+  });
+
+  // ─── Credenciales de APs + señal consolidada ───
+  const [showApForm, setShowApForm] = useState(false);
+  const [apForm, setApForm] = useState<{ id?: string; ip: string; name: string; brand: string; username: string; password: string; port: string }>({
+    ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "",
+  });
+
+  const { data: apCreds, isLoading: apCredsLoading } = useQuery({
+    queryKey: ["ap-credentials"],
+    queryFn: () => netAccessApi.listApCredentials(),
+  });
+
+  const apCredList = (apCreds || []) as any[];
+
+  // Lee los clientes de todos los APs guardados en paralelo
+  const { data: allApClientsRaw, isFetching: allApsFetching, error: allApClientsError, refetch: refetchAllAps } = useQuery({
+    queryKey: ["ap-all-clients", deviceId],
+    queryFn: async () => {
+      if (!deviceId || !apCredList.length) return {};
+      const entries = await Promise.allSettled(
+        apCredList.map((c) => netAccessApi.apClients(deviceId, c.ip, c.brand).then((r: any) => [c.ip, r.clients ?? []] as const))
+      );
+      const map: Record<string, any[]> = {};
+      entries.forEach((e, i) => {
+        if (e.status === "fulfilled") map[apCredList[i].ip] = e.value[1];
+        else map[apCredList[i].ip] = [];
+      });
+      return map;
+    },
+    enabled: !!deviceId && apCredList.length > 0,
+    refetchInterval: 30_000,
+  });
+
+  const allApClients = (allApClientsRaw || {}) as Record<string, any[]>;
+
+  const saveAp = useMutation({
+    mutationFn: () => {
+      const { id, ...payload } = apForm;
+      return netAccessApi.saveApCredentials({
+        ...payload,
+        name: payload.name || null,
+        port: payload.port ? Number(payload.port) : null,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Credenciales del AP guardadas");
+      qc.invalidateQueries({ queryKey: ["ap-credentials"] });
+      setShowApForm(false);
+      setApForm({ ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "" });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudieron guardar"),
+  });
+
+  const deleteAp = useMutation({
+    mutationFn: (id: string) => netAccessApi.deleteApCredentials(id),
+    onSuccess: () => {
+      toast.success("AP eliminado");
+      qc.invalidateQueries({ queryKey: ["ap-credentials"] });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudo eliminar"),
   });
 
   const secrets = pppoe?.secrets ?? [];
@@ -153,6 +222,7 @@ export default function Network() {
           <TabsList>
             <TabsTrigger value="pppoe"><Users className="w-4 h-4 mr-2" />PPPoE</TabsTrigger>
             <TabsTrigger value="equipos"><Antenna className="w-4 h-4 mr-2" />Equipos / Antenas</TabsTrigger>
+            <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>
             <TabsTrigger value="puertos"><Wifi className="w-4 h-4 mr-2" />Puertos web</TabsTrigger>
           </TabsList>
 
@@ -286,6 +356,183 @@ export default function Network() {
                     {!filteredEquipos.length && (
                       <p className="text-muted-foreground">No se detectaron equipos.</p>
                     )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ─── APs / Señal ─── */}
+          <TabsContent value="aps" className="mt-4 space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2"><KeyRound className="w-4 h-4" /> Credenciales de APs / Antenas</CardTitle>
+                  <CardDescription>
+                    Guarda usuario y contraseña de cada antena (MikroTik, Ubiquiti, etc.). Una vez guardadas, el panel lee automáticamente la señal de todos sus clientes wireless.
+                  </CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setShowApForm((v) => !v)}>
+                  <Plus className="w-4 h-4 mr-1" /> Agregar AP
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {showApForm && (
+                  <div className="grid gap-3 md:grid-cols-6 rounded-lg border p-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">IP del AP</Label>
+                      <Input placeholder="10.82.3.10" value={apForm.ip} onChange={(e) => setApForm({ ...apForm, ip: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Nombre</Label>
+                      <Input placeholder="Torre Sur" value={apForm.name} onChange={(e) => setApForm({ ...apForm, name: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Marca</Label>
+                      <Select value={apForm.brand} onValueChange={(v) => setApForm({ ...apForm, brand: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="mikrotik">MikroTik</SelectItem>
+                          <SelectItem value="ubiquiti">Ubiquiti</SelectItem>
+                          <SelectItem value="mimosa">Mimosa</SelectItem>
+                          <SelectItem value="cambium">Cambium</SelectItem>
+                          <SelectItem value="tplink">TP-Link</SelectItem>
+                          <SelectItem value="otro">Otra</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Usuario</Label>
+                      <Input value={apForm.username} onChange={(e) => setApForm({ ...apForm, username: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Contraseña</Label>
+                      <Input type="password" placeholder="••••••" value={apForm.password} onChange={(e) => setApForm({ ...apForm, password: e.target.value })} />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1 space-y-1.5">
+                        <Label className="text-xs">Puerto</Label>
+                        <Input type="number" placeholder="auto" value={apForm.port} onChange={(e) => setApForm({ ...apForm, port: e.target.value })} />
+                      </div>
+                      <Button size="sm" onClick={() => saveAp.mutate()} disabled={saveAp.isPending}>
+                        <Save className="w-3.5 h-3.5" /> Guardar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {apCredsLoading ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</p>
+                ) : apCreds && apCreds.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-muted-foreground">
+                        <tr className="border-b">
+                          <th className="py-2 pr-4">IP</th>
+                          <th className="py-2 pr-4">Nombre</th>
+                          <th className="py-2 pr-4">Marca</th>
+                          <th className="py-2 pr-4">Usuario</th>
+                          <th className="py-2 pr-4">Puerto</th>
+                          <th className="py-2 pr-4">Clientes</th>
+                          <th className="py-2">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apCreds.map((c: any) => {
+                          const apClients = allApClients[c.ip] ?? [];
+                          return (
+                            <tr key={c.id} className="border-b last:border-0">
+                              <td className="py-2 pr-4 font-mono text-xs">{c.ip}</td>
+                              <td className="py-2 pr-4">{c.name || "—"}</td>
+                              <td className="py-2 pr-4 capitalize">{c.brand}</td>
+                              <td className="py-2 pr-4">{c.username || "—"}</td>
+                              <td className="py-2 pr-4">{c.port || "auto"}</td>
+                              <td className="py-2 pr-4">
+                                <Badge variant={apClients.length ? "default" : "secondary"}>{apClients.length}</Badge>
+                              </td>
+                              <td className="py-2">
+                                <div className="flex gap-1">
+                                  <Button size="sm" variant="ghost" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "" }); setShowApForm(true); }}>
+                                    <KeyRound className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => deleteAp.mutate(c.id)}>
+                                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No hay APs registrados. Agrega el primer AP con sus credenciales para empezar a leer la señal de sus clientes.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Todos los clientes wireless consolidados */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2"><SignalHigh className="w-4 h-4" /> Clientes wireless de todos los APs</CardTitle>
+                  <CardDescription>
+                    Señal consolidada de todos los APs con credenciales guardadas. Se actualiza cada 30 s.
+                  </CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => refetchAllAps()} disabled={allApsFetching}>
+                  {allApsFetching ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                  Actualizar
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {allApClientsError ? (
+                  <p className="text-sm text-destructive">{(allApClientsError as any).message}</p>
+                ) : !apCreds?.length ? (
+                  <p className="text-sm text-muted-foreground">Registra al menos un AP con credenciales para ver sus clientes.</p>
+                ) : allApsFetching && !Object.keys(allApClients).length ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Consultando APs…</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-muted-foreground">
+                        <tr className="border-b">
+                          <th className="py-2 pr-4">AP</th>
+                          <th className="py-2 pr-4">Cliente</th>
+                          <th className="py-2 pr-4">MAC</th>
+                          <th className="py-2 pr-4">Señal</th>
+                          <th className="py-2 pr-4">SNR</th>
+                          <th className="py-2 pr-4">CCQ</th>
+                          <th className="py-2 pr-4">TX / RX</th>
+                          <th className="py-2 pr-4">Uptime</th>
+                          <th className="py-2">Calidad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apCreds.flatMap((c: any) =>
+                          (allApClients[c.ip] ?? []).map((cl: any, i: number) => {
+                            const q = AP_QUALITY[cl.quality] || AP_QUALITY.desconocida;
+                            return (
+                              <tr key={`${c.ip}-${cl.mac || i}`} className="border-b last:border-0">
+                                <td className="py-2 pr-4 font-mono text-xs">{c.ip}</td>
+                                <td className="py-2 pr-4 font-medium">{cl.name || "—"}</td>
+                                <td className="py-2 pr-4 font-mono text-xs">{cl.mac || "—"}</td>
+                                <td className="py-2 pr-4 font-mono">{cl.signal != null ? `${cl.signal} dBm` : "—"}</td>
+                                <td className="py-2 pr-4">{cl.snr != null ? `${cl.snr} dB` : "—"}</td>
+                                <td className="py-2 pr-4">{cl.ccq != null ? `${cl.ccq}%` : "—"}</td>
+                                <td className="py-2 pr-4 text-xs">{[cl.tx_rate, cl.rx_rate].filter(Boolean).join(" / ") || "—"}</td>
+                                <td className="py-2 pr-4 text-xs">{cl.uptime || "—"}</td>
+                                <td className="py-2"><Badge variant="outline" className={q.className}>{q.label}</Badge></td>
+                              </tr>
+                            );
+                          })
+                        )}
+                        {!apCreds.some((c: any) => (allApClients[c.ip] ?? []).length) && !allApsFetching && (
+                          <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">Ningún AP reporta clientes wireless todavía.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </CardContent>

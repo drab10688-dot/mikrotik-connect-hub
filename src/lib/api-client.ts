@@ -302,4 +302,6 @@ export const netAccessApi = {
   listApCredentials: async () => unwrapData<any>(await apiGet<any>('/netaccess/ap-credentials')),
   saveApCredentials: async (payload: any) =>
     unwrapData<any>(await apiPut<any>('/netaccess/ap-credentials', payload)),
+  deleteApCredentials: async (id: string) =>
+    unwrapData<any>(await apiDelete<any>(`/netaccess/ap-credentials/${id}`)),
 };
