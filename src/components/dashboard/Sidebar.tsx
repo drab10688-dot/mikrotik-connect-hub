@@ -15,6 +15,7 @@ import { AdminMenu } from "./AdminMenu";
 import { MobileNav } from "./MobileNav";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useMyTenant } from "@/hooks/useTenantBranding";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useState, useEffect, useRef } from "react";
 import { Receipt } from "lucide-react";
@@ -38,8 +39,9 @@ export const Sidebar = () => {
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("Omnisync");
 
-  const displayLogo = customLogo;
-  const displayName = businessName;
+  const { tenant } = useMyTenant();
+  const displayLogo = customLogo || tenant?.logo_url || null;
+  const displayName = tenant?.name || businessName;
 
 
   useEffect(() => {
