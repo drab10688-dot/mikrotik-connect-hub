@@ -245,15 +245,137 @@ export default function Network() {
           <Input className="pl-9" placeholder="Buscar usuario, IP, MAC o marca…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
+        {alertList.length > 0 && (
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3 pb-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="w-4 h-4" />
+                  {alertList.length} alerta{alertList.length === 1 ? "" : "s"} de enlace LAN
+                </CardTitle>
+                <CardDescription>
+                  {(lanAlerts as any).ports_down} puerto(s) del router sin cable · {(lanAlerts as any).clients_down} cliente(s) sin enlace
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetchAlerts()} disabled={fetchingAlerts}>
+                {fetchingAlerts ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {alertList.slice(0, 6).map((a: any, i: number) => (
+                <div key={`${a.type}-${a.name}-${i}`} className="flex flex-wrap items-center gap-2 text-sm">
+                  <Badge variant="outline" className={
+                    a.severity === "critica"
+                      ? "bg-destructive/15 text-destructive border-destructive/30"
+                      : a.severity === "alta"
+                        ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                        : "bg-muted text-muted-foreground"
+                  }>
+                    {a.type === "puerto" ? <PlugZap className="w-3 h-3 mr-1" /> : <Cable className="w-3 h-3 mr-1" />}
+                    {a.type === "puerto" ? "Router" : "Cliente"}
+                  </Badge>
+                  <span className="font-medium">{a.name}</span>
+                  {a.comment && <span className="text-muted-foreground">({a.comment})</span>}
+                  <span className="text-muted-foreground">{a.message}</span>
+                  {a.address && <span className="text-xs text-muted-foreground">IP {a.address}</span>}
+                </div>
+              ))}
+              {alertList.length > 6 && (
+                <p className="text-xs text-muted-foreground">
+                  y {alertList.length - 6} más — revisa la pestaña “Alertas LAN”.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Tabs defaultValue="pppoe">
           <TabsList>
             <TabsTrigger value="pppoe"><Users className="w-4 h-4 mr-2" />PPPoE</TabsTrigger>
+            <TabsTrigger value="alertas">
+              <AlertTriangle className="w-4 h-4 mr-2" />Alertas LAN
+              {alertList.length > 0 && (
+                <Badge variant="outline" className="ml-2 bg-destructive/15 text-destructive border-destructive/30">
+                  {alertList.length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="desconexiones"><Activity className="w-4 h-4 mr-2" />Desconexiones</TabsTrigger>
             <TabsTrigger value="equipos"><Antenna className="w-4 h-4 mr-2" />Equipos / Antenas</TabsTrigger>
             <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>
             <TabsTrigger value="cableado"><Cable className="w-4 h-4 mr-2" />Cableado LAN</TabsTrigger>
             <TabsTrigger value="puertos"><Wifi className="w-4 h-4 mr-2" />Puertos web</TabsTrigger>
           </TabsList>
+
+          {/* ─── Alertas LAN ─── */}
+          <TabsContent value="alertas" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" /> Clientes y puertos con cable desconectado
+                </CardTitle>
+                <CardDescription>
+                  Se revisa cada 30 s el enlace de los puertos del router y las sesiones PPPoE de los clientes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!alertList.length ? (
+                  <p className="text-sm text-muted-foreground">Sin alertas: todos los enlaces están activos.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-muted-foreground border-b">
+                          <th className="py-2 pr-3">Origen</th>
+                          <th className="py-2 pr-3">Nombre</th>
+                          <th className="py-2 pr-3">Detalle</th>
+                          <th className="py-2 pr-3">IP</th>
+                          <th className="py-2 pr-3">Sin enlace</th>
+                          <th className="py-2 pr-3">Severidad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {alertList
+                          .filter((a: any) =>
+                            !search || `${a.name} ${a.comment || ""} ${a.address || ""}`.toLowerCase().includes(search.toLowerCase())
+                          )
+                          .map((a: any, i: number) => (
+                            <tr key={`row-${a.type}-${a.name}-${i}`} className="border-b last:border-0">
+                              <td className="py-2 pr-3">{a.type === "puerto" ? "Router" : "Cliente"}</td>
+                              <td className="py-2 pr-3 font-medium">
+                                {a.name}
+                                {a.comment && <span className="block text-xs text-muted-foreground">{a.comment}</span>}
+                              </td>
+                              <td className="py-2 pr-3 text-muted-foreground">{a.message}</td>
+                              <td className="py-2 pr-3">{a.address || "—"}</td>
+                              <td className="py-2 pr-3">
+                                {a.minutes_down != null
+                                  ? a.minutes_down >= 60
+                                    ? `${Math.floor(a.minutes_down / 60)} h ${a.minutes_down % 60} min`
+                                    : `${a.minutes_down} min`
+                                  : "—"}
+                              </td>
+                              <td className="py-2 pr-3">
+                                <Badge variant="outline" className={
+                                  a.severity === "critica"
+                                    ? "bg-destructive/15 text-destructive border-destructive/30"
+                                    : a.severity === "alta"
+                                      ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                                      : "bg-muted text-muted-foreground"
+                                }>
+                                  {a.severity}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
 
           {/* ─── PPPoE ─── */}
           <TabsContent value="pppoe" className="mt-4">
