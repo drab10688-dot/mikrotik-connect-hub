@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { AdminMenu } from "./AdminMenu";
 import { useAuth } from "@/hooks/useAuth";
+import { useMyTenant } from "@/hooks/useTenantBranding";
 import { toast } from "sonner";
 
 type MenuItem = { icon: React.ComponentType<{ className?: string }>; label: string; path: string };
@@ -23,6 +24,7 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
   const [open, setOpen] = useState(false);
   const [logo, setLogo] = useState<string | null>(null);
   const [name, setName] = useState("Omnisync");
+  const { tenant } = useMyTenant();
 
   useEffect(() => {
     const savedLogo = localStorage.getItem("sidebar_logo");
@@ -43,8 +45,8 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
     <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between gap-2 px-3 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
       <div className="flex items-center gap-2 min-w-0">
         <img
-          src={logo ?? omnisyncLogo}
-          alt={name}
+          src={logo || tenant?.logo_url || omnisyncLogo}
+          alt={tenant?.name || name}
           className="h-9 w-auto max-w-[140px] object-contain shrink-0"
         />
       </div>

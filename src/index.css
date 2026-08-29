@@ -17,7 +17,7 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 220 15% 15%;
 
-    --primary: 217 91% 60%;
+    --primary: 184 78% 40%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 14% 96%;
@@ -40,7 +40,7 @@ All colors MUST be HSL.
 
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 217 91% 60%;
+    --ring: 184 78% 40%;
 
     --radius: 0.5rem;
 
@@ -53,15 +53,15 @@ All colors MUST be HSL.
 
     --sidebar-background: 220 20% 14%;
     --sidebar-foreground: 220 10% 85%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary: 184 78% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 15% 18%;
     --sidebar-accent-foreground: 220 10% 85%;
     --sidebar-border: 220 15% 20%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-ring: 184 78% 45%;
 
     /* Chart colors - vibrant and professional palette */
-    --chart-1: 217 91% 60%;
+    --chart-1: 184 78% 42%;
     --chart-2: 142 76% 45%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
@@ -69,7 +69,7 @@ All colors MUST be HSL.
     --chart-6: 350 80% 60%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 50%));
+    --gradient-primary: linear-gradient(135deg, hsl(188 85% 45%), hsl(172 70% 40%));
     --gradient-success: linear-gradient(135deg, hsl(142 76% 45%), hsl(142 76% 35%));
     --gradient-warning: linear-gradient(135deg, hsl(38 92% 50%), hsl(38 92% 40%));
     --gradient-danger: linear-gradient(135deg, hsl(0 84% 60%), hsl(0 84% 50%));
@@ -78,7 +78,7 @@ All colors MUST be HSL.
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-    --shadow-primary: 0 4px 14px 0 hsl(217 91% 60% / 0.25);
+    --shadow-primary: 0 4px 14px 0 hsl(184 78% 40% / 0.25);
 
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -94,7 +94,7 @@ All colors MUST be HSL.
     --popover: 220 20% 10%;
     --popover-foreground: 220 10% 95%;
 
-    --primary: 217 91% 60%;
+    --primary: 184 78% 40%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 15% 15%;
@@ -117,7 +117,7 @@ All colors MUST be HSL.
 
     --border: 220 15% 18%;
     --input: 220 15% 18%;
-    --ring: 217 91% 60%;
+    --ring: 184 78% 40%;
 
     --code-background: 222 30% 9%;
     --code-header: 222 26% 14%;
@@ -126,7 +126,7 @@ All colors MUST be HSL.
     --code-border: 222 22% 20%;
 
     /* Chart colors - vibrant for dark mode */
-    --chart-1: 217 91% 65%;
+    --chart-1: 184 78% 50%;
     --chart-2: 142 76% 50%;
     --chart-3: 38 92% 55%;
     --chart-4: 280 65% 65%;
@@ -135,12 +135,12 @@ All colors MUST be HSL.
 
     --sidebar-background: 220 20% 10%;
     --sidebar-foreground: 220 10% 85%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary: 184 78% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 15% 15%;
     --sidebar-accent-foreground: 220 10% 85%;
     --sidebar-border: 220 15% 18%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-ring: 184 78% 45%;
   }
 }
 

@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import { upsertL2tpUser, removeL2tpUser } from '../lib/l2tp';
+import { tenantOnuQuota } from '../lib/acs-tenant';
+
 
 export const ispRouter = Router();
 export const ispPublicRouter = Router();
@@ -123,14 +125,17 @@ ispPublicRouter.get('/tr069/:token', async (req: Request, res: Response) => {
 ispRouter.get('/acs', async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
+  const quota = await tenantOnuQuota(tenant.id).catch(() => null);
   res.json({
     data: {
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       vpn_subnet: tenant.vpn_subnet,
+      onu_quota: quota,
       ...acsUrls(tenant, req),
     },
   });
 });
+
 
 // Edición manual de credenciales TR-069 / STUN (el token NO se rota).
 ispRouter.put('/acs/credentials', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
