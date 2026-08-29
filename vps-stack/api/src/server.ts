@@ -53,7 +53,9 @@ app.use('/api/pppoe', authMiddleware, requirePermission('can_manage_pppoe'), ppp
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
 app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), onuRouter);
-app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), genieacsRouter);
+app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), requireModule('enable_tr069'), genieacsRouter);
+// Acceso web directo a la ONU (sin TR-069), con perfiles aprendidos por modelo
+app.use('/api/onu-web', authMiddleware, requireSection('onu_web'), requireModule('enable_onu_web'), onuWebRouter);
 app.use('/api/netaccess', authMiddleware, netAccessRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 
