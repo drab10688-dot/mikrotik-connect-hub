@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
+import { applyTenantOnuLimit } from '../lib/acs-tenant';
 
 export const tenantsPublicRouter = Router();
 export const tenantsRouter = Router();
@@ -71,7 +72,12 @@ tenantsRouter.get('/', requireRole('super_admin'), async (_req: AuthRequest, res
     const { rows } = await pool.query(
       `SELECT t.*,
               (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users_count,
-              (SELECT COUNT(*) FROM mikrotik_devices d WHERE d.tenant_id = t.id) AS devices_count
+              (SELECT COUNT(*) FROM mikrotik_devices d WHERE d.tenant_id = t.id) AS devices_count,
+              (SELECT COUNT(*) FROM acs_device_owners o
+                WHERE o.tenant_id = t.id AND o.status = 'active') AS onus_used,
+              (SELECT COUNT(*) FROM acs_device_owners o
+                WHERE o.tenant_id = t.id AND o.status = 'blocked') AS onus_blocked,
+              (SELECT COUNT(*) FROM tenant_vpn_peers p WHERE p.tenant_id = t.id) AS vpn_count
        FROM tenants t ORDER BY t.name`
     );
     res.json({ data: rows });
@@ -83,7 +89,7 @@ tenantsRouter.get('/', requireRole('super_admin'), async (_req: AuthRequest, res
 tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
   try {
-    const { name, slug, logo_url, primary_color, admin_email, admin_password, admin_name } = req.body;
+    const { name, slug, logo_url, primary_color, onu_limit, admin_email, admin_password, admin_name } = req.body;
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' });
 
     const finalSlug = slugify(slug || name);
@@ -91,9 +97,14 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO tenants (name, slug, logo_url, primary_color)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name, finalSlug, logo_url || null, primary_color || null]
+      `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit,
+                            acs_token, vpn_subnet)
+       VALUES ($1, $2, $3, $4, $5,
+               encode(gen_random_bytes(8), 'hex'),
+               '10.13.' || (13 + (SELECT COUNT(*) + 1 FROM tenants))::text || '.0/24')
+       RETURNING *`,
+      [name, finalSlug, logo_url || null, primary_color || null,
+       Number.isFinite(Number(onu_limit)) && Number(onu_limit) > 0 ? Math.floor(Number(onu_limit)) : null]
     );
     const tenant = rows[0];
 
@@ -125,7 +136,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { name, slug, logo_url, primary_color, is_active } = req.body;
+    const { name, slug, logo_url, primary_color, is_active, onu_limit } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
@@ -133,12 +144,16 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          logo_url = COALESCE($4, logo_url),
          primary_color = COALESCE($5, primary_color),
          is_active = COALESCE($6, is_active),
+         onu_limit = CASE WHEN $7::int IS NULL THEN onu_limit
+                          WHEN $7::int <= 0 THEN NULL ELSE $7::int END,
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null, logo_url || null, primary_color || null,
-       typeof is_active === 'boolean' ? is_active : null]
+       typeof is_active === 'boolean' ? is_active : null,
+       onu_limit === undefined || onu_limit === null || onu_limit === '' ? null : Math.floor(Number(onu_limit))]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
+    await applyTenantOnuLimit(rows[0].id).catch(() => undefined);
     res.json({ data: rows[0] });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
