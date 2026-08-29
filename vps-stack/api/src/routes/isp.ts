@@ -12,6 +12,8 @@ export const ispPublicRouter = Router();
 export const SECTIONS = [
   'dashboard',
   'onus',
+  'onu_web',
+  'acs',
   'wifi',
   'pppoe',
   'vpn',
