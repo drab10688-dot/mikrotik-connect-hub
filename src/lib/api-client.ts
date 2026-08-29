@@ -281,3 +281,16 @@ export const tenantsApi = {
   update: (id: string, data: any) => apiPut(`/tenants/${id}`, data),
   remove: (id: string) => apiDelete(`/tenants/${id}`),
 };
+
+// ─── Acceso a red: PPPoE, equipos y web embebida (WebFig / antenas) ───
+export const netAccessApi = {
+  pppoe: async (mikrotikId: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/pppoe`)),
+  devices: async (mikrotikId: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/devices`)),
+  webfig: async (mikrotikId: string, port?: number) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/webfig${port ? `?port=${port}` : ''}`)),
+  getWebPorts: async () => unwrapData<any>(await apiGet<any>('/netaccess/web-ports')),
+  setWebPorts: async (web_ports: any) =>
+    unwrapData<any>(await apiPut<any>('/netaccess/web-ports', { web_ports })),
+};
