@@ -21,6 +21,9 @@ interface Isp {
   acs_token: string | null;
   onu_limit: number | null;
   is_active: boolean;
+  enable_onus?: boolean;
+  enable_mikrotik?: boolean;
+  web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
   users_count: string | number;
   onus_used: string | number;
   onus_blocked: string | number;
@@ -221,6 +224,8 @@ function IspCard({
 }) {
   const [limit, setLimit] = useState(String(isp.onu_limit ?? ""));
   const [color, setColor] = useState(isp.primary_color || "#0EA5A4");
+  const [mkPort, setMkPort] = useState(String(isp.web_ports?.mikrotik?.port ?? 80));
+  const [ubntPort, setUbntPort] = useState(String(isp.web_ports?.ubiquiti?.port ?? 443));
   const used = Number(isp.onus_used || 0);
   const blocked = Number(isp.onus_blocked || 0);
   const max = isp.onu_limit && isp.onu_limit > 0 ? isp.onu_limit : null;
@@ -320,6 +325,65 @@ function IspCard({
               </Button>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-lg border p-3 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">Módulos habilitados para este ISP</p>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">Gestión de ONUs (TR-069)</Label>
+            <Switch
+              checked={isp.enable_onus !== false}
+              onCheckedChange={(v) => onSave({ enable_onus: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">Conexión MikroTik (PPPoE / WebFig)</Label>
+            <Switch
+              checked={isp.enable_mikrotik !== false}
+              onCheckedChange={(v) => onSave({ enable_mikrotik: v })}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Puertos web por marca (para abrir equipos dentro del panel)
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">MikroTik (WebFig)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={mkPort}
+                onChange={(e) => setMkPort(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Ubiquiti (airOS)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={ubntPort}
+                onChange={(e) => setUbntPort(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              onSave({
+                web_ports: {
+                  ...(isp.web_ports || {}),
+                  mikrotik: { port: Number(mkPort) || 80, protocol: Number(mkPort) === 443 ? 'https' : 'http' },
+                  ubiquiti: { port: Number(ubntPort) || 443, protocol: Number(ubntPort) === 80 ? 'http' : 'https' },
+                },
+              })
+            }
+          >
+            <Save className="w-4 h-4 mr-2" /> Guardar puertos
+          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
