@@ -258,13 +258,22 @@ export default function Network() {
                           </Badge>
                         </div>
                         {d.platform && <p className="text-xs text-muted-foreground truncate">{d.platform}</p>}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {d.web_protocol}://{d.ip}:{d.web_port}
-                          </span>
+                        <p className="text-xs text-muted-foreground">
+                          {d.web_protocol}://{d.ip}:{d.web_port}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="flex-1"
+                            onClick={() => setSignalAp({ ip: d.ip, brand: d.brand, name: d.name })}
+                          >
+                            <SignalHigh className="w-3.5 h-3.5 mr-1" /> Señal
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
+                            className="flex-1"
                             onClick={() => setEmbed({ title: `${d.name} — ${d.ip}:${d.web_port}`, url: proxyUrl(d.proxy_path) })}
                           >
                             <Monitor className="w-3.5 h-3.5 mr-1" /> Abrir
