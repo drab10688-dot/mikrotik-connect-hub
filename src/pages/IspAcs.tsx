@@ -301,7 +301,8 @@ const IspAcs = () => {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Red de administración de ONUs</Label>
-                    <Input value={onuNetworks} onChange={(e) => setOnuNetworks(e.target.value)} placeholder="10.82.0.0/21" />
+                    <Input value={onuNetworks} onChange={(e) => setOnuNetworks(e.target.value)} placeholder="10.82.0.0/21, 192.168.20.0/24" />
+                    <p className="text-xs text-muted-foreground">Puedes poner varias redes separadas por coma. Se agrega una ruta automática por cada una cuando el túnel conecta.</p>
                   </div>
                 </>
               )}
