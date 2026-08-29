@@ -228,7 +228,7 @@ netAccessRouter.get('/:mikrotikId/webfig', async (req: AuthRequest, res: Respons
 // ─── Proxy web hacia el equipo (WebFig / airOS) ─────────────────
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
-netAccessRouter.all('/:mikrotikId/web/:ip/:port{/*rest}', async (req: AuthRequest, res: Response) => {
+netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res: Response) => {
   const mikrotikId = await guard(req, res);
   if (!mikrotikId) return;
 
