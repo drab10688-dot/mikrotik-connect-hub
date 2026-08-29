@@ -54,6 +54,12 @@ const sinceLabel = (lastInform: string | null) => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
+
+  useEffect(() => {
+    if (isSuperAdmin) navigate("/admin/isps", { replace: true });
+  }, [isSuperAdmin, navigate]);
+
   const [devices, setDevices] = useState<OverviewEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [acsOnline, setAcsOnline] = useState<boolean | null>(null);
