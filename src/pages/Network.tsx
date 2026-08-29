@@ -359,6 +359,12 @@ export default function Network() {
             )}
           </DialogContent>
         </Dialog>
+
+        <ApSignalDialog
+          mikrotikId={deviceId}
+          target={signalAp}
+          onOpenChange={(open) => !open && setSignalAp(null)}
+        />
       </main>
     </div>
   );
