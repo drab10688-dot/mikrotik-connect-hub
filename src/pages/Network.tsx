@@ -13,7 +13,8 @@ import { devicesApi, netAccessApi, getApiBaseUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
-  Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2,
+  Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
+  AlertTriangle, PlugZap,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 
@@ -76,6 +77,15 @@ export default function Network() {
     queryKey: ["net-web-ports"],
     queryFn: () => netAccessApi.getWebPorts(),
   });
+
+  const { data: ethernet, isLoading: loadingEth, isFetching: fetchingEth, refetch: refetchEth, error: ethError } = useQuery({
+    queryKey: ["net-ethernet", deviceId],
+    queryFn: () => netAccessApi.ethernet(deviceId),
+    enabled: !!deviceId,
+    refetchInterval: 20_000,
+  });
+
+
 
   const [portDraft, setPortDraft] = useState<Record<string, WebPortCfg>>({});
   useEffect(() => { if (ports) setPortDraft(ports as Record<string, WebPortCfg>); }, [ports]);
@@ -223,6 +233,7 @@ export default function Network() {
             <TabsTrigger value="pppoe"><Users className="w-4 h-4 mr-2" />PPPoE</TabsTrigger>
             <TabsTrigger value="equipos"><Antenna className="w-4 h-4 mr-2" />Equipos / Antenas</TabsTrigger>
             <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>
+            <TabsTrigger value="cableado"><Cable className="w-4 h-4 mr-2" />Cableado LAN</TabsTrigger>
             <TabsTrigger value="puertos"><Wifi className="w-4 h-4 mr-2" />Puertos web</TabsTrigger>
           </TabsList>
 
@@ -538,6 +549,126 @@ export default function Network() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* ─── Cableado LAN ─── */}
+          <TabsContent value="cableado" className="mt-4">
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Cable className="w-4 h-4" /> Estado del cableado
+                  </CardTitle>
+                  <CardDescription>
+                    Enlace de cada puerto Ethernet del MikroTik: conectado/desconectado, base 10/100/1000, dúplex, errores y caídas de enlace.
+                  </CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => refetchEth()} disabled={fetchingEth}>
+                  <RefreshCw className={`w-4 h-4 mr-2 ${fetchingEth ? "animate-spin" : ""}`} /> Actualizar
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {ethError ? (
+                  <p className="text-sm text-destructive">{(ethError as any).message}</p>
+                ) : loadingEth ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Leyendo puertos…
+                  </p>
+                ) : !((ethernet as any)?.ports?.length) ? (
+                  <p className="text-muted-foreground text-sm">No se obtuvieron puertos Ethernet del router.</p>
+                ) : (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-3 mb-4">
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Puertos</p>
+                        <p className="text-xl font-semibold">{(ethernet as any).total}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Con enlace</p>
+                        <p className="text-xl font-semibold text-emerald-500">{(ethernet as any).connected}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Con fallas</p>
+                        <p className="text-xl font-semibold text-destructive">{(ethernet as any).with_errors}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {((ethernet as any).ports as any[]).map((p) => (
+                        <div key={p.id || p.name} className="rounded-lg border p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium truncate flex items-center gap-2">
+                                <PlugZap className={`w-4 h-4 ${p.connected ? "text-emerald-500" : "text-muted-foreground"}`} />
+                                {p.name}
+                              </p>
+                              {p.comment && <p className="text-xs text-muted-foreground truncate">{p.comment}</p>}
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                p.health === "ok"
+                                  ? "bg-emerald-500/15 text-emerald-500 border-emerald-500/30"
+                                  : p.health === "degradado"
+                                  ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                                  : p.health === "fallo"
+                                  ? "bg-destructive/15 text-destructive border-destructive/30"
+                                  : "bg-muted text-muted-foreground"
+                              }
+                            >
+                              {p.health === "ok"
+                                ? "Conectado"
+                                : p.health === "degradado"
+                                ? "Velocidad baja"
+                                : p.health === "fallo"
+                                ? "Con fallas"
+                                : "Desconectado"}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-muted-foreground">Base: </span>
+                              <span className="font-medium">
+                                {p.speed_mbps ? `${p.speed_mbps} Mbps${p.duplex ? ` ${p.duplex}` : ""}` : "—"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Caídas: </span>
+                              <span className={p.link_downs > 3 ? "text-destructive font-medium" : "font-medium"}>
+                                {p.link_downs}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Errores RX/TX: </span>
+                              <span className="font-medium">{p.rx_errors}/{p.tx_errors}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Descartes: </span>
+                              <span className="font-medium">{p.rx_drops}/{p.tx_drops}</span>
+                            </div>
+                          </div>
+
+                          {(p.last_link_down || p.last_link_up) && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {p.last_link_up && <>Último enlace: {p.last_link_up}. </>}
+                              {p.last_link_down && <>Última caída: {p.last_link_down}</>}
+                            </p>
+                          )}
+
+                          {p.health === "fallo" && (
+                            <p className="text-[11px] text-destructive flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Revisa el cable/conector: hay errores o caídas frecuentes.
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
 
           {/* ─── Puertos ─── */}
           <TabsContent value="puertos" className="mt-4">
