@@ -170,7 +170,9 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
        onu_limit === undefined || onu_limit === null || onu_limit === '' ? null : Math.floor(Number(onu_limit)),
        typeof enable_onus === 'boolean' ? enable_onus : null,
        typeof enable_mikrotik === 'boolean' ? enable_mikrotik : null,
-       web_ports ? JSON.stringify(web_ports) : null]
+       web_ports ? JSON.stringify(web_ports) : null,
+       typeof enable_tr069 === 'boolean' ? enable_tr069 : null,
+       typeof enable_onu_web === 'boolean' ? enable_onu_web : null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);
