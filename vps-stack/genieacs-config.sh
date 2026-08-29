@@ -12,6 +12,9 @@ MONGO_CONTAINER="${MONGO_CONTAINER:-omnisync-mongo}"
 GENIEACS_CONTAINER="${GENIEACS_CONTAINER:-omnisync-genieacs}"
 NBI_URL="${NBI_URL:-http://localhost:7557}"
 DB="${DB:-genieacs}"
+ACS_HOST="${ACS_HOST:-10.13.13.1}"
+ACS_PORT="${ACS_PORT:-7547}"
+ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-300}"
 
 c_ok(){ echo -e "\033[0;32m✓\033[0m $*"; }
 c_inf(){ echo -e "\033[0;36m•\033[0m $*"; }
