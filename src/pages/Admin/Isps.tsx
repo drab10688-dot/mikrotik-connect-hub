@@ -23,6 +23,8 @@ interface Isp {
   is_active: boolean;
   enable_onus?: boolean;
   enable_mikrotik?: boolean;
+  enable_tr069?: boolean;
+  enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
   users_count: string | number;
   onus_used: string | number;
@@ -330,7 +332,7 @@ function IspCard({
         <div className="rounded-lg border p-3 space-y-3">
           <p className="text-xs font-medium text-muted-foreground">Módulos habilitados para este ISP</p>
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-normal">Gestión de ONUs (TR-069)</Label>
+            <Label className="text-sm font-normal">Gestión de ONUs</Label>
             <Switch
               checked={isp.enable_onus !== false}
               onCheckedChange={(v) => onSave({ enable_onus: v })}
@@ -341,6 +343,20 @@ function IspCard({
             <Switch
               checked={isp.enable_mikrotik !== false}
               onCheckedChange={(v) => onSave({ enable_mikrotik: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">TR-069 / ACS (GenieACS)</Label>
+            <Switch
+              checked={isp.enable_tr069 !== false}
+              onCheckedChange={(v) => onSave({ enable_tr069: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">Acceso web directo a ONUs (sin TR-069)</Label>
+            <Switch
+              checked={isp.enable_onu_web !== false}
+              onCheckedChange={(v) => onSave({ enable_onu_web: v })}
             />
           </div>
         </div>
