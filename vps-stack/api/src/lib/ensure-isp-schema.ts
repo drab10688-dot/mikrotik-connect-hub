@@ -12,6 +12,9 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_token TEXT`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vpn_subnet TEXT`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_networks TEXT`,
+    // Límite comercial de ONUs por ISP (NULL o 0 = ilimitado)
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_limit INTEGER`,
+
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_username TEXT`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_password TEXT`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cr_username TEXT`,
