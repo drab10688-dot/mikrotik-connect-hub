@@ -153,3 +153,12 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Mobile: deja espacio para la barra superior fija (MobileNav) */
+@layer base {
+  @media (max-width: 767px) {
+    [class*="md:ml-64"] {
+      padding-top: 4.5rem;
+    }
+  }
+}

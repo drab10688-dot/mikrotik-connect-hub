@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AdminMenu } from "./AdminMenu";
+import { MobileNav } from "./MobileNav";
+
 import { useAuth } from "@/hooks/useAuth";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useState, useEffect, useRef } from "react";
@@ -103,7 +105,10 @@ export const Sidebar = () => {
   };
 
   return (
+    <>
+    <MobileNav items={filteredMenuItems} showAdmin={!isSecretary && !isReseller} />
     <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex-col border-r border-sidebar-border hidden md:flex">
+
       {/* Logo section */}
       <div className="p-3 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-3">
@@ -183,5 +188,7 @@ export const Sidebar = () => {
         </Button>
       </div>
     </div>
+    </>
   );
+
 };
