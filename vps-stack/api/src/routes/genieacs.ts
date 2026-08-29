@@ -1055,14 +1055,23 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
 // ─── Overview rápido: una sola consulta al ACS (lista + señal + PPPoE) ──
 // Proyección amplia: se traen subárboles completos para soportar cualquier
 // fabricante (Realtek, V-SOL, Zyxel, Huawei, ZTE, C-Data…) sin rutas fijas.
+function informInterval(device: any): number | null {
+  const v = getParam(device, 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval')
+    ?? getParam(device, 'Device.ManagementServer.PeriodicInformInterval');
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 const FAST_PROJECTION = [
   '_id', '_deviceId', '_lastInform',
   'InternetGatewayDevice.DeviceInfo',
+  'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
   'InternetGatewayDevice.WANDevice',
   'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
   'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
   'InternetGatewayDevice.X_HW_PONInfo',
   'Device.DeviceInfo',
+  'Device.ManagementServer.PeriodicInformInterval',
   'Device.Optical',
   'Device.WiFi',
 ].join(',');
@@ -1214,6 +1223,7 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
         pppoeUsername: firstPppoeUsername(device),
         alias: aliases[device._id] || null,
         lastInform: device?._lastInform || null,
+        informInterval: informInterval(device),
       };
 
     });
@@ -1234,7 +1244,7 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
   try {
-    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,_lastInform');
+    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,_lastInform');
 
     const overview = (devices || []).map((device: any) => {
       const igd = device?.InternetGatewayDevice || device?.Device || {};
@@ -1293,6 +1303,7 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
         txPower: txNorm,
         quality: quality(rxNorm),
         lastInform: device?._lastInform || null,
+        informInterval: informInterval(device),
       };
     });
 
