@@ -10,6 +10,8 @@ export interface TenantBranding {
   primary_color?: string | null;
   enable_onus?: boolean;
   enable_mikrotik?: boolean;
+  enable_tr069?: boolean;
+  enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
 }
 

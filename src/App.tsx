@@ -11,6 +11,7 @@ import Diagnostics from "./pages/Diagnostics";
 import Onus from "./pages/Onus";
 import IspAcs from "./pages/IspAcs";
 import Network from "./pages/Network";
+import OnuWeb from "./pages/OnuWeb";
 import Permissions from "./pages/Admin/Permissions";
 import UsersAdmin from "./pages/Admin/Users";
 import RegisterUser from "./pages/Admin/RegisterUser";
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu"><Onus /></ProtectedRoute>} />
           <Route path="/mikrotik" element={<ProtectedRoute permission="can_manage_pppoe"><Network /></ProtectedRoute>} />
+          <Route path="/onu-web" element={<ProtectedRoute><OnuWeb /></ProtectedRoute>} />
           <Route path="/acs" element={<ProtectedRoute><IspAcs /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings"><Settings /></ProtectedRoute>} />
           <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics"><Diagnostics /></ProtectedRoute>} />
