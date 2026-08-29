@@ -112,30 +112,25 @@ export const Sidebar = () => {
 
       {/* Logo section */}
       <div className="p-3 border-b border-sidebar-border shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="relative group shrink-0">
-            {displayLogo ? (
-              <div className="w-12 h-12 rounded-lg overflow-hidden relative flex items-center justify-center">
-                <img src={displayLogo} alt={displayName} className="w-full h-full object-contain" />
-                <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
-                  <X className="w-2.5 h-2.5 text-destructive-foreground" />
-                </button>
-              </div>
-            ) : (
-              <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center">
-                <img src={omnisyncLogo} alt={displayName} className="w-full h-full object-contain" />
-              </div>
-            )}
-            <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex">
-              <ImagePlus className="w-4 h-4 text-white" />
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold truncate">{displayName}</p>
-            <p className="text-[11px] text-sidebar-foreground/60 truncate">OmniACS · TR-069 / ACS</p>
-          </div>
+        <div className="relative group">
+          {displayLogo ? (
+            <div className="relative flex items-center justify-center py-1">
+              <img src={displayLogo} alt={displayName} className="h-14 w-auto max-w-full object-contain" />
+              <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
+                <X className="w-2.5 h-2.5 text-destructive-foreground" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-1">
+              <img src={omnisyncLogo} alt={displayName} className="h-14 w-auto max-w-full object-contain" />
+            </div>
+          )}
+          <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 items-center justify-center hidden group-hover:flex rounded">
+            <ImagePlus className="w-4 h-4 text-white" />
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
         </div>
+        <p className="text-[11px] text-sidebar-foreground/60 text-center mt-1 truncate">{displayName} · TR-069 / ACS</p>
       </div>
 
 
