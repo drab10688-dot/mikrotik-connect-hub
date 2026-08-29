@@ -321,6 +321,148 @@ export default function Network() {
             </Card>
           </TabsContent>
 
+          {/* ─── Desconexiones PPPoE ─── */}
+          <TabsContent value="desconexiones" className="mt-4 space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Informe de desconexiones PPPoE
+                  </CardTitle>
+                  <CardDescription>
+                    El sistema revisa las sesiones activas cada minuto y registra cada caída. Aquí ves qué clientes se desconectan con más frecuencia.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Select value={eventDays} onValueChange={setEventDays}>
+                    <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Últimas 24 h</SelectItem>
+                      <SelectItem value="7">7 días</SelectItem>
+                      <SelectItem value="15">15 días</SelectItem>
+                      <SelectItem value="30">30 días</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" variant="outline" onClick={() => refetchEvents()} disabled={fetchingEvents}>
+                    <RefreshCw className={`w-4 h-4 ${fetchingEvents ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {eventsError ? (
+                  <p className="text-sm text-destructive">{(eventsError as any).message}</p>
+                ) : loadingEvents ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Cargando informe…
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-3 mb-4">
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Desconexiones</p>
+                        <p className="text-xl font-semibold">{(pppoeEvents as any)?.total_disconnections ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Clientes afectados</p>
+                        <p className="text-xl font-semibold">{(pppoeEvents as any)?.affected_clients ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Clientes inestables</p>
+                        <p className="text-xl font-semibold text-destructive">{(pppoeEvents as any)?.unstable_clients ?? 0}</p>
+                      </div>
+                    </div>
+
+                    {!((pppoeEvents as any)?.clients?.length) ? (
+                      <p className="text-sm text-muted-foreground">
+                        Aún no hay desconexiones registradas en este periodo. El historial se construye desde que el monitor empieza a correr.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-xs text-muted-foreground border-b">
+                            <tr>
+                              <th className="text-left py-2 pr-3">Cliente</th>
+                              <th className="text-left py-2 pr-3">Caídas</th>
+                              <th className="text-left py-2 pr-3">Prom./día</th>
+                              <th className="text-left py-2 pr-3">Última caída</th>
+                              <th className="text-left py-2 pr-3">IP</th>
+                              <th className="text-left py-2">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {((pppoeEvents as any).clients as any[])
+                              .filter((c) => !search || c.username?.toLowerCase().includes(search.toLowerCase()))
+                              .map((c) => (
+                                <tr key={c.username} className="border-b last:border-0">
+                                  <td className="py-2 pr-3 font-medium">{c.username}</td>
+                                  <td className="py-2 pr-3">
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        c.severity === "critica"
+                                          ? "bg-destructive/15 text-destructive border-destructive/30"
+                                          : c.severity === "alta"
+                                          ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                                          : c.severity === "media"
+                                          ? "bg-sky-500/15 text-sky-500 border-sky-500/30"
+                                          : "bg-muted text-muted-foreground"
+                                      }
+                                    >
+                                      {c.disconnections}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-2 pr-3">{c.per_day}</td>
+                                  <td className="py-2 pr-3 text-xs text-muted-foreground">
+                                    {c.last_down ? new Date(c.last_down).toLocaleString() : "—"}
+                                  </td>
+                                  <td className="py-2 pr-3 font-mono text-xs">{c.address || "—"}</td>
+                                  <td className="py-2">
+                                    <span className={c.is_online ? "text-emerald-500" : "text-destructive"}>
+                                      {c.is_online ? "En línea" : "Caído"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {!!((pppoeEvents as any)?.recent?.length) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Últimos eventos</CardTitle>
+                  <CardDescription>Historial cronológico de conexiones y caídas.</CardDescription>
+                </CardHeader>
+                <CardContent className="max-h-[420px] overflow-y-auto">
+                  <div className="space-y-1">
+                    {((pppoeEvents as any).recent as any[]).map((e, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm border-b last:border-0 py-1.5 gap-3">
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`w-2 h-2 rounded-full shrink-0 ${e.event === "up" ? "bg-emerald-500" : "bg-destructive"}`}
+                          />
+                          <span className="font-medium truncate">{e.username}</span>
+                          <span className="text-muted-foreground text-xs">
+                            {e.event === "up" ? "conectó" : "se desconectó"}
+                          </span>
+                        </span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {new Date(e.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+
           {/* ─── Equipos ─── */}
           <TabsContent value="equipos" className="mt-4">
             <Card>
