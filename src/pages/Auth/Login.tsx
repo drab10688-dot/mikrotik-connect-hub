@@ -75,12 +75,14 @@ export default function Login() {
         </div>
         
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
-          <div className="mb-8 animate-fade-in">
-            <img 
-              src={brandLogo || omnisyncLogoFull} 
-              alt={brandName} 
-              className="h-40 md:h-52 lg:h-60 w-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
-            />
+          <div className="mb-8 animate-fade-in flex items-center justify-center">
+            <div className="relative w-40 h-40 md:w-52 md:h-52 lg:w-60 lg:h-60 rounded-full p-3 bg-slate-900/60 border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(34,211,238,0.3)] hover:shadow-[0_0_60px_rgba(34,211,238,0.5)] transition-all duration-500 hover:scale-105 overflow-hidden">
+              <img 
+                src={brandLogo || omnisyncLogoFull} 
+                alt={brandName} 
+                className="w-full h-full object-contain drop-shadow-2xl"
+              />
+            </div>
           </div>
           
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
@@ -141,13 +143,15 @@ export default function Login() {
           Volver
         </Button>
 
-         <div className="mb-6 animate-fade-in">
-           <img 
-             src={brandLogo || omnisyncLogoFull} 
-             alt={brandName} 
-             className="h-24 md:h-28 w-auto object-contain drop-shadow-xl"
-           />
-         </div>
+        <div className="mb-6 animate-fade-in flex items-center justify-center">
+          <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full p-2 bg-slate-900/60 border-2 border-cyan-500/40 shadow-[0_0_30px_rgba(34,211,238,0.3)] overflow-hidden">
+            <img 
+              src={brandLogo || omnisyncLogoFull} 
+              alt={brandName} 
+              className="w-full h-full object-contain drop-shadow-xl"
+            />
+          </div>
+        </div>
 
         <Card className="w-full max-w-md shadow-2xl border-slate-700/50 bg-slate-800/80 backdrop-blur-xl animate-fade-in">
           <CardHeader className="space-y-1 text-center">
