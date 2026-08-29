@@ -12,6 +12,7 @@ import { usersRouter } from './routes/users';
 import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
+import { netAccessRouter } from './routes/netaccess';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection } from './routes/isp';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
@@ -51,6 +52,7 @@ app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
 app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), onuRouter);
 app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), genieacsRouter);
+app.use('/api/netaccess', authMiddleware, netAccessRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 
 
