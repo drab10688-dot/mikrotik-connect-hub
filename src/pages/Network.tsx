@@ -93,6 +93,14 @@ export default function Network() {
     refetchInterval: 60_000,
   });
 
+  const { data: lanAlerts, isFetching: fetchingAlerts, refetch: refetchAlerts } = useQuery({
+    queryKey: ["net-lan-alerts", deviceId],
+    queryFn: () => netAccessApi.lanAlerts(deviceId),
+    enabled: !!deviceId,
+    refetchInterval: 30_000,
+  });
+  const alertList: any[] = (lanAlerts as any)?.alerts ?? [];
+
 
 
 
