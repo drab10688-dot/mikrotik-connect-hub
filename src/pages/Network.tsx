@@ -13,9 +13,17 @@ import { devicesApi, netAccessApi, getApiBaseUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
-  Monitor, Save, Loader2, Antenna, SignalHigh,
+  Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
+
+const AP_QUALITY: Record<string, { label: string; className: string }> = {
+  excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
+  buena: { label: "Buena", className: "bg-sky-500/15 text-sky-500 border-sky-500/30" },
+  regular: { label: "Regular", className: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
+  mala: { label: "Mala", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  desconocida: { label: "Sin datos", className: "bg-muted text-muted-foreground" },
+};
 
 interface WebPortCfg { port: number; protocol: "http" | "https" }
 
