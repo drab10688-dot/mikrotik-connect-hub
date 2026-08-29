@@ -178,7 +178,10 @@ export async function syncAcsOwnership(force = false): Promise<void> {
         const deviceId = device?._id;
         if (!deviceId || owned.has(deviceId)) continue;
 
-        const match = resolveTenantForDevice(device, matchers);
+        // Con un solo ISP en el sistema, todas las ONUs son suyas.
+        const match =
+          resolveTenantForDevice(device, matchers) ||
+          (matchers.length === 1 ? { tenantId: matchers[0].id, source: 'single' } : null);
         if (!match) continue;
 
         const matcher = matchers.find((m) => m.id === match.tenantId)!;
