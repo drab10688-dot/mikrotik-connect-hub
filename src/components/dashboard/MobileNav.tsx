@@ -45,12 +45,8 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
         <img
           src={logo ?? omnisyncLogo}
           alt={name}
-          className="w-9 h-9 rounded-lg object-contain shrink-0"
+          className="h-9 w-auto max-w-[140px] object-contain shrink-0"
         />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold leading-tight truncate">{name}</p>
-          <p className="text-[10px] text-sidebar-foreground/60 truncate">OmniACS · TR-069</p>
-        </div>
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
