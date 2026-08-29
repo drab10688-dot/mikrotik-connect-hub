@@ -114,15 +114,15 @@ export const Sidebar = () => {
         <div className="flex items-center gap-3">
           <div className="relative group shrink-0">
             {displayLogo ? (
-              <div className="w-12 h-12 rounded-full overflow-hidden relative bg-sidebar-accent/30 border border-sidebar-border">
-                <img src={displayLogo} alt={displayName} className="w-full h-full object-cover" />
+              <div className="w-12 h-12 rounded-lg overflow-hidden relative flex items-center justify-center">
+                <img src={displayLogo} alt={displayName} className="w-full h-full object-contain" />
                 <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
                   <X className="w-2.5 h-2.5 text-destructive-foreground" />
                 </button>
               </div>
             ) : (
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-sidebar-accent/30 border border-sidebar-border flex items-center justify-center">
-                <img src={omnisyncLogo} alt={displayName} className="w-full h-full object-cover" />
+              <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center">
+                <img src={omnisyncLogo} alt={displayName} className="w-full h-full object-contain" />
               </div>
             )}
             <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 rounded-full items-center justify-center hidden group-hover:flex">
