@@ -18,6 +18,7 @@ import { ispRouter, ispPublicRouter, requireSection } from './routes/isp';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
+import { runPppoeMonitor, cleanupPppoeEvents } from './cron/pppoe-monitor';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
 
 // Re-export pool for backward compatibility with cron jobs
