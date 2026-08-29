@@ -1,6 +1,8 @@
 import { Router, Response, NextFunction } from 'express';
 import { AuthRequest, getAccessibleDeviceIds } from '../middleware/auth';
 import { pool } from '../lib/db';
+import { syncAcsOwnership, tenantAcsDeviceIds } from '../lib/acs-tenant';
+
 import {
   ensureAcsSignalTables,
   collectAcsSignals,
