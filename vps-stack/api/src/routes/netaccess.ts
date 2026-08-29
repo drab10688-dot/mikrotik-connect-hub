@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
+import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { pool } from '../lib/db';
 
 export const netAccessRouter = Router();
