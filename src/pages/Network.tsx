@@ -85,6 +85,15 @@ export default function Network() {
     refetchInterval: 20_000,
   });
 
+  const [eventDays, setEventDays] = useState("7");
+  const { data: pppoeEvents, isLoading: loadingEvents, isFetching: fetchingEvents, refetch: refetchEvents, error: eventsError } = useQuery({
+    queryKey: ["net-pppoe-events", deviceId, eventDays],
+    queryFn: () => netAccessApi.pppoeEvents(deviceId, Number(eventDays)),
+    enabled: !!deviceId,
+    refetchInterval: 60_000,
+  });
+
+
 
 
   const [portDraft, setPortDraft] = useState<Record<string, WebPortCfg>>({});
