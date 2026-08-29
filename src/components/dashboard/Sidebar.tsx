@@ -32,7 +32,7 @@ const menuItems = [
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut, isSecretary, isReseller } = useAuth();
+  const { signOut, isSecretary, isReseller, isSuperAdmin } = useAuth();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
