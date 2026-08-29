@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { onuWebApi } from "@/lib/api-client";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -108,8 +108,9 @@ export default function OnuWeb() {
   });
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <div className="p-4 md:p-8 md:ml-64 space-y-6">
         <header className="space-y-1">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Globe className="h-6 w-6 text-primary" /> Acceso web a ONUs
@@ -382,6 +383,6 @@ export default function OnuWeb() {
           </TabsContent>
         </Tabs>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }
