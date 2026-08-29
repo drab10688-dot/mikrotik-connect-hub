@@ -95,7 +95,20 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        created_at TIMESTAMPTZ DEFAULT now()
      )`,
     `CREATE INDEX IF NOT EXISTS onu_events_tenant_idx ON onu_events(tenant_id, created_at DESC)`,
+
+    // Propiedad de cada ONU del ACS: define qué ISP la ve (aislamiento real)
+    `CREATE TABLE IF NOT EXISTS acs_device_owners (
+       acs_device_id TEXT PRIMARY KEY,
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       serial_number TEXT,
+       source TEXT,
+       status TEXT NOT NULL DEFAULT 'active',
+       claimed_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS acs_device_owners_tenant_idx ON acs_device_owners(tenant_id, status)`,
   ];
+
 
   for (const sql of statements) {
     try {
