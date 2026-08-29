@@ -112,6 +112,23 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        updated_at TIMESTAMPTZ DEFAULT now()
      )`,
     `CREATE INDEX IF NOT EXISTS acs_device_owners_tenant_idx ON acs_device_owners(tenant_id, status)`,
+
+    // Credenciales de los APs/antenas detrás del router (por ISP)
+    `CREATE TABLE IF NOT EXISTS ap_credentials (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       ip TEXT NOT NULL,
+       name TEXT,
+       brand TEXT NOT NULL DEFAULT 'otro',
+       username TEXT,
+       password TEXT,
+       port INTEGER,
+       protocol TEXT NOT NULL DEFAULT 'http',
+       created_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now(),
+       UNIQUE (tenant_id, ip)
+     )`,
+    `CREATE INDEX IF NOT EXISTS ap_credentials_tenant_idx ON ap_credentials(tenant_id)`,
   ];
 
 
