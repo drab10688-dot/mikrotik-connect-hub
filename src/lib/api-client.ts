@@ -293,4 +293,13 @@ export const netAccessApi = {
   getWebPorts: async () => unwrapData<any>(await apiGet<any>('/netaccess/web-ports')),
   setWebPorts: async (web_ports: any) =>
     unwrapData<any>(await apiPut<any>('/netaccess/web-ports', { web_ports })),
+  wireless: async (mikrotikId: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/wireless`)),
+  apClients: async (mikrotikId: string, ip: string, brand?: string) =>
+    unwrapData<any>(
+      await apiGet<any>(`/netaccess/${mikrotikId}/ap/${ip}/clients${brand ? `?brand=${brand}` : ''}`)
+    ),
+  listApCredentials: async () => unwrapData<any>(await apiGet<any>('/netaccess/ap-credentials')),
+  saveApCredentials: async (payload: any) =>
+    unwrapData<any>(await apiPut<any>('/netaccess/ap-credentials', payload)),
 };
