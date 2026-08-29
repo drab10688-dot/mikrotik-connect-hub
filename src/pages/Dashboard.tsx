@@ -22,15 +22,23 @@ interface OverviewEntry {
   pppoeUsername: string | null;
   activeSsids?: string[];
   lastInform: string | null;
+  informInterval?: number | null;
 }
 
-const OFFLINE_AFTER_MS = 5 * 60 * 1000;
+const MIN_OFFLINE_MS = 5 * 60 * 1000;
+const GRACE_MS = 90 * 1000;
 
-const isOffline = (lastInform: string | null) => {
-  if (!lastInform) return true;
-  const t = new Date(lastInform).getTime();
+const offlineThreshold = (informInterval?: number | null) => {
+  const interval = Number(informInterval);
+  if (!Number.isFinite(interval) || interval <= 0) return MIN_OFFLINE_MS;
+  return Math.max(MIN_OFFLINE_MS, interval * 2 * 1000 + GRACE_MS);
+};
+
+const isOffline = (d: { lastInform: string | null; informInterval?: number | null }) => {
+  if (!d?.lastInform) return true;
+  const t = new Date(d.lastInform).getTime();
   if (!Number.isFinite(t)) return true;
-  return Date.now() - t > OFFLINE_AFTER_MS;
+  return Date.now() - t > offlineThreshold(d.informInterval);
 };
 
 const sinceLabel = (lastInform: string | null) => {
@@ -70,7 +78,7 @@ const Dashboard = () => {
     return () => window.clearInterval(t);
   }, [load]);
 
-  const online = devices.filter((d) => !isOffline(d.lastInform));
+  const online = devices.filter((d) => !isOffline(d));
   const offline = devices.length - online.length;
   const critical = devices.filter((d) => d.rxPower !== null && d.rxPower <= -28);
   const withWifi = devices.filter((d) => (d.activeSsids?.length || 0) > 0);
@@ -198,11 +206,11 @@ const Dashboard = () => {
                         {d.activeSsids?.length ? d.activeSsids.join(" · ") : "—"}
                       </TableCell>
                       <TableCell>
-                        <OpticalMeter compact rx={d.rxPower} tx={d.txPower} dimmed={isOffline(d.lastInform)} />
+                        <OpticalMeter compact rx={d.rxPower} tx={d.txPower} dimmed={isOffline(d)} />
                       </TableCell>
 
                       <TableCell className="text-right">
-                        {isOffline(d.lastInform) ? (
+                        {isOffline(d) ? (
                           <Badge variant="destructive">Desconectada</Badge>
                         ) : (
                           <Badge variant="secondary">{sinceLabel(d.lastInform)}</Badge>

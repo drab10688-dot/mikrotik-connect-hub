@@ -50,6 +50,7 @@ interface SignalEntry {
   rxPower: number | null;
   txPower: number | null;
   lastInform: string | null;
+  informInterval?: number | null;
   radios?: RadioInfo[];
 }
 
@@ -61,13 +62,26 @@ interface OnuMeta {
   serial: string;
 }
 
-const OFFLINE_AFTER_MS = 5 * 60 * 1000;
+const MIN_OFFLINE_MS = 5 * 60 * 1000;
+const GRACE_MS = 90 * 1000;
 
-function isOffline(lastInform: string | null | undefined) {
+// El umbral se adapta al intervalo Inform de cada ONU: si reporta cada 300 s,
+// no se marca desconectada hasta pasar ~2 ciclos + margen.
+function offlineThreshold(informInterval?: number | null) {
+  const interval = Number(informInterval);
+  if (!Number.isFinite(interval) || interval <= 0) return MIN_OFFLINE_MS;
+  return Math.max(MIN_OFFLINE_MS, interval * 2 * 1000 + GRACE_MS);
+}
+
+function isOffline(entry: SignalEntry | null | undefined): boolean;
+function isOffline(lastInform: string | null | undefined, informInterval?: number | null): boolean;
+function isOffline(arg: any, informInterval?: number | null) {
+  const lastInform = typeof arg === "string" || arg == null ? arg : arg.lastInform;
+  const interval = typeof arg === "object" && arg ? arg.informInterval : informInterval;
   if (!lastInform) return true;
   const t = new Date(lastInform).getTime();
   if (!Number.isFinite(t)) return true;
-  return Date.now() - t > OFFLINE_AFTER_MS;
+  return Date.now() - t > offlineThreshold(interval);
 }
 
 function sinceLabel(lastInform: string | null | undefined) {
@@ -181,6 +195,7 @@ export default function SimpleOnuPanel() {
           rxPower: e.rxPower ?? null,
           txPower: e.txPower ?? null,
           lastInform: e.lastInform ?? null,
+          informInterval: e.informInterval ?? null,
           radios: Array.isArray(e.radios) ? e.radios : [],
         };
         if (e.alias) aliasMap[e.deviceId] = e.alias;
@@ -296,7 +311,7 @@ export default function SimpleOnuPanel() {
   };
 
   const stats = useMemo(() => {
-    const online = devices.filter((id) => !isOffline(signals[id]?.lastInform));
+    const online = devices.filter((id) => !isOffline(signals[id]));
     const critical = devices.filter((id) => opticalTone(signals[id]?.rxPower) === "crit");
     const wifi = devices.filter((id) => (signals[id]?.radios || []).some((r) => r.enabled && r.ssid));
     return { total: devices.length, online: online.length, offline: devices.length - online.length, critical: critical.length, wifi: wifi.length };
@@ -306,7 +321,7 @@ export default function SimpleOnuPanel() {
     const q = query.trim().toLowerCase();
     return devices.filter((id) => {
       const sig = signals[id];
-      const off = isOffline(sig?.lastInform);
+      const off = isOffline(sig);
       if (filter === "online" && off) return false;
       if (filter === "offline" && !off) return false;
       if (filter === "critical" && opticalTone(sig?.rxPower) !== "crit") return false;
@@ -336,7 +351,7 @@ export default function SimpleOnuPanel() {
 
   const sel = selected ? signals[selected] : null;
   const selMeta = selected ? meta[selected] : null;
-  const selOffline = isOffline(sel?.lastInform);
+  const selOffline = isOffline(sel);
   const selForm = (selected && pppoe[selected]) || { username: "", password: "" };
 
   return (
@@ -407,7 +422,7 @@ export default function SimpleOnuPanel() {
               ) : (
                 visible.map((id) => {
                   const sig = signals[id];
-                  const off = isOffline(sig?.lastInform);
+                  const off = isOffline(sig);
                   const radios = (sig?.radios || []).filter((r) => r.ssid);
                   const activeRadios = radios.filter((r) => r.enabled);
                   return (
