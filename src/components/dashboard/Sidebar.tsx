@@ -85,7 +85,14 @@ export const Sidebar = () => {
     '/diagnostics': 'can_manage_diagnostics',
   };
 
-  const filteredMenuItems = isSecretary
+  // El super admin usa el panel solo para administrar ISPs
+  const superAdminMenu = [
+    { icon: Building2, label: "Panel de ISPs", path: "/admin/isps" },
+  ];
+
+  const filteredMenuItems = isSuperAdmin
+    ? superAdminMenu
+    : isSecretary
     ? menuItems.filter(item => {
         // Always show dashboard
         if (item.path === '/dashboard') return true;
