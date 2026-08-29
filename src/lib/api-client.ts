@@ -295,6 +295,8 @@ export const netAccessApi = {
     unwrapData<any>(await apiPut<any>('/netaccess/web-ports', { web_ports })),
   wireless: async (mikrotikId: string) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/wireless`)),
+  ethernet: async (mikrotikId: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/ethernet`)),
   apClients: async (mikrotikId: string, ip: string, brand?: string) =>
     unwrapData<any>(
       await apiGet<any>(`/netaccess/${mikrotikId}/ap/${ip}/clients${brand ? `?brand=${brand}` : ''}`)
