@@ -76,13 +76,11 @@ export default function Login() {
         
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
           <div className="mb-8 animate-fade-in">
-             <div className="w-56 h-56 md:w-72 md:h-72 lg:w-80 lg:h-80 rounded-full overflow-hidden border-4 border-cyan-400/40 shadow-2xl shadow-cyan-500/40 bg-slate-800/50 p-1 hover:scale-105 transition-transform duration-500">
-               <img 
-                 src={brandLogo || omnisyncSphere} 
-                 alt={brandName} 
-                 className="w-full h-full object-cover rounded-full"
-               />
-             </div>
+            <img 
+              src={brandLogo || omnisyncLogoFull} 
+              alt={brandName} 
+              className="h-40 md:h-52 lg:h-60 w-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
+            />
           </div>
           
           <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
