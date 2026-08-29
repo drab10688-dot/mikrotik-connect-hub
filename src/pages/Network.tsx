@@ -231,6 +231,7 @@ export default function Network() {
         <Tabs defaultValue="pppoe">
           <TabsList>
             <TabsTrigger value="pppoe"><Users className="w-4 h-4 mr-2" />PPPoE</TabsTrigger>
+            <TabsTrigger value="desconexiones"><Activity className="w-4 h-4 mr-2" />Desconexiones</TabsTrigger>
             <TabsTrigger value="equipos"><Antenna className="w-4 h-4 mr-2" />Equipos / Antenas</TabsTrigger>
             <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>
             <TabsTrigger value="cableado"><Cable className="w-4 h-4 mr-2" />Cableado LAN</TabsTrigger>
