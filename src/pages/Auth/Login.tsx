@@ -80,7 +80,7 @@ export default function Login() {
               <img 
                 src={brandLogo || omnisyncLogoFull} 
                 alt={brandName} 
-                className="w-full h-full object-contain drop-shadow-2xl"
+                className="w-full h-full object-cover rounded-full drop-shadow-2xl"
               />
             </div>
           </div>
@@ -148,7 +148,7 @@ export default function Login() {
             <img 
               src={brandLogo || omnisyncLogoFull} 
               alt={brandName} 
-              className="w-full h-full object-contain drop-shadow-xl"
+              className="w-full h-full object-cover rounded-full drop-shadow-xl"
             />
           </div>
         </div>
