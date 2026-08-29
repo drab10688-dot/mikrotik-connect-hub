@@ -16,6 +16,7 @@ export const SECTIONS = [
   'acs',
   'wifi',
   'pppoe',
+  'red',
   'vpn',
   'configuracion',
   'diagnostico',
