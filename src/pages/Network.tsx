@@ -13,8 +13,9 @@ import { devicesApi, netAccessApi, getApiBaseUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
-  Monitor, Save, Loader2, Antenna,
+  Monitor, Save, Loader2, Antenna, SignalHigh,
 } from "lucide-react";
+import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 
 interface WebPortCfg { port: number; protocol: "http" | "https" }
 
@@ -39,6 +40,7 @@ export default function Network() {
   const [deviceId, setDeviceId] = useState<string>(() => localStorage.getItem("mikrotik_device_id") || "");
   const [search, setSearch] = useState("");
   const [embed, setEmbed] = useState<{ title: string; url: string } | null>(null);
+  const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
 
   const { data: devices = [] } = useQuery({
     queryKey: ["net-devices"],
@@ -258,13 +260,22 @@ export default function Network() {
                           </Badge>
                         </div>
                         {d.platform && <p className="text-xs text-muted-foreground truncate">{d.platform}</p>}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {d.web_protocol}://{d.ip}:{d.web_port}
-                          </span>
+                        <p className="text-xs text-muted-foreground">
+                          {d.web_protocol}://{d.ip}:{d.web_port}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="flex-1"
+                            onClick={() => setSignalAp({ ip: d.ip, brand: d.brand, name: d.name })}
+                          >
+                            <SignalHigh className="w-3.5 h-3.5 mr-1" /> Señal
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
+                            className="flex-1"
                             onClick={() => setEmbed({ title: `${d.name} — ${d.ip}:${d.web_port}`, url: proxyUrl(d.proxy_path) })}
                           >
                             <Monitor className="w-3.5 h-3.5 mr-1" /> Abrir
@@ -348,6 +359,12 @@ export default function Network() {
             )}
           </DialogContent>
         </Dialog>
+
+        <ApSignalDialog
+          mikrotikId={deviceId}
+          target={signalAp}
+          onOpenChange={(open) => !open && setSignalAp(null)}
+        />
       </main>
     </div>
   );
