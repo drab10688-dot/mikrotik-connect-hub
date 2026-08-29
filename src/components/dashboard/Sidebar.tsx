@@ -103,7 +103,10 @@ export const Sidebar = () => {
   };
 
   return (
+    <>
+    <MobileNav items={filteredMenuItems} showAdmin={!isSecretary && !isReseller} />
     <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex-col border-r border-sidebar-border hidden md:flex">
+
       {/* Logo section */}
       <div className="p-3 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-3">
