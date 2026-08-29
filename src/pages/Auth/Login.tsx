@@ -142,13 +142,11 @@ export default function Login() {
         </Button>
 
          <div className="mb-6 animate-fade-in">
-           <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-3 border-cyan-400/40 shadow-xl shadow-cyan-500/30 bg-slate-800/50 p-2">
-             <img 
-               src={brandLogo || omnisyncLogo} 
-               alt={brandName} 
-               className="w-full h-full object-cover rounded-full"
-             />
-           </div>
+           <img 
+             src={brandLogo || omnisyncLogoFull} 
+             alt={brandName} 
+             className="h-24 md:h-28 w-auto object-contain drop-shadow-xl"
+           />
          </div>
 
         <Card className="w-full max-w-md shadow-2xl border-slate-700/50 bg-slate-800/80 backdrop-blur-xl animate-fade-in">
