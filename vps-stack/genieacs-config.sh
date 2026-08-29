@@ -167,7 +167,7 @@ grep -q CONFIG_OK /tmp/genieacs-cfg.log && c_ok "Columnas y vistas configuradas"
 # ---------------- Parámetros virtuales (vía NBI) ----------------
 vparam () {
   local name="$1"; local script="$2"
-  if curl -sf -X PUT "$NBI_URL/virtualParameters/$name" \
+  if curl -sf -X PUT "$NBI_URL/virtual_parameters/$name" \
       -H 'Content-Type: text/plain' --data-binary "$script" >/dev/null; then
     c_ok "VirtualParameter $name"
   else
