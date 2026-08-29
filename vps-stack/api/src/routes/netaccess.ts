@@ -5,6 +5,9 @@ import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { pool } from '../lib/db';
+import { requireSection } from './isp';
+
+const editRed = requireSection('red', true);
 
 export const netAccessRouter = Router();
 
@@ -90,7 +93,7 @@ netAccessRouter.get('/web-ports', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await tenantWebPorts(req.tenantId) });
 });
 
-netAccessRouter.put('/web-ports', async (req: AuthRequest, res: Response) => {
+netAccessRouter.put('/web-ports', editRed, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.tenantId) return res.status(400).json({ success: false, error: 'Tu usuario no pertenece a ningún ISP' });
     if (req.userRole !== 'super_admin' && req.userRole !== 'admin') {
@@ -123,7 +126,7 @@ netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) =
   }
 });
 
-netAccessRouter.put('/ap-credentials', async (req: AuthRequest, res: Response) => {
+netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Response) => {
   try {
     const { ip, name, brand, username, password, port, protocol } = req.body || {};
     if (!ip || !IPV4.test(String(ip))) {
@@ -158,7 +161,7 @@ netAccessRouter.put('/ap-credentials', async (req: AuthRequest, res: Response) =
   }
 });
 
-netAccessRouter.delete('/ap-credentials/:id', async (req: AuthRequest, res: Response) => {
+netAccessRouter.delete('/ap-credentials/:id', editRed, async (req: AuthRequest, res: Response) => {
   try {
     await pool.query(`DELETE FROM ap_credentials WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $2`, [
       req.params.id,
