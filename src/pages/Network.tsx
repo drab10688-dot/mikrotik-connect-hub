@@ -40,6 +40,7 @@ export default function Network() {
   const [deviceId, setDeviceId] = useState<string>(() => localStorage.getItem("mikrotik_device_id") || "");
   const [search, setSearch] = useState("");
   const [embed, setEmbed] = useState<{ title: string; url: string } | null>(null);
+  const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
 
   const { data: devices = [] } = useQuery({
     queryKey: ["net-devices"],
