@@ -78,6 +78,15 @@ export default function Network() {
     queryFn: () => netAccessApi.getWebPorts(),
   });
 
+  const { data: ethernet, isLoading: loadingEth, isFetching: fetchingEth, refetch: refetchEth, error: ethError } = useQuery({
+    queryKey: ["net-ethernet", deviceId],
+    queryFn: () => netAccessApi.ethernet(deviceId),
+    enabled: !!deviceId,
+    refetchInterval: 20_000,
+  });
+
+
+
   const [portDraft, setPortDraft] = useState<Record<string, WebPortCfg>>({});
   useEffect(() => { if (ports) setPortDraft(ports as Record<string, WebPortCfg>); }, [ports]);
 
