@@ -29,32 +29,43 @@ const backlogCleared = new Map<string, number>();
 async function clearDeviceBacklog(deviceId: string) {
   const now = Date.now();
   const last = backlogCleared.get(deviceId) || 0;
-  if (now - last < 3000) return; // evita repetir en lotes de tareas
+  if (now - last < 15_000) return; // evita repetir en lotes de tareas / clics seguidos
   backlogCleared.set(deviceId, now);
 
   const q = encodeURIComponent(JSON.stringify({ device: deviceId }));
   try {
-    const faults = await genieFetch(`/faults/?query=${q}`);
+    // Las dos consultas van en paralelo: si no hay nada atascado el costo es
+    // de un solo round-trip al NBI y la orden sale de inmediato.
+    const [faults, tasks] = await Promise.all([
+      genieFetch(`/faults/?query=${q}`).catch(() => []),
+      genieFetch(`/tasks/?query=${q}`).catch(() => []),
+    ]);
+
+    const deletions: Promise<any>[] = [];
+
     for (const f of Array.isArray(faults) ? faults : []) {
       if (f?._id) {
-        await genieFetch(`/faults/${encodeURIComponent(f._id)}`, { method: 'DELETE' }).catch(() => {});
+        deletions.push(
+          genieFetch(`/faults/${encodeURIComponent(f._id)}`, { method: 'DELETE' }).catch(() => {})
+        );
       }
     }
-  } catch { /* ignorar */ }
 
-  try {
-    const tasks = await genieFetch(`/tasks/?query=${q}`);
-    const list = Array.isArray(tasks) ? tasks : [];
-    for (const t of list) {
+    for (const t of Array.isArray(tasks) ? tasks : []) {
       // Solo se descartan tareas atascadas (con fault o antiguas), no las recién creadas.
       const ts = t?.timestamp ? new Date(t.timestamp).getTime() : 0;
       const stale = t?.fault || !ts || now - ts > 60_000;
       if (stale && t?._id) {
-        await genieFetch(`/tasks/${encodeURIComponent(t._id)}`, { method: 'DELETE' }).catch(() => {});
+        deletions.push(
+          genieFetch(`/tasks/${encodeURIComponent(t._id)}`, { method: 'DELETE' }).catch(() => {})
+        );
       }
     }
+
+    if (deletions.length) await Promise.all(deletions);
   } catch { /* ignorar */ }
 }
+
 
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
 async function genieFetch(path: string, options: RequestInit = {}) {
