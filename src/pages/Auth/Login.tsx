@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import omnisyncLogo from '@/assets/omnisync-logo.png';
-import omnisyncSphere from '@/assets/omnisync-sphere.png';
+import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
+const omnisyncLogoFull = omnisyncLogoAsset.url;
 import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
 
 export default function Login() {
