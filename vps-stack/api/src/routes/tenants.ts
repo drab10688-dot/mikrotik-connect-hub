@@ -40,6 +40,8 @@ tenantsRouter.get('/me', async (req: AuthRequest, res: Response) => {
       `SELECT id, slug, name, logo_url, primary_color,
               COALESCE(enable_onus, true) AS enable_onus,
               COALESCE(enable_mikrotik, true) AS enable_mikrotik,
+              COALESCE(enable_tr069, true) AS enable_tr069,
+              COALESCE(enable_onu_web, true) AS enable_onu_web,
               web_ports
          FROM tenants WHERE id = $1`,
       [req.tenantId]
