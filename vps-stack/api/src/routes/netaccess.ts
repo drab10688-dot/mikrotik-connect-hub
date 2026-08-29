@@ -352,6 +352,95 @@ netAccessRouter.get('/:mikrotikId/ethernet', async (req: AuthRequest, res: Respo
   }
 });
 
+// ─── Informe de desconexiones PPPoE ─────────────────────────────
+netAccessRouter.get('/:mikrotikId/pppoe-events', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
+    const interval = `${days} days`;
+
+    const [ranking, timeline, recent, totals] = await Promise.all([
+      pool.query(
+        `SELECT e.username,
+                COUNT(*) FILTER (WHERE e.event = 'down') AS disconnections,
+                MAX(e.created_at) FILTER (WHERE e.event = 'down') AS last_down,
+                s.is_online, s.address, s.caller_id, s.last_up
+           FROM pppoe_events e
+           LEFT JOIN pppoe_sessions s
+             ON s.mikrotik_id = e.mikrotik_id AND s.username = e.username
+          WHERE e.mikrotik_id = $1 AND e.created_at > now() - $2::interval
+          GROUP BY e.username, s.is_online, s.address, s.caller_id, s.last_up
+         HAVING COUNT(*) FILTER (WHERE e.event = 'down') > 0
+          ORDER BY disconnections DESC, last_down DESC
+          LIMIT 100`,
+        [mikrotikId, interval]
+      ),
+      pool.query(
+        `SELECT date_trunc('day', created_at) AS day,
+                COUNT(*) FILTER (WHERE event = 'down') AS downs,
+                COUNT(*) FILTER (WHERE event = 'up') AS ups
+           FROM pppoe_events
+          WHERE mikrotik_id = $1 AND created_at > now() - $2::interval
+          GROUP BY 1 ORDER BY 1`,
+        [mikrotikId, interval]
+      ),
+      pool.query(
+        `SELECT username, event, address, caller_id, created_at
+           FROM pppoe_events
+          WHERE mikrotik_id = $1 AND created_at > now() - $2::interval
+          ORDER BY created_at DESC LIMIT 200`,
+        [mikrotikId, interval]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE event = 'down') AS downs,
+                COUNT(DISTINCT username) FILTER (WHERE event = 'down') AS affected
+           FROM pppoe_events
+          WHERE mikrotik_id = $1 AND created_at > now() - $2::interval`,
+        [mikrotikId, interval]
+      ),
+    ]);
+
+    const clients = ranking.rows.map((r: any) => {
+      const count = Number(r.disconnections);
+      const perDay = count / days;
+      const severity = perDay >= 3 ? 'critica' : perDay >= 1 ? 'alta' : perDay >= 0.3 ? 'media' : 'baja';
+      return {
+        username: r.username,
+        disconnections: count,
+        per_day: Number(perDay.toFixed(2)),
+        last_down: r.last_down,
+        last_up: r.last_up,
+        is_online: r.is_online ?? null,
+        address: r.address,
+        caller_id: r.caller_id,
+        severity,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        days,
+        total_disconnections: Number(totals.rows[0]?.downs || 0),
+        affected_clients: Number(totals.rows[0]?.affected || 0),
+        unstable_clients: clients.filter((c) => c.severity === 'critica' || c.severity === 'alta').length,
+        clients,
+        timeline: timeline.rows.map((t: any) => ({
+          day: t.day,
+          downs: Number(t.downs),
+          ups: Number(t.ups),
+        })),
+        recent: recent.rows,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 
 // ─── PPPoE por VPN (secrets + sesiones activas unificados) ──────
 netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response) => {

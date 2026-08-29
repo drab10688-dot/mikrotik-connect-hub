@@ -18,6 +18,7 @@ import { ispRouter, ispPublicRouter, requireSection } from './routes/isp';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
+import { runPppoeMonitor, cleanupPppoeEvents } from './cron/pppoe-monitor';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
 
 // Re-export pool for backward compatibility with cron jobs
@@ -85,6 +86,14 @@ cron.schedule('0 3 * * *', () => {
     .then(n => console.log(`[CRON] ACS signal cleanup: ${n} registros`))
     .catch(e => console.error('[CRON] ACS cleanup error:', e.message));
   runSignalCleanupCron(pool);
+  cleanupPppoeEvents(pool)
+    .then(n => console.log(`[CRON] PPPoE events cleanup: ${n} registros`))
+    .catch(e => console.error('[CRON] PPPoE cleanup error:', e.message));
+});
+
+// Cron: monitor de sesiones PPPoE (detecta desconexiones) cada minuto
+cron.schedule('* * * * *', () => {
+  runPppoeMonitor(pool).catch(e => console.error('[CRON] PPPoE monitor error:', e.message));
 });
 
 app.listen(PORT, () => {
