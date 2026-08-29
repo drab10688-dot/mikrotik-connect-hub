@@ -452,7 +452,7 @@ export default function Network() {
                               </td>
                               <td className="py-2">
                                 <div className="flex gap-1">
-                                  <Button size="sm" variant="ghost" onClick={() => setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "" }) || setShowApForm(true)}>
+                                  <Button size="sm" variant="ghost" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "" }); setShowApForm(true); }}>
                                     <KeyRound className="w-3.5 h-3.5" />
                                   </Button>
                                   <Button size="sm" variant="ghost" onClick={() => deleteAp.mutate(c.id)}>
