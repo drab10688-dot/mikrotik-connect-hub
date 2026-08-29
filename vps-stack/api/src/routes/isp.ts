@@ -381,6 +381,6 @@ ispRouter.delete('/vpn/:id', requireRole('super_admin', 'admin'), async (req: Au
     `DELETE FROM tenant_vpn_peers WHERE id = $1 AND tenant_id = $2 RETURNING username`,
     [req.params.id, tenant.id]
   );
-  if (rows[0]?.username) await removeL2tpUser(rows[0].username);
+  if (rows[0]?.username) await removeL2tpUser(rows[0].username, rows[0].tunnel_ip);
   res.json({ success: true });
 });
