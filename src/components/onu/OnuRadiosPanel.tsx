@@ -89,6 +89,11 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const confirmFromOnu = () => {
+    window.setTimeout(load, 1500);
+    window.setTimeout(load, 4000);
+  };
+
   const saveRadio = async (radio: Radio) => {
     const form = forms[radio.path];
     if (!form) return;
@@ -103,7 +108,10 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
           channel: form.channel !== "" ? form.channel : undefined,
         },
       });
-      toast.success(res.message || "Cambios enviados a la ONU");
+      toast.success(res.message || "Cambios enviados a la ONU", {
+        description: "Verificando la configuración aplicada…",
+      });
+      confirmFromOnu();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -122,6 +130,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
       setStatus((s) =>
         s ? { ...s, radios: s.radios.map((r) => (r.path === radio.path ? { ...r, enabled: enable } : r)) } : s,
       );
+      confirmFromOnu();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -138,6 +147,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
       });
       toast.success(res.message);
       setStatus((s) => (s ? { ...s, catv: { ...s.catv, enabled: enable } } : s));
+      confirmFromOnu();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -150,7 +160,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     try {
       const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-onu`, { method: "POST" });
       toast.success(res.message);
-      setTimeout(load, 4000);
+      confirmFromOnu();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -340,7 +350,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Si la ONU está tras NAT, los cambios quedan en cola y se aplican en el próximo Inform periódico.
+          Por VPN, las órdenes se envían de inmediato mediante Connection Request. Si la ONU está desconectada, quedan pendientes hasta su próximo Inform.
         </p>
       </CardContent>
     </Card>

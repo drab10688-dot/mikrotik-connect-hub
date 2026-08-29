@@ -11,11 +11,6 @@ export const genieacsRouter = Router();
 
 const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs:7557';
 
-// Credenciales del Connection Request. El usuario es fijo (omnisync) y la
-// contraseña es el token ACS del ISP dueño de la ONU.
-const CR_USERNAME = process.env.ACS_CR_USERNAME || 'omnisync';
-const CR_FALLBACK_PASSWORD = process.env.ACS_CR_PASSWORD || 'omnisync';
-
 // Auth opcional del NBI (si GenieACS se publica detrás de basic-auth).
 function nbiAuthHeader(): Record<string, string> {
   const user = process.env.GENIEACS_NBI_USER;
@@ -26,14 +21,6 @@ function nbiAuthHeader(): Record<string, string> {
 
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
 async function genieFetch(path: string, options: RequestInit = {}) {
-  // Antes de forzar un connection request, el ACS debe conocer las
-  // credenciales correctas de la ONU (omnisync / token del ISP); de lo
-  // contrario la petición se rechaza y la actualización queda en cola.
-  if (path.includes('connection_request')) {
-    const deviceId = decodeURIComponent(path.match(/\/devices\/([^/]+)\/tasks/)?.[1] || '');
-    if (deviceId) await ensureConnectionRequestAuth(deviceId);
-  }
-
   const res = await fetch(`${GENIEACS_NBI}${path}`, {
     ...options,
     headers: {
@@ -53,47 +40,23 @@ async function genieFetch(path: string, options: RequestInit = {}) {
   return res.text();
 }
 
-// Cache para no reenviar la misma tarea en cada refresco.
-const crAuthCache = new Map<string, { password: string; at: number }>();
-const CR_AUTH_TTL_MS = 30 * 60 * 1000;
-
-async function connectionRequestPassword(deviceId: string): Promise<string> {
-  try {
-    const { rows } = await pool.query(
-      `SELECT t.acs_token
-         FROM onu_devices o
-         JOIN tenants t ON t.id = o.tenant_id
-        WHERE o.acs_device_id = $1
-        LIMIT 1`,
-      [deviceId]
-    );
-    if (rows[0]?.acs_token) return String(rows[0].acs_token);
-  } catch { /* instalación sin multi-ISP */ }
-  return CR_FALLBACK_PASSWORD;
-}
-
-/** Sincroniza ConnectionRequestUsername/Password de la ONU con el ISP dueño. */
-async function ensureConnectionRequestAuth(deviceId: string): Promise<void> {
-  try {
-    const password = await connectionRequestPassword(deviceId);
-    const cached = crAuthCache.get(deviceId);
-    if (cached && cached.password === password && Date.now() - cached.at < CR_AUTH_TTL_MS) return;
-
-    const roots = ['InternetGatewayDevice', 'Device'];
-    const parameterValues = roots.flatMap((root) => [
-      [`${root}.ManagementServer.ConnectionRequestUsername`, CR_USERNAME, 'xsd:string'],
-      [`${root}.ManagementServer.ConnectionRequestPassword`, password, 'xsd:string'],
-    ]);
-
-    await fetch(`${GENIEACS_NBI}/devices/${encodeURIComponent(deviceId)}/tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...nbiAuthHeader() },
-      body: JSON.stringify({ name: 'setParameterValues', parameterValues }),
-    });
-    crAuthCache.set(deviceId, { password, at: Date.now() });
-  } catch (error) {
-    console.error('⚠️ No se pudo sincronizar el Connection Request:', error);
+/**
+ * Encola tareas independientes y dispara un único Connection Request al final.
+ * GenieACS procesa todas las tareas pendientes en esa misma sesión CWMP. Esto
+ * evita abrir una sesión nueva por cada parámetro, que algunas ONUs serializan
+ * y terminan aplicando con varios segundos de diferencia.
+ */
+async function queueTasksWithSingleConnectionRequest(deviceId: string, tasks: any[]): Promise<any[]> {
+  const results: any[] = [];
+  const encodedId = encodeURIComponent(deviceId);
+  for (let index = 0; index < tasks.length; index++) {
+    const trigger = index === tasks.length - 1 ? '?connection_request' : '';
+    results.push(await genieFetch(
+      `/devices/${encodedId}/tasks${trigger}`,
+      { method: 'POST', body: JSON.stringify(tasks[index]) }
+    ));
   }
+  return results;
 }
 
 
@@ -592,32 +555,18 @@ genieacsRouter.post('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Re
       return res.status(400).json({ error: 'No hay cambios que enviar' });
     }
 
-    // Una tarea por parámetro: si la ONU rechaza uno, el otro sí se aplica.
-    const results: any[] = [];
-    const failed: string[] = [];
-    for (const pv of parameterValues) {
-      try {
-        results.push(await genieFetch(
-          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-          { method: 'POST', body: JSON.stringify({ name: 'setParameterValues', parameterValues: [pv] }) }
-        ));
-      } catch (e: any) {
-        failed.push(`${pv[0]}: ${e?.message || 'error'}`);
-      }
-    }
-
-    if (results.length === 0) {
-      return res.status(502).json({ error: 'La ONU rechazó la configuración PPPoE', details: failed, path: basePath });
-    }
+    // Se conservan tareas independientes, pero todas viajan en una sola sesión.
+    const results = await queueTasksWithSingleConnectionRequest(
+      deviceId,
+      parameterValues.map((pv) => ({ name: 'setParameterValues', parameterValues: [pv] }))
+    );
 
     res.json({
       success: true,
-      message: failed.length
-        ? `PPPoE aplicado parcialmente (${results.length}/${parameterValues.length})`
-        : 'Configuración PPPoE enviada',
+      message: 'Configuración PPPoE enviada',
       path: basePath,
       data: results,
-      skipped: failed,
+      skipped: [],
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2353,37 +2302,16 @@ genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Res
 
     // Enviamos cada parámetro como tarea independiente: si la ONU rechaza uno
     // (p. ej. una variante de clave), el resto sí se aplica.
-    const results: any[] = [];
-    const failed: string[] = [];
-    let applied = 0;
-    for (let i = 0; i < parameterValues.length; i++) {
-      const pv = parameterValues[i];
-      try {
-        const r = await genieFetch(
-          `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-          { method: 'POST', body: JSON.stringify({ name: 'setParameterValues', parameterValues: [pv] }) }
-        );
-        results.push(r);
-        applied++;
-      } catch (e: any) {
-        failed.push(`${pv[0]}: ${e?.message || 'error'}`);
-      }
-    }
-
-    if (applied === 0) {
-      return res.status(502).json({
-        error: 'La ONU rechazó todos los parámetros enviados',
-        details: failed,
-      });
-    }
+    const results = await queueTasksWithSingleConnectionRequest(
+      deviceId,
+      parameterValues.map((pv) => ({ name: 'setParameterValues', parameterValues: [pv] }))
+    );
 
     res.json({
       success: true,
-      message: failed.length
-        ? `Configuración aplicada (${applied}/${parameterValues.length} parámetros; algunos no soportados)`
-        : 'Configuración WiFi enviada a la ONU',
+      message: 'Configuración WiFi enviada a la ONU',
       data: results,
-      skipped: failed,
+      skipped: [],
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2433,15 +2361,10 @@ genieacsRouter.post('/devices/:deviceId/refresh-onu', async (req: AuthRequest, r
       { name: 'refreshObject', objectName: 'InternetGatewayDevice.DeviceInfo' },
       { name: 'refreshObject', objectName: 'InternetGatewayDevice.WANDevice.1' },
     ];
-    for (const t of tasks) {
-      await genieFetch(
-        `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-        { method: 'POST', body: JSON.stringify(t) }
-      ).catch(() => {});
-    }
+    await queueTasksWithSingleConnectionRequest(deviceId, tasks);
     res.json({
       success: true,
-      message: 'Lectura solicitada. Si la ONU está tras NAT se aplicará en el próximo Inform.',
+      message: 'Lectura inmediata solicitada por TR-069.',
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
