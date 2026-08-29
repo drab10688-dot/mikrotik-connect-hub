@@ -258,6 +258,101 @@ netAccessRouter.get('/:mikrotikId/wireless', async (req: AuthRequest, res: Respo
   }
 });
 
+// ─── Estado de los puertos Ethernet (link, velocidad, errores) ──
+netAccessRouter.get('/:mikrotikId/ethernet', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const config = await getDeviceConfig(pool, mikrotikId);
+
+    const [ethRaw, ifaceRaw] = await Promise.all([
+      mikrotikRequest(config, '/rest/interface/ethernet').catch(() => []),
+      mikrotikRequest(config, '/rest/interface').catch(() => []),
+    ]);
+    const eth: any[] = Array.isArray(ethRaw) ? ethRaw : [];
+    const ifaces: any[] = Array.isArray(ifaceRaw) ? ifaceRaw : [];
+
+    // Monitor en vivo (link, rate, duplex). Puede no estar disponible en algunas versiones.
+    const monitors = await Promise.all(
+      eth.map((e) =>
+        mikrotikRequest(config, '/rest/interface/ethernet/monitor', 'POST', {
+          numbers: e['.id'],
+          once: '',
+        })
+          .then((r: any) => (Array.isArray(r) ? r[0] : r))
+          .catch(() => null)
+      )
+    );
+
+    const parseRate = (rate?: string | null) => {
+      if (!rate) return null;
+      const m = String(rate).match(/(\d+)\s*([MG])/i);
+      if (!m) return null;
+      const value = Number(m[1]);
+      return m[2].toUpperCase() === 'G' ? value * 1000 : value;
+    };
+
+    const ports = eth.map((e, i) => {
+      const m: any = monitors[i] || {};
+      const stats = ifaces.find((f: any) => f.name === e.name) || {};
+      const status = String(m.status ?? (e.running === 'true' ? 'link-ok' : 'no-link'));
+      const connected = status === 'link-ok';
+      const speedMbps = parseRate(m.rate ?? m['rate'] ?? null);
+      const rxErrors = Number(stats['rx-error'] ?? 0) || 0;
+      const txErrors = Number(stats['tx-error'] ?? 0) || 0;
+      const rxDrops = Number(stats['rx-drop'] ?? 0) || 0;
+      const txDrops = Number(stats['tx-drop'] ?? 0) || 0;
+      const linkDowns = Number(e['link-downs'] ?? m['link-downs'] ?? 0) || 0;
+      const errors = rxErrors + txErrors + rxDrops + txDrops;
+
+      let health: 'ok' | 'degradado' | 'fallo' | 'desconectado' = 'ok';
+      if (!connected) health = 'desconectado';
+      else if (errors > 0 || linkDowns > 3) health = 'fallo';
+      else if (speedMbps !== null && speedMbps < 100) health = 'degradado';
+
+      return {
+        id: e['.id'],
+        name: e.name,
+        comment: e.comment || stats.comment || null,
+        disabled: e.disabled === 'true' || e.disabled === true,
+        connected,
+        status,
+        speed_mbps: speedMbps,
+        base: speedMbps ? `${speedMbps}Base-T` : null,
+        duplex:
+          m['full-duplex'] === 'true' ? 'full' : m['full-duplex'] === 'false' ? 'half' : null,
+        auto_negotiation: m['auto-negotiation'] ?? null,
+        default_speed: e.speed ?? null,
+        mac: e['mac-address'] || stats['mac-address'] || null,
+        rx_errors: rxErrors,
+        tx_errors: txErrors,
+        rx_drops: rxDrops,
+        tx_drops: txDrops,
+        link_downs: linkDowns,
+        last_link_up: stats['last-link-up-time'] || e['last-link-up-time'] || null,
+        last_link_down: stats['last-link-down-time'] || e['last-link-down-time'] || null,
+        rx_bytes: Number(stats['rx-byte'] ?? 0) || 0,
+        tx_bytes: Number(stats['tx-byte'] ?? 0) || 0,
+        health,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        total: ports.length,
+        connected: ports.filter((p) => p.connected).length,
+        with_errors: ports.filter((p) => p.health === 'fallo').length,
+        ports,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // ─── PPPoE por VPN (secrets + sesiones activas unificados) ──────
 netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response) => {
   try {
