@@ -464,74 +464,88 @@ export default function SimpleOnuPanel() {
 
       {/* Panel detallado */}
       <Dialog open={!!selected} onOpenChange={(o) => { if (!o) { setSelected(null); setEditingAlias(null); } }}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0">
           {selected && (
             <>
-              <DialogHeader>
-                <DialogTitle className="flex flex-wrap items-center gap-2 pr-6">
-                  <Antenna className="h-5 w-5 text-primary" />
-                  {editingAlias === selected ? (
-                    <span className="flex items-center gap-1">
-                      <Input
-                        autoFocus
-                        className="h-8 w-56"
-                        placeholder="Nombre del cliente"
-                        value={aliasDraft}
-                        onChange={(e) => setAliasDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveAlias(selected);
-                          if (e.key === "Escape") setEditingAlias(null);
-                        }}
-                      />
-                      <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => saveAlias(selected)} disabled={busy === `alias-${selected}`}>
-                        {busy === `alias-${selected}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditingAlias(null)}>
-                        <X className="h-4 w-4" />
-                      </Button>
+              {/* Cabecera con identidad de marca */}
+              <div className="relative overflow-hidden rounded-t-lg border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 pt-6 pb-5">
+                <DialogHeader className="space-y-2">
+                  <DialogTitle className="flex flex-wrap items-center gap-3 pr-8">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 text-primary shadow-sm">
+                      <Antenna className="h-5 w-5" />
                     </span>
-                  ) : (
-                    <>
-                      <span className="truncate">{displayName(selected)}</span>
-                      <Button
-                        size="sm" variant="ghost" className="h-7 px-2"
-                        onClick={() => { setEditingAlias(selected); setAliasDraft(aliases[selected] || ""); }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  )}
-                  <Badge variant={selOffline ? "destructive" : "secondary"}>
-                    {selOffline ? "Desconectada" : "En línea"}
-                  </Badge>
-                </DialogTitle>
-                <DialogDescription className="font-mono text-xs">
-                  {sel?.manufacturer} {sel?.model} · {sel?.serial}
-                </DialogDescription>
-              </DialogHeader>
+                    {editingAlias === selected ? (
+                      <span className="flex items-center gap-1">
+                        <Input
+                          autoFocus
+                          className="h-9 w-56"
+                          placeholder="Nombre del cliente"
+                          value={aliasDraft}
+                          onChange={(e) => setAliasDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveAlias(selected);
+                            if (e.key === "Escape") setEditingAlias(null);
+                          }}
+                        />
+                        <Button size="sm" variant="default" className="h-9 px-3" onClick={() => saveAlias(selected)} disabled={busy === `alias-${selected}`}>
+                          {busy === `alias-${selected}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-9 px-3" onClick={() => setEditingAlias(null)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </span>
+                    ) : (
+                      <>
+                        <span className="truncate text-lg font-semibold tracking-tight">{displayName(selected)}</span>
+                        <Button
+                          size="sm" variant="outline" className="h-8 gap-1.5 px-2.5 text-xs"
+                          onClick={() => { setEditingAlias(selected); setAliasDraft(aliases[selected] || ""); }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Renombrar
+                        </Button>
+                      </>
+                    )}
+                    <Badge
+                      variant={selOffline ? "destructive" : "secondary"}
+                      className={selOffline ? "" : "border-success/30 bg-success/15 text-success"}
+                    >
+                      <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${selOffline ? "bg-destructive-foreground/80" : "bg-success"}`} />
+                      {selOffline ? "Desconectada" : "En línea"}
+                    </Badge>
+                  </DialogTitle>
+                  <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px]">
+                    <span className="rounded bg-background/70 px-1.5 py-0.5 border">{sel?.manufacturer || "—"}</span>
+                    <span className="rounded bg-background/70 px-1.5 py-0.5 border">{sel?.model || "—"}</span>
+                    <span className="rounded bg-background/70 px-1.5 py-0.5 border">SN {sel?.serial || "—"}</span>
+                  </DialogDescription>
+                </DialogHeader>
+              </div>
 
+              <div className="space-y-4 px-6 pb-6">
               {/* Barra de acciones rápidas */}
-              <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-2">
-                <Button size="sm" variant="outline" onClick={() => refreshSignal(selected)} disabled={busy === `sig-${selected}`}>
-                  {busy === `sig-${selected}` ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Signal className="h-3.5 w-3.5 mr-2" />}
+              <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-2 shadow-sm">
+                <Button size="sm" variant="default" className="gap-2 shadow-sm" onClick={() => refreshSignal(selected)} disabled={busy === `sig-${selected}`}>
+                  {busy === `sig-${selected}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Signal className="h-4 w-4" />}
                   Refrescar señal
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => refreshPppoe(selected)} disabled={busy === `rpppoe-${selected}`}>
-                  {busy === `rpppoe-${selected}` ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Network className="h-3.5 w-3.5 mr-2" />}
+                <Button size="sm" variant="secondary" className="gap-2 border" onClick={() => refreshPppoe(selected)} disabled={busy === `rpppoe-${selected}`}>
+                  {busy === `rpppoe-${selected}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Network className="h-4 w-4" />}
                   Refrescar PPPoE
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => refreshParams(selected)} disabled={busy === `tr069-${selected}`}>
-                  {busy === `tr069-${selected}` ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Cpu className="h-3.5 w-3.5 mr-2" />}
+                <Button size="sm" variant="outline" className="gap-2" onClick={() => refreshParams(selected)} disabled={busy === `tr069-${selected}`}>
+                  {busy === `tr069-${selected}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cpu className="h-4 w-4" />}
                   Leer parámetros TR-069
                 </Button>
               </div>
 
               <Tabs defaultValue="general">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="general">Estado y óptica</TabsTrigger>
-                  <TabsTrigger value="wifi">Wi-Fi dual band</TabsTrigger>
-                  <TabsTrigger value="red">Red / PPPoE</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3 h-11 rounded-xl bg-muted p-1">
+                  <TabsTrigger value="general" className="rounded-lg data-[state=active]:shadow-sm data-[state=active]:text-primary">Estado y óptica</TabsTrigger>
+                  <TabsTrigger value="wifi" className="rounded-lg data-[state=active]:shadow-sm data-[state=active]:text-primary">Wi-Fi dual band</TabsTrigger>
+                  <TabsTrigger value="red" className="rounded-lg data-[state=active]:shadow-sm data-[state=active]:text-primary">Red / PPPoE</TabsTrigger>
                 </TabsList>
+
 
                 {/* TAB 1 */}
                 <TabsContent value="general" className="space-y-4 pt-4">
