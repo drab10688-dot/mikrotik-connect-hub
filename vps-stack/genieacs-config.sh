@@ -274,16 +274,29 @@ vparam PppoeUser   "$VP_PPPOEUSER"
 vparam PppoeStatus "$VP_PPPOESTATUS"
 
 
-# ---------------- Preset periódico liviano ----------------
-# No refrescar árboles completos en cada Inform. En ONUs con muchos parámetros
-# eso ocupa la sesión CWMP y retrasa órdenes interactivas (WiFi/PPPoE). La API
-# solicita refreshObject solo cuando el operador pulsa actualizar.
-read -r -d '' PROV <<'EOF' || true
-declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
-declare("InternetGatewayDevice.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: 300});
-declare("Device.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
-declare("Device.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: 300});
+# ---------------- Preset periódico liviano (único) ----------------
+# No refrescar árboles completos en cada Inform: ocupa la sesión CWMP y retrasa
+# las órdenes interactivas (WiFi/PPPoE). La API pide refreshObject bajo demanda.
+#
+# IMPORTANTE: solo se declara el modelo de datos que la ONU realmente expone.
+# Declarar InternetGatewayDevice.* y Device.* a la vez provoca fault 9005
+# (parámetro inexistente) y aborta la sesión completa -> la ONU deja de reportar.
+#
+# La URL y credenciales NO se fuerzan: son distintas por ISP y deben conservar
+# el token /tr069/<token>/. Sobrescribirlas rompe el aislamiento multi-ISP.
+PROV=$(cat <<EOF
+const igd = declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: 1});
+const root = (igd.size > 0) ? "InternetGatewayDevice" : "Device";
+
+declare(root + ".ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
+declare(root + ".ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
+
+// Sin NAT dentro del túnel VPN: STUN no es necesario (y añade latencia)
+try {
+  declare(root + ".ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
+} catch (e) {}
 EOF
+)
 
 curl -sf -X PUT "$NBI_URL/provisions/omnisync-refresh" -H 'Content-Type: text/plain' \
   --data-binary "$PROV" >/dev/null && c_ok "Provision omnisync-refresh" || c_err "Provision falló"
@@ -292,30 +305,12 @@ curl -sf -X PUT "$NBI_URL/presets/omnisync-refresh" -H 'Content-Type: applicatio
   --data '{"weight":0,"precondition":"{}","configurations":[{"type":"provision","name":"omnisync-refresh"}]}' \
   >/dev/null && c_ok "Preset omnisync-refresh" || c_err "Preset falló"
 
-# ---------------- Ajustes seguros para transporte VPN ----------------
-# La URL y las credenciales NO se fuerzan aquí: son distintas por ISP y deben
-# conservar el token /tr069/<token>/ configurado en cada ONU. Sobrescribirlas
-# globalmente rompe el aislamiento y también el Connection Request inmediato.
-ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-300}"
+# Eliminar el preset/provision duplicado de versiones anteriores que competía
+# por los mismos parámetros y declaraba ambos modelos de datos.
+curl -sf -X DELETE "$NBI_URL/presets/omnisync-acs-wg" >/dev/null 2>&1 || true
+curl -sf -X DELETE "$NBI_URL/provisions/omnisync-acs-wg" >/dev/null 2>&1 || true
+c_ok "Preset duplicado omnisync-acs-wg eliminado"
 
-PROV_WG=$(cat <<EOF
-declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
-declare("InternetGatewayDevice.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
-declare("Device.ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
-declare("Device.ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
-// Sin NAT dentro del túnel: STUN no es necesario
-declare("InternetGatewayDevice.ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
-declare("Device.ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
-EOF
-)
-
-curl -sf -X PUT "$NBI_URL/provisions/omnisync-acs-wg" -H 'Content-Type: text/plain' \
-  --data-binary "$PROV_WG" >/dev/null && c_ok "Provision omnisync-acs-wg (VPN, sin sobrescribir URL/credenciales)" \
-  || c_err "Provision omnisync-acs-wg falló"
-
-curl -sf -X PUT "$NBI_URL/presets/omnisync-acs-wg" -H 'Content-Type: application/json' \
-  --data '{"weight":-10,"precondition":"{}","configurations":[{"type":"provision","name":"omnisync-acs-wg"}]}' \
-  >/dev/null && c_ok "Preset omnisync-acs-wg" || c_err "Preset omnisync-acs-wg falló"
 
 docker restart "$GENIEACS_CONTAINER" >/dev/null 2>&1 && c_ok "GenieACS reiniciado" || true
 
