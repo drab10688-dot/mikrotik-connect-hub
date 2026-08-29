@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/hooks/useAuth";
 import KpiCard, { KpiTone } from "@/components/dashboard/KpiCard";
 import OpticalMeter from "@/components/onu/OpticalMeter";
 import { Antenna, Wifi, Server, Settings, Activity, SignalHigh, SignalLow, RefreshCw } from "lucide-react";
