@@ -662,7 +662,8 @@ export default function SimpleOnuPanel() {
                     </div>
                   </div>
                 </TabsContent>
-              </Tabs>
+               </Tabs>
+              </div>
             </>
           )}
         </DialogContent>
