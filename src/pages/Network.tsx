@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
   Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
-  AlertTriangle, PlugZap, Activity,
+  AlertTriangle, PlugZap, Activity, Globe,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
@@ -255,6 +255,13 @@ export default function Network() {
               title="Winbox nativo (Wine) ejecutándose en el VPS, a través de la VPN"
             >
               <Monitor className="w-4 h-4 mr-2" /> Abrir Winbox
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => window.open(withAuthToken("/browser/"), "_blank", "noopener")}
+              title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
+            >
+              <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
             </Button>
           </div>
         </div>
