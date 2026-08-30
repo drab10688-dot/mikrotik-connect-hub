@@ -72,13 +72,16 @@ else
 fi
 
 echo -e "\n${CYAN}[4/6] Estado del contenedor Chromium${NC}"
-BROWSER_STATE=$(docker inspect --format '{{.State.Status}}' omnisync-browser 2>/dev/null || true)
+# Prioriza un escritorio privado activo; si no existe usa el global heredado.
+BROWSER_CONTAINER=$(docker ps --filter 'label=omnisync.userBrowser=true' --format '{{.Names}}' | head -1)
+[ -n "$BROWSER_CONTAINER" ] || BROWSER_CONTAINER="omnisync-browser"
+BROWSER_STATE=$(docker inspect --format '{{.State.Status}}' "$BROWSER_CONTAINER" 2>/dev/null || true)
 if [ "$BROWSER_STATE" = "running" ]; then
-  ok "omnisync-browser está activo"
+  ok "$BROWSER_CONTAINER está activo"
 else
-  fail "omnisync-browser está ${BROWSER_STATE:-ausente}"
+  fail "$BROWSER_CONTAINER está ${BROWSER_STATE:-ausente}"
 fi
-SECCOMP=$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' omnisync-browser 2>/dev/null || true)
+SECCOMP=$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$BROWSER_CONTAINER" 2>/dev/null || true)
 if echo "$SECCOMP" | grep -q 'seccomp=unconfined'; then
   ok "Compatibilidad seccomp aplicada"
 else
@@ -86,7 +89,7 @@ else
 fi
 
 echo -e "\n${CYAN}[5/6] Red y escritorio remoto${NC}"
-BROWSER_CODE=$(docker exec omnisync-browser curl -sS -k -o /dev/null -w '%{http_code}' --connect-timeout 8 --max-time 12 "$TARGET_URL" 2>/dev/null || true)
+BROWSER_CODE=$(docker exec "$BROWSER_CONTAINER" curl -sS -k -o /dev/null -w '%{http_code}' --connect-timeout 8 --max-time 12 "$TARGET_URL" 2>/dev/null || true)
 if [ -n "$BROWSER_CODE" ] && [ "$BROWSER_CODE" != "000" ]; then
   ok "Chromium alcanza la ONU (HTTP $BROWSER_CODE)"
 else
@@ -100,13 +103,13 @@ else
 fi
 
 echo -e "\n${CYAN}[6/6] Apertura real como usuario abc${NC}"
-DISPLAYS=$(docker exec omnisync-browser sh -c 'ls /tmp/.X11-unix 2>/dev/null' | sed 's/^X/:/' | tr '\n' ' ')
+DISPLAYS=$(docker exec "$BROWSER_CONTAINER" sh -c 'ls /tmp/.X11-unix 2>/dev/null' | sed 's/^X/:/' | tr '\n' ' ')
 [ -n "$DISPLAYS" ] || DISPLAYS=":1 :0"
 echo "  Displays detectados: $DISPLAYS"
 OPEN_OUT=""
 for D in $DISPLAYS; do
   # Primero navega la ventana existente; evita perfiles bloqueados/DBus.
-  OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e TARGET_URL="$TARGET_URL" omnisync-browser sh -lc '
+  OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e TARGET_URL="$TARGET_URL" "$BROWSER_CONTAINER" sh -lc '
     command -v xdotool >/dev/null 2>&1 || exit 127
     WID=$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)
     [ -n "$WID" ] || WID=$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)
@@ -116,7 +119,7 @@ for D in $DISPLAYS; do
       xdotool key --window "$WID" Return
   ' 2>&1 || true)
   [ -z "$OPEN_OUT" ] && { OPEN_OUT="[$D] navegación por ventana"; break; }
-  OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e HOME=/config omnisync-browser \
+  OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e HOME=/config "$BROWSER_CONTAINER" \
     /usr/bin/chromium --new-tab "$TARGET_URL" 2>&1 || true)
   echo "$OPEN_OUT" | grep -qi 'cannot open display' || { OPEN_OUT="[$D] $OPEN_OUT"; break; }
 done
@@ -127,7 +130,7 @@ else
 fi
 
 echo -e "\n${CYAN}Últimos mensajes relevantes de Chromium:${NC}"
-docker logs --tail 80 omnisync-browser 2>&1 | grep -iE 'chromium|firefox|sandbox|namespace|error|fail|kasm|selkies' | tail -20 || true
+docker logs --tail 80 "$BROWSER_CONTAINER" 2>&1 | grep -iE 'chromium|firefox|sandbox|namespace|error|fail|kasm|selkies' | tail -20 || true
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
