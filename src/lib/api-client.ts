@@ -62,7 +62,10 @@ export const remoteDesktopUrl = (kind: 'browser' | 'winbox'): string => {
   const host = window.location.hostname;
   // KasmVNC sólo funciona en contexto seguro: los escritorios se sirven por HTTPS
   // (certificado autofirmado; la primera vez hay que aceptar el aviso del navegador).
-  const base = `https://${host}:${port}/`;
+  // autoconnect/reconnect: entra directo sin pantalla intermedia.
+  // resize=scale: el escritorio remoto se ajusta a la vista y habilita los gestos
+  // táctiles de KasmVNC en celular (pellizcar = zoom, dos dedos = desplazar).
+  const base = `https://${host}:${port}/?autoconnect=true&reconnect=true&resize=scale`;
   return withAuthToken(base);
 };
 
