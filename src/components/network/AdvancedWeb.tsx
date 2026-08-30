@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize } from "lucide-react";
+import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Globe } from "lucide-react";
 import { withAuthToken, netAccessApi } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -183,6 +183,11 @@ export function AdvancedWeb({
               <Button size="sm" variant="outline" asChild>
                 <a href={withAuthToken(target.proxy_path)} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
+                </a>
+              </Button>
+              <Button size="sm" variant="secondary" asChild>
+                <a href="/browser/" target="_blank" rel="noreferrer" title="Firefox real dentro del VPS (captchas, JS pesado)">
+                  <Globe className="h-4 w-4 mr-1" /> Navegador remoto
                 </a>
               </Button>
             </div>
