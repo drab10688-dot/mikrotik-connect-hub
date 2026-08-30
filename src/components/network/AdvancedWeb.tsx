@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ExternalLink, MonitorCog } from "lucide-react";
+import { withAuthToken } from "@/lib/api-client";
 
 export interface AdvancedTarget {
   ip: string;
@@ -77,7 +78,7 @@ export function AdvancedWeb({
               {target.name} <span className="font-mono text-xs text-muted-foreground">{target.ip}</span>
             </CardTitle>
             <Button size="sm" variant="outline" asChild>
-              <a href={target.proxy_path} target="_blank" rel="noreferrer">
+              <a href={withAuthToken(target.proxy_path)} target="_blank" rel="noreferrer">
                 <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
               </a>
             </Button>
@@ -85,7 +86,7 @@ export function AdvancedWeb({
           <CardContent>
             <iframe
               key={target.proxy_path}
-              src={target.proxy_path}
+              src={withAuthToken(target.proxy_path)}
               title={`Sistema de ${target.name}`}
               className="w-full h-[70vh] rounded-md border bg-background"
             />

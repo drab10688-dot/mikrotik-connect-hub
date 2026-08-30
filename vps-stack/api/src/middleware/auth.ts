@@ -9,15 +9,30 @@ export interface AuthRequest extends Request {
   tenantId?: string | null;
 }
 
+/** Token guardado en cookie para el proxy web (iframes / pestañas nuevas). */
+export const WEB_TOKEN_COOKIE = 'omnisync_web_token';
+
+function cookieToken(req: Request): string | undefined {
+  const raw = req.headers.cookie;
+  if (!raw) return undefined;
+  for (const part of raw.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === WEB_TOKEN_COOKIE) return decodeURIComponent(v.join('='));
+  }
+  return undefined;
+}
+
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const authorization = req.headers.authorization;
+  const queryToken = typeof req.query?.token === 'string' ? req.query.token : undefined;
   const token = authorization?.startsWith('Bearer ')
     ? authorization.slice('Bearer '.length).trim()
-    : undefined;
+    : queryToken || cookieToken(req);
 
   if (!token) {
     return res.status(401).json({ error: 'Token requerido' });
   }
+
 
   let decoded: { userId: string; role?: string };
   try {

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import http from 'http';
 import https from 'https';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { pool } from '../lib/db';
@@ -905,9 +905,22 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     return res.status(400).send('Destino inválido');
   }
 
+  // Al abrir en pestaña nueva o iframe no viaja la cabecera Authorization:
+  // el token llega por ?token= y se guarda en cookie para las peticiones hijas.
+  if (typeof req.query.token === 'string' && req.query.token) {
+    res.setHeader(
+      'Set-Cookie',
+      `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
+    );
+  }
+
   const prefix = `/api/netaccess/${mikrotikId}/web/${ip}/${targetPort}`;
-  const rest = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) : '/';
+  const rawRest = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) : '/';
+  const rest = rawRest
+    .replace(/([?&])token=[^&]*&?/, '$1')
+    .replace(/[?&]$/, '');
   const targetPath = rest.startsWith('/') ? rest : `/${rest}`;
+
 
   const secure = targetPort === 443 || targetPort === 8443;
   const client = secure ? https : http;
@@ -922,6 +935,13 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         ...req.headers,
         host: `${ip}:${targetPort}`,
         'accept-encoding': 'identity',
+        // No se reenvían credenciales del panel al equipo remoto.
+        cookie: String(req.headers.cookie || '')
+          .split(';')
+          .map((c) => c.trim())
+          .filter((c) => c && !c.startsWith(`${WEB_TOKEN_COOKIE}=`))
+          .join('; '),
+        authorization: undefined as any,
       },
       rejectUnauthorized: false,
       timeout: 20000,
