@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
+import { usePagedSearch } from "@/hooks/use-paged-search";
+import { SearchBox, Pager } from "@/components/common/SearchPager";
 
 const AP_QUALITY: Record<string, { label: string; className: string }> = {
   excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
@@ -181,21 +183,20 @@ export default function Network() {
   const secrets = pppoe?.secrets ?? [];
   const equipos = netDevices?.devices ?? [];
 
-  const filteredSecrets = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return secrets;
-    return secrets.filter((s: any) =>
-      [s.name, s.profile, s.remote_address, s.comment].filter(Boolean).join(" ").toLowerCase().includes(q)
-    );
-  }, [secrets, search]);
+  // Buscadores independientes con paginación por sección.
+  const pppoeSearch = usePagedSearch<any>(
+    secrets,
+    (s) => [s.name, s.profile, s.remote_address, s.comment, s.service, s.caller_id],
+    { pageSize: 25 }
+  );
+  const equipoSearch = usePagedSearch<any>(
+    equipos,
+    (d) => [d.ip, d.mac, d.name, d.platform, d.brand, d.source],
+    { pageSize: 24 }
+  );
 
-  const filteredEquipos = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return equipos;
-    return equipos.filter((d: any) =>
-      [d.ip, d.mac, d.name, d.platform, d.brand].filter(Boolean).join(" ").toLowerCase().includes(q)
-    );
-  }, [equipos, search]);
+  const filteredSecrets = pppoeSearch.paged;
+  const filteredEquipos = equipoSearch.paged;
 
   const openWebFig = async () => {
     try {
@@ -393,6 +394,12 @@ export default function Network() {
                 </div>
               </CardHeader>
               <CardContent>
+                <SearchBox
+                  controls={pppoeSearch}
+                  placeholder="Buscar por usuario, IP, perfil o comentario…"
+                  className="mb-3"
+                />
+
                 {pppoeError ? (
                   <p className="text-sm text-destructive">{(pppoeError as any).message}</p>
                 ) : loadingPppoe ? (
@@ -450,6 +457,7 @@ export default function Network() {
                         )}
                       </tbody>
                     </table>
+                    <Pager controls={pppoeSearch} />
                   </div>
                 )}
               </CardContent>
@@ -608,6 +616,12 @@ export default function Network() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <SearchBox
+                  controls={equipoSearch}
+                  placeholder="Buscar por IP, MAC, nombre, marca o plataforma…"
+                  className="mb-3"
+                />
+
                 {netError ? (
                   <p className="text-sm text-destructive">{(netError as any).message}</p>
                 ) : loadingNet ? (
@@ -660,6 +674,7 @@ export default function Network() {
                     )}
                   </div>
                 )}
+                {!loadingNet && !netError && <Pager controls={equipoSearch} />}
               </CardContent>
             </Card>
           </TabsContent>

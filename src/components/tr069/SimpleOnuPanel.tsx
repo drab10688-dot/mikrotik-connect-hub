@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { normalize } from "@/hooks/use-paged-search";
+import { Pager } from "@/components/common/SearchPager";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -318,7 +320,7 @@ export default function SimpleOnuPanel() {
   }, [devices, signals]);
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const terms = normalize(query).split(/\s+/).filter(Boolean);
     return devices.filter((id) => {
       const sig = signals[id];
       const off = isOffline(sig);
@@ -326,13 +328,30 @@ export default function SimpleOnuPanel() {
       if (filter === "offline" && !off) return false;
       if (filter === "critical" && opticalTone(sig?.rxPower) !== "crit") return false;
       if (filter === "wifi" && !(sig?.radios || []).some((r) => r.enabled && r.ssid)) return false;
-      if (!q) return true;
-      return [displayName(id), sig?.serial, sig?.model, sig?.manufacturer, pppoeNames[id]]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q));
+      if (!terms.length) return true;
+      const haystack = normalize(
+        [displayName(id), sig?.serial, sig?.model, sig?.manufacturer, pppoeNames[id], id,
+         ...(sig?.radios || []).map((r) => r.ssid)]
+          .filter(Boolean)
+          .join(" "),
+      );
+      return terms.every((t) => haystack.includes(t));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devices, signals, filter, query, aliases, pppoeNames]);
+
+  // Paginación: no se pintan cientos de ONUs de golpe.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageItems = visible.slice(pageStart, pageStart + pageSize);
+  useEffect(() => { setPage(1); }, [query, filter, pageSize]);
+  const pagerControls = {
+    query, setQuery, total: visible.length, page: currentPage, setPage, pageCount, pageSize, setPageSize,
+    from: visible.length ? pageStart + 1 : 0, to: Math.min(pageStart + pageSize, visible.length),
+  };
 
   if (health === "offline" && !loading) {
     return (
@@ -420,7 +439,7 @@ export default function SimpleOnuPanel() {
                   </TableCell>
                 </TableRow>
               ) : (
-                visible.map((id) => {
+                pageItems.map((id) => {
                   const sig = signals[id];
                   const off = isOffline(sig);
                   const radios = (sig?.radios || []).filter((r) => r.ssid);
@@ -475,6 +494,9 @@ export default function SimpleOnuPanel() {
               )}
             </TableBody>
           </Table>
+          <div className="px-4 pb-3">
+            <Pager controls={pagerControls} />
+          </div>
         </div>
       </Card>
 
