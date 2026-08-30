@@ -17,6 +17,39 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40);
 
+/**
+ * Auto-reparación: si la base viene de una instalación anterior, faltan
+ * columnas nuevas en `tenants` y cualquier alta falla. Se ejecuta bajo demanda.
+ */
+const TENANT_COLUMNS = [
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_color TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_limit INTEGER`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_token TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vpn_subnet TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_networks TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onus BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_mikrotik BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_tr069 BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onu_web BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS web_ports JSONB`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS landing JSONB`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()`,
+];
+
+let tenantColumnsReady = false;
+async function ensureTenantColumns() {
+  if (tenantColumnsReady) return;
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => undefined);
+  for (const sql of TENANT_COLUMNS) {
+    await pool.query(sql).catch((e: any) => console.warn('[TENANTS] schema:', e.message));
+  }
+  tenantColumnsReady = true;
+}
+
+
+
 // ─── Público: branding por slug (login personalizado por ISP) ─────────
 tenantsPublicRouter.get('/:slug', async (req: Request, res: Response) => {
   try {
@@ -78,22 +111,31 @@ tenantsRouter.put('/me', requireRole('super_admin', 'admin'), async (req: AuthRe
 // ─── Gestión global (solo super_admin) ────────────────────────────────
 tenantsRouter.get('/', requireRole('super_admin'), async (_req: AuthRequest, res: Response) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT t.*,
-              (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users_count,
-              (SELECT COUNT(*) FROM mikrotik_devices d WHERE d.tenant_id = t.id) AS devices_count,
-              (SELECT COUNT(*) FROM acs_device_owners o
-                WHERE o.tenant_id = t.id AND o.status = 'active') AS onus_used,
-              (SELECT COUNT(*) FROM acs_device_owners o
-                WHERE o.tenant_id = t.id AND o.status = 'blocked') AS onus_blocked,
-              (SELECT COUNT(*) FROM tenant_vpn_peers p WHERE p.tenant_id = t.id) AS vpn_count
-       FROM tenants t ORDER BY t.name`
-    );
-    res.json({ data: rows });
+    await ensureTenantColumns();
+    try {
+      const { rows } = await pool.query(
+        `SELECT t.*,
+                (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users_count,
+                (SELECT COUNT(*) FROM mikrotik_devices d WHERE d.tenant_id = t.id) AS devices_count,
+                (SELECT COUNT(*) FROM acs_device_owners o
+                  WHERE o.tenant_id = t.id AND o.status = 'active') AS onus_used,
+                (SELECT COUNT(*) FROM acs_device_owners o
+                  WHERE o.tenant_id = t.id AND o.status = 'blocked') AS onus_blocked,
+                (SELECT COUNT(*) FROM tenant_vpn_peers p WHERE p.tenant_id = t.id) AS vpn_count
+         FROM tenants t ORDER BY t.name`
+      );
+      return res.json({ data: rows });
+    } catch (inner: any) {
+      // Alguna tabla auxiliar todavía no existe: devolver el listado básico.
+      console.warn('[TENANTS] listado reducido:', inner.message);
+      const { rows } = await pool.query(`SELECT * FROM tenants ORDER BY name`);
+      return res.json({ data: rows });
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
@@ -105,7 +147,9 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     const finalSlug = slugify(slug || name);
     if (!finalSlug) return res.status(400).json({ error: 'Slug inválido' });
 
+    await ensureTenantColumns();
     await client.query('BEGIN');
+
     const { rows } = await client.query(
       `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit,
                             enable_onus, enable_mikrotik,
@@ -151,6 +195,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureTenantColumns();
     const { name, slug, logo_url, primary_color, is_active, onu_limit,
             enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing } = req.body;
     const { rows } = await pool.query(
