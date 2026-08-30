@@ -205,11 +205,19 @@ services:
       PUID: 1000
       PGID: 1000
       TZ: ${TZ:-America/Bogota}
-      CHROME_CLI: ${BROWSER_HOME_URL:-about:blank}
+      # Incógnito forzado + sin gestor de contraseñas: no persisten cookies ni historial.
+      CHROME_CLI: --incognito --disable-sync --no-first-run --no-default-browser-check --password-store=basic --disable-features=Translate,AutofillServerCommunication ${BROWSER_HOME_URL:-about:blank}
+    # Sin resolución DNS pública: sólo IPs privadas por la VPN.
+    dns:
+      - 127.0.0.1
     volumes:
       - browser_config:/config
       # Quita bloqueos de perfil de Chromium al arrancar (SingletonLock).
       - ./browser/root/custom-cont-init.d:/custom-cont-init.d:ro
+    # Perfil en memoria: se borra al reiniciar, nada queda en disco.
+    tmpfs:
+      - /config/.config/chromium:mode=1777,size=512m
+      - /config/.cache:mode=1777,size=256m
     # Red aislada: el navegador NO ve api/postgres/mongo/genieacs.
     # Sólo Nginx (que está en ambas redes) puede alcanzarlo.
     networks:
