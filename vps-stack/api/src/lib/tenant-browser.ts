@@ -20,6 +20,7 @@ const DYN_DIR = process.env.NGINX_DYN_DIR || '/opt/omnisync/nginx-dyn';
 const PORT_MIN = Number(process.env.BROWSER_PORT_MIN || 8100);
 const PORT_MAX = Number(process.env.BROWSER_PORT_MAX || 8129);
 const TZ = process.env.TZ || 'America/Bogota';
+const TENANT_BROWSERS_ENABLED = process.env.TENANT_BROWSERS_ENABLED === 'true';
 
 export interface TenantBrowser {
   tenantId: string | null;
@@ -162,10 +163,10 @@ async function createContainer(name: string) {
  * Si el usuario no tiene tenant (instalación de un solo ISP) usa el navegador global.
  */
 export async function ensureTenantBrowser(tenantId: string | null | undefined): Promise<TenantBrowser> {
-  if (!tenantId) {
+  if (!tenantId || !TENANT_BROWSERS_ENABLED) {
     const container = process.env.BROWSER_CONTAINER || 'omnisync-browser';
     const status = await containerStatus(container);
-    return { tenantId: null, slug: 'global', container, port: 8081, running: status === 'running' };
+    return { tenantId: tenantId || null, slug: 'global', container, port: 8081, running: status === 'running' };
   }
 
   const { port, slug } = await reservePort(tenantId);
