@@ -181,21 +181,20 @@ export default function Network() {
   const secrets = pppoe?.secrets ?? [];
   const equipos = netDevices?.devices ?? [];
 
-  const filteredSecrets = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return secrets;
-    return secrets.filter((s: any) =>
-      [s.name, s.profile, s.remote_address, s.comment].filter(Boolean).join(" ").toLowerCase().includes(q)
-    );
-  }, [secrets, search]);
+  // Buscadores independientes con paginación por sección.
+  const pppoeSearch = usePagedSearch<any>(
+    secrets,
+    (s) => [s.name, s.profile, s.remote_address, s.comment, s.service, s.caller_id],
+    { pageSize: 25 }
+  );
+  const equipoSearch = usePagedSearch<any>(
+    equipos,
+    (d) => [d.ip, d.mac, d.name, d.platform, d.brand, d.source],
+    { pageSize: 24 }
+  );
 
-  const filteredEquipos = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return equipos;
-    return equipos.filter((d: any) =>
-      [d.ip, d.mac, d.name, d.platform, d.brand].filter(Boolean).join(" ").toLowerCase().includes(q)
-    );
-  }, [equipos, search]);
+  const filteredSecrets = pppoeSearch.paged;
+  const filteredEquipos = equipoSearch.paged;
 
   const openWebFig = async () => {
     try {
