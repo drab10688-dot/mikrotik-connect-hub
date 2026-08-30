@@ -1,9 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Clipboard, ExternalLink, Maximize, Minimize, Monitor, RotateCw } from "lucide-react";
+import { useEffect } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { browserApi, remoteDesktopUrl } from "@/lib/api-client";
 
 export interface ProxyBrowserTarget {
@@ -12,6 +8,10 @@ export interface ProxyBrowserTarget {
   proxyUrl?: string;
 }
 
+/**
+ * Abre el equipo directamente en el escritorio remoto (VNC) en una pestaña
+ * nueva: lanza la URL en el Chromium del VPS y abre el visor en otra ventana.
+ */
 export function ProxyBrowserDialog({
   target,
   onOpenChange,
@@ -19,177 +19,30 @@ export function ProxyBrowserDialog({
   target: ProxyBrowserTarget | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [browserKey, setBrowserKey] = useState(0);
-  const [status, setStatus] = useState<string>("Verificando navegador remoto…");
-  const [embedded, setEmbedded] = useState(false);
-  const [probing, setProbing] = useState(true);
-
-
-
   useEffect(() => {
-    const onFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", onFullscreen);
-    return () => document.removeEventListener("fullscreenchange", onFullscreen);
-  }, []);
+    if (!target) return;
 
-  const launchRemote = useCallback(
-    async (url: string, silent = false) => {
-      setStatus("Abriendo en el navegador remoto…");
+    let cancelled = false;
+    (async () => {
       try {
         const st = await browserApi.status();
         if (!st?.running) throw new Error(st?.hint || "El navegador remoto no está activo");
-        await browserApi.open(url);
-        setStatus("Navegador remoto listo");
-        return true;
+        await browserApi.open(target.directUrl);
+        if (cancelled) return;
+        // Abrir el visor del escritorio remoto en una pestaña nueva.
+        window.open(remoteDesktopUrl("browser"), "_blank", "noopener,noreferrer");
+        toast.success(`${target.title}: abriendo en el escritorio remoto`);
       } catch (e: any) {
-        setStatus(e?.message || "No se pudo usar el navegador remoto");
-        if (!silent) toast.error(e?.message || "No se pudo usar el navegador remoto");
-        return false;
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!target) return;
-    void launchRemote(target.directUrl, true);
-  }, [target, launchRemote]);
-
-  const copyUrl = async () => {
-    if (!target) return;
-    try {
-      await navigator.clipboard.writeText(target.directUrl);
-      toast.success("Dirección copiada");
-    } catch {
-      toast.error("No se pudo copiar; selecciona la dirección manualmente");
-    }
-  };
-
-  const toggleFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await wrapRef.current?.requestFullscreen();
-    } catch {
-      toast.error("El navegador no permitió pantalla completa");
-    }
-  };
-
-  const reload = async () => {
-    if (target) await launchRemote(target.directUrl);
-    setBrowserKey((k) => k + 1);
-  };
-
-  // El escritorio remoto no pide clave propia: Nginx valida el token de sesión.
-  const viewerUrl = remoteDesktopUrl("browser");
-
-  // El certificado del VPS es autofirmado: dentro del iframe el navegador lo
-  // rechaza en silencio (pantalla en blanco) hasta que se acepta una vez en una
-  // pestaña normal. Comprobamos el origen antes de incrustarlo.
-  useEffect(() => {
-    if (!target) return;
-    let cancelled = false;
-    setProbing(true);
-    (async () => {
-      try {
-        await fetch(viewerUrl, { mode: "no-cors", cache: "no-store" });
-        if (!cancelled) {
-          setEmbedded(true);
-          setProbing(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setEmbedded(false);
-          setProbing(false);
-        }
+        if (!cancelled) toast.error(e?.message || "No se pudo usar el navegador remoto");
+      } finally {
+        if (!cancelled) onOpenChange(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [target, viewerUrl]);
+  }, [target, onOpenChange]);
 
-  return (
-    <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
-      <DialogContent
-        ref={wrapRef}
-        className="flex h-[92vh] w-[98vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-md"
-      >
-        <DialogHeader className="border-b bg-background px-4 py-3 pr-12">
-          <div className="flex flex-wrap items-center gap-2">
-            <DialogTitle className="flex min-w-0 items-center gap-2 text-sm">
-              <Monitor className="h-4 w-4 shrink-0" />
-              <span className="truncate">{target?.title}</span>
-            </DialogTitle>
-            <span className="text-xs text-muted-foreground">{status}</span>
-            <div className="ml-auto flex items-center gap-1">
-              <Button size="icon" variant="ghost" title="Recargar" onClick={reload}>
-                <RotateCw className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                title={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
-                onClick={toggleFullscreen}
-              >
-                {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
-          <p className="pt-1 text-[11px] text-muted-foreground sm:hidden">
-            Gestos táctiles: pellizca para hacer zoom · arrastra con dos dedos para desplazarte ·
-            el ícono ⛶ (pantalla completa) mejora la vista en celular.
-          </p>
-          <div className="flex items-center gap-2 pt-2">
-            <Input value={target?.directUrl || ""} readOnly className="h-9 min-w-0 font-mono text-xs" />
-            <Button size="sm" variant="outline" onClick={copyUrl}>
-              <Clipboard className="mr-1 h-4 w-4" /> Copiar
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={viewerUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="mr-1 h-4 w-4" /> Nueva pestaña
-              </a>
-            </Button>
-          </div>
-        </DialogHeader>
-        <div className="relative min-h-0 flex-1 bg-muted">
-          {embedded && (
-            <iframe
-              key={browserKey}
-              src={viewerUrl}
-              title="Navegador remoto"
-              allow="clipboard-read; clipboard-write; fullscreen"
-              onLoad={() => setStatus("Navegador remoto conectado")}
-              className="absolute inset-0 h-full w-full border-0 bg-background"
-            />
-          )}
-          {!embedded && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/95 p-6 text-center">
-              <Monitor className="h-8 w-8 text-muted-foreground" />
-              <p className="max-w-md text-sm text-muted-foreground">
-                {probing
-                  ? "Comprobando el escritorio remoto…"
-                  : "El escritorio remoto usa un certificado propio del VPS y por eso no puede mostrarse aquí todavía. Ábrelo una vez en una pestaña nueva, acepta el aviso del certificado, vuelve y pulsa «Reintentar aquí»."}
-              </p>
-              {!probing && (
-                <div className="flex gap-2">
-                  <Button size="sm" asChild>
-                    <a href={viewerUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink className="mr-1 h-4 w-4" /> Abrir escritorio en pestaña nueva
-                    </a>
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setBrowserKey((k) => k + 1)}>
-                    <RotateCw className="mr-1 h-4 w-4" /> Reintentar aquí
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-
-      </DialogContent>
-    </Dialog>
-  );
+  return null;
 }
