@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize } from "lucide-react";
+import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Globe } from "lucide-react";
 import { withAuthToken, netAccessApi } from "@/lib/api-client";
 import { toast } from "sonner";
 
