@@ -19,6 +19,8 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onus BOOLEAN NOT NULL DEFAULT true`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_mikrotik BOOLEAN NOT NULL DEFAULT true`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS web_ports JSONB`,
+    // Publicidad editable de la página de inicio (login público del ISP)
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS landing JSONB`,
 
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_username TEXT`,
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_password TEXT`,
