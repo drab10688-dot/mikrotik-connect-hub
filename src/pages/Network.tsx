@@ -190,7 +190,11 @@ export default function Network() {
     onError: (e: any) => toast.error(e.message || "No se pudo eliminar"),
   });
 
-  const secrets = pppoe?.secrets ?? [];
+  // Conserva la última lista no vacía: si un refresco llega vacío por un
+  // corte momentáneo de la VPN, la tabla no se queda en blanco.
+  const lastSecretsRef = useRef<any[]>([]);
+  if (pppoe?.secrets?.length) lastSecretsRef.current = pppoe.secrets;
+  const secrets = pppoe?.secrets?.length ? pppoe.secrets : lastSecretsRef.current;
   const equipos = netDevices?.devices ?? [];
 
   // Buscadores independientes con paginación por sección.
