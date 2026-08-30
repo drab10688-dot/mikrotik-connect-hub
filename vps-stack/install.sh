@@ -145,8 +145,6 @@ if command -v ufw >/dev/null 2>&1; then
     ufw allow "$p" >/dev/null 2>&1 || true
   done
   ufw allow 8100:8199/tcp >/dev/null 2>&1 || true
-  for p in ""; do :
-  done
   echo -e "${GREEN}✓ Puertos abiertos en firewall${NC}"
 fi
 
