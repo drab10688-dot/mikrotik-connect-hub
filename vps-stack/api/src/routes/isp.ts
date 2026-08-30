@@ -543,7 +543,9 @@ add dst-address=${VPN_SERVER_IP}/32 gateway="OmniACS-VPN" comment="Ruta hacia AC
 remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) Reconexión automática. El escaneo no dependerá del botón Conectar.
+# 4) Protección de la interfaz. RouterOS reconecta L2TP automáticamente.
+# No se fuerza disable/enable cuando running=false: durante la negociación
+# ese estado es normal y reiniciarla provocaría desconexiones repetidas.
 /system script
 remove [find name="OmniACS-VPN-Watchdog"]
 add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
@@ -552,12 +554,6 @@ add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
     :if ([/interface l2tp-client get \$vpn disabled] = true) do={
         /interface l2tp-client enable \$vpn
         :log warning "OmniACS: VPN estaba deshabilitada; reconectando"
-    }
-    :if ([/interface l2tp-client get \$vpn running] = false) do={
-        /interface l2tp-client disable \$vpn
-        :delay 2s
-        /interface l2tp-client enable \$vpn
-        :log warning "OmniACS: VPN sin enlace; reinicio automatico"
     }
 }
 /system scheduler
