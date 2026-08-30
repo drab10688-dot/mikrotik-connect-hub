@@ -86,6 +86,31 @@ export function ProxyBrowserDialog({
   // El escritorio remoto no pide clave propia: Nginx valida el token de sesión.
   const viewerUrl = remoteDesktopUrl("browser");
 
+  // El certificado del VPS es autofirmado: dentro del iframe el navegador lo
+  // rechaza en silencio (pantalla en blanco) hasta que se acepta una vez en una
+  // pestaña normal. Comprobamos si el origen ya es confiable antes de incrustarlo.
+  useEffect(() => {
+    if (!target) return;
+    let cancelled = false;
+    setEmbedded(false);
+    setProbing(true);
+    (async () => {
+      try {
+        await fetch(viewerUrl, { mode: "no-cors", cache: "no-store" });
+        if (!cancelled) setProbing(false);
+      } catch {
+        if (!cancelled) {
+          setProbing(false);
+          setEmbedded(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target, browserKey, viewerUrl]);
+
+
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
       <DialogContent
