@@ -75,6 +75,23 @@ usersRouter.post('/', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Tu cuenta no está asociada a ningún ISP' });
     }
 
+    // Cupo de usuarios por ISP (0 / null = ilimitado)
+    if (targetTenant) {
+      const { rows: quota } = await pool.query(
+        `SELECT COALESCE(t.user_limit, 0) AS user_limit,
+                (SELECT COUNT(*)::int FROM users u WHERE u.tenant_id = t.id) AS used
+           FROM tenants t WHERE t.id = $1`,
+        [targetTenant]
+      );
+      const max = Number(quota[0]?.user_limit || 0);
+      const used = Number(quota[0]?.used || 0);
+      if (max > 0 && used >= max) {
+        return res.status(403).json({
+          error: `Este ISP alcanzó su límite de ${max} usuarios. Solicita ampliación al administrador del sistema.`,
+        });
+      }
+    }
+
     const salt = await bcrypt.genSalt(12);
     const password_hash = await bcrypt.hash(password, salt);
 

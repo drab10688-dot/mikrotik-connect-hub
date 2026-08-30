@@ -14,6 +14,7 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_networks TEXT`,
     // Límite comercial de ONUs por ISP (NULL o 0 = ilimitado)
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_limit INTEGER`,
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS user_limit INTEGER`,
 
     // Módulos habilitados por ISP y puertos web por marca
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onus BOOLEAN NOT NULL DEFAULT true`,
