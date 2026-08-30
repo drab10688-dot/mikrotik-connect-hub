@@ -118,16 +118,12 @@ MIKROTIK_USER=
 MIKROTIK_PASS=
 GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
-BROWSER_USER=admin
-BROWSER_PASSWORD=$(openssl rand -hex 8)
 BROWSER_HOME_URL=about:blank
 VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
 TZ=America/Bogota
 EOF
   echo -e "${GREEN}✓ .env generado${NC}"
 else
-  grep -q '^BROWSER_USER=' .env || echo "BROWSER_USER=admin" >> .env
-  grep -q '^BROWSER_PASSWORD=' .env || echo "BROWSER_PASSWORD=$(openssl rand -hex 8)" >> .env
   grep -q '^BROWSER_HOME_URL=' .env || echo "BROWSER_HOME_URL=about:blank" >> .env
   grep -q '^VPS_PUBLIC_IP=' .env && sed -i "s|^VPS_PUBLIC_IP=.*|VPS_PUBLIC_IP=${VPS_PUBLIC_IP}|" .env \
     || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
@@ -170,7 +166,7 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
 docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
-echo -e "${YELLOW}Descargando navegador remoto (Firefox)...${NC}"
+echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
 docker compose pull remote-browser 2>&1 | tail -2 || true
 docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy sigue funcionando${NC}"
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
@@ -240,7 +236,7 @@ fi
 
 echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
-echo -e "  Navegador remoto: ${GREEN}http://${VPS_PUBLIC_IP}/browser/${NC}  (usuario/clave en /opt/omnisync/.env)"
+echo -e "  Navegador remoto: ${GREEN}http://${VPS_PUBLIC_IP}/browser/${NC}  (requiere sesión iniciada en el panel)"
 echo -e "  GenieACS UI:      ${GREEN}http://${VPS_PUBLIC_IP}:3001${NC}  (admin/admin)"
 echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/${NC}"
 echo -e "  TR-069 público:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/${NC}"
