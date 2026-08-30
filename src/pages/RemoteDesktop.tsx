@@ -32,6 +32,16 @@ export default function RemoteDesktop() {
     [port, creds.user, creds.password],
   );
 
+  // Las peticiones internas de KasmVNC (assets, websocket) no llevan ?token:
+  // se fija la cookie del panel (mismo host, aplica a todos los puertos) para
+  // que Nginx las autorice sin pedir usuario/clave.
+  useEffect(() => {
+    const token = localStorage.getItem("vps_auth_token");
+    if (token) {
+      document.cookie = `omnisync_web_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=43200`;
+    }
+  }, []);
+
   const [failed, setFailed] = useState(false);
   const loadedRef = useRef(false);
 
