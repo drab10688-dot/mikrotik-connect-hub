@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { browserApi, withAuthToken, remoteDesktopUrl } from "@/lib/api-client";
+import { browserApi, remoteDesktopUrl } from "@/lib/api-client";
 
 export interface ProxyBrowserTarget {
   title: string;
@@ -42,7 +42,6 @@ export function ProxyBrowserDialog({
         if (!st?.running) throw new Error(st?.hint || "El navegador remoto no está activo");
         await browserApi.open(url);
         setStatus("Navegador remoto listo");
-        setBrowserKey((k) => k + 1);
         return true;
       } catch (e: any) {
         setStatus(e?.message || "No se pudo usar el navegador remoto");
@@ -55,7 +54,6 @@ export function ProxyBrowserDialog({
 
   useEffect(() => {
     if (!target) return;
-    setBrowserKey((k) => k + 1);
     void launchRemote(target.directUrl, true);
   }, [target, launchRemote]);
 
@@ -80,7 +78,7 @@ export function ProxyBrowserDialog({
 
   const reload = async () => {
     if (target) await launchRemote(target.directUrl);
-    else setBrowserKey((k) => k + 1);
+    setBrowserKey((k) => k + 1);
   };
 
   // El escritorio remoto no pide clave propia: Nginx valida el token de sesión.
@@ -92,7 +90,6 @@ export function ProxyBrowserDialog({
   useEffect(() => {
     if (!target) return;
     let cancelled = false;
-    setEmbedded(false);
     setProbing(true);
     (async () => {
       try {
@@ -111,7 +108,7 @@ export function ProxyBrowserDialog({
     return () => {
       cancelled = true;
     };
-  }, [target, browserKey, viewerUrl]);
+  }, [target, viewerUrl]);
 
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
@@ -163,6 +160,7 @@ export function ProxyBrowserDialog({
               src={viewerUrl}
               title="Navegador remoto"
               allow="clipboard-read; clipboard-write; fullscreen"
+              onLoad={() => setStatus("Navegador remoto conectado")}
               className="absolute inset-0 h-full w-full border-0 bg-background"
             />
           )}
