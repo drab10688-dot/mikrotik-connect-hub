@@ -1,31 +1,44 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { netAccessApi } from "@/lib/api-client";
+import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NetworkMap } from "@/components/network/NetworkMap";
 import { TopologyTree } from "@/components/network/TopologyTree";
-import { AdvancedWeb } from "@/components/network/AdvancedWeb";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { AdvancedWeb, type AdvancedTarget } from "@/components/network/AdvancedWeb";
+import { Network } from "lucide-react";
 
 export default function Topology() {
   const navigate = useNavigate();
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || "";
-  const [advanced, setAdvanced] = useState<{ ip: string; name: string; proxy_path: string } | null>(null);
+  const [advanced, setAdvanced] = useState<AdvancedTarget | null>(null);
   const [tab, setTab] = useState("mapa");
 
-  const handleAdvanced = (device: { ip: string; name: string; proxy_path: string }) => {
+  const { data: devicesData } = useQuery({
+    queryKey: ["netaccess-devices", mikrotikId],
+    queryFn: () => netAccessApi.devices(mikrotikId),
+    enabled: !!mikrotikId,
+  });
+  const devices = devicesData?.devices || [];
+
+  const handleAdvanced = (device: AdvancedTarget) => {
     setAdvanced(device);
     setTab("avanzado");
   };
 
   return (
-    <DashboardLayout>
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Mapa de red</h1>
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <div className="p-4 md:p-8 md:ml-64 space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Network className="h-6 w-6 text-primary" /> Mapa de red
+          </h1>
           <p className="text-sm text-muted-foreground">
             Topología por sectores: MikroTik → AP/antena → cliente, con la señal de cada enlace.
           </p>
-        </div>
+        </header>
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -51,10 +64,10 @@ export default function Topology() {
           </TabsContent>
 
           <TabsContent value="avanzado" className="mt-4">
-            <AdvancedWeb initialDevice={advanced ?? undefined} />
+            <AdvancedWeb target={advanced} devices={devices} onSelect={setAdvanced} />
           </TabsContent>
         </Tabs>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }
