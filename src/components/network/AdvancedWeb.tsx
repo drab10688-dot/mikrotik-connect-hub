@@ -52,6 +52,7 @@ export function AdvancedWeb({
       title: `${name} — ${ip}:${port}`,
       directUrl: `${protocol}://${ip}:${port}/`,
       proxyUrl: proxyPath ? withAuthToken(proxyPath) : undefined,
+      mikrotikId: routerId,
     });
   };
 

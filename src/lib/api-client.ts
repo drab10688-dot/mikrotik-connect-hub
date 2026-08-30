@@ -376,7 +376,8 @@ export const browserApi = {
   status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
   /** Crea/reutiliza el escritorio propio y devuelve puerto y credenciales. */
   session: async () => unwrapData<any>(await apiPost<any>('/browser/session', {})),
-  open: async (url: string) => unwrapData<any>(await apiPost<any>('/browser/open', { url })),
+  open: async (url: string, mikrotikId?: string) =>
+    unwrapData<any>(await apiPost<any>('/browser/open', { url, mikrotikId })),
   /** Latido del visor: evita que se cierren las pestañas mientras se usa. */
   ping: async () => unwrapData<any>(await apiPost<any>('/browser/ping', {})),
   /** Cierra todas las pestañas y borra cookies/historial del escritorio. */

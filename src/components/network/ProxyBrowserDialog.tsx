@@ -6,6 +6,7 @@ export interface ProxyBrowserTarget {
   title: string;
   directUrl: string;
   proxyUrl?: string;
+  mikrotikId?: string;
 }
 
 /**
@@ -39,7 +40,9 @@ export function ProxyBrowserDialog({
         );
         toast.success(`${target.title}: abriendo en el escritorio remoto`);
         // 2) La navegación al equipo se lanza en paralelo.
-        browserApi.open(target.directUrl).catch(() => undefined);
+        browserApi.open(target.directUrl, target.mikrotikId).catch((e: any) => {
+          if (!cancelled) toast.error(e?.message || "No hay ruta VPN hacia el equipo");
+        });
       } catch (e: any) {
         if (!cancelled) toast.error(e?.message || "No se pudo usar el navegador remoto");
       } finally {

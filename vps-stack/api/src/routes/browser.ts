@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { AuthRequest } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { pool } from '../lib/db';
+import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import {
   docker,
   ensureUserBrowser,
@@ -72,6 +74,35 @@ function sanitizeUrl(raw: unknown): string | null {
   if (!isPrivate) return null;
   if (parsed.port && !/^\d{1,5}$/.test(parsed.port)) return null;
   return parsed.toString();
+}
+
+async function prepareTenantRoute(req: AuthRequest, url: string, mikrotikId?: string): Promise<boolean> {
+  const targetIp = new URL(url).hostname;
+  let tenantId = req.tenantId || null;
+
+  // El superadministrador no tiene tenant_id en su sesión. En ese caso se
+  // resuelve el ISP desde el MikroTik que originó la apertura de la antena.
+  if (mikrotikId) {
+    const allowed = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
+    if (!allowed) return false;
+    const device = await pool.query(`SELECT tenant_id FROM mikrotik_devices WHERE id = $1 LIMIT 1`, [mikrotikId]);
+    const deviceTenantId = device.rows[0]?.tenant_id || null;
+    if (tenantId && deviceTenantId && tenantId !== deviceTenantId) return false;
+    tenantId = deviceTenantId || tenantId;
+  }
+
+  const { rows } = await pool.query(
+    `SELECT tunnel_ip
+       FROM tenant_vpn_peers
+      WHERE ($1::uuid IS NULL OR tenant_id = $1)
+        AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC
+      LIMIT 1`,
+    [tenantId]
+  );
+  const tunnelIp = rows[0]?.tunnel_ip;
+  if (!tunnelIp) return false;
+  return ensureL2tpTargetRoute(String(tunnelIp), targetIp);
 }
 
 /** Displays X disponibles dentro del contenedor del usuario. */
@@ -175,6 +206,25 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
 
   const url = sanitizeUrl((req as any).body?.url);
   if (!url) return res.status(400).json({ success: false, error: 'URL no permitida (solo IPs privadas http/https)' });
+
+  // Los APs encontrados por ARP/neighbors pueden estar en una red distinta a
+  // la declarada para ONUs. Preparamos una ruta /32 por la VPN de ESTE ISP para
+  // que el navegador privado llegue al equipo sin exponer redes de otros ISP.
+  try {
+    const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
+    const routeReady = await prepareTenantRoute(req, url, mikrotikId);
+    if (!routeReady) {
+      return res.status(503).json({
+        success: false,
+        error: 'La VPN de este ISP no está conectada; no hay ruta activa hacia la antena',
+      });
+    }
+  } catch (e: any) {
+    return res.status(503).json({
+      success: false,
+      error: e?.message || 'No se pudo preparar la ruta VPN hacia la antena',
+    });
+  }
 
   let session: UserBrowserSession;
   try {
