@@ -182,37 +182,10 @@ services:
     networks:
       - omnisync-net
 
-  # ============================================
-  # Navegador remoto (Firefox real) — para ONUs/antenas con captcha o JS pesado
-  # Se actualiza solo con: docker compose pull remote-browser && docker compose up -d remote-browser
-  # ============================================
-  remote-browser:
-    image: lscr.io/linuxserver/firefox:latest
-    container_name: omnisync-browser
-    restart: unless-stopped
-    shm_size: "1gb"
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: ${TZ:-America/Bogota}
-      CUSTOM_USER: ${BROWSER_USER:-admin}
-      PASSWORD: ${BROWSER_PASSWORD:-omnisync}
-      FF_OPEN_URL: ${BROWSER_HOME_URL:-about:blank}
-      TITLE: OmniSync Firefox
-    volumes:
-      - browser_config:/config
-    networks:
-      - omnisync-net
-    security_opt:
-      - seccomp=unconfined
-
-
-
 volumes:
   postgres_data:
   backup_data:
   wireguard_config:
-  browser_config:
   mongo_data:
 
 networks:

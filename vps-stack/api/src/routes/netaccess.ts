@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
 import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
@@ -980,6 +981,8 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
 
   const secure = targetPort === 443 || targetPort === 8443;
   const client = secure ? https : http;
+  const upstreamOrigin = `${secure ? 'https' : 'http'}://${ip}:${targetPort}`;
+  const cookieNamespace = `owp_${crypto.createHash('sha256').update(`${mikrotikId}:${ip}:${targetPort}`).digest('hex').slice(0, 12)}_`;
 
   // Credencial guardada del equipo (Basic auth automático para ONUs/antenas).
   let basic: string | undefined;
@@ -1016,8 +1019,11 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     cookie: String(req.headers.cookie || '')
       .split(';')
       .map((c) => c.trim())
-      .filter((c) => c && !c.startsWith(`${WEB_TOKEN_COOKIE}=`))
+      .filter((c) => c.startsWith(cookieNamespace))
+      .map((c) => c.slice(cookieNamespace.length))
       .join('; '),
+    origin: upstreamOrigin,
+    referer: `${upstreamOrigin}${targetPath || '/'}`,
   };
   delete outHeaders.authorization;
   delete outHeaders.referer;
@@ -1070,16 +1076,19 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         delete headers['x-content-type-options'];
         delete headers['content-length'];
         delete headers['content-encoding'];
+        headers['cache-control'] = 'no-store, no-cache, must-revalidate';
+        headers.pragma = 'no-cache';
         if (headers.location) headers.location = rewriteUrl(String(headers.location));
         if (headers['set-cookie']) {
           // Path amplio: la sesión/captcha de la ONU debe viajar en todas las subrutas del proxy.
-          headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) =>
-            c
+          headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) => {
+            const namespaced = c.replace(/^([^=;]+)=/, `${cookieNamespace}$1=`);
+            return namespaced
               .replace(/;\s*Path=[^;]*/i, '')
               .replace(/;\s*Domain=[^;]*/i, '')
               .replace(/;\s*Secure/gi, '')
               .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=/api/netaccess; SameSite=Lax`
-          );
+          });
         }
 
         const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
