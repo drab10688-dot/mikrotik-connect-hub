@@ -1,7 +1,6 @@
 import { Router, Response } from 'express';
 import http from 'http';
 import https from 'https';
-import crypto from 'crypto';
 import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
@@ -979,7 +978,6 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
   const secure = targetPort === 443 || targetPort === 8443;
   const client = secure ? https : http;
   const upstreamOrigin = `${secure ? 'https' : 'http'}://${ip}:${targetPort}`;
-  const cookieNamespace = `owp_${crypto.createHash('sha256').update(`${mikrotikId}:${ip}:${targetPort}`).digest('hex').slice(0, 12)}_`;
 
   // Credencial guardada del equipo (Basic auth automático para ONUs/antenas).
   let basic: string | undefined;
@@ -1010,24 +1008,32 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     }
   }
 
+  const browserReferer = String(req.headers.referer || '');
+  const refererPath = browserReferer.includes(prefix)
+    ? browserReferer.slice(browserReferer.indexOf(prefix) + prefix.length) || '/'
+    : '/';
+  const upstreamCookies = String(req.headers.cookie || '')
+    .split(';')
+    .map((cookie) => cookie.trim())
+    .filter((cookie) => cookie && !cookie.startsWith(`${WEB_TOKEN_COOKIE}=`))
+    // Elimina cookies antiguas creadas por versiones previas del proxy.
+    .filter((cookie) => !/^owp_[a-f0-9]{12}_/i.test(cookie))
+    .join('; ');
+
   const outHeaders: Record<string, any> = {
     ...req.headers,
     host: `${ip}:${targetPort}`,
     'accept-encoding': 'identity',
-    // No se reenvían credenciales del panel al equipo remoto.
-    cookie: String(req.headers.cookie || '')
-      .split(';')
-      .map((c) => c.trim())
-      .filter((c) => c.startsWith(cookieNamespace))
-      .map((c) => c.slice(cookieNamespace.length))
-      .join('; '),
+    // El firmware debe recibir exactamente el nombre de cookie que emitió.
+    // El Path reescrito la mantiene aislada dentro de esta ONU.
+    cookie: upstreamCookies,
   };
   delete outHeaders.authorization;
   delete outHeaders.referer;
   delete outHeaders.origin;
   delete outHeaders['content-length'];
   outHeaders.origin = upstreamOrigin;
-  outHeaders.referer = `${upstreamOrigin}${targetPath || '/'}`;
+  outHeaders.referer = `${upstreamOrigin}${refererPath.startsWith('/') ? refererPath : `/${refererPath}`}`;
   if (basic) outHeaders.authorization = basic;
   if (bodyBuf) outHeaders['content-length'] = bodyBuf.length;
 
@@ -1079,10 +1085,10 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         headers.pragma = 'no-cache';
         if (headers.location) headers.location = rewriteUrl(String(headers.location));
         if (headers['set-cookie']) {
-          // Path amplio: la sesión/captcha de la ONU debe viajar en todas las subrutas del proxy.
+          // Conserva el nombre original: varios firmware validan el captcha contra
+          // una cookie concreta. El Path del proxy aísla la sesión por equipo.
           headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) => {
-            const namespaced = c.replace(/^([^=;]+)=/, `${cookieNamespace}$1=`);
-            return namespaced
+            return c
               .replace(/;\s*Path=[^;]*/i, '')
               .replace(/;\s*Domain=[^;]*/i, '')
               .replace(/;\s*Secure/gi, '')
