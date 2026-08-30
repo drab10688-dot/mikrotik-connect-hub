@@ -53,6 +53,15 @@ if docker compose build remote-winbox 2>&1 | tail -5; then
 else
   echo -e "${YELLOW}⚠ No se pudo construir Winbox; el resto del sistema sigue igual${NC}"
 fi
+# Certificado autofirmado para los escritorios remotos (KasmVNC exige HTTPS)
+mkdir -p "$INSTALL_DIR/nginx/certs"
+if [ ! -f "$INSTALL_DIR/nginx/certs/remote.crt" ]; then
+  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+    -keyout "$INSTALL_DIR/nginx/certs/remote.key" \
+    -out "$INSTALL_DIR/nginx/certs/remote.crt" \
+    -subj "/CN=omnisync-remote" >/dev/null 2>&1
+fi
+
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 # Conserva el servidor L2TP existente. El instalador ahora es idempotente:
