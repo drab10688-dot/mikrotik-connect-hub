@@ -3,7 +3,7 @@
  *
  * Cada tenant recibe:
  *   - su propio contenedor  omnisync-browser-<slug>
- *   - su propio puerto HTTPS en Nginx (8100..8199)
+ *   - su propio puerto HTTPS en Nginx (8100..8129)
  *   - un bloque server generado dinámicamente en /etc/nginx/conf.d
  *
  * Así dos ISP nunca comparten ventana, cookies ni historial.
@@ -18,7 +18,7 @@ const NETWORK = process.env.BROWSER_NETWORK || 'omnisync-browser-net';
 const NGINX_CONTAINER = process.env.NGINX_CONTAINER || 'omnisync-nginx';
 const DYN_DIR = process.env.NGINX_DYN_DIR || '/opt/omnisync/nginx-dyn';
 const PORT_MIN = Number(process.env.BROWSER_PORT_MIN || 8100);
-const PORT_MAX = Number(process.env.BROWSER_PORT_MAX || 8199);
+const PORT_MAX = Number(process.env.BROWSER_PORT_MAX || 8129);
 const TZ = process.env.TZ || 'America/Bogota';
 
 export interface TenantBrowser {

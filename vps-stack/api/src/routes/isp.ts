@@ -15,9 +15,6 @@ export const SECTIONS = [
   'onu_web',
   'mikrotik',
   'topology',
-  'acs',
-  'wifi',
-  'pppoe',
   'red',
   'vpn',
   'configuracion',
@@ -33,9 +30,6 @@ export const SECTION_LABELS: Record<string, string> = {
   onu_web: 'Mini-panel de equipos',
   mikrotik: 'Conexion MikroTik',
   topology: 'Mapa de red',
-  acs: 'ACS / TR-069',
-  wifi: 'Wi-Fi dual band',
-  pppoe: 'PPPoE / clientes',
   red: 'Red, APs y senal',
   vpn: 'Credenciales y VPN',
   configuracion: 'Configuracion',
@@ -54,15 +48,15 @@ export const ROLE_NAMES: RoleName[] = ['admin', 'user', 'secretary', 'reseller']
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, { view: string[]; edit: string[] }> = {
   admin: { view: [...SECTIONS], edit: [...SECTIONS] },
   user: {
-    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'topology', 'acs', 'wifi', 'pppoe', 'red', 'vpn', 'diagnostico'],
-    edit: ['onus', 'onu_web', 'wifi', 'pppoe', 'red'],
+    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'topology', 'red', 'vpn', 'diagnostico'],
+    edit: ['onus', 'onu_web', 'red'],
   },
   secretary: {
-    view: ['dashboard', 'onus', 'onu_web', 'topology', 'pppoe', 'red'],
-    edit: ['onus', 'pppoe'],
+    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'topology', 'red'],
+    edit: ['onus'],
   },
   reseller: {
-    view: ['dashboard', 'onus', 'topology', 'red'],
+    view: ['dashboard', 'onus', 'topology'],
     edit: [],
   },
 };

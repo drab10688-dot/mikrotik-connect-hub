@@ -33,7 +33,7 @@ export default function RegisterUser() {
   const allowedRoles = useMemo(() => {
     return isSuperAdmin
       ? (['user', 'admin', 'super_admin', 'reseller', 'secretary'] as const)
-      : (['user', 'reseller', 'secretary'] as const);
+      : (['user', 'admin', 'reseller', 'secretary'] as const);
   }, [isSuperAdmin]);
 
   useEffect(() => {
@@ -120,12 +120,8 @@ export default function RegisterUser() {
                       <SelectItem value="user">Usuario</SelectItem>
                       <SelectItem value="reseller">Revendedor</SelectItem>
                       <SelectItem value="secretary">Asistente</SelectItem>
-                      {isSuperAdmin && (
-                        <>
-                          <SelectItem value="admin">Administrador</SelectItem>
-                          <SelectItem value="super_admin">Super Administrador</SelectItem>
-                        </>
-                      )}
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      {isSuperAdmin && <SelectItem value="super_admin">Super Administrador</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>

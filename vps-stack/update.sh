@@ -128,8 +128,8 @@ fi
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 8081/tcp >/dev/null 2>&1 || true
   ufw allow 8082/tcp >/dev/null 2>&1 || true
-  ufw allow 8100:8199/tcp >/dev/null 2>&1 || true
-  echo -e "${GREEN}✓ Puertos 8081/8082 y 8100-8199 (escritorios por ISP) abiertos en UFW${NC}"
+  ufw allow 8100:8129/tcp >/dev/null 2>&1 || true
+  echo -e "${GREEN}✓ Puertos 8081/8082 y 8100-8129 (escritorios por ISP) abiertos en UFW${NC}"
 fi
 
 # Recrea el navegador remoto para aplicar perfil efímero / incógnito forzado

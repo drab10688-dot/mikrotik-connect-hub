@@ -63,7 +63,7 @@ services:
       NGINX_CONTAINER: omnisync-nginx
       NGINX_DYN_DIR: /opt/omnisync/nginx-dyn
       BROWSER_PORT_MIN: 8100
-      BROWSER_PORT_MAX: 8199
+      BROWSER_PORT_MAX: 8129
       TZ: ${TZ:-America/Bogota}
     ports:
       - "3000:3000"
@@ -91,7 +91,7 @@ services:
       - "8081:8081"   # Chromium remoto
       - "8082:8082"   # Winbox (Wine)
       # Escritorios dedicados por ISP (uno por tenant, asignado por la API)
-      - "8100-8199:8100-8199"
+      - "8100-8129:8100-8129"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx-dyn:/etc/nginx/conf.d:ro
