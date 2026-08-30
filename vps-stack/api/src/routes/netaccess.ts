@@ -952,6 +952,12 @@ netAccessRouter.get('/:mikrotikId/web-check/:ip/:port', async (req: AuthRequest,
   });
 });
 
+// Sin barra final el firmware resuelve mal los recursos relativos: normaliza.
+netAccessRouter.all('/:mikrotikId/web/:ip/:port', (req: AuthRequest, res: Response) => {
+  const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(302, `${req.originalUrl.split('?')[0]}/${q}`);
+});
+
 netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res: Response) => {
   const mikrotikId = await guard(req, res);
   if (!mikrotikId) return;
@@ -1062,7 +1068,7 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         method: req.method,
         headers: headersOut,
         rejectUnauthorized: false,
-        timeout: 20000,
+        timeout: 45000,
       },
       (proxyRes) => {
         // Muchas ONU (V-SOL, Zyxel) usan login por formulario + captcha:
