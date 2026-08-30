@@ -344,6 +344,10 @@ export const netAccessApi = {
     unwrapData<any>(
       await apiGet<any>(`/netaccess/${mikrotikId}/ap/${ip}/clients${brand ? `?brand=${brand}` : ''}`)
     ),
+  /** Lectura automática de todos los APs detectados (sin registrar credenciales). */
+  apsAuto: async (mikrotikId: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/aps-auto`)),
+
   listApCredentials: async () => unwrapData<any>(await apiGet<any>('/netaccess/ap-credentials')),
   saveApCredentials: async (payload: any) =>
     unwrapData<any>(await apiPut<any>('/netaccess/ap-credentials', payload)),
