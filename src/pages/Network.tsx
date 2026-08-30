@@ -41,7 +41,7 @@ const BRAND_LABEL: Record<string, string> = {
 
 const proxyUrl = (path: string) => {
   const base = getApiBaseUrl().replace(/\/api$/, "");
-  return `${base}${path}`;
+  return withAuthToken(`${base}${path}`);
 };
 
 export default function Network() {
