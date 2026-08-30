@@ -72,7 +72,7 @@ cat > "$MT" <<EOF
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \
+    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \\
     disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
@@ -225,18 +225,36 @@ docker ps --format '{{.Names}}' | grep -q '^omnisync-l2tp$' || exit 0
 docker ps --format '{{.Names}}' | grep -q '^omnisync-postgres$' || exit 0
 
 ROWS=$(docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAF'|' \
-  -c "SELECT username, password, tunnel_ip FROM tenant_vpn_peers WHERE username IS NOT NULL" 2>/dev/null)
+  -c "SELECT username, password, tunnel_ip, COALESCE(onu_networks, '') FROM tenant_vpn_peers WHERE username IS NOT NULL" 2>/dev/null)
 [ -n "$ROWS" ] || exit 0
 
 TMP=$(mktemp)
+ROUTES=$(mktemp)
 docker exec omnisync-l2tp cat /etc/ppp/chap-secrets 2>/dev/null | grep -v '# omnisync' > "$TMP" || true
-while IFS='|' read -r user pass ip; do
+while IFS='|' read -r user pass ip nets; do
   [ -n "$user" ] || continue
   echo "\"$user\" l2tpd \"$pass\" ${ip:-*} # omnisync" >> "$TMP"
+  [ -n "$ip" ] && [ -n "$nets" ] && echo "$ip $(echo "$nets" | tr ',' ' ')" >> "$ROUTES"
 done <<< "$ROWS"
 
 docker cp "$TMP" omnisync-l2tp:/etc/ppp/chap-secrets >/dev/null 2>&1
-rm -f "$TMP"
+docker cp "$ROUTES" omnisync-l2tp:/etc/ppp/omnisync-routes >/dev/null 2>&1
+docker exec omnisync-l2tp sh -c 'cat > /etc/ppp/ip-up.local <<'"'"'EOF'"'"'
+#!/bin/sh
+while read -r ip nets; do
+  [ "$ip" = "$5" ] || continue
+  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null || true; done
+done < /etc/ppp/omnisync-routes
+EOF
+chmod +x /etc/ppp/ip-up.local' >/dev/null 2>&1 || true
+
+# Repara rutas inmediatamente para todos los peers que ya estén conectados.
+while read -r ip nets; do
+  [ -n "$ip" ] || continue
+  ip route get "$ip" 2>/dev/null | grep -qE 'dev ppp[0-9]+' || continue
+  for net in $nets; do ip route replace "$net" via "$ip" 2>/dev/null || true; done
+done < "$ROUTES"
+rm -f "$TMP" "$ROUTES"
 EOS
 chmod +x "$DIR/l2tp-users-sync.sh"
 [ -f "$STACK_DIR/.env" ] && set -a && . "$STACK_DIR/.env" 2>/dev/null; set +a

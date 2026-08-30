@@ -530,7 +530,7 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=${serverHost} user="${peer.username}" password="${peer.password}" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \
+    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \\
     disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
