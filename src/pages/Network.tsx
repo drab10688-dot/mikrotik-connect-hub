@@ -118,6 +118,11 @@ export default function Network() {
   const [portDraft, setPortDraft] = useState<Record<string, WebPortCfg>>({});
   useEffect(() => { if (ports) setPortDraft(ports as Record<string, WebPortCfg>); }, [ports]);
 
+  // Precalienta el escritorio remoto del usuario al entrar a Red: cuando pulse
+  // "Abrir", el contenedor VNC ya está arrancado y la pestaña abre al instante.
+  useEffect(() => { browserApi.session().catch(() => undefined); }, []);
+
+
   const savePorts = useMutation({
     mutationFn: () => netAccessApi.setWebPorts(portDraft),
     onSuccess: () => {
