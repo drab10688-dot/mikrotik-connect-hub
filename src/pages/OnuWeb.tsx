@@ -11,7 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Globe, Wifi, KeyRound, Search, Save, Trash2, ShieldCheck, History, MonitorCog, Radio, Check } from "lucide-react";
+import { TopologyTree } from "@/components/network/TopologyTree";
+import { AdvancedWeb, type AdvancedTarget } from "@/components/network/AdvancedWeb";
+import { Globe, Wifi, KeyRound, Search, Save, Trash2, ShieldCheck, History, MonitorCog, Radio, Check, Network } from "lucide-react";
+
+const BRANDS = ["zyxel", "huawei", "zte", "vsol", "cdata", "fiberhome", "tplink", "ubiquiti", "mikrotik", "mimosa", "cambium", "otro"];
 
 /**
  * Acceso web directo a ONUs: el VPS entra por la VPN a la interfaz web de la ONU
@@ -31,6 +35,8 @@ export default function OnuWeb() {
   const [selectedProfile, setSelectedProfile] = useState<string>("");
   const [cred, setCred] = useState({ ip: "", name: "", username: "admin", password: "", port: "", protocol: "http" });
   const [newPass, setNewPass] = useState<Record<string, string>>({});
+  const [profileBrand, setProfileBrand] = useState("otro");
+  const [advanced, setAdvanced] = useState<AdvancedTarget | null>(null);
 
   const { data: pppoeData } = useQuery({
     queryKey: ["mini-pppoe", mikrotikId],
@@ -82,6 +88,7 @@ export default function OnuWeb() {
       setProbeResult(data);
       setSelectedProfile(data?.matched_profile?.id || "");
       setProfileName(data?.matched_profile?.name || `${data?.detected?.brand || "onu"} ${data?.detected?.model || ""}`.trim());
+      setProfileBrand(data?.matched_profile?.brand || data?.detected?.brand || "otro");
       toast.success(data?.matched_profile ? "Modelo reconocido: perfil existente aplicado" : "ONU detectada, revisa el perfil sugerido");
     },
     onError: (e: any) => toast.error(e.message || "No se pudo alcanzar la ONU"),
@@ -92,6 +99,7 @@ export default function OnuWeb() {
       onuWebApi.createProfile({
         name: profileName,
         ...probeResult?.suggestion,
+        brand: profileBrand,
         learned_from: ip,
       }),
     onSuccess: (data: any) => {
@@ -157,9 +165,11 @@ export default function OnuWeb() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="equipos">Equipos</TabsTrigger>
+            <TabsTrigger value="topologia">Topología</TabsTrigger>
             <TabsTrigger value="gestion">Gestionar equipo</TabsTrigger>
             <TabsTrigger value="credenciales">Credenciales</TabsTrigger>
             <TabsTrigger value="perfiles">Perfiles aprendidos</TabsTrigger>
+            <TabsTrigger value="avanzado">Sistema avanzado</TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
 
@@ -249,9 +259,18 @@ export default function OnuWeb() {
                         <TableCell><Badge variant="secondary">{d.brand}</Badge></TableCell>
                         <TableCell className="text-xs text-muted-foreground">{d.source}</TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" onClick={() => manageDevice(d.ip)} disabled={probe.isPending}>
-                            <MonitorCog className="h-4 w-4 mr-1" /> Gestionar
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button size="sm" onClick={() => manageDevice(d.ip)} disabled={probe.isPending}>
+                              <MonitorCog className="h-4 w-4 mr-1" /> Gestionar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => { setAdvanced({ ip: d.ip, name: d.name, proxy_path: d.proxy_path }); setTab("avanzado"); }}
+                            >
+                              <Network className="h-4 w-4 mr-1" /> Avanzado
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -262,6 +281,24 @@ export default function OnuWeb() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ── Topología por sectores ────────────────── */}
+          <TabsContent value="topologia" className="space-y-4">
+            <TopologyTree
+              mikrotikId={mikrotikId}
+              onManage={(deviceIp) => manageDevice(deviceIp)}
+              onAdvanced={(t) => { setAdvanced(t); setTab("avanzado"); }}
+            />
+          </TabsContent>
+
+          {/* ── Sistema avanzado (WebFig / airOS / web ONU) ── */}
+          <TabsContent value="avanzado" className="space-y-4">
+            <AdvancedWeb
+              target={advanced}
+              devices={devicesData?.devices || []}
+              onSelect={setAdvanced}
+            />
           </TabsContent>
 
           {/* ── Gestión ───────────────────────────────── */}
@@ -318,6 +355,13 @@ export default function OnuWeb() {
                         <div className="space-y-1.5">
                           <Label>Nombre del perfil</Label>
                           <Input value={profileName} onChange={(e) => setProfileName(e.target.value)} className="w-64" />
+                          <select
+                            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                            value={profileBrand}
+                            onChange={(e) => setProfileBrand(e.target.value)}
+                          >
+                            {BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                          </select>
                         </div>
                         <Button variant="secondary" disabled={!profileName || saveProfile.isPending} onClick={() => saveProfile.mutate()}>
                           <Save className="h-4 w-4 mr-1" /> Guardar aprendizaje
