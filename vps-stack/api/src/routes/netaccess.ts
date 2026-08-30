@@ -978,9 +978,65 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     .replace(/[?&]$/, '');
   const targetPath = rest.startsWith('/') ? rest : `/${rest}`;
 
-
   const secure = targetPort === 443 || targetPort === 8443;
   const client = secure ? https : http;
+
+  // Credencial guardada del equipo (Basic auth automático para ONUs/antenas).
+  let basic: string | undefined;
+  try {
+    const cred = await pool.query(
+      `SELECT username, password FROM onu_web_credentials
+        WHERE ($1::uuid IS NULL OR tenant_id = $1::uuid) AND (ip = $2 OR COALESCE(ip,'') = '')
+        ORDER BY (ip = $2) DESC LIMIT 1`,
+      [req.tenantId || null, ip]
+    );
+    if (cred.rows[0]?.username) {
+      basic = 'Basic ' + Buffer.from(`${cred.rows[0].username}:${cred.rows[0].password || ''}`).toString('base64');
+    }
+  } catch {
+    /* la tabla puede no existir todavía */
+  }
+
+  // Cuerpo re-codificado según el content-type original (los formularios web fallan con JSON).
+  const reqType = String(req.headers['content-type'] || '');
+  let bodyBuf: Buffer | undefined;
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Object.keys(req.body).length) {
+    if (reqType.includes('application/x-www-form-urlencoded')) {
+      bodyBuf = Buffer.from(new URLSearchParams(req.body as any).toString());
+    } else {
+      bodyBuf = Buffer.from(JSON.stringify(req.body));
+    }
+  }
+
+  const outHeaders: Record<string, any> = {
+    ...req.headers,
+    host: `${ip}:${targetPort}`,
+    'accept-encoding': 'identity',
+    // No se reenvían credenciales del panel al equipo remoto.
+    cookie: String(req.headers.cookie || '')
+      .split(';')
+      .map((c) => c.trim())
+      .filter((c) => c && !c.startsWith(`${WEB_TOKEN_COOKIE}=`))
+      .join('; '),
+  };
+  delete outHeaders.authorization;
+  delete outHeaders.referer;
+  delete outHeaders.origin;
+  delete outHeaders['content-length'];
+  if (basic) outHeaders.authorization = basic;
+  if (bodyBuf) outHeaders['content-length'] = bodyBuf.length;
+
+  const rewriteUrl = (u: string) => {
+    if (!u) return u;
+    if (/^https?:\/\//i.test(u)) {
+      const m = u.match(/^https?:\/\/([^/]+)(\/.*)?$/i);
+      if (m && m[1].split(':')[0] === ip) return `${prefix}${m[2] || '/'}`;
+      return u;
+    }
+    if (u.startsWith('//') || u.startsWith('#') || /^(data|javascript|mailto|tel):/i.test(u)) return u;
+    if (u.startsWith('/')) return `${prefix}${u}`;
+    return u;
+  };
 
   const upstream = client.request(
     {
@@ -988,18 +1044,7 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
       port: targetPort,
       path: targetPath || '/',
       method: req.method,
-      headers: {
-        ...req.headers,
-        host: `${ip}:${targetPort}`,
-        'accept-encoding': 'identity',
-        // No se reenvían credenciales del panel al equipo remoto.
-        cookie: String(req.headers.cookie || '')
-          .split(';')
-          .map((c) => c.trim())
-          .filter((c) => c && !c.startsWith(`${WEB_TOKEN_COOKIE}=`))
-          .join('; '),
-        authorization: undefined as any,
-      },
+      headers: outHeaders,
       rejectUnauthorized: false,
       timeout: 20000,
     },
@@ -1007,22 +1052,41 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
       const type = String(proxyRes.headers['content-type'] || '');
       const headers = { ...proxyRes.headers };
       delete headers['content-security-policy'];
+      delete headers['content-security-policy-report-only'];
       delete headers['x-frame-options'];
       delete headers['content-length'];
       delete headers['content-encoding'];
+      if (headers.location) headers.location = rewriteUrl(String(headers.location));
+      if (headers['set-cookie']) {
+        headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) =>
+          c.replace(/;\s*Path=[^;]*/i, `; Path=${prefix}/`).replace(/;\s*Secure/gi, '')
+        );
+      }
 
-      if (type.includes('text/html')) {
-        // Inyecta <base> para que los recursos relativos pasen por el proxy.
+      const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
+      if (textual) {
         const chunks: Buffer[] = [];
         proxyRes.on('data', (c) => chunks.push(c as Buffer));
         proxyRes.on('end', () => {
-          let html = Buffer.concat(chunks).toString('utf8');
-          const base = `<base href="${prefix}/">`;
-          html = /<head[^>]*>/i.test(html)
-            ? html.replace(/<head[^>]*>/i, (m) => `${m}${base}`)
-            : `${base}${html}`;
+          let body = Buffer.concat(chunks).toString('utf8');
+
+          if (type.includes('text/html')) {
+            // Reescribe rutas absolutas (src/href/action) hacia el proxy.
+            body = body.replace(
+              /\b(src|href|action|data-src)\s*=\s*(["'])(\/[^"']*)\2/gi,
+              (_m, attr, q, url) => `${attr}=${q}${prefix}${url}${q}`
+            );
+            const base = `<base href="${prefix}/">`;
+            body = /<head[^>]*>/i.test(body)
+              ? body.replace(/<head[^>]*>/i, (m) => `${m}${base}`)
+              : `${base}${body}`;
+          } else {
+            body = body.replace(/(["'`])(\/[a-zA-Z0-9_\-./]+\.(?:js|css|png|jpg|gif|svg|cgi|html|json))\1/g,
+              (_m, q, url) => `${q}${prefix}${url}${q}`);
+          }
+
           res.writeHead(proxyRes.statusCode || 200, headers);
-          res.end(html);
+          res.end(body);
         });
         return;
       }
@@ -1035,15 +1099,17 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
   upstream.on('timeout', () => upstream.destroy(new Error('Tiempo de espera agotado')));
   upstream.on('error', (err: any) => {
     if (!res.headersSent) {
-      res.status(502).send(`No se pudo abrir ${ip}:${targetPort} — ${err.message}`);
+      res
+        .status(502)
+        .send(
+          `No se pudo abrir ${ip}:${targetPort} — ${err.code || err.message}. ` +
+            `Verifica que el equipo tenga la administración web habilitada en ese puerto y que sea alcanzable por la VPN.`
+        );
     } else {
       res.end();
     }
   });
 
-  if (req.method === 'GET' || req.method === 'HEAD') {
-    upstream.end();
-  } else {
-    upstream.end(req.body ? JSON.stringify(req.body) : undefined);
-  }
+  upstream.end(bodyBuf);
 });
+
