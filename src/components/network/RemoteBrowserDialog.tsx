@@ -1,19 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Clipboard, ExternalLink, Globe, Maximize, Minimize, Monitor, RotateCw } from "lucide-react";
+import { Clipboard, ExternalLink, Maximize, Minimize, Monitor, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { browserApi } from "@/lib/api-client";
 
 export interface RemoteBrowserTarget {
   title: string;
   directUrl: string;
   proxyUrl?: string;
 }
-
-type Mode = "firefox" | "proxy";
 
 export function RemoteBrowserDialog({
   target,
@@ -25,8 +21,6 @@ export function RemoteBrowserDialog({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [browserKey, setBrowserKey] = useState(0);
-  const [mode, setMode] = useState<Mode>("firefox");
-  const [browserDown, setBrowserDown] = useState(false);
 
   useEffect(() => {
     const onFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
@@ -34,41 +28,9 @@ export function RemoteBrowserDialog({
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
   }, []);
 
-  // Verifica el Firefox remoto y, si está arriba, lo lleva solo a la IP del equipo.
   useEffect(() => {
     if (!target) return;
-    let cancelled = false;
     setBrowserKey((k) => k + 1);
-
-    (async () => {
-      try {
-        const state = await browserApi.status();
-        if (cancelled) return;
-        if (!state?.running) throw new Error(state?.error || "Firefox remoto apagado");
-        setBrowserDown(false);
-        setMode("firefox");
-        try {
-          await browserApi.open(target.directUrl);
-          if (!cancelled) {
-            setBrowserKey((k) => k + 1);
-            toast.success(`Abriendo ${target.directUrl} en Firefox remoto`);
-          }
-        } catch {
-          if (!cancelled) toast.warning("Firefox está arriba pero no aceptó la orden; pega la dirección manualmente");
-        }
-      } catch {
-        if (cancelled) return;
-        setBrowserDown(true);
-        if (target.proxyUrl) {
-          setMode("proxy");
-          toast.warning("Firefox remoto no disponible; usando el proxy integrado");
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [target]);
 
   const copyUrl = async () => {
@@ -90,7 +52,7 @@ export function RemoteBrowserDialog({
     }
   };
 
-  const iframeSrc = mode === "firefox" ? "/browser/" : target?.proxyUrl || "about:blank";
+  const iframeSrc = target?.proxyUrl || "about:blank";
 
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
@@ -104,16 +66,7 @@ export function RemoteBrowserDialog({
               <Monitor className="h-4 w-4 shrink-0" />
               <span className="truncate">{target?.title}</span>
             </DialogTitle>
-            <Tabs value={mode} onValueChange={(v) => { setMode(v as Mode); setBrowserKey((k) => k + 1); }}>
-              <TabsList className="h-8">
-                <TabsTrigger value="firefox" className="h-6 gap-1 text-xs">
-                  <Globe className="h-3.5 w-3.5" /> Firefox remoto
-                </TabsTrigger>
-                <TabsTrigger value="proxy" disabled={!target?.proxyUrl} className="h-6 gap-1 text-xs">
-                  <Monitor className="h-3.5 w-3.5" /> Proxy integrado
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <span className="text-xs text-muted-foreground">Proxy integrado</span>
             <div className="ml-auto flex items-center gap-1">
               <Button size="icon" variant="ghost" title="Recargar" onClick={() => setBrowserKey((key) => key + 1)}>
                 <RotateCw className="h-4 w-4" />
@@ -136,22 +89,12 @@ export function RemoteBrowserDialog({
               </Button>
             )}
           </div>
-          {browserDown && mode === "firefox" && (
-            <div className="mt-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                El contenedor Firefox no responde (502). En el VPS ejecuta:
-                <code className="ml-1 font-mono">cd /opt/omnisync &amp;&amp; docker compose up -d remote-browser &amp;&amp; docker compose logs --tail=50 remote-browser</code>
-                . Mientras tanto usa el <b>Proxy integrado</b>.
-              </span>
-            </div>
-          )}
         </DialogHeader>
         <div className="relative min-h-0 flex-1 bg-muted">
           <iframe
-            key={`${mode}-${browserKey}`}
+            key={browserKey}
             src={iframeSrc}
-            title={mode === "firefox" ? "Firefox remoto" : "Proxy integrado"}
+            title="Proxy integrado"
             allow="clipboard-read; clipboard-write; fullscreen"
             className="absolute inset-0 h-full w-full border-0 bg-background"
           />
