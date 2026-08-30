@@ -1206,11 +1206,6 @@ document.addEventListener("submit",function(e){var fm=e.target;if(fm&&fm.getAttr
         }
 
 
-            res.writeHead(proxyRes.statusCode || 200, headers);
-            res.end(body);
-          });
-          return;
-        }
 
         res.writeHead(proxyRes.statusCode || 200, headers);
         proxyRes.pipe(res);
