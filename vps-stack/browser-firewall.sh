@@ -49,15 +49,6 @@ apply_chain() {
 apply_chain DOCKER-USER
 apply_chain FORWARD
 
-# IPv6: sin salida en absoluto para los escritorios remotos
-if command -v ip6tables >/dev/null 2>&1; then
-  ip6tables -S FORWARD 2>/dev/null | grep -- "$TAG" | sed 's/^-A //' | while read -r RULE; do
-    # shellcheck disable=SC2086
-    ip6tables -D FORWARD $RULE 2>/dev/null || true
-  done
-  ip6tables -I FORWARD 1 -m comment --comment "$TAG" -j DROP 2>/dev/null || true
-fi
-
 echo "✓ Navegador remoto aislado: sólo redes privadas desde $BROWSER_SUBNET"
 echo "  Reglas activas:"
 iptables -S DOCKER-USER 2>/dev/null | grep -- "$TAG" | sed 's/^/    /' || true
