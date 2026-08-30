@@ -139,22 +139,23 @@ export default function Login() {
 
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-col items-start gap-3">
       <div
         className={`relative grid place-items-center rounded-2xl bg-card/70 ring-1 ring-primary/30 glow-ring overflow-hidden ${
-          size === 'lg' ? 'h-16 w-16' : 'h-12 w-12'
+          size === 'lg' ? 'h-20 w-20' : 'h-14 w-14'
         }`}
       >
         <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
       </div>
       <div className="min-w-0">
-        <p className={`font-bold tracking-tight brand-text ${size === 'lg' ? 'text-2xl' : 'text-lg'}`}>
+        <p className={`font-bold tracking-tight brand-text ${size === 'lg' ? 'text-3xl' : 'text-xl'}`}>
           {brandName}
         </p>
         <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Network Operations</p>
       </div>
     </div>
   );
+
 
   const LoginForm = (
     <div className="glass-panel glass-panel-glow hairline-top w-full max-w-md p-7 animate-fade-in-up">
