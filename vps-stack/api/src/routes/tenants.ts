@@ -244,7 +244,12 @@ tenantsRouter.delete('/:id', requireRole('super_admin'), async (req: AuthRequest
     if (rows[0].total > 0) {
       return res.status(400).json({ error: 'El ISP tiene usuarios asignados. Desactívalo en lugar de eliminarlo.' });
     }
+    const slugRow = await pool.query('SELECT slug FROM tenants WHERE id = $1', [req.params.id]);
     await pool.query('DELETE FROM tenants WHERE id = $1', [req.params.id]);
+    // Elimina el escritorio remoto dedicado del ISP (contenedor + puerto Nginx)
+    if (slugRow.rows[0]?.slug) {
+      removeTenantBrowser(String(slugRow.rows[0].slug)).catch(() => undefined);
+    }
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
