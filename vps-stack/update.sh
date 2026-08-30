@@ -45,6 +45,10 @@ docker compose pull remote-browser >/dev/null 2>&1 || true
 # --force-recreate aplica cambios de seguridad/red aunque la imagen sea la misma.
 docker compose up -d --force-recreate remote-browser >/dev/null 2>&1 || \
   echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy integrado sigue activo${NC}"
+# Winbox nativo bajo Wine (se construye local; puede tardar la primera vez)
+docker compose build remote-winbox >/dev/null 2>&1 || true
+docker compose up -d remote-winbox >/dev/null 2>&1 || \
+  echo -e "${YELLOW}⚠ Winbox remoto no disponible; usa WebFig${NC}"
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 # Conserva el servidor L2TP existente. El instalador ahora es idempotente:
