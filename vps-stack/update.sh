@@ -73,10 +73,33 @@ cp -r dist/* "$FRONTEND_DIR"/
 echo "$COMMIT" > "$FRONTEND_DIR/VERSION.txt"
 echo "$COMMIT" > "$INSTALL_DIR/VERSION.txt"
 
-echo -e "${YELLOW}5/5 Reiniciando Nginx...${NC}"
+echo -e "${YELLOW}5/5 Validando y reiniciando Nginx...${NC}"
 cd "$INSTALL_DIR"
+# No reemplazar el proxy por una configuración inválida. Esta validación
+# detecta llaves faltantes, upstreams mal escritos y directivas incorrectas.
+if ! docker compose run --rm --no-deps nginx nginx -t; then
+  echo -e "${RED}✗ Configuración Nginx inválida. No se reinició el proxy.${NC}"
+  exit 1
+fi
 docker compose up -d nginx
-docker compose restart nginx
+
+# `docker compose up` puede mostrar "Started" aunque Nginx falle enseguida.
+# Esperamos brevemente y comprobamos tanto el contenedor como el frontend.
+NGINX_READY=false
+for _ in $(seq 1 15); do
+  if [ "$(docker inspect --format '{{.State.Running}}' omnisync-nginx 2>/dev/null || true)" = "true" ] && \
+     curl -fsS --max-time 3 http://localhost/VERSION.txt >/dev/null 2>&1; then
+    NGINX_READY=true
+    break
+  fi
+  sleep 1
+done
+if [ "$NGINX_READY" != "true" ]; then
+  echo -e "${RED}✗ Nginx no quedó activo; mostrando diagnóstico:${NC}"
+  docker compose ps nginx || true
+  docker compose logs --tail=50 nginx || true
+  exit 1
+fi
 
 cd /root && rm -rf "$TEMP_DIR"
 
