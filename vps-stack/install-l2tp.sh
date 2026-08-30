@@ -72,17 +72,44 @@ cat > "$MT" <<EOF
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniACS VPN"
+    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \\
+    disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
 /ip route
+remove [find comment="Ruta hacia ACS"]
 add dst-address=$TUNNEL_SRV/32 gateway="OmniACS-VPN" comment="Ruta hacia ACS"
 
 # 3) NAT para que el ACS llegue directo al segmento de las ONUs
 /ip firewall nat
+remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) TR-069 de las ONUs
+# 4) Reconexión automática. Si el túnel cae, RouterOS lo levanta sin
+#    depender del botón Conectar del panel.
+/system script
+remove [find name="OmniACS-VPN-Watchdog"]
+add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
+    :local vpn [/interface l2tp-client find where name="OmniACS-VPN"]
+    :if ([:len \$vpn] = 0) do={ :log error "OmniACS: interfaz VPN no existe"; :return }
+    :if ([/interface l2tp-client get \$vpn disabled] = true) do={
+        /interface l2tp-client enable \$vpn
+        :log warning "OmniACS: VPN estaba deshabilitada; reconectando"
+    }
+    :if ([/interface l2tp-client get \$vpn running] = false) do={
+        /interface l2tp-client disable \$vpn
+        :delay 2s
+        /interface l2tp-client enable \$vpn
+        :log warning "OmniACS: VPN sin enlace; reinicio automatico"
+    }
+}
+/system scheduler
+remove [find name="OmniACS-VPN-Watchdog"]
+add name="OmniACS-VPN-Watchdog" start-time=startup interval=30s \
+    on-event="OmniACS-VPN-Watchdog" policy=read,write,test disabled=no
+/system script run "OmniACS-VPN-Watchdog"
+
+# 5) TR-069 de las ONUs
 #   ACS URL (por VPN) : http://$TUNNEL_SRV:7547/
 #   ACS URL (público) : http://$PUBIP:7547/
 #   Usuario / clave   : omnisync / <token-del-ISP>
@@ -198,18 +225,36 @@ docker ps --format '{{.Names}}' | grep -q '^omnisync-l2tp$' || exit 0
 docker ps --format '{{.Names}}' | grep -q '^omnisync-postgres$' || exit 0
 
 ROWS=$(docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAF'|' \
-  -c "SELECT username, password, tunnel_ip FROM tenant_vpn_peers WHERE username IS NOT NULL" 2>/dev/null)
+  -c "SELECT username, password, tunnel_ip, COALESCE(onu_networks, '') FROM tenant_vpn_peers WHERE username IS NOT NULL" 2>/dev/null)
 [ -n "$ROWS" ] || exit 0
 
 TMP=$(mktemp)
+ROUTES=$(mktemp)
 docker exec omnisync-l2tp cat /etc/ppp/chap-secrets 2>/dev/null | grep -v '# omnisync' > "$TMP" || true
-while IFS='|' read -r user pass ip; do
+while IFS='|' read -r user pass ip nets; do
   [ -n "$user" ] || continue
   echo "\"$user\" l2tpd \"$pass\" ${ip:-*} # omnisync" >> "$TMP"
+  [ -n "$ip" ] && [ -n "$nets" ] && echo "$ip $(echo "$nets" | tr ',' ' ')" >> "$ROUTES"
 done <<< "$ROWS"
 
 docker cp "$TMP" omnisync-l2tp:/etc/ppp/chap-secrets >/dev/null 2>&1
-rm -f "$TMP"
+docker cp "$ROUTES" omnisync-l2tp:/etc/ppp/omnisync-routes >/dev/null 2>&1
+docker exec omnisync-l2tp sh -c 'cat > /etc/ppp/ip-up.local <<'"'"'EOF'"'"'
+#!/bin/sh
+while read -r ip nets; do
+  [ "$ip" = "$5" ] || continue
+  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null || true; done
+done < /etc/ppp/omnisync-routes
+EOF
+chmod +x /etc/ppp/ip-up.local' >/dev/null 2>&1 || true
+
+# Repara rutas inmediatamente para todos los peers que ya estén conectados.
+while read -r ip nets; do
+  [ -n "$ip" ] || continue
+  ip route get "$ip" 2>/dev/null | grep -qE 'dev ppp[0-9]+' || continue
+  for net in $nets; do ip route replace "$net" via "$ip" 2>/dev/null || true; done
+done < "$ROUTES"
+rm -f "$TMP" "$ROUTES"
 EOS
 chmod +x "$DIR/l2tp-users-sync.sh"
 [ -f "$STACK_DIR/.env" ] && set -a && . "$STACK_DIR/.env" 2>/dev/null; set +a
@@ -222,10 +267,18 @@ cat > "$DIR/l2tp-routes.sh" <<'EOS'
 set -u
 NETS="__NETS__"
 GW="__GW__"
+# La interfaz PPP creada por L2TP cambia de número después de reconectar.
+# Se usa la IP fija del peer como gateway, nunca un nombre supuesto como l2tp-eth0.
+if ! ip route get "$GW" 2>/dev/null | grep -qE 'dev ppp[0-9]+'; then
+  exit 0
+fi
 for n in $(echo "$NETS" | tr ',' ' '); do
   [ -n "$n" ] || continue
   ip route replace "$n" via "$GW" 2>/dev/null || true
   docker exec omnisync-api ip route replace "$n" via "$GW" 2>/dev/null || true
+  # Ensure NAT to tunnel IP
+  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$GW" -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -I POSTROUTING -s 172.16.0.0/12 -d "$GW" -j MASQUERADE 2>/dev/null || true
 done
 # Permite que API y Firefox (red Docker) alcancen las ONUs a través del túnel.
 for n in $(echo "$NETS" | tr ',' ' '); do
@@ -237,6 +290,10 @@ for n in $(echo "$NETS" | tr ',' ' '); do
   iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || \
     iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || true
 done
+  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
+  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
 iptables -t nat -C POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
   iptables -t nat -A POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
 EOS

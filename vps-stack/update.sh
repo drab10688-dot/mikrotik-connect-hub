@@ -61,6 +61,13 @@ docker compose up -d api
 [ "$BROWSER_OK" = "1" ] && docker compose up -d remote-browser || true
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
+# Actualiza también el servidor L2TP, sus hooks de rutas y el watchdog que
+# hace reconectar la MikroTik automáticamente después de una caída.
+set -a
+. "$INSTALL_DIR/.env"
+set +a
+bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets "${ONU_NETS:-10.82.0.0/21}"
+
 echo -e "${YELLOW}4/5 Compilando frontend...${NC}"
 cd "$TEMP_DIR"
 echo "VITE_API_BASE_URL=/api" > .env.production
