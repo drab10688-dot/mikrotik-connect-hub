@@ -61,6 +61,15 @@ cd "$INSTALL_DIR"
 docker compose up -d nginx remote-browser
 docker compose restart nginx
 
+# Verifica el Firefox remoto (causa habitual de 502 en /browser/)
+sleep 5
+if [ "$(docker inspect -f '{{.State.Running}}' omnisync-browser 2>/dev/null)" != "true" ]; then
+  echo -e "${YELLOW}⚠ Firefox remoto no está corriendo. Reintentando...${NC}"
+  docker compose up -d --force-recreate remote-browser || true
+  sleep 5
+  docker compose logs --tail=40 remote-browser || true
+fi
+
 cd /root && rm -rf "$TEMP_DIR"
 
 echo -e "${GREEN}=== Actualizado ✓  (${COMMIT}) ===${NC}"
