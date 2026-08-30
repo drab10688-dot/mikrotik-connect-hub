@@ -286,6 +286,10 @@ export const tenantsApi = {
 export const netAccessApi = {
   pppoe: async (mikrotikId: string) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/pppoe`)),
+  setPppoePassword: async (mikrotikId: string, secretId: string, password: string, kick = true) =>
+    unwrapData<any>(
+      await apiPut<any>(`/netaccess/${mikrotikId}/pppoe/${encodeURIComponent(secretId)}/password`, { password, kick })
+    ),
   devices: async (mikrotikId: string) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/devices`)),
   webfig: async (mikrotikId: string, port?: number) =>

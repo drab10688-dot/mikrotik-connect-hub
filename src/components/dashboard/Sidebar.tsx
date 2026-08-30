@@ -25,7 +25,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus" as const },
   { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik" as const },
-  { icon: Globe, label: "Acceso web ONU", path: "/onu-web", module: "onu_web" as const },
+  { icon: Globe, label: "Mini-panel de equipos", path: "/onu-web", module: "onu_web" as const },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs" },
   { icon: Settings, label: "Configuración", path: "/settings" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
