@@ -156,6 +156,8 @@ fi
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 8081/tcp >/dev/null 2>&1 || true
   ufw allow 8082/tcp >/dev/null 2>&1 || true
+  # Rango de escritorios privados por usuario
+  ufw allow 8100:8129/tcp >/dev/null 2>&1 || true
   echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
 fi
 
