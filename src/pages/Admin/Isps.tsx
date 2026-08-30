@@ -381,6 +381,24 @@ function IspCard({
           </div>
         </div>
 
+        <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+          <Label className="text-xs font-medium">Red de ONUs / antenas (detrás de la MikroTik)</Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="192.168.0.0/16"
+              value={onuNetworks}
+              onChange={(e) => setOnuNetworks(e.target.value)}
+            />
+            <Button variant="secondary" onClick={() => onSave({ onu_networks: onuNetworks })}>
+              <Save className="w-4 h-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Subredes a las que el VPS llega por la VPN. Separa varias con coma (ej: 192.168.0.0/24,192.168.1.0/24).
+            Al cambiarla, regenera la VPN del ISP para que el VPS instale las rutas nuevas.
+          </p>
+        </div>
+
         <div className="rounded-lg border p-3 space-y-3">
           <p className="text-xs font-medium text-muted-foreground">Módulos habilitados para este ISP</p>
           <div className="flex items-center justify-between">
