@@ -13,7 +13,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { netAccessRouter } from './routes/netaccess';
-import { browserRouter, authorizeBrowserAccess } from './routes/browser';
+import { browserRouter, authorizeBrowserAccess, authorizeUserVnc } from './routes/browser';
 import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
