@@ -89,9 +89,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      # Escritorios remotos (KasmVNC necesita raíz propia, no subpath)
+      # Escritorio remoto privado por usuario (KasmVNC, HTTPS + token del panel)
       - "8081:8081"   # Chromium remoto
-      - "8082:8082"   # Winbox (Wine)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx-dyn:/etc/nginx/conf.d:ro
@@ -235,35 +234,11 @@ services:
     networks:
       - omnisync-browser-net
 
-  # ============================================
-  # Winbox nativo bajo Wine (escritorio XFCE + KasmVNC)
-  # Acceso a MikroTik por la VPN, protegido por la sesión de OmniSync en /winbox/
-  # ============================================
-  remote-winbox:
-    build:
-      context: ./winbox
-    image: omnisync/winbox:latest
-    container_name: omnisync-winbox
-    restart: unless-stopped
-    shm_size: "512mb"
-    security_opt:
-      - seccomp=unconfined
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: ${TZ:-America/Bogota}
-      TITLE: "Winbox — OmniSync"
-    volumes:
-      - winbox_config:/config
-    networks:
-      - omnisync-browser-net
-
 volumes:
   postgres_data:
   backup_data:
   wireguard_config:
   browser_config:
-  winbox_config:
   mongo_data:
 
 networks:
