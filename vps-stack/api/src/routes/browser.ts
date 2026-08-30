@@ -74,10 +74,16 @@ browserRouter.post('/open', async (req, res) => {
     });
   }
 
+  // Firefox debe ejecutarse SIEMPRE como el usuario "abc" (dueño de /config).
+  // Como root falla con: "Running Firefox as root ... is not supported".
+  const env = ['-e', 'DISPLAY=:1', '-e', 'HOME=/config'];
   const attempts: string[][] = [
-    ['exec', '-u', 'abc', '-e', 'DISPLAY=:1', CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-    ['exec', '-e', 'DISPLAY=:1', CONTAINER, '/usr/bin/firefox', '--new-tab', url],
+    ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
+    ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
+    ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/firefox', '--new-tab', url],
+    ['exec', ...env, CONTAINER, 'su', '-s', '/bin/sh', 'abc', '-c', `DISPLAY=:1 HOME=/config /usr/bin/firefox --new-tab '${url}'`],
   ];
+
 
   let lastError = '';
   for (const args of attempts) {
