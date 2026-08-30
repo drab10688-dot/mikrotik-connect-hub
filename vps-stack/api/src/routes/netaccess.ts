@@ -721,15 +721,40 @@ netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response
         caller_id: session?.['caller-id'] || null,
         uptime: session?.uptime || null,
         online: !!session,
+        source: 'secret' as const,
       };
     });
+
+    // Muchos routers autentican por RADIUS o tienen los secretos en otro
+    // servidor: en ese caso hay sesiones activas sin secreto local. Se
+    // agregan igual para que la lista muestre TODOS los clientes conectados.
+    const secretNames = new Set(secrets.map((s) => String(s.name)));
+    const sessionOnly = active
+      .filter((a: any) => !secretNames.has(String(a.name)))
+      .map((a: any) => ({
+        id: a['.id'],
+        name: a.name,
+        profile: a.profile || null,
+        service: a.service || 'pppoe',
+        comment: a.comment || '',
+        disabled: false,
+        remote_address: a.address || null,
+        caller_id: a['caller-id'] || null,
+        uptime: a.uptime || null,
+        online: true,
+        source: 'active' as const,
+      }));
+
+    const all = [...secrets, ...sessionOnly];
 
     res.json({
       success: true,
       data: {
-        secrets,
+        secrets: all,
         active_count: active.length,
-        total: secrets.length,
+        total: all.length,
+        secrets_count: secrets.length,
+        radius_sessions: sessionOnly.length,
       },
     });
   } catch (error: any) {
