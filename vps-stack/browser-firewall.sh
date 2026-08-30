@@ -29,7 +29,8 @@ clean_chain() {
 }
 
 apply_chain() {
-  local CHAIN="$1"
+  local CHAIN="$1" ALLOW_ACTION="RETURN"
+  [ "$CHAIN" = "FORWARD" ] && ALLOW_ACTION="ACCEPT"
   iptables -N "$CHAIN" 2>/dev/null || true
   clean_chain "$CHAIN"
   add() { iptables -I "$CHAIN" 1 -m comment --comment "$TAG" "$@"; }
@@ -39,12 +40,12 @@ apply_chain() {
   add -s "$BROWSER_SUBNET" -j DROP
   # 2) Permite redes privadas (VPN, LANs, ONUs, MikroTik)
   for NET in $PRIVATE_NETS; do
-    add -s "$BROWSER_SUBNET" -d "$NET" -j RETURN
+    add -s "$BROWSER_SUBNET" -d "$NET" -j "$ALLOW_ACTION"
   done
   # 3) Bloquea DNS hacia internet (evita fugas/resolución pública)
   add -s "$BROWSER_SUBNET" -p udp --dport 53 ! -d 172.31.42.0/24 -j DROP 2>/dev/null || true
   # 4) Permite respuestas de conexiones ya establecidas
-  add -s "$BROWSER_SUBNET" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  add -s "$BROWSER_SUBNET" -m conntrack --ctstate ESTABLISHED,RELATED -j "$ALLOW_ACTION"
   unset -f add
 }
 
