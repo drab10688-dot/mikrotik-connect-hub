@@ -128,6 +128,18 @@ if command -v ufw >/dev/null 2>&1; then
   echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
 fi
 
+# Comprobación real de los escritorios remotos (HTTPS autofirmado)
+for P in 8081 8082; do
+  CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:$P/" || echo 000)
+  if [ "$CODE" = "000" ]; then
+    echo -e "${RED}✗ Puerto $P no responde. Mapeo publicado:${NC}"
+    docker port omnisync-nginx || true
+  else
+    echo -e "${GREEN}✓ Puerto $P responde (HTTP $CODE)${NC}"
+  fi
+done
+
+
 cd /root && rm -rf "$TEMP_DIR"
 
 echo -e "${GREEN}=== Actualizado ✓  (${COMMIT}) ===${NC}"
