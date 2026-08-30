@@ -57,8 +57,8 @@ export const withAuthToken = (path?: string | null): string => {
  * URL de los escritorios remotos (KasmVNC). Van en puerto dedicado porque
  * KasmVNC usa rutas absolutas y no funciona bajo un subpath (/browser/).
  */
-export const remoteDesktopUrl = (kind: 'browser' | 'winbox'): string => {
-  const port = kind === 'winbox' ? 8082 : 8081;
+export const remoteDesktopUrl = (kind: 'browser' | 'winbox' | number): string => {
+  const port = typeof kind === 'number' ? kind : kind === 'winbox' ? 8082 : 8081;
   const host = window.location.hostname;
   // KasmVNC sólo funciona en contexto seguro: los escritorios se sirven por HTTPS
   // (certificado autofirmado; la primera vez hay que aceptar el aviso del navegador).
@@ -353,6 +353,7 @@ export const netAccessApi = {
 
 // ─── Navegador remoto (Firefox real en el VPS) ───
 export const browserApi = {
+  /** Escritorio dedicado del ISP (se crea bajo demanda en el VPS). */
   status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
   open: async (url: string) => unwrapData<any>(await apiPost<any>('/browser/open', { url })),
 };
