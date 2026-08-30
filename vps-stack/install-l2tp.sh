@@ -157,7 +157,7 @@ fi
 if ! docker ps --format '{{.Names}}' | grep -q omnisync-l2tp; then
   err "El contenedor no arrancó"; docker logs --tail 40 omnisync-l2tp; exit 1
 fi
-ok "Servidor L2TP/IPsec activo"
+ok "Servidor L2TP activo; esperando conexión de la MikroTik"
 
 # --- Firewall ---
 if command -v ufw >/dev/null 2>&1; then
@@ -231,7 +231,7 @@ docker exec omnisync-l2tp sh -c 'cat > /etc/ppp/ip-up.local <<'"'"'EOF'"'"'
 #!/bin/sh
 while read -r ip nets; do
   [ "$ip" = "$5" ] || continue
-  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null || true; done
+  for n in $nets; do ip route replace "$n" dev "$1" 2>/dev/null || true; done
 done < /etc/ppp/omnisync-routes
 EOF
 chmod +x /etc/ppp/ip-up.local' >/dev/null 2>&1 || true
@@ -239,8 +239,9 @@ chmod +x /etc/ppp/ip-up.local' >/dev/null 2>&1 || true
 # Repara rutas inmediatamente para todos los peers que ya estén conectados.
 while read -r ip nets; do
   [ -n "$ip" ] || continue
-  ip route get "$ip" 2>/dev/null | grep -qE 'dev ppp[0-9]+' || continue
-  for net in $nets; do ip route replace "$net" via "$ip" 2>/dev/null || true; done
+  PPP_IF=$(ip -o -4 addr show 2>/dev/null | awk -v peer="$ip" '$0 ~ /peer / && $0 ~ ("peer " peer "[/ ]") {print $2; exit}')
+  [ -n "$PPP_IF" ] || continue
+  for net in $nets; do ip route replace "$net" dev "$PPP_IF" 2>/dev/null || true; done
 done < "$ROUTES"
 rm -f "$TMP" "$ROUTES"
 EOS
@@ -306,12 +307,16 @@ echo "════════════════════════�
 echo -e "${G} VPN L2TP/IPsec lista (VPN principal)${N}"
 echo "════════════════════════════════════════════"
 echo " Servidor    : $PUBIP"
-echo " Usuario     : $VPN_USER"
-echo " Contraseña  : $VPN_PASSWORD"
-echo " IPsec PSK   : $VPN_IPSEC_PSK"
 echo " Red túnel   : $TUNNEL_NET (VPS = $TUNNEL_SRV)"
 echo " Redes ONU   : $ONU_NETS"
+if ip -o -4 addr show 2>/dev/null | grep -qE ' ppp[0-9]+ .* peer 192\.168\.42\.'; then
+  echo -e " Estado VPN  : ${G}MikroTik conectada${N}"
+  ip -o -4 addr show 2>/dev/null | grep -E ' ppp[0-9]+ .* peer 192\.168\.42\.' | sed 's/^/               /'
+else
+  echo -e " Estado VPN  : ${Y}SIN SESIÓN PPP — vuelve a pegar el script actual en la MikroTik${N}"
+fi
 echo
+echo " Credenciales: $ENVF (no se muestran en la consola)"
 echo " Script MikroTik: $MT"
 echo " (o genéralo por ISP desde el panel → TR-069 y VPN)"
 echo "════════════════════════════════════════════"

@@ -4,6 +4,15 @@ set -u
 
 ONU_NETS="${ONU_NETS:-10.82.0.0/21}"
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+# El retorno de las ONUs entra por PPP y sale por un bridge Docker. El filtro
+# inverso estricto interpreta esa ruta asimétrica como suplantación y la tira.
+sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1 || true
+sysctl -w net.ipv4.conf.default.rp_filter=0 >/dev/null 2>&1 || true
+for f in /proc/sys/net/ipv4/conf/ppp*/rp_filter; do
+  [ -e "$f" ] && printf '0' > "$f" 2>/dev/null || true
+done
+grep -q '^net.ipv4.conf.all.rp_filter=0' /etc/sysctl.conf 2>/dev/null || echo 'net.ipv4.conf.all.rp_filter=0' >> /etc/sysctl.conf
+grep -q '^net.ipv4.conf.default.rp_filter=0' /etc/sysctl.conf 2>/dev/null || echo 'net.ipv4.conf.default.rp_filter=0' >> /etc/sysctl.conf
 
 for net in $(echo "$ONU_NETS" | tr ',' ' '); do
   [ -n "$net" ] || continue

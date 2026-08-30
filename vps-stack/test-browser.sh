@@ -48,6 +48,7 @@ if echo "$ROUTE" | grep -Eq 'dev ppp[0-9]+'; then
   ok "La IP usa el túnel L2TP"
 else
   warn "La ruta no usa ppp; intentando restaurarla"
+  [ -x /opt/omnisync-l2tp/l2tp-routes.sh ] && /opt/omnisync-l2tp/l2tp-routes.sh >/dev/null 2>&1 || true
   ONU_NETS="${ONU_NETS:-10.82.0.0/21}" bash "$INSTALL_DIR/configure-browser-routing.sh" >/dev/null 2>&1 || true
   ROUTE=$(ip route get "$TARGET_IP" 2>&1 | head -1 || true)
   echo "  $ROUTE"
