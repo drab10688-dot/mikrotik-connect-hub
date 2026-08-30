@@ -442,7 +442,12 @@ export default function Network() {
                 <div>
                   <CardTitle className="text-lg">Usuarios PPPoE</CardTitle>
                   <CardDescription>
-                    {pppoe ? `${pppoe.active_count} en línea de ${pppoe.total}` : "Consultando el router por VPN…"}
+                    {pppoe
+                      ? `${pppoe.active_count} en línea de ${pppoe.total}` +
+                        (pppoe.radius_sessions
+                          ? ` · ${pppoe.radius_sessions} sesiones sin secreto local (RADIUS)`
+                          : "")
+                      : "Consultando el router por VPN…"}
                   </CardDescription>
                 </div>
               </CardHeader>
