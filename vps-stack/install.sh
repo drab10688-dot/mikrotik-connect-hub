@@ -173,6 +173,7 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 docker compose pull remote-browser
 docker compose up -d 2>&1 | tail -5
+ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
 sleep 20

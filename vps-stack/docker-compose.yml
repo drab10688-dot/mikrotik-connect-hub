@@ -199,6 +199,7 @@ services:
       PASSWORD: ${BROWSER_PASSWORD:-omnisync}
       FF_OPEN_URL: ${BROWSER_HOME_URL:-about:blank}
       TITLE: OmniSync Firefox
+      SUBFOLDER: /browser/
     volumes:
       - browser_config:/config
     networks:

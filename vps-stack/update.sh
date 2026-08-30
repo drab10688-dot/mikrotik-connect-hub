@@ -44,6 +44,7 @@ grep -q '^BROWSER_HOME_URL=' .env || echo 'BROWSER_HOME_URL=about:blank' >> .env
 docker compose build --no-cache api
 docker compose pull remote-browser
 docker compose up -d api remote-browser
+bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}4/5 Compilando frontend...${NC}"
 cd "$TEMP_DIR"
