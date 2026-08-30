@@ -100,16 +100,29 @@ if [ ! -s "$INSTALL_DIR/nginx/certs/remote.crt" ] || [ ! -s "$INSTALL_DIR/nginx/
     -subj "/CN=omnisync-remote" >/dev/null 2>&1
 fi
 # Validación aislada: `docker compose run` intentaba recrear redes y fallaba
-# con "network has active endpoints". Usamos un contenedor efímero sin redes.
-if ! docker run --rm --network none \
+# con "network has active endpoints". Usamos un contenedor efímero conectado a
+# la MISMA red del stack para que resuelvan los upstreams (api, browser...).
+NET_NAME="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' omnisync-api 2>/dev/null | head -1)"
+[ -z "$NET_NAME" ] && NET_NAME="omnisync_default"
+if ! docker network inspect "$NET_NAME" >/dev/null 2>&1; then
+  NET_NAME=""
+fi
+NGINX_TEST_OUT="$(docker run --rm ${NET_NAME:+--network "$NET_NAME"} \
   -v "$INSTALL_DIR/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
   -v "$INSTALL_DIR/nginx-dyn:/etc/nginx/conf.d:ro" \
   -v "$INSTALL_DIR/nginx/certs:/etc/nginx/certs:ro" \
   -v "$FRONTEND_DIR:/usr/share/nginx/html:ro" \
-  nginx:alpine nginx -t; then
-  echo -e "${RED}✗ Configuración Nginx inválida. No se reinició el proxy.${NC}"
-  exit 1
+  nginx:alpine nginx -t 2>&1)" || NGINX_TEST_FAILED=1
+echo "$NGINX_TEST_OUT"
+if [ "${NGINX_TEST_FAILED:-0}" = "1" ]; then
+  if echo "$NGINX_TEST_OUT" | grep -q "host not found in upstream"; then
+    echo -e "${YELLOW}⚠ No se pudo resolver un upstream durante la validación (DNS del test). Continuando: Nginx se verifica tras reiniciar.${NC}"
+  else
+    echo -e "${RED}✗ Configuración Nginx inválida. No se reinició el proxy.${NC}"
+    exit 1
+  fi
 fi
+
 # --force-recreate: los cambios de mapeo de puertos (8081/8082) sólo se
 # aplican si el contenedor se recrea; un simple `up -d` lo deja igual.
 docker compose up -d --force-recreate nginx
