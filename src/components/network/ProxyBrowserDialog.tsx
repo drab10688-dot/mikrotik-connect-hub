@@ -26,6 +26,12 @@ export function ProxyBrowserDialog({
   const [browserKey, setBrowserKey] = useState(0);
   const [mode, setMode] = useState<ViewerMode>("browser");
   const [status, setStatus] = useState<string>("Verificando navegador remoto…");
+  const [embedded, setEmbedded] = useState(false);
+
+  useEffect(() => {
+    setEmbedded(false);
+  }, [browserKey, mode]);
+
 
   useEffect(() => {
     const onFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
@@ -165,8 +171,29 @@ export function ProxyBrowserDialog({
             title={mode === "browser" ? "Navegador remoto" : "Proxy integrado"}
             allow="clipboard-read; clipboard-write; fullscreen"
             className="absolute inset-0 h-full w-full border-0 bg-background"
+            onLoad={() => setEmbedded(true)}
           />
+          {mode === "browser" && !embedded && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/95 p-6 text-center">
+              <Monitor className="h-8 w-8 text-muted-foreground" />
+              <p className="max-w-md text-sm text-muted-foreground">
+                El escritorio remoto usa un certificado propio del VPS. Si ves la pantalla en negro, ábrelo una vez
+                en una pestaña nueva y acepta el aviso del certificado; después funcionará dentro del panel.
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" asChild>
+                  <a href={viewerUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className="mr-1 h-4 w-4" /> Abrir escritorio en pestaña nueva
+                  </a>
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setBrowserKey((k) => k + 1)}>
+                  <RotateCw className="mr-1 h-4 w-4" /> Reintentar aquí
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
+
       </DialogContent>
     </Dialog>
   );
