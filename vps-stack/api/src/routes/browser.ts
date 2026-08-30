@@ -147,7 +147,7 @@ browserRouter.post('/open', async (req, res) => {
 
   let lastError = '';
   for (const display of displays) {
-    const navigated = await navigateVisibleFirefox(display, url);
+    const navigated = await navigateVisibleBrowser(display, url);
     if (navigated.ok) {
       return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'window' } });
     }
@@ -155,9 +155,9 @@ browserRouter.post('/open', async (req, res) => {
 
     const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
     const attempts: string[][] = [
-      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/firefox', '--new-tab', url],
+      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
       [
         'exec',
         ...env,
@@ -167,13 +167,13 @@ browserRouter.post('/open', async (req, res) => {
         '/bin/sh',
         'abc',
         '-c',
-        `DISPLAY=${display} HOME=/config /usr/bin/firefox --new-tab '${url}'`,
+        `DISPLAY=${display} HOME=/config /usr/bin/chromium --new-tab '${url}'`,
       ],
     ];
     for (const args of attempts) {
       const result = await docker(args, 20000);
       if (result.ok) {
-        return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'firefox-cli' } });
+        return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'chromium-cli' } });
       }
       lastError = result.err;
       // Si el error no es de display, no tiene sentido probar otros displays.

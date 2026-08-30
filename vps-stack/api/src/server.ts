@@ -13,7 +13,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { netAccessRouter } from './routes/netaccess';
-import { browserRouter } from './routes/browser';
+import { browserRouter, authorizeBrowserAccess } from './routes/browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { onuWebRouter } from './routes/onu-web';
