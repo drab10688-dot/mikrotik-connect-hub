@@ -48,8 +48,8 @@ export async function upsertL2tpUser(
   );
 
   // Mapa tunnel_ip -> redes (lo lee el hook /etc/ppp/ip-up.local).
-  // La ruta se instala en el host: la API sale por su gateway Docker
-  // y el host la reenvía por la interfaz ppp activa.
+  // La ruta se instala directamente sobre la interfaz PPP. En enlaces punto
+  // a punto esto es más fiable que declarar al peer como gateway.
   if (tunnelIp) {
     const nets = escNet(onuNetworks?.trim() || '10.82.0.0/21');
     await sh(
@@ -61,15 +61,20 @@ export async function upsertL2tpUser(
 # \$5 = IP del peer. Agrega las rutas de sus redes de ONUs en el VPS.
 while read -r ip nets; do
   [ "$ip" = "$5" ] || continue
-  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null || true; done
+  for n in $nets; do ip route replace "$n" dev "$1" 2>/dev/null || true; done
 done < ${ROUTES_FILE}
 EOF
 chmod +x /etc/ppp/ip-up.local`
     );
 
-    // Si el túnel ya está activo, aplica las rutas ahora mismo
-    for (const net of nets.split(',').map((s) => s.trim()).filter(Boolean)) {
-      await sh(`ip route replace '${escNet(net)}' via '${esc(tunnelIp)}' 2>/dev/null || true`);
+    // Si el túnel ya está activo, aplica las rutas ahora mismo.
+    const pppIf = (await sh(
+      `ip -o -4 addr show | awk '$0 ~ /peer ${esc(tunnelIp)}[/ ]/ {print $2; exit}'`
+    )).trim();
+    if (pppIf) {
+      for (const net of nets.split(',').map((s) => s.trim()).filter(Boolean)) {
+        await sh(`ip route replace '${escNet(net)}' dev '${esc(pppIf)}' 2>/dev/null || true`);
+      }
     }
   }
 }

@@ -231,7 +231,7 @@ docker exec omnisync-l2tp sh -c 'cat > /etc/ppp/ip-up.local <<'"'"'EOF'"'"'
 #!/bin/sh
 while read -r ip nets; do
   [ "$ip" = "$5" ] || continue
-  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null || true; done
+  for n in $nets; do ip route replace "$n" dev "$1" 2>/dev/null || true; done
 done < /etc/ppp/omnisync-routes
 EOF
 chmod +x /etc/ppp/ip-up.local' >/dev/null 2>&1 || true
@@ -239,8 +239,9 @@ chmod +x /etc/ppp/ip-up.local' >/dev/null 2>&1 || true
 # Repara rutas inmediatamente para todos los peers que ya estén conectados.
 while read -r ip nets; do
   [ -n "$ip" ] || continue
-  ip route get "$ip" 2>/dev/null | grep -qE 'dev ppp[0-9]+' || continue
-  for net in $nets; do ip route replace "$net" via "$ip" 2>/dev/null || true; done
+  PPP_IF=$(ip -o -4 addr show 2>/dev/null | awk -v peer="$ip" '$0 ~ /peer / && $0 ~ ("peer " peer "[/ ]") {print $2; exit}')
+  [ -n "$PPP_IF" ] || continue
+  for net in $nets; do ip route replace "$net" dev "$PPP_IF" 2>/dev/null || true; done
 done < "$ROUTES"
 rm -f "$TMP" "$ROUTES"
 EOS

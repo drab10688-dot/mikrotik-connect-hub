@@ -7,10 +7,11 @@ ROUTES_FILE="/opt/omnisync-l2tp/omnisync-routes"
 if [ -f "$ROUTES_FILE" ]; then
     while read -r peer_ip nets; do
         [ -n "$peer_ip" ] || continue
-        ip route get "$peer_ip" 2>/dev/null | grep -qE 'dev ppp[0-9]+' || continue
+        PPP_IF=$(ip -o -4 addr show 2>/dev/null | awk -v peer="$peer_ip" '$0 ~ /peer / && $0 ~ ("peer " peer "[/ ]") {print $2; exit}')
+        [ -n "$PPP_IF" ] || continue
         for net in $(echo "$nets" | tr ',' ' '); do
-            echo "Applying route $net via $peer_ip"
-            ip route replace "$net" via "$peer_ip" 2>/dev/null || true
+            echo "Applying route $net dev $PPP_IF (peer $peer_ip)"
+            ip route replace "$net" dev "$PPP_IF" 2>/dev/null || true
         done
     done < "$ROUTES_FILE"
 fi
@@ -20,8 +21,9 @@ sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 if [ -f "$ROUTES_FILE" ]; then
     while read -r peer_ip nets; do
         [ -n "$peer_ip" ] || continue
-        ip route get "$peer_ip" 2>/dev/null | grep -qE 'dev ppp[0-9]+' || continue
-        for net in $nets; do
+        PPP_IF=$(ip -o -4 addr show 2>/dev/null | awk -v peer="$peer_ip" '$0 ~ /peer / && $0 ~ ("peer " peer "[/ ]") {print $2; exit}')
+        [ -n "$PPP_IF" ] || continue
+        for net in $(echo "$nets" | tr ',' ' '); do
             iptables -C FORWARD -s 172.16.0.0/12 -d "$net" -j ACCEPT 2>/dev/null || \
               iptables -I FORWARD -s 172.16.0.0/12 -d "$net" -j ACCEPT 2>/dev/null || true
             iptables -C FORWARD -d 172.16.0.0/12 -s "$net" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
