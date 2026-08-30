@@ -55,17 +55,36 @@ export async function upsertL2tpUser(
     await sh(
       `touch ${ROUTES_FILE}; sed -i "/^${esc(tunnelIp)}[[:space:]]/d" ${ROUTES_FILE}; ` +
         `printf '%s\\n' '${esc(tunnelIp)} ${nets}' >> ${ROUTES_FILE}; ` +
-        // Hook ip-up: al conectar el peer, rutas hacia sus redes de ONUs
+        // Hook ip-up: al conectar el peer, rutas + firewall/NAT hacia sus redes
         `cat > /etc/ppp/ip-up.local <<'EOF'
 #!/bin/sh
 # \$5 = IP del peer. Agrega las rutas de sus redes de ONUs en el VPS.
+sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
+sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1
+[ -e "/proc/sys/net/ipv4/conf/$1/rp_filter" ] && printf '0' > "/proc/sys/net/ipv4/conf/$1/rp_filter" 2>/dev/null
 while read -r ip nets; do
   [ "$ip" = "$5" ] || continue
-  for n in $nets; do ip route replace "$n" dev "$1" 2>/dev/null || true; done
+  for n in $(echo "$nets" | tr ',' ' '); do
+    ip route replace "$n" dev "$1" 2>/dev/null || true
+    iptables -C FORWARD -s 172.16.0.0/12 -d "$n" -j ACCEPT 2>/dev/null || iptables -I FORWARD -s 172.16.0.0/12 -d "$n" -j ACCEPT 2>/dev/null
+    iptables -C FORWARD -d 172.16.0.0/12 -s "$n" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -I FORWARD -d 172.16.0.0/12 -s "$n" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null
+    iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null
+  done
 done < ${ROUTES_FILE}
 EOF
 chmod +x /etc/ppp/ip-up.local`
     );
+
+    // Reglas de acceso a la red del ISP: no dependen de que el túnel esté
+    // arriba, así el panel/escritorio puede entrar apenas conecte.
+    for (const net of nets.split(',').map((s) => s.trim()).filter(Boolean)) {
+      const n = escNet(net);
+      await sh(
+        `iptables -C FORWARD -s 172.16.0.0/12 -d '${n}' -j ACCEPT 2>/dev/null || iptables -I FORWARD -s 172.16.0.0/12 -d '${n}' -j ACCEPT; ` +
+          `iptables -C FORWARD -d 172.16.0.0/12 -s '${n}' -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -I FORWARD -d 172.16.0.0/12 -s '${n}' -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT; ` +
+          `iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d '${n}' -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d '${n}' -j MASQUERADE; true`
+      );
+    }
 
     // Si el túnel ya está activo, aplica las rutas ahora mismo.
     const pppIf = (await sh(
@@ -78,6 +97,7 @@ chmod +x /etc/ppp/ip-up.local`
     }
   }
 }
+
 
 /** Elimina la cuenta L2TP, sus rutas registradas y corta la sesión activa. */
 export async function removeL2tpUser(username: string, tunnelIp?: string) {
