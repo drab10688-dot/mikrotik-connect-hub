@@ -74,22 +74,35 @@ browserRouter.post('/open', async (req, res) => {
     });
   }
 
-  // Firefox debe ejecutarse SIEMPRE como el usuario "abc" (dueño de /config).
-  // Como root falla con: "Running Firefox as root ... is not supported".
-  const env = ['-e', 'DISPLAY=:1', '-e', 'HOME=/config'];
-  const attempts: string[][] = [
-    ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-    ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-    ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/firefox', '--new-tab', url],
-    ['exec', ...env, CONTAINER, 'su', '-s', '/bin/sh', 'abc', '-c', `DISPLAY=:1 HOME=/config /usr/bin/firefox --new-tab '${url}'`],
-  ];
-
+  // El display depende de la imagen (selkies usa :0, kasm usa :1): lo detectamos.
+  const displays = await detectDisplays();
 
   let lastError = '';
-  for (const args of attempts) {
-    const result = await docker(args, 20000);
-    if (result.ok) return res.json({ success: true, data: { url, viewer: '/browser/' } });
-    lastError = result.err;
+  for (const display of displays) {
+    const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
+    const attempts: string[][] = [
+      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
+      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
+      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/firefox', '--new-tab', url],
+      [
+        'exec',
+        ...env,
+        CONTAINER,
+        'su',
+        '-s',
+        '/bin/sh',
+        'abc',
+        '-c',
+        `DISPLAY=${display} HOME=/config /usr/bin/firefox --new-tab '${url}'`,
+      ],
+    ];
+    for (const args of attempts) {
+      const result = await docker(args, 20000);
+      if (result.ok) return res.json({ success: true, data: { url, display, viewer: '/browser/' } });
+      lastError = result.err;
+      // Si el error no es de display, no tiene sentido probar otros displays.
+      if (!/cannot open display/i.test(lastError)) continue;
+    }
   }
 
   res.status(502).json({ success: false, error: lastError || 'No se pudo abrir la URL en el navegador remoto' });
