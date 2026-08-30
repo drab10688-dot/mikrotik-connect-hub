@@ -76,7 +76,8 @@ export default function OnuWeb() {
   });
 
   const probe = useMutation({
-    mutationFn: () => onuWebApi.probe({ ip, username: user || undefined, password: pass || undefined }),
+    mutationFn: (target?: { ip: string }) =>
+      onuWebApi.probe({ ip: target?.ip || ip, username: user || undefined, password: pass || undefined }),
     onSuccess: (data: any) => {
       setProbeResult(data);
       setSelectedProfile(data?.matched_profile?.id || "");
