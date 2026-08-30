@@ -1,14 +1,45 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { execFile } from 'child_process';
+import jwt from 'jsonwebtoken';
 
 /**
- * Navegador remoto (Firefox real dentro del VPS).
+ * Navegador remoto (Chromium real dentro del VPS, sin contraseña propia).
  * El contenedor navega directamente a la IP del equipo por la ruta L2TP del host,
  * por lo que no depende del proxy HTTP ni de la reescritura de HTML antiguo.
+ * La seguridad del escritorio remoto la aplica Nginx (auth_request → /api/browser-authz).
  */
 export const browserRouter = Router();
 
 const CONTAINER = process.env.BROWSER_CONTAINER || 'omnisync-browser';
+
+/**
+ * Autoriza el acceso al escritorio remoto (/browser/) para Nginx auth_request.
+ * Acepta el token JWT por query (?token= en la URI original) o por la cookie
+ * omnisync_web_token que se fija al abrir el visor. Responde 200/401 sin cuerpo.
+ */
+export function authorizeBrowserAccess(req: Request, res: Response) {
+  const original = String(req.headers['x-original-uri'] || req.originalUrl || '');
+  let token: string | undefined;
+  try {
+    token = new URL(original, 'http://local').searchParams.get('token') || undefined;
+  } catch {
+    /* ignore */
+  }
+  if (!token) {
+    const raw = req.headers.cookie || '';
+    for (const part of raw.split(';')) {
+      const [k, ...v] = part.trim().split('=');
+      if (k === 'omnisync_web_token') token = decodeURIComponent(v.join('='));
+    }
+  }
+  if (!token) return res.status(401).end();
+  try {
+    jwt.verify(token, process.env.JWT_SECRET || 'changeme');
+    return res.status(200).end();
+  } catch {
+    return res.status(401).end();
+  }
+}
 
 function docker(args: string[], timeout = 15000): Promise<{ ok: boolean; out: string; err: string }> {
   return new Promise((resolve) => {
