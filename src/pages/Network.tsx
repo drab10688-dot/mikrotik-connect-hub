@@ -457,6 +457,7 @@ export default function Network() {
                         )}
                       </tbody>
                     </table>
+                    <Pager controls={pppoeSearch} />
                   </div>
                 )}
               </CardContent>
