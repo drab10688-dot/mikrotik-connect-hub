@@ -114,7 +114,7 @@ netAccessRouter.put('/web-ports', editRed, async (req: AuthRequest, res: Respons
 netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, ip, name, brand, username, port, protocol
+      `SELECT id, ip, name, brand, username, port, protocol, sector
          FROM ap_credentials
         WHERE tenant_id IS NOT DISTINCT FROM $1
         ORDER BY ip`,
@@ -128,22 +128,23 @@ netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) =
 
 netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Response) => {
   try {
-    const { ip, name, brand, username, password, port, protocol } = req.body || {};
+    const { ip, name, brand, username, password, port, protocol, sector } = req.body || {};
     if (!ip || !IPV4.test(String(ip))) {
       return res.status(400).json({ success: false, error: 'IP del AP inválida' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (tenant_id, ip) DO UPDATE SET
          name = EXCLUDED.name,
+         sector = EXCLUDED.sector,
          brand = EXCLUDED.brand,
          username = EXCLUDED.username,
          password = COALESCE(NULLIF(EXCLUDED.password, ''), ap_credentials.password),
          port = EXCLUDED.port,
          protocol = EXCLUDED.protocol,
          updated_at = now()
-       RETURNING id, ip, name, brand, username, port, protocol`,
+       RETURNING id, ip, name, brand, username, port, protocol, sector`,
       [
         req.tenantId ?? null,
         String(ip),
@@ -153,6 +154,7 @@ netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Re
         password || '',
         Number(port) > 0 ? Number(port) : null,
         protocol === 'https' ? 'https' : 'http',
+        sector || null,
       ]
     );
     res.json({ success: true, data: rows[0] });
