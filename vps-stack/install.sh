@@ -169,6 +169,9 @@ docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
 echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
 docker compose pull remote-browser 2>&1 | tail -2 || true
 docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy sigue funcionando${NC}"
+echo -e "${YELLOW}Construyendo Winbox remoto (Wine, sin licencias Windows)...${NC}"
+docker compose build remote-winbox 2>&1 | tail -3 || true
+docker compose up -d remote-winbox 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Winbox remoto no disponible; usa WebFig${NC}"
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
