@@ -30,8 +30,24 @@ export function AdvancedWeb({
   const [manualPort, setManualPort] = useState("80");
   const [checking, setChecking] = useState(false);
   const [diag, setDiag] = useState<any>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const frameWrapRef = useRef<HTMLDivElement>(null);
 
   const routerId = mikrotikId || localStorage.getItem("mikrotik_device_id") || "";
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await frameWrapRef.current?.requestFullscreen();
+        setFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setFullscreen(false);
+      }
+    } catch {
+      toast.error("El navegador no permitió pantalla completa");
+    }
+  };
 
   const nameFor = (ip: string) => devices.find((d) => d.ip === ip)?.name || ip;
 
