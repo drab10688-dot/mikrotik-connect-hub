@@ -1,29 +1,29 @@
 import { Router, Request, Response } from 'express';
-import { execFile } from 'child_process';
 import jwt from 'jsonwebtoken';
 import { AuthRequest } from '../middleware/auth';
+import {
+  docker,
+  ensureUserBrowser,
+  destroyUserBrowser,
+  getSession,
+  touchSession,
+  waitReady,
+  userBrowserConfig,
+  UserBrowserSession,
+} from '../lib/user-browser';
 
 /**
- * Navegador remoto (Chromium real dentro del VPS, sin contraseña propia).
- * Es un único escritorio global en el puerto 8081 (los escritorios dedicados
- * por ISP se retiraron: publicaban decenas de puertos y tumbaban Nginx).
- *
- * Comportamiento:
- *  - Cada equipo que se abre se carga en una PESTAÑA NUEVA; las anteriores
- *    siguen abiertas para poder ir y volver entre ONUs/antenas.
- *  - Si nadie usa el visor durante un rato, se cierra todo (pestañas, cookies,
- *    historial y caché) reiniciando el contenedor con perfil en tmpfs.
+ * Navegador remoto por USUARIO: cada operador tiene su propio Chromium+KasmVNC
+ * en un puerto dedicado, con credenciales temporales. Nadie ve las pestañas de
+ * los demás. El escritorio se destruye solo tras la inactividad configurada.
  */
 export const browserRouter = Router();
 
-const CONTAINER = process.env.BROWSER_CONTAINER || 'omnisync-browser';
-const BROWSER_PORT = Number(process.env.BROWSER_PORT || 8081);
-/** Minutos sin actividad del visor antes de cerrar todas las pestañas. */
-const IDLE_MINUTES = Number(process.env.BROWSER_IDLE_MINUTES || 10);
+const IDLE_MINUTES = userBrowserConfig.IDLE_MINUTES;
 
 /**
- * Autoriza el acceso al escritorio remoto para Nginx auth_request.
- * Acepta el token JWT por query (?token=) o por la cookie omnisync_web_token.
+ * Autoriza el acceso a los escritorios servidos por Nginx (Winbox 8082 y el
+ * navegador global heredado 8081) mediante auth_request.
  */
 export async function authorizeBrowserAccess(req: Request, res: Response) {
   const original = String(req.headers['x-original-uri'] || req.originalUrl || '');
@@ -44,51 +44,12 @@ export async function authorizeBrowserAccess(req: Request, res: Response) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { userId?: string };
     if (!decoded?.userId) return res.status(401).end();
+    touchSession(decoded.userId);
   } catch {
     return res.status(401).end();
   }
-  touchActivity();
   return res.status(200).end();
 }
-
-function docker(args: string[], timeout = 15000): Promise<{ ok: boolean; out: string; err: string }> {
-  return new Promise((resolve) => {
-    execFile('docker', args, { timeout }, (error, stdout, stderr) => {
-      resolve({ ok: !error, out: (stdout || '').trim(), err: (stderr || error?.message || '').trim() });
-    });
-  });
-}
-
-// ─── Control de inactividad ───────────────────────────────────────────────
-let lastActivity = Date.now();
-let sessionOpen = false;
-
-function touchActivity() {
-  lastActivity = Date.now();
-}
-
-/** Cierra todas las pestañas y borra cookies/historial/caché del navegador. */
-async function closeEverything() {
-  sessionOpen = false;
-  await docker(
-    [
-      'exec',
-      CONTAINER,
-      'sh',
-      '-lc',
-      'pkill -f chromium >/dev/null 2>&1; sleep 1; rm -rf /config/.config/chromium/* /config/.cache/* /config/Downloads/* >/dev/null 2>&1; exit 0',
-    ],
-    30000
-  );
-  // Reinicio limpio: el perfil vive en tmpfs, así no queda rastro de sesión.
-  await docker(['restart', CONTAINER], 90000);
-}
-
-setInterval(() => {
-  if (!sessionOpen) return;
-  if (Date.now() - lastActivity < IDLE_MINUTES * 60_000) return;
-  closeEverything().catch(() => undefined);
-}, 60_000).unref?.();
 
 /** Solo permitimos http/https hacia IPs privadas alcanzables por la VPN. */
 function sanitizeUrl(raw: unknown): string | null {
@@ -113,8 +74,8 @@ function sanitizeUrl(raw: unknown): string | null {
   return parsed.toString();
 }
 
-/** Detecta los displays X disponibles dentro del contenedor del navegador. */
-async function detectDisplays(container = CONTAINER): Promise<string[]> {
+/** Displays X disponibles dentro del contenedor del usuario. */
+async function detectDisplays(container: string): Promise<string[]> {
   const found: string[] = [];
   const ls = await docker(['exec', container, 'sh', '-c', 'ls /tmp/.X11-unix 2>/dev/null'], 8000);
   if (ls.ok) {
@@ -127,11 +88,8 @@ async function detectDisplays(container = CONTAINER): Promise<string[]> {
   return found;
 }
 
-/**
- * Abre el equipo en una PESTAÑA NUEVA de la ventana visible (Ctrl+T + URL).
- * Así las pestañas anteriores se conservan y se puede alternar entre equipos.
- */
-async function openInNewTab(display: string, url: string, container = CONTAINER) {
+/** Abre el equipo en una PESTAÑA NUEVA (las anteriores se conservan). */
+async function openInNewTab(container: string, display: string, url: string) {
   const script = [
     'command -v xdotool >/dev/null 2>&1 || exit 127',
     'WID="$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)"',
@@ -150,91 +108,113 @@ async function openInNewTab(display: string, url: string, container = CONTAINER)
   );
 }
 
-async function containerStatus(name = CONTAINER): Promise<string> {
-  const r = await docker(['inspect', '--format', '{{.State.Status}}', name], 8000);
-  return r.ok ? r.out : 'missing';
+function publicSession(s: UserBrowserSession) {
+  return {
+    port: s.port,
+    user: s.user,
+    password: s.password,
+    container: s.container,
+    idleMinutes: IDLE_MINUTES,
+  };
 }
 
-/** Estado del escritorio remoto global. */
-browserRouter.get('/status', async (_req: AuthRequest, res) => {
-  const status = await containerStatus();
-  const running = status === 'running';
+function requireUser(req: AuthRequest, res: Response): string | null {
+  if (!req.userId) {
+    res.status(401).json({ success: false, error: 'Sesión no válida' });
+    return null;
+  }
+  return req.userId;
+}
+
+/** Estado del escritorio propio del usuario (sin crearlo). */
+browserRouter.get('/status', async (req: AuthRequest, res) => {
+  const userId = requireUser(req, res);
+  if (!userId) return;
+  const s = getSession(userId);
   res.json({
     success: true,
-    data: {
-      container: CONTAINER,
-      status,
-      running,
-      port: BROWSER_PORT,
-      idleMinutes: IDLE_MINUTES,
-      hint: running ? null : 'El escritorio remoto se está iniciando, reintenta en unos segundos.',
-    },
+    data: s
+      ? { running: true, ...publicSession(s) }
+      : { running: false, idleMinutes: IDLE_MINUTES, hint: 'Se creará tu escritorio privado al abrir un equipo.' },
   });
 });
 
-/** Latido del visor: mientras haya visor abierto, no se cierran las pestañas. */
-browserRouter.post('/ping', (_req: AuthRequest, res) => {
-  touchActivity();
+/** Crea (o reutiliza) el escritorio privado del usuario. */
+browserRouter.post('/session', async (req: AuthRequest, res) => {
+  const userId = requireUser(req, res);
+  if (!userId) return;
+  try {
+    const s = await ensureUserBrowser(userId);
+    await waitReady(s);
+    res.json({ success: true, data: { running: true, ...publicSession(s) } });
+  } catch (e: any) {
+    res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
+  }
+});
+
+/** Latido del visor: evita que el escritorio se destruya mientras se usa. */
+browserRouter.post('/ping', (req: AuthRequest, res) => {
+  if (req.userId) touchSession(req.userId);
   res.json({ success: true, data: { idleMinutes: IDLE_MINUTES } });
 });
 
-/** Cierre manual: cierra todas las pestañas y borra cookies/historial. */
-browserRouter.post('/close', async (_req: AuthRequest, res) => {
-  await closeEverything();
+/** Cierre manual: destruye el escritorio del usuario (pestañas, cookies, historial). */
+browserRouter.post('/close', async (req: AuthRequest, res) => {
+  const userId = requireUser(req, res);
+  if (!userId) return;
+  await destroyUserBrowser(userId);
   res.json({ success: true });
 });
 
-/** Abre la URL del equipo en una pestaña nueva del Chromium remoto. */
+/** Abre la URL del equipo en una pestaña nueva del escritorio privado. */
 browserRouter.post('/open', async (req: AuthRequest, res) => {
+  const userId = requireUser(req, res);
+  if (!userId) return;
+
   const url = sanitizeUrl((req as any).body?.url);
   if (!url) return res.status(400).json({ success: false, error: 'URL no permitida (solo IPs privadas http/https)' });
 
-  if ((await containerStatus()) !== 'running') {
+  let session: UserBrowserSession;
+  try {
+    session = await ensureUserBrowser(userId);
+  } catch (e: any) {
+    return res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
+  }
+
+  const ready = await waitReady(session);
+  if (!ready) {
     return res.status(503).json({
       success: false,
-      error: 'El escritorio remoto se está iniciando, reintenta en unos segundos',
-      data: { container: CONTAINER, port: BROWSER_PORT },
+      error: 'Tu escritorio remoto se está iniciando, reintenta en unos segundos',
+      data: publicSession(session),
     });
   }
 
-  touchActivity();
-  sessionOpen = true;
+  touchSession(userId);
 
-  const displays = await detectDisplays();
+  const displays = await detectDisplays(session.container);
   let lastError = '';
   for (const display of displays) {
-    const navigated = await openInNewTab(display, url);
+    const navigated = await openInNewTab(session.container, display, url);
     if (navigated.ok) {
-      return res.json({ success: true, data: { url, display, port: BROWSER_PORT, method: 'new-tab' } });
+      return res.json({ success: true, data: { url, display, method: 'new-tab', ...publicSession(session) } });
     }
     lastError = navigated.err;
 
     const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
     const attempts: string[][] = [
-      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
-      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
-      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
+      ['exec', '-u', 'abc', ...env, session.container, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', '-u', '1000', ...env, session.container, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', ...env, session.container, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
     ];
     for (const args of attempts) {
       const result = await docker(args, 20000);
       if (result.ok) {
-        return res.json({ success: true, data: { url, display, port: BROWSER_PORT, method: 'chromium-cli' } });
+        return res.json({ success: true, data: { url, display, method: 'chromium-cli', ...publicSession(session) } });
       }
       lastError = result.err;
-      if (/profile appears to be in use|SingletonLock/i.test(lastError)) {
-        await docker(
-          ['exec', CONTAINER, 'sh', '-c', 'rm -f /config/.config/chromium/Singleton* /config/chromium/Singleton*'],
-          8000
-        );
-        const retry = await docker(args, 20000);
-        if (retry.ok) {
-          return res.json({ success: true, data: { url, display, port: BROWSER_PORT, method: 'chromium-cli' } });
-        }
-        lastError = retry.err;
-      }
-      if (!/cannot open display/i.test(lastError)) continue;
     }
   }
 
-  res.status(502).json({ success: false, error: lastError || 'No se pudo abrir la URL en el navegador remoto' });
+  res.status(502).json({ success: false, error: lastError || 'No se pudo abrir la URL en tu escritorio remoto' });
 });
