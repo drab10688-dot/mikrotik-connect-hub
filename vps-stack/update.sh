@@ -45,15 +45,10 @@ docker compose up -d api
 docker compose pull remote-browser >/dev/null 2>&1 || true
 # --force-recreate aplica cambios de seguridad/red aunque la imagen sea la misma.
 docker compose up -d --force-recreate remote-browser >/dev/null 2>&1 || \
-  echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy integrado sigue activo${NC}"
-# Winbox nativo bajo Wine (se construye local; la primera vez tarda varios minutos)
-echo -e "${YELLOW}   Construyendo Winbox (Wine)... puede tardar${NC}"
-if docker compose build remote-winbox 2>&1 | tail -5; then
-  docker compose up -d --force-recreate remote-winbox 2>&1 | tail -3 || \
-    echo -e "${YELLOW}⚠ Winbox remoto no arrancó; usa WebFig${NC}"
-else
-  echo -e "${YELLOW}⚠ No se pudo construir Winbox; el resto del sistema sigue igual${NC}"
-fi
+  echo -e "${YELLOW}⚠ Navegador remoto no disponible; se creará al primer uso${NC}"
+# Winbox remoto quedó retirado del sistema: elimina restos de versiones viejas.
+docker rm -f omnisync-winbox >/dev/null 2>&1 || true
+docker rmi omnisync/winbox:latest >/dev/null 2>&1 || true
 # Certificado autofirmado para los escritorios remotos (KasmVNC exige HTTPS)
 mkdir -p "$INSTALL_DIR/nginx/certs"
 if [ ! -f "$INSTALL_DIR/nginx/certs/remote.crt" ]; then
@@ -130,35 +125,17 @@ if [ "${NGINX_TEST_FAILED:-0}" = "1" ]; then
   fi
 fi
 
-# --force-recreate: los cambios de mapeo de puertos (8081/8082) sólo se
+# --force-recreate: los cambios de mapeo de puertos (8081) sólo se
 # aplican si el contenedor se recrea; un simple `up -d` lo deja igual.
 docker compose up -d --force-recreate nginx
-
-# `docker compose up` puede mostrar "Started" aunque Nginx falle enseguida.
-# Esperamos brevemente y comprobamos tanto el contenedor como el frontend.
-NGINX_READY=false
-for _ in $(seq 1 15); do
-  if [ "$(docker inspect --format '{{.State.Running}}' omnisync-nginx 2>/dev/null || true)" = "true" ] && \
-     curl -fsS --max-time 3 http://localhost/VERSION.txt >/dev/null 2>&1; then
-    NGINX_READY=true
-    break
-  fi
-  sleep 1
-done
-if [ "$NGINX_READY" != "true" ]; then
-  echo -e "${RED}✗ Nginx no quedó activo; mostrando diagnóstico:${NC}"
-  docker compose ps nginx || true
-  docker compose logs --tail=50 nginx || true
-  exit 1
-fi
-
-# Firewall: puertos de los escritorios remotos (Chromium 8081 / Winbox 8082)
+...
+# Firewall: escritorio remoto (Chromium 8081, HTTPS + token del panel).
+# Los escritorios por usuario no publican puertos: van por Nginx.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 8081/tcp >/dev/null 2>&1 || true
-  ufw allow 8082/tcp >/dev/null 2>&1 || true
-  # Rango de escritorios privados por usuario
-  ufw allow 8100:8129/tcp >/dev/null 2>&1 || true
-  echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
+  ufw delete allow 8082/tcp >/dev/null 2>&1 || true
+  ufw delete allow 8100:8129/tcp >/dev/null 2>&1 || true
+  echo -e "${GREEN}✓ Puerto 8081 abierto en UFW (8082/8100-8129 retirados)${NC}"
 fi
 
 # Recrea el navegador remoto para aplicar perfil efímero / incógnito forzado
@@ -169,8 +146,8 @@ if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
 
-# Comprobación real de los escritorios remotos (HTTPS autofirmado)
-for P in 8081 8082; do
+# Comprobación real del escritorio remoto (HTTPS autofirmado)
+for P in 8081; do
   CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:$P/" || echo 000)
   if [ "$CODE" = "000" ]; then
     echo -e "${RED}✗ Puerto $P no responde. Mapeo publicado:${NC}"

@@ -2,7 +2,7 @@
 # Permite que el contenedor API llegue a las redes detrás del MikroTik.
 set -u
 
-ONU_NETS="${ONU_NETS:-10.82.0.0/21}"
+ONU_NETS="${ONU_NETS:-192.168.0.0/16}"
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 # El retorno de las ONUs entra por PPP y sale por un bridge Docker. El filtro
 # inverso estricto interpreta esa ruta asimétrica como suplantación y la tira.
