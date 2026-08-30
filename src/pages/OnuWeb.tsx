@@ -39,18 +39,21 @@ export default function OnuWeb() {
   const [newPass, setNewPass] = useState<Record<string, string>>({});
   const [profileBrand, setProfileBrand] = useState("otro");
   const [advanced, setAdvanced] = useState<AdvancedTarget | null>(null);
+  const proxyActive = tab === "avanzado" && Boolean(advanced);
 
   const { data: pppoeData } = useQuery({
     queryKey: ["mini-pppoe", mikrotikId],
     queryFn: () => netAccessApi.pppoe(mikrotikId),
-    enabled: !!mikrotikId,
-    refetchInterval: 30000,
+    enabled: !!mikrotikId && !proxyActive,
+    refetchInterval: proxyActive ? false : 30000,
+    refetchOnWindowFocus: false,
   });
   const { data: devicesData } = useQuery({
     queryKey: ["mini-devices", mikrotikId],
     queryFn: () => netAccessApi.devices(mikrotikId),
-    enabled: !!mikrotikId,
-    refetchInterval: 30000,
+    enabled: !!mikrotikId && !proxyActive,
+    refetchInterval: proxyActive ? false : 30000,
+    refetchOnWindowFocus: false,
   });
 
   const changePppoePass = useMutation({
