@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { browserApi } from "@/lib/api-client";
 
 export interface RemoteBrowserTarget {
   title: string;
@@ -33,40 +34,42 @@ export function RemoteBrowserDialog({
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
   }, []);
 
-  // Verifica si el Firefox remoto está arriba; si no, cae al proxy integrado.
+  // Verifica el Firefox remoto y, si está arriba, lo lleva solo a la IP del equipo.
   useEffect(() => {
     if (!target) return;
     let cancelled = false;
     setBrowserKey((k) => k + 1);
-    fetch("/browser/", { method: "GET", cache: "no-store" })
-      .then((res) => {
+
+    (async () => {
+      try {
+        const state = await browserApi.status();
         if (cancelled) return;
-        const down = !res.ok;
-        setBrowserDown(down);
-        if (down) {
-          setMode(target.proxyUrl ? "proxy" : "firefox");
-          if (target.proxyUrl) toast.warning("Firefox remoto no disponible; usando el proxy integrado");
-        } else {
-          setMode("firefox");
+        if (!state?.running) throw new Error(state?.error || "Firefox remoto apagado");
+        setBrowserDown(false);
+        setMode("firefox");
+        try {
+          await browserApi.open(target.directUrl);
+          if (!cancelled) {
+            setBrowserKey((k) => k + 1);
+            toast.success(`Abriendo ${target.directUrl} en Firefox remoto`);
+          }
+        } catch {
+          if (!cancelled) toast.warning("Firefox está arriba pero no aceptó la orden; pega la dirección manualmente");
         }
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return;
         setBrowserDown(true);
-        if (target.proxyUrl) setMode("proxy");
-      });
+        if (target.proxyUrl) {
+          setMode("proxy");
+          toast.warning("Firefox remoto no disponible; usando el proxy integrado");
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
   }, [target]);
-
-  useEffect(() => {
-    if (!target || mode !== "firefox") return;
-    navigator.clipboard.writeText(target.directUrl).then(
-      () => toast.success("Dirección copiada; pégala en Firefox con Ctrl+V"),
-      () => undefined,
-    );
-  }, [target, mode]);
 
   const copyUrl = async () => {
     if (!target) return;
