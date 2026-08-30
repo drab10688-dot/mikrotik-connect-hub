@@ -332,6 +332,12 @@ export const netAccessApi = {
     unwrapData<any>(await apiDelete<any>(`/netaccess/ap-credentials/${id}`)),
 };
 
+// ─── Navegador remoto (Firefox real en el VPS) ───
+export const browserApi = {
+  status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
+  open: async (url: string) => unwrapData<any>(await apiPost<any>('/browser/open', { url })),
+};
+
 // ─── Acceso web directo a la ONU (sin TR-069) con perfiles aprendidos ───
 export const onuWebApi = {
   listCredentials: async () => unwrapData<any>(await apiGet<any>('/onu-web/credentials')),
