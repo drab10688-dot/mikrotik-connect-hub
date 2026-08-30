@@ -6,6 +6,24 @@ import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { pool } from '../lib/db';
 import { requireSection } from './isp';
+import { swr } from '../lib/cache';
+
+/**
+ * Lectura cacheada contra la MikroTik.
+ * Devuelve al instante el último resultado conocido y refresca en segundo plano,
+ * para que las tablas no queden vacías cuando la VPN responde lento.
+ */
+async function mtCached(mikrotikId: string, path: string, ttlMs = 20000): Promise<any> {
+  return swr(
+    `net:${mikrotikId}:${path}`,
+    async () => {
+      const config = await getDeviceConfig(pool, mikrotikId);
+      return mikrotikRequest(config, path);
+    },
+    { ttlMs }
+  ).catch(() => []);
+}
+
 
 const editRed = requireSection('red', true);
 
@@ -272,8 +290,8 @@ netAccessRouter.get('/:mikrotikId/ethernet', async (req: AuthRequest, res: Respo
     const config = await getDeviceConfig(pool, mikrotikId);
 
     const [ethRaw, ifaceRaw] = await Promise.all([
-      mikrotikRequest(config, '/rest/interface/ethernet').catch(() => []),
-      mikrotikRequest(config, '/rest/interface').catch(() => []),
+      mtCached(mikrotikId, '/rest/interface/ethernet'),
+      mtCached(mikrotikId, '/rest/interface'),
     ]);
     const eth: any[] = Array.isArray(ethRaw) ? ethRaw : [];
     const ifaces: any[] = Array.isArray(ifaceRaw) ? ifaceRaw : [];
@@ -366,9 +384,9 @@ netAccessRouter.get('/:mikrotikId/lan-alerts', async (req: AuthRequest, res: Res
     const config = await getDeviceConfig(pool, mikrotikId);
 
     const [ethRaw, secretsRaw, activeRaw, sessionsRes] = await Promise.all([
-      mikrotikRequest(config, '/rest/interface/ethernet').catch(() => []),
-      mikrotikRequest(config, '/rest/ppp/secret').catch(() => []),
-      mikrotikRequest(config, '/rest/ppp/active').catch(() => []),
+      mtCached(mikrotikId, '/rest/interface/ethernet'),
+      mtCached(mikrotikId, '/rest/ppp/secret'),
+      mtCached(mikrotikId, '/rest/ppp/active', 10000),
       pool
         .query(
           `SELECT username, is_online, address, caller_id, last_up, last_down, last_seen
@@ -542,10 +560,9 @@ netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response
     const mikrotikId = await guard(req, res);
     if (!mikrotikId) return;
 
-    const config = await getDeviceConfig(pool, mikrotikId);
     const [secretsRaw, activeRaw] = await Promise.all([
-      mikrotikRequest(config, '/rest/ppp/secret').catch(() => []),
-      mikrotikRequest(config, '/rest/ppp/active').catch(() => []),
+      mtCached(mikrotikId, '/rest/ppp/secret'),
+      mtCached(mikrotikId, '/rest/ppp/active', 10000),
     ]);
 
     const active = asArray(activeRaw);
@@ -619,11 +636,10 @@ netAccessRouter.get('/:mikrotikId/devices', async (req: AuthRequest, res: Respon
     const mikrotikId = await guard(req, res);
     if (!mikrotikId) return;
 
-    const config = await getDeviceConfig(pool, mikrotikId);
     const [neighborsRaw, leasesRaw, arpRaw] = await Promise.all([
-      mikrotikRequest(config, '/rest/ip/neighbor').catch(() => []),
-      mikrotikRequest(config, '/rest/ip/dhcp-server/lease').catch(() => []),
-      mikrotikRequest(config, '/rest/ip/arp').catch(() => []),
+      mtCached(mikrotikId, '/rest/ip/neighbor', 30000),
+      mtCached(mikrotikId, '/rest/ip/dhcp-server/lease', 30000),
+      mtCached(mikrotikId, '/rest/ip/arp', 30000),
     ]);
 
     const ports = await tenantWebPorts(req.tenantId);
