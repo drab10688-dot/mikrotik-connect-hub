@@ -616,6 +616,12 @@ export default function Network() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <SearchBox
+                  controls={equipoSearch}
+                  placeholder="Buscar por IP, MAC, nombre, marca o plataforma…"
+                  className="mb-3"
+                />
+
                 {netError ? (
                   <p className="text-sm text-destructive">{(netError as any).message}</p>
                 ) : loadingNet ? (
