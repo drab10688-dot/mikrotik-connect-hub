@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { devicesApi, netAccessApi, getApiBaseUrl } from "@/lib/api-client";
+import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
@@ -41,7 +41,7 @@ const BRAND_LABEL: Record<string, string> = {
 
 const proxyUrl = (path: string) => {
   const base = getApiBaseUrl().replace(/\/api$/, "");
-  return `${base}${path}`;
+  return withAuthToken(`${base}${path}`);
 };
 
 export default function Network() {
