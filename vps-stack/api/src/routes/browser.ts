@@ -148,7 +148,7 @@ browserRouter.get('/status', async (req: AuthRequest, res) => {
 
 /** Abre (o reutiliza) una pestaña del Firefox remoto en la URL del equipo. */
 browserRouter.post('/open', async (req: AuthRequest, res) => {
-  const url = sanitizeUrl(req.body?.url);
+  const url = sanitizeUrl((req as any).body?.url);
   if (!url) return res.status(400).json({ success: false, error: 'URL no permitida (solo IPs privadas http/https)' });
 
   let info;
