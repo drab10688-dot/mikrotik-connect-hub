@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Globe } from "lucide-react";
 import { withAuthToken, netAccessApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
 
 export interface AdvancedTarget {
   ip: string;
@@ -31,6 +32,7 @@ export function AdvancedWeb({
   const [checking, setChecking] = useState(false);
   const [diag, setDiag] = useState<any>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [remoteTarget, setRemoteTarget] = useState<RemoteBrowserTarget | null>(null);
   const frameWrapRef = useRef<HTMLDivElement>(null);
 
   const routerId = mikrotikId || localStorage.getItem("mikrotik_device_id") || "";
@@ -63,6 +65,15 @@ export function AdvancedWeb({
   };
 
   const openManual = () => open(manualIp.trim(), Number(manualPort) || 80);
+
+  const openRemote = (ip: string, port: number, name: string, proxyPath?: string) => {
+    const protocol = port === 443 || port === 8443 ? "https" : "http";
+    setRemoteTarget({
+      title: `${name} — ${ip}:${port}`,
+      directUrl: `${protocol}://${ip}:${port}/`,
+      proxyUrl: proxyPath ? withAuthToken(proxyPath) : undefined,
+    });
+  };
 
   const runCheck = async () => {
     const ip = manualIp.trim();
@@ -185,10 +196,12 @@ export function AdvancedWeb({
                   <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
                 </a>
               </Button>
-              <Button size="sm" variant="secondary" asChild>
-                <a href="/browser/" target="_blank" rel="noreferrer" title="Firefox real dentro del VPS (captchas, JS pesado)">
-                  <Globe className="h-4 w-4 mr-1" /> Navegador remoto
-                </a>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => openRemote(target.ip, Number(target.proxy_path.match(/\/(\d+)\/$/)?.[1]) || 80, target.name, target.proxy_path)}
+              >
+                <Globe className="h-4 w-4 mr-1" /> Firefox
               </Button>
             </div>
           </CardHeader>
@@ -212,6 +225,7 @@ export function AdvancedWeb({
 
         </Card>
       )}
+      <RemoteBrowserDialog target={remoteTarget} onOpenChange={(open) => !open && setRemoteTarget(null)} />
     </div>
   );
 }

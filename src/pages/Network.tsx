@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
@@ -17,6 +16,7 @@ import {
   AlertTriangle, PlugZap, Activity,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
+import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
 
 const AP_QUALITY: Record<string, { label: string; className: string }> = {
   excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
@@ -48,7 +48,7 @@ export default function Network() {
   const qc = useQueryClient();
   const [deviceId, setDeviceId] = useState<string>(() => localStorage.getItem("mikrotik_device_id") || "");
   const [search, setSearch] = useState("");
-  const [embed, setEmbed] = useState<{ title: string; url: string } | null>(null);
+  const [browserTarget, setBrowserTarget] = useState<RemoteBrowserTarget | null>(null);
   const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
 
   const { data: devices = [] } = useQuery({
@@ -200,7 +200,11 @@ export default function Network() {
   const openWebFig = async () => {
     try {
       const info = await netAccessApi.webfig(deviceId);
-      setEmbed({ title: `WebFig — ${info.host}:${info.port}`, url: proxyUrl(info.proxy_path) });
+      setBrowserTarget({
+        title: `WebFig — ${info.host}:${info.port}`,
+        directUrl: info.direct_url || `http://${info.host}:${info.port}/`,
+        proxyUrl: proxyUrl(info.proxy_path),
+      });
     } catch (e: any) {
       toast.error(e.message || "No se pudo abrir WebFig");
     }
@@ -426,9 +430,10 @@ export default function Network() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() =>
-                                    setEmbed({
+                                    setBrowserTarget({
                                       title: `${s.name} — ${s.remote_address}`,
-                                      url: proxyUrl(
+                                      directUrl: `http://${s.remote_address}:${portDraft.otro?.port || 80}/`,
+                                      proxyUrl: proxyUrl(
                                         `/api/netaccess/${deviceId}/web/${s.remote_address}/${portDraft.otro?.port || 80}/`
                                       ),
                                     })
@@ -639,7 +644,11 @@ export default function Network() {
                             size="sm"
                             variant="outline"
                             className="flex-1"
-                            onClick={() => setEmbed({ title: `${d.name} — ${d.ip}:${d.web_port}`, url: proxyUrl(d.proxy_path) })}
+                            onClick={() => setBrowserTarget({
+                              title: `${d.name} — ${d.ip}:${d.web_port}`,
+                              directUrl: `${d.web_protocol || "http"}://${d.ip}:${d.web_port}/`,
+                              proxyUrl: proxyUrl(d.proxy_path),
+                            })}
                           >
                             <Monitor className="w-3.5 h-3.5 mr-1" /> Abrir
                           </Button>
@@ -1003,22 +1012,7 @@ export default function Network() {
           </TabsContent>
         </Tabs>
 
-        <Dialog open={!!embed} onOpenChange={(o) => !o && setEmbed(null)}>
-          <DialogContent className="max-w-6xl w-[95vw] h-[85vh] flex flex-col p-0">
-            <DialogHeader className="p-4 pb-2">
-              <DialogTitle className="text-base flex items-center gap-2">
-                <Monitor className="w-4 h-4" /> {embed?.title}
-              </DialogTitle>
-            </DialogHeader>
-            {embed && (
-              <iframe
-                title={embed.title}
-                src={embed.url}
-                className="flex-1 w-full border-0 rounded-b-lg bg-white"
-              />
-            )}
-          </DialogContent>
-        </Dialog>
+        <RemoteBrowserDialog target={browserTarget} onOpenChange={(open) => !open && setBrowserTarget(null)} />
 
         <ApSignalDialog
           mikrotikId={deviceId}

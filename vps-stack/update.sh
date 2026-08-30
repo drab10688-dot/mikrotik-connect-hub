@@ -38,8 +38,12 @@ rsync -a --delete \
 
 echo -e "${YELLOW}3/5 Reconstruyendo API (sin caché)...${NC}"
 cd "$INSTALL_DIR"
+grep -q '^BROWSER_USER=' .env || echo 'BROWSER_USER=admin' >> .env
+grep -q '^BROWSER_PASSWORD=' .env || echo "BROWSER_PASSWORD=$(openssl rand -hex 12)" >> .env
+grep -q '^BROWSER_HOME_URL=' .env || echo 'BROWSER_HOME_URL=about:blank' >> .env
 docker compose build --no-cache api
-docker compose up -d api
+docker compose pull remote-browser
+docker compose up -d api remote-browser
 
 echo -e "${YELLOW}4/5 Compilando frontend...${NC}"
 cd "$TEMP_DIR"
@@ -53,7 +57,7 @@ echo "$COMMIT" > "$FRONTEND_DIR/VERSION.txt"
 
 echo -e "${YELLOW}5/5 Reiniciando Nginx...${NC}"
 cd "$INSTALL_DIR"
-docker compose up -d nginx
+docker compose up -d nginx remote-browser
 docker compose restart nginx
 
 cd /root && rm -rf "$TEMP_DIR"
