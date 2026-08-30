@@ -33,6 +33,7 @@ rsync -a --delete \
   --exclude '.env' \
   --exclude 'frontend' \
   --exclude 'data' \
+  --exclude 'nginx/certs' \
   --exclude '*.log' \
   "$TEMP_DIR/vps-stack/" "$INSTALL_DIR/"
 
@@ -84,6 +85,14 @@ echo "$COMMIT" > "$INSTALL_DIR/VERSION.txt"
 
 echo -e "${YELLOW}5/5 Validando y reiniciando Nginx...${NC}"
 cd "$INSTALL_DIR"
+# Garantiza el certificado TLS justo antes de validar (los escritorios 8081/8082 lo exigen)
+mkdir -p "$INSTALL_DIR/nginx/certs"
+if [ ! -s "$INSTALL_DIR/nginx/certs/remote.crt" ] || [ ! -s "$INSTALL_DIR/nginx/certs/remote.key" ]; then
+  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+    -keyout "$INSTALL_DIR/nginx/certs/remote.key" \
+    -out "$INSTALL_DIR/nginx/certs/remote.crt" \
+    -subj "/CN=omnisync-remote" >/dev/null 2>&1
+fi
 # No reemplazar el proxy por una configuración inválida. Esta validación
 # detecta llaves faltantes, upstreams mal escritos y directivas incorrectas.
 if ! docker compose run --rm --no-deps nginx nginx -t; then
