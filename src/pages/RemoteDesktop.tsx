@@ -26,7 +26,11 @@ export default function RemoteDesktop() {
   const shellRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const url = useMemo(() => remoteDesktopUrl(port), [port]);
+  const creds = { user: params.get("u") || undefined, password: params.get("p") || undefined };
+  const url = useMemo(
+    () => remoteDesktopUrl(port, creds.user ? creds : null),
+    [port, creds.user, creds.password],
+  );
 
   // Latido: mientras el visor esté abierto, el VPS conserva las pestañas.
   // Al cerrarlo y pasar el tiempo de inactividad, el escritorio cierra todo

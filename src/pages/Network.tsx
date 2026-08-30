@@ -271,7 +271,21 @@ export default function Network() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => window.open(remoteDesktopViewerUrl("browser", "Escritorio remoto"), "_blank", "noopener")}
+              onClick={async () => {
+                try {
+                  const s = await browserApi.session();
+                  window.open(
+                    remoteDesktopViewerUrl(Number(s?.port) || 8081, "Escritorio remoto", {
+                      user: s?.user,
+                      password: s?.password,
+                    }),
+                    "_blank",
+                    "noopener",
+                  );
+                } catch (e: any) {
+                  toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
+                }
+              }}
               title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
             >
               <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
