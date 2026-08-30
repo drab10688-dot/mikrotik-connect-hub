@@ -228,7 +228,7 @@ onuWebRouter.put('/credentials', requireRole('super_admin', 'admin'), async (req
     const { rows } = await pool.query(
       `INSERT INTO onu_web_credentials (tenant_id, ip, name, username, password, port, protocol, profile_id, model)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (tenant_id, ip) DO UPDATE SET
+       ON CONFLICT (tenant_id, (COALESCE(ip, ''))) DO UPDATE SET
          name = EXCLUDED.name,
          username = EXCLUDED.username,
          password = COALESCE(NULLIF(EXCLUDED.password, ''), onu_web_credentials.password),
