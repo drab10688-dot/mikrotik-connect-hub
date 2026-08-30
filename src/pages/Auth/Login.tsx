@@ -307,9 +307,10 @@ export default function Login() {
             <div className="glass-panel hairline-top sm:col-span-2 flex items-center gap-4 p-5">
               <Gauge className="h-8 w-8 shrink-0 text-primary" />
               <p className="text-sm text-muted-foreground">
-                Todo viaja por tu VPN privada: sin exponer routers ni ONUs a Internet.
+                Acceso seguro y centralizado: sin exponer routers ni ONUs a Internet.
               </p>
             </div>
+
           </div>
         </div>
       </div>
