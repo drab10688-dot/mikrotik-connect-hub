@@ -9,7 +9,13 @@ import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 export async function runPppoeMonitor(pool: Pool) {
   let devices: any[] = [];
   try {
-    const { rows } = await pool.query(`SELECT id FROM mikrotik_devices`);
+    const { rows } = await pool.query(
+      `SELECT DISTINCT md.id
+         FROM mikrotik_devices md
+         LEFT JOIN tenants t ON t.id = md.tenant_id
+        WHERE md.status = 'active'
+          AND (md.tenant_id IS NULL OR COALESCE(t.is_active, true) = true)`
+    );
     devices = rows;
   } catch (e: any) {
     console.error('[PPPOE MON] no se pudieron listar routers:', e.message);
