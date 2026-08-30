@@ -114,7 +114,7 @@ netAccessRouter.put('/web-ports', editRed, async (req: AuthRequest, res: Respons
 netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, ip, name, brand, username, port, protocol
+      `SELECT id, ip, name, brand, username, port, protocol, sector
          FROM ap_credentials
         WHERE tenant_id IS NOT DISTINCT FROM $1
         ORDER BY ip`,
@@ -128,22 +128,23 @@ netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) =
 
 netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Response) => {
   try {
-    const { ip, name, brand, username, password, port, protocol } = req.body || {};
+    const { ip, name, brand, username, password, port, protocol, sector } = req.body || {};
     if (!ip || !IPV4.test(String(ip))) {
       return res.status(400).json({ success: false, error: 'IP del AP inválida' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (tenant_id, ip) DO UPDATE SET
          name = EXCLUDED.name,
+         sector = EXCLUDED.sector,
          brand = EXCLUDED.brand,
          username = EXCLUDED.username,
          password = COALESCE(NULLIF(EXCLUDED.password, ''), ap_credentials.password),
          port = EXCLUDED.port,
          protocol = EXCLUDED.protocol,
          updated_at = now()
-       RETURNING id, ip, name, brand, username, port, protocol`,
+       RETURNING id, ip, name, brand, username, port, protocol, sector`,
       [
         req.tenantId ?? null,
         String(ip),
@@ -153,6 +154,7 @@ netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Re
         password || '',
         Number(port) > 0 ? Number(port) : null,
         protocol === 'https' ? 'https' : 'http',
+        sector || null,
       ]
     );
     res.json({ success: true, data: rows[0] });
@@ -654,6 +656,205 @@ netAccessRouter.get('/:mikrotikId/devices', async (req: AuthRequest, res: Respon
 
     const devices = [...byIp.values()].sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
     res.json({ success: true, data: { devices, web_ports: ports } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── Árbol de topología por sectores (MikroTik → AP → cliente) ──
+netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const config = await getDeviceConfig(pool, mikrotikId);
+    const { rows: devRows } = await pool.query(
+      `SELECT name, host FROM mikrotik_devices WHERE id = $1`,
+      [mikrotikId]
+    );
+    const router = devRows[0] || { name: 'MikroTik', host: '' };
+
+    const [apsRes, activeRaw, secretsRaw, arpRaw, wirelessRaw] = await Promise.all([
+      pool.query(
+        `SELECT id, ip, name, brand, sector, username, password, port, protocol
+           FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1 ORDER BY sector NULLS LAST, ip`,
+        [req.tenantId ?? null]
+      ).catch(() => ({ rows: [] as any[] })),
+      mikrotikRequest(config, '/rest/ppp/active').catch(() => []),
+      mikrotikRequest(config, '/rest/ppp/secret').catch(() => []),
+      mikrotikRequest(config, '/rest/ip/arp').catch(() => []),
+      mikrotikRequest(config, '/rest/interface/wireless/registration-table').catch(() => []),
+    ]);
+
+    const ports = await tenantWebPorts(req.tenantId);
+    const aps = apsRes.rows as any[];
+
+    // Clientes leídos de cada AP (en paralelo)
+    const apResults = await Promise.all(
+      aps.map(async (ap) => {
+        const fallback = ports[ap.brand] || ports.otro;
+        const target: ApTarget = {
+          ip: ap.ip,
+          brand: ap.brand || 'otro',
+          port: ap.port || fallback.port,
+          protocol: (ap.protocol || fallback.protocol) as 'http' | 'https',
+          username: ap.username || (ap.brand === 'ubiquiti' ? 'ubnt' : 'admin'),
+          password: ap.password || '',
+        };
+        let clients: any[] = [];
+        let error: string | null = null;
+        try {
+          clients = await readApClients(target);
+        } catch (e: any) {
+          error = e?.message || 'sin respuesta';
+        }
+        return { ap, target, clients, error };
+      })
+    );
+
+    const arp = asArray(arpRaw);
+    const active = asArray(activeRaw);
+    const secrets = asArray(secretsRaw);
+    const macToPppoe = new Map<string, any>();
+    active.forEach((a: any) => {
+      const mac = normalizeMac(a['caller-id']);
+      if (mac) macToPppoe.set(mac, a);
+    });
+    arp.forEach((a: any) => {
+      const mac = normalizeMac(a['mac-address']);
+      if (mac && !macToPppoe.has(mac)) macToPppoe.set(mac, { address: a.address, name: a.comment || null });
+    });
+
+    const claimed = new Set<string>();
+    const clientNode = (c: any, apIp: string) => {
+      const mac = normalizeMac(c.mac);
+      const link = mac ? macToPppoe.get(mac) : null;
+      if (link?.name) claimed.add(String(link.name));
+      return {
+        type: 'cliente' as const,
+        mac: c.mac,
+        name: link?.name || c.name || c.mac || 'cliente',
+        ip: link?.address || null,
+        signal: c.signal ?? null,
+        noise: c.noise ?? null,
+        snr: c.snr ?? null,
+        ccq: c.ccq ?? null,
+        tx_rate: c.tx_rate ?? null,
+        rx_rate: c.rx_rate ?? null,
+        uptime: c.uptime ?? null,
+        distance: c.distance ?? null,
+        quality: c.quality || signalQuality(c.signal ?? null, c.snr ?? null),
+        via_ap: apIp,
+      };
+    };
+
+    // Nodos AP agrupados por sector
+    const sectors = new Map<string, any>();
+    const sectorOf = (name?: string | null) => (name && String(name).trim()) || 'Sin sector';
+
+    for (const { ap, target, clients, error } of apResults) {
+      const key = sectorOf(ap.sector);
+      if (!sectors.has(key)) sectors.set(key, { type: 'sector', name: key, aps: [], clients: [] });
+      sectors.get(key).aps.push({
+        type: 'ap',
+        id: ap.id,
+        ip: ap.ip,
+        name: ap.name || ap.ip,
+        brand: ap.brand,
+        online: !error,
+        error,
+        web_url: `${target.protocol}://${ap.ip}:${target.port}/`,
+        proxy_path: `/api/netaccess/${mikrotikId}/web/${ap.ip}/${target.port}/`,
+        total_clients: clients.length,
+        clients: clients.map((c) => clientNode(c, ap.ip)),
+      });
+    }
+
+    // Wireless del propio router = sector local
+    const localClients = asArray(wirelessRaw).map((r: any) => {
+      const signal = Number(String(r['signal-strength'] ?? r.signal ?? '').split('@')[0]) || null;
+      const snr = Number(r['signal-to-noise']) || null;
+      return clientNode(
+        {
+          mac: r['mac-address'],
+          name: r.comment || r['last-ip'] || null,
+          signal,
+          snr,
+          ccq: Number(r['tx-ccq']) || null,
+          tx_rate: r['tx-rate'] || null,
+          rx_rate: r['rx-rate'] || null,
+          uptime: r.uptime || null,
+          quality: signalQuality(signal, snr),
+        },
+        router.host
+      );
+    });
+    if (localClients.length) {
+      const key = 'Wireless del router';
+      sectors.set(key, {
+        type: 'sector',
+        name: key,
+        aps: [
+          {
+            type: 'ap',
+            id: 'router-wireless',
+            ip: router.host,
+            name: `${router.name} (wireless)`,
+            brand: 'mikrotik',
+            online: true,
+            error: null,
+            web_url: `${ports.mikrotik.protocol}://${router.host}:${ports.mikrotik.port}/`,
+            proxy_path: `/api/netaccess/${mikrotikId}/web/${router.host}/${ports.mikrotik.port}/`,
+            total_clients: localClients.length,
+            clients: localClients,
+          },
+        ],
+        clients: [],
+      });
+    }
+
+    // Clientes PPPoE sin AP identificado (cuelgan directo del router)
+    const activeNames = new Set(active.map((a: any) => String(a.name)));
+    const orphans = secrets
+      .filter((s: any) => !claimed.has(String(s.name)))
+      .map((s: any) => {
+        const a = active.find((x: any) => String(x.name) === String(s.name));
+        return {
+          type: 'cliente' as const,
+          mac: a?.['caller-id'] || null,
+          name: s.name,
+          ip: a?.address || s['remote-address'] || null,
+          signal: null,
+          snr: null,
+          quality: 'desconocida' as const,
+          online: activeNames.has(String(s.name)),
+          via_ap: null,
+        };
+      });
+
+    const tree = {
+      type: 'router',
+      id: mikrotikId,
+      name: router.name,
+      host: router.host,
+      proxy_path: `/api/netaccess/${mikrotikId}/web/${router.host}/${ports.mikrotik.port}/`,
+      sectors: [...sectors.values()],
+      direct_clients: orphans,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        generated_at: new Date().toISOString(),
+        totals: {
+          sectors: sectors.size,
+          aps: apResults.length + (localClients.length ? 1 : 0),
+          clients_with_signal: apResults.reduce((n, r) => n + r.clients.length, 0) + localClients.length,
+          direct_clients: orphans.length,
+        },
+        tree,
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
