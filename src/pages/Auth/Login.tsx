@@ -133,9 +133,7 @@ export default function Login() {
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
     <div className={`flex flex-col gap-2 ${size === 'lg' ? 'items-start' : 'items-center'}`}>
       <div
-        className={`relative grid place-items-center rounded-full bg-card/70 ring-2 ring-primary/40 glow-ring overflow-hidden ${
-          size === 'lg' ? 'h-32 w-32 sm:h-40 sm:w-40' : 'h-20 w-20'
-        }`}
+        className="relative grid place-items-center rounded-full bg-card/70 ring-2 ring-primary/40 glow-ring overflow-hidden h-32 w-32 sm:h-40 sm:w-40"
       >
         <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
       </div>
