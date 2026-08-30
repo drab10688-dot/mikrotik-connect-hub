@@ -251,13 +251,6 @@ export default function Network() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => window.open(remoteDesktopUrl("winbox"), "_blank", "noopener")}
-              title="Winbox nativo (Wine) ejecutándose en el VPS, a través de la VPN"
-            >
-              <Monitor className="w-4 h-4 mr-2" /> Abrir Winbox
-            </Button>
-            <Button
-              variant="secondary"
               onClick={() => window.open(remoteDesktopUrl("browser"), "_blank", "noopener")}
               title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
             >
