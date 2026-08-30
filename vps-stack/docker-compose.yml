@@ -187,7 +187,9 @@ services:
   # Se muestra dentro del panel en /browser/
   # ============================================
   remote-browser:
-    image: lscr.io/linuxserver/firefox:latest
+    # Chromium + KasmVNC SIN contraseña propia: el acceso lo protege OmniSync
+    # (Nginx auth_request valida el token de sesión contra la API).
+    image: lscr.io/linuxserver/chromium:latest
     container_name: omnisync-browser
     restart: unless-stopped
     shm_size: "1gb"
@@ -199,9 +201,7 @@ services:
       PUID: 1000
       PGID: 1000
       TZ: ${TZ:-America/Bogota}
-      CUSTOM_USER: ${BROWSER_USER:-admin}
-      PASSWORD: ${BROWSER_PASSWORD:-omnisync}
-      FIREFOX_CLI: ${BROWSER_HOME_URL:-about:blank}
+      CHROME_CLI: ${BROWSER_HOME_URL:-about:blank}
     volumes:
       - browser_config:/config
     networks:

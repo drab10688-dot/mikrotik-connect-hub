@@ -70,7 +70,7 @@ else
   fail "La API no alcanza ${TARGET_IP}:${TARGET_PORT}"
 fi
 
-echo -e "\n${CYAN}[4/6] Estado del contenedor Firefox${NC}"
+echo -e "\n${CYAN}[4/6] Estado del contenedor Chromium${NC}"
 BROWSER_STATE=$(docker inspect --format '{{.State.Status}}' omnisync-browser 2>/dev/null || true)
 if [ "$BROWSER_STATE" = "running" ]; then
   ok "omnisync-browser está activo"
@@ -87,9 +87,9 @@ fi
 echo -e "\n${CYAN}[5/6] Red y escritorio remoto${NC}"
 BROWSER_CODE=$(docker exec omnisync-browser curl -sS -k -o /dev/null -w '%{http_code}' --connect-timeout 8 --max-time 12 "$TARGET_URL" 2>/dev/null || true)
 if [ -n "$BROWSER_CODE" ] && [ "$BROWSER_CODE" != "000" ]; then
-  ok "Firefox alcanza la ONU (HTTP $BROWSER_CODE)"
+  ok "Chromium alcanza la ONU (HTTP $BROWSER_CODE)"
 else
-  fail "El contenedor Firefox no alcanza ${TARGET_IP}:${TARGET_PORT}"
+  fail "El contenedor Chromium no alcanza ${TARGET_IP}:${TARGET_PORT}"
 fi
 GUI_CODE=$(docker exec omnisync-nginx wget -q -S -O /dev/null http://remote-browser:3000/ 2>&1 | awk '/HTTP\// {print $2; exit}' || true)
 if [ -n "$GUI_CODE" ]; then
@@ -107,7 +107,7 @@ for D in $DISPLAYS; do
   # Primero navega la ventana existente; evita perfiles bloqueados/DBus.
   OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e TARGET_URL="$TARGET_URL" omnisync-browser sh -lc '
     command -v xdotool >/dev/null 2>&1 || exit 127
-    WID=$(xdotool search --onlyvisible --class "firefox|Navigator" 2>/dev/null | tail -1)
+    WID=$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)
     [ -n "$WID" ] || WID=$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)
     [ -n "$WID" ] || exit 3
     xdotool windowactivate --sync "$WID" && xdotool key --window "$WID" ctrl+l && \
@@ -116,17 +116,17 @@ for D in $DISPLAYS; do
   ' 2>&1 || true)
   [ -z "$OPEN_OUT" ] && { OPEN_OUT="[$D] navegación por ventana"; break; }
   OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e HOME=/config omnisync-browser \
-    /usr/bin/firefox --new-tab "$TARGET_URL" 2>&1 || true)
+    /usr/bin/chromium --new-tab "$TARGET_URL" 2>&1 || true)
   echo "$OPEN_OUT" | grep -qi 'cannot open display' || { OPEN_OUT="[$D] $OPEN_OUT"; break; }
 done
 if echo "$OPEN_OUT" | grep -qiE 'root|EPERM|not supported|error'; then
-  fail "Firefox rechazó la apertura: $OPEN_OUT"
+  fail "Chromium rechazó la apertura: $OPEN_OUT"
 else
-  ok "Orden enviada a Firefox para abrir $TARGET_URL"
+  ok "Orden enviada a Chromium para abrir $TARGET_URL"
 fi
 
-echo -e "\n${CYAN}Últimos mensajes relevantes de Firefox:${NC}"
-docker logs --tail 80 omnisync-browser 2>&1 | grep -iE 'firefox|sandbox|namespace|error|fail|kasm|selkies' | tail -20 || true
+echo -e "\n${CYAN}Últimos mensajes relevantes de Chromium:${NC}"
+docker logs --tail 80 omnisync-browser 2>&1 | grep -iE 'chromium|firefox|sandbox|namespace|error|fail|kasm|selkies' | tail -20 || true
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

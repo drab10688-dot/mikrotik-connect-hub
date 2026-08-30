@@ -1,14 +1,45 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { execFile } from 'child_process';
+import jwt from 'jsonwebtoken';
 
 /**
- * Navegador remoto (Firefox real dentro del VPS).
+ * Navegador remoto (Chromium real dentro del VPS, sin contraseña propia).
  * El contenedor navega directamente a la IP del equipo por la ruta L2TP del host,
  * por lo que no depende del proxy HTTP ni de la reescritura de HTML antiguo.
+ * La seguridad del escritorio remoto la aplica Nginx (auth_request → /api/browser-authz).
  */
 export const browserRouter = Router();
 
 const CONTAINER = process.env.BROWSER_CONTAINER || 'omnisync-browser';
+
+/**
+ * Autoriza el acceso al escritorio remoto (/browser/) para Nginx auth_request.
+ * Acepta el token JWT por query (?token= en la URI original) o por la cookie
+ * omnisync_web_token que se fija al abrir el visor. Responde 200/401 sin cuerpo.
+ */
+export function authorizeBrowserAccess(req: Request, res: Response) {
+  const original = String(req.headers['x-original-uri'] || req.originalUrl || '');
+  let token: string | undefined;
+  try {
+    token = new URL(original, 'http://local').searchParams.get('token') || undefined;
+  } catch {
+    /* ignore */
+  }
+  if (!token) {
+    const raw = req.headers.cookie || '';
+    for (const part of raw.split(';')) {
+      const [k, ...v] = part.trim().split('=');
+      if (k === 'omnisync_web_token') token = decodeURIComponent(v.join('='));
+    }
+  }
+  if (!token) return res.status(401).end();
+  try {
+    jwt.verify(token, process.env.JWT_SECRET || 'changeme');
+    return res.status(200).end();
+  } catch {
+    return res.status(401).end();
+  }
+}
 
 function docker(args: string[], timeout = 15000): Promise<{ ok: boolean; out: string; err: string }> {
   return new Promise((resolve) => {
@@ -56,15 +87,15 @@ async function detectDisplays(): Promise<string[]> {
 }
 
 /**
- * Navega la ventana ya iniciada por LinuxServer. Lanzar otro `firefox --new-tab`
+ * Navega la ventana ya iniciada por LinuxServer. Lanzar otro `chromium --new-tab`
  * puede devolver código 0 pero no comunicarse con la sesión gráfica (perfil
  * bloqueado/DBus), dejando el escritorio en blanco. xdotool actúa sobre la
- * ventana visible y es el método más fiable en las imágenes Selkies/KasmVNC.
+ * ventana visible y es el método más fiable en las imágenes KasmVNC.
  */
-async function navigateVisibleFirefox(display: string, url: string) {
+async function navigateVisibleBrowser(display: string, url: string) {
   const script = [
     'command -v xdotool >/dev/null 2>&1 || exit 127',
-    'WID="$(xdotool search --onlyvisible --class "firefox|Navigator" 2>/dev/null | tail -1)"',
+    'WID="$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)"',
     '[ -n "$WID" ] || WID="$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)"',
     '[ -n "$WID" ] || exit 3',
     'xdotool windowactivate --sync "$WID"',
@@ -116,7 +147,7 @@ browserRouter.post('/open', async (req, res) => {
 
   let lastError = '';
   for (const display of displays) {
-    const navigated = await navigateVisibleFirefox(display, url);
+    const navigated = await navigateVisibleBrowser(display, url);
     if (navigated.ok) {
       return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'window' } });
     }
@@ -124,9 +155,9 @@ browserRouter.post('/open', async (req, res) => {
 
     const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
     const attempts: string[][] = [
-      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
-      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/firefox', '--new-tab', url],
+      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
       [
         'exec',
         ...env,
@@ -136,13 +167,13 @@ browserRouter.post('/open', async (req, res) => {
         '/bin/sh',
         'abc',
         '-c',
-        `DISPLAY=${display} HOME=/config /usr/bin/firefox --new-tab '${url}'`,
+        `DISPLAY=${display} HOME=/config /usr/bin/chromium --new-tab '${url}'`,
       ],
     ];
     for (const args of attempts) {
       const result = await docker(args, 20000);
       if (result.ok) {
-        return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'firefox-cli' } });
+        return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'chromium-cli' } });
       }
       lastError = result.err;
       // Si el error no es de display, no tiene sentido probar otros displays.

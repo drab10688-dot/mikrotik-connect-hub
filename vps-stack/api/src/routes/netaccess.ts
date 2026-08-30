@@ -971,7 +971,7 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
   // Al abrir en pestaña nueva o iframe no viaja la cabecera Authorization:
   // el token llega por ?token= y se guarda en cookie para las peticiones hijas.
   const webTokenCookie = typeof req.query.token === 'string' && req.query.token
-    ? `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
+    ? `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`
     : null;
 
   const prefix = `/api/netaccess/${mikrotikId}/web/${ip}/${targetPort}`;
