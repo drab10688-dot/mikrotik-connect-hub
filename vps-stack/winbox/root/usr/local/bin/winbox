@@ -1,0 +1,6 @@
+#!/bin/bash
+# Lanza Winbox bajo Wine dentro del escritorio remoto.
+export WINEDEBUG=-all
+export WINEPREFIX=/config/.wine
+export WINEARCH=win64
+exec wine64 /config/winbox/winbox64.exe "$@"
