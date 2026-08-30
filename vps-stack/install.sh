@@ -196,9 +196,9 @@ if [ -d "$INSTALL_DIR/db/migrations" ]; then
   done
 fi
 
-# ═══ VPN principal: L2TP/IPsec ═══
+# ═══ VPN principal: L2TP (sin IPsec, más estable con NAT) ═══
 echo ""
-echo -e "${CYAN}═══ VPN principal: L2TP/IPsec ═══${NC}"
+echo -e "${CYAN}═══ VPN principal: L2TP ═══${NC}"
 if VPS_PUBLIC_IP="$VPS_PUBLIC_IP" bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets "$ONU_NETS"; then
   echo -e "${GREEN}✓ VPN L2TP lista — script MikroTik en /opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC}"
 else
@@ -228,7 +228,7 @@ check_service "MongoDB (ACS)"   "omnisync-mongo"
 check_service "GenieACS TR-069" "omnisync-genieacs"
 check_service "coturn (STUN)"   "omnisync-coturn"
 check_service "Navegador remoto" "omnisync-browser"
-check_service "VPN L2TP/IPsec"  "omnisync-l2tp"
+check_service "VPN L2TP"         "omnisync-l2tp"
 
 ACS_CWMP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7547 2>/dev/null || true)
 if [ "$ACS_CWMP_STATUS" = "405" ]; then
@@ -253,12 +253,12 @@ fi
 
 echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
-echo -e "  Navegador remoto: ${GREEN}http://${VPS_PUBLIC_IP}/browser/${NC}  (requiere sesión iniciada en el panel)"
+echo -e "  Escritorio remoto: ${GREEN}https://${VPS_PUBLIC_IP}:8081${NC}  (privado por usuario, sin clave: usa tu sesión del panel)"
 echo -e "  GenieACS UI:      ${GREEN}http://${VPS_PUBLIC_IP}:3001${NC}  (admin/admin)"
 echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/${NC}"
 echo -e "  TR-069 público:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/${NC}"
 echo -e "  Credenciales VPN: ${GREEN}/opt/omnisync-l2tp/vpn.conf${NC}"
-echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (o genéralo desde el panel → TR-069 y VPN)"
+echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (o genéralo desde el panel → Credenciales y VPN)"
 echo ""
 echo -e "  Logs:        ${CYAN}cd $INSTALL_DIR && docker compose logs -f${NC}"
 echo -e "  Reconstruir: ${CYAN}cd $INSTALL_DIR && docker compose up -d --build${NC}"
