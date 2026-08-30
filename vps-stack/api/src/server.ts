@@ -62,6 +62,8 @@ app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), re
 // Acceso web directo a la ONU (sin TR-069), con perfiles aprendidos por modelo
 app.use('/api/onu-web', authMiddleware, requireSection('onu_web'), requireModule('enable_onu_web'), onuWebRouter);
 app.use('/api/netaccess', authMiddleware, requireSection('red'), requireModule('enable_mikrotik'), netAccessRouter);
+// Autorización del escritorio remoto para Nginx auth_request (sin sesión de Express)
+app.get('/api/browser-authz', authorizeBrowserAccess);
 app.use('/api/browser', authMiddleware, requireSection('red'), browserRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 

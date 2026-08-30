@@ -87,15 +87,15 @@ async function detectDisplays(): Promise<string[]> {
 }
 
 /**
- * Navega la ventana ya iniciada por LinuxServer. Lanzar otro `firefox --new-tab`
+ * Navega la ventana ya iniciada por LinuxServer. Lanzar otro `chromium --new-tab`
  * puede devolver código 0 pero no comunicarse con la sesión gráfica (perfil
  * bloqueado/DBus), dejando el escritorio en blanco. xdotool actúa sobre la
- * ventana visible y es el método más fiable en las imágenes Selkies/KasmVNC.
+ * ventana visible y es el método más fiable en las imágenes KasmVNC.
  */
-async function navigateVisibleFirefox(display: string, url: string) {
+async function navigateVisibleBrowser(display: string, url: string) {
   const script = [
     'command -v xdotool >/dev/null 2>&1 || exit 127',
-    'WID="$(xdotool search --onlyvisible --class "firefox|Navigator" 2>/dev/null | tail -1)"',
+    'WID="$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)"',
     '[ -n "$WID" ] || WID="$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)"',
     '[ -n "$WID" ] || exit 3',
     'xdotool windowactivate --sync "$WID"',
