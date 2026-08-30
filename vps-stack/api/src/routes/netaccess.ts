@@ -895,6 +895,63 @@ netAccessRouter.get('/:mikrotikId/webfig', async (req: AuthRequest, res: Respons
 // ─── Proxy web hacia el equipo (WebFig / airOS) ─────────────────
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
+/** Diagnóstico: prueba si el equipo responde por HTTP/HTTPS desde el VPS. */
+netAccessRouter.get('/:mikrotikId/web-check/:ip/:port', async (req: AuthRequest, res: Response) => {
+  const mikrotikId = await guard(req, res);
+  if (!mikrotikId) return;
+
+  const { ip, port } = req.params as { ip: string; port: string };
+  const basePort = Number(port);
+  if (!IPV4.test(ip)) return res.status(400).json({ success: false, error: 'IP inválida' });
+
+  const candidates = Array.from(
+    new Set([basePort, 80, 8080, 443, 8443, 8291].filter((p) => Number.isFinite(p) && p > 0 && p < 65536))
+  );
+
+  const probe = (p: number) =>
+    new Promise<any>((resolve) => {
+      const secure = p === 443 || p === 8443;
+      const client = secure ? https : http;
+      const started = Date.now();
+      const rq = client.request(
+        { host: ip, port: p, path: '/', method: 'GET', rejectUnauthorized: false, timeout: 6000 },
+        (r) => {
+          r.resume();
+          resolve({
+            port: p,
+            protocol: secure ? 'https' : 'http',
+            ok: true,
+            status: r.statusCode,
+            server: r.headers['server'] || null,
+            auth: r.headers['www-authenticate'] || null,
+            ms: Date.now() - started,
+          });
+        }
+      );
+      rq.on('timeout', () => rq.destroy(new Error('timeout')));
+      rq.on('error', (e: any) =>
+        resolve({ port: p, protocol: secure ? 'https' : 'http', ok: false, error: e.code || e.message, ms: Date.now() - started })
+      );
+      rq.end();
+    });
+
+  const results = await Promise.all(candidates.map(probe));
+  const best = results.find((r) => r.ok && r.port === basePort) || results.find((r) => r.ok) || null;
+
+  res.json({
+    success: true,
+    data: {
+      ip,
+      requested_port: basePort,
+      reachable: !!best,
+      suggested_port: best?.port ?? null,
+      needs_login: !!best?.auth,
+      results,
+      proxy_path: best ? `/api/netaccess/${mikrotikId}/web/${ip}/${best.port}/` : null,
+    },
+  });
+});
+
 netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res: Response) => {
   const mikrotikId = await guard(req, res);
   if (!mikrotikId) return;
