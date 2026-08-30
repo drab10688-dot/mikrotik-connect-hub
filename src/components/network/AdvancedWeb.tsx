@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Globe } from "lucide-react";
+import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Monitor } from "lucide-react";
 import { withAuthToken, netAccessApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
+import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 
 export interface AdvancedTarget {
   ip: string;
@@ -32,7 +32,7 @@ export function AdvancedWeb({
   const [checking, setChecking] = useState(false);
   const [diag, setDiag] = useState<any>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [remoteTarget, setRemoteTarget] = useState<RemoteBrowserTarget | null>(null);
+  const [remoteTarget, setRemoteTarget] = useState<ProxyBrowserTarget | null>(null);
   const frameWrapRef = useRef<HTMLDivElement>(null);
 
   const routerId = mikrotikId || localStorage.getItem("mikrotik_device_id") || "";
@@ -203,12 +203,12 @@ export function AdvancedWeb({
                 variant="default"
                 onClick={() => openRemote(target.ip, Number(target.proxy_path.match(/\/(\d+)\/$/)?.[1]) || 80, target.name, target.proxy_path)}
               >
-                <Globe className="h-4 w-4 mr-1" /> Firefox
+                <Monitor className="h-4 w-4 mr-1" /> Abrir visor
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-xs text-muted-foreground">Usa Firefox para equipos con captcha o firmware antiguo; el proxy queda disponible como respaldo.</p>
+            <p className="text-xs text-muted-foreground">El visor mantiene la sesión, cookies y captcha separados para este equipo.</p>
             <div ref={frameWrapRef} className="bg-background" onDoubleClick={toggleFullscreen}>
               <iframe
                 key={target.proxy_path}
@@ -224,7 +224,7 @@ export function AdvancedWeb({
 
         </Card>
       )}
-      <RemoteBrowserDialog target={remoteTarget} onOpenChange={(open) => !open && setRemoteTarget(null)} />
+      <ProxyBrowserDialog target={remoteTarget} onOpenChange={(open) => !open && setRemoteTarget(null)} />
     </div>
   );
 }

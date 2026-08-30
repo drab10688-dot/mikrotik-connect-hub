@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
 import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
@@ -964,12 +965,9 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
 
   // Al abrir en pestaña nueva o iframe no viaja la cabecera Authorization:
   // el token llega por ?token= y se guarda en cookie para las peticiones hijas.
-  if (typeof req.query.token === 'string' && req.query.token) {
-    res.setHeader(
-      'Set-Cookie',
-      `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
-    );
-  }
+  const webTokenCookie = typeof req.query.token === 'string' && req.query.token
+    ? `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
+    : null;
 
   const prefix = `/api/netaccess/${mikrotikId}/web/${ip}/${targetPort}`;
   const rawRest = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) : '/';
@@ -980,6 +978,8 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
 
   const secure = targetPort === 443 || targetPort === 8443;
   const client = secure ? https : http;
+  const upstreamOrigin = `${secure ? 'https' : 'http'}://${ip}:${targetPort}`;
+  const cookieNamespace = `owp_${crypto.createHash('sha256').update(`${mikrotikId}:${ip}:${targetPort}`).digest('hex').slice(0, 12)}_`;
 
   // Credencial guardada del equipo (Basic auth automático para ONUs/antenas).
   let basic: string | undefined;
@@ -1000,7 +1000,9 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
   // Cuerpo re-codificado según el content-type original (los formularios web fallan con JSON).
   const reqType = String(req.headers['content-type'] || '');
   let bodyBuf: Buffer | undefined;
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Object.keys(req.body).length) {
+  if (Buffer.isBuffer(req.body)) {
+    bodyBuf = req.body;
+  } else if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Object.keys(req.body).length) {
     if (reqType.includes('application/x-www-form-urlencoded')) {
       bodyBuf = Buffer.from(new URLSearchParams(req.body as any).toString());
     } else {
@@ -1016,13 +1018,16 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     cookie: String(req.headers.cookie || '')
       .split(';')
       .map((c) => c.trim())
-      .filter((c) => c && !c.startsWith(`${WEB_TOKEN_COOKIE}=`))
+      .filter((c) => c.startsWith(cookieNamespace))
+      .map((c) => c.slice(cookieNamespace.length))
       .join('; '),
   };
   delete outHeaders.authorization;
   delete outHeaders.referer;
   delete outHeaders.origin;
   delete outHeaders['content-length'];
+  outHeaders.origin = upstreamOrigin;
+  outHeaders.referer = `${upstreamOrigin}${targetPath || '/'}`;
   if (basic) outHeaders.authorization = basic;
   if (bodyBuf) outHeaders['content-length'] = bodyBuf.length;
 
@@ -1070,17 +1075,31 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         delete headers['x-content-type-options'];
         delete headers['content-length'];
         delete headers['content-encoding'];
+        headers['cache-control'] = 'no-store, no-cache, must-revalidate';
+        headers.pragma = 'no-cache';
         if (headers.location) headers.location = rewriteUrl(String(headers.location));
         if (headers['set-cookie']) {
           // Path amplio: la sesión/captcha de la ONU debe viajar en todas las subrutas del proxy.
-          headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) =>
-            c
+          headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) => {
+            const namespaced = c.replace(/^([^=;]+)=/, `${cookieNamespace}$1=`);
+            return namespaced
               .replace(/;\s*Path=[^;]*/i, '')
               .replace(/;\s*Domain=[^;]*/i, '')
               .replace(/;\s*Secure/gi, '')
-              .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=/api/netaccess; SameSite=Lax`
-          );
+              .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=${prefix}/; SameSite=Lax`
+          });
         }
+        if (webTokenCookie) {
+          const upstreamCookies = Array.isArray(headers['set-cookie']) ? headers['set-cookie'] : [];
+          headers['set-cookie'] = [...upstreamCookies, webTokenCookie];
+        }
+
+        // Helmet protege el panel, pero sus cabeceras no pueden aplicarse al firmware
+        // embebido: las ONUs antiguas dependen de scripts inline y frames propios.
+        res.removeHeader('content-security-policy');
+        res.removeHeader('content-security-policy-report-only');
+        res.removeHeader('x-frame-options');
+        res.removeHeader('x-content-type-options');
 
         const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
         if (textual) {
@@ -1092,6 +1111,15 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
             // URLs absolutas al propio equipo (frames, scripts, imágenes de captcha).
             const abs = new RegExp(`https?://${ip.replace(/\./g, '\\.')}(?::\\d+)?`, 'gi');
             body = body.replace(abs, prefix);
+            const protocolRelative = new RegExp(`//${ip.replace(/\./g, '\\.')}(?::\\d+)?`, 'gi');
+            body = body.replace(protocolRelative, prefix);
+
+            if (type.includes('text/css')) {
+              body = body.replace(
+                /url\(\s*(["']?)(\/[^)'"\s]+)\1\s*\)/gi,
+                (_m, q, url) => `url(${q}${prefix}${url}${q})`
+              );
+            }
 
             if (type.includes('text/html')) {
               body = body.replace(

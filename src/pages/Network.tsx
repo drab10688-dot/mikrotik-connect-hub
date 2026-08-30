@@ -16,7 +16,7 @@ import {
   AlertTriangle, PlugZap, Activity,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
-import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
+import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 import { usePagedSearch } from "@/hooks/use-paged-search";
 import { SearchBox, Pager } from "@/components/common/SearchPager";
 
@@ -50,7 +50,7 @@ export default function Network() {
   const qc = useQueryClient();
   const [deviceId, setDeviceId] = useState<string>(() => localStorage.getItem("mikrotik_device_id") || "");
   const [search, setSearch] = useState("");
-  const [browserTarget, setBrowserTarget] = useState<RemoteBrowserTarget | null>(null);
+  const [browserTarget, setBrowserTarget] = useState<ProxyBrowserTarget | null>(null);
   const browserOpen = Boolean(browserTarget);
   const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
 
@@ -1028,7 +1028,7 @@ export default function Network() {
           </TabsContent>
         </Tabs>
 
-        <RemoteBrowserDialog target={browserTarget} onOpenChange={(open) => !open && setBrowserTarget(null)} />
+        <ProxyBrowserDialog target={browserTarget} onOpenChange={(open) => !open && setBrowserTarget(null)} />
 
         <ApSignalDialog
           mikrotikId={deviceId}

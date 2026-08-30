@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Permite que los contenedores API/Firefox lleguen a las redes detrás del MikroTik.
+# Permite que el contenedor API llegue a las redes detrás del MikroTik.
 set -u
 
 ONU_NETS="${ONU_NETS:-10.82.0.0/21}"
@@ -15,4 +15,4 @@ for net in $(echo "$ONU_NETS" | tr ',' ' '); do
     iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d "$net" -j MASQUERADE
 done
 
-echo "Firefox/API habilitados para acceder a: $ONU_NETS"
+echo "Proxy API habilitado para acceder a: $ONU_NETS"

@@ -48,8 +48,8 @@ export async function upsertL2tpUser(
   );
 
   // Mapa tunnel_ip -> redes (lo lee el hook /etc/ppp/ip-up.local).
-  // La ruta se instala en el host: API y Firefox salen por su gateway Docker
-  // y el host los reenvía por la interfaz ppp activa.
+  // La ruta se instala en el host: la API sale por su gateway Docker
+  // y el host la reenvía por la interfaz ppp activa.
   if (tunnelIp) {
     const nets = escNet(onuNetworks?.trim() || '10.82.0.0/21');
     await sh(

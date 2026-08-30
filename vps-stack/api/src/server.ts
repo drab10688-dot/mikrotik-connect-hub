@@ -16,7 +16,6 @@ import { netAccessRouter } from './routes/netaccess';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { onuWebRouter } from './routes/onu-web';
-import { browserRouter } from './routes/browser';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -32,7 +31,11 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(helmet());
 app.use(cors());
+// El proxy debe reenviar exactamente los cuerpos de formularios de firmware antiguo,
+// incluidos multipart/captcha, antes de que los parsers JSON los transformen.
+app.use(/^\/api\/netaccess\/[^/]+\/web\//, express.raw({ type: '*/*', limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check
 app.get('/api/health', (_, res) => {
@@ -59,8 +62,6 @@ app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), re
 app.use('/api/onu-web', authMiddleware, requireSection('onu_web'), requireModule('enable_onu_web'), onuWebRouter);
 app.use('/api/netaccess', authMiddleware, requireSection('red'), requireModule('enable_mikrotik'), netAccessRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
-// Navegador remoto (Firefox real) para abrir ONUs/antenas con captcha o JS pesado
-app.use('/api/browser', authMiddleware, browserRouter);
 
 
 // Aliases for frontend compatibility

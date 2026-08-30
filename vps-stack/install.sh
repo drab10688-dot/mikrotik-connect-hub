@@ -112,9 +112,6 @@ DB_USER=omnisync
 DB_PASSWORD=$(openssl rand -hex 16)
 JWT_SECRET=$(openssl rand -hex 32)
 JWT_EXPIRES_IN=7d
-BROWSER_USER=admin
-BROWSER_PASSWORD=$(openssl rand -hex 12)
-BROWSER_HOME_URL=about:blank
 MIKROTIK_HOST=
 MIKROTIK_PORT=443
 MIKROTIK_USER=
@@ -130,12 +127,6 @@ else
     || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
   echo -e "${GREEN}✓ .env existente conservado${NC}"
 fi
-
-# El navegador remoto siempre queda protegido, incluso al actualizar una
-# instalación antigua que todavía no tenía estas variables.
-grep -q '^BROWSER_USER=' .env || echo 'BROWSER_USER=admin' >> .env
-grep -q '^BROWSER_PASSWORD=' .env || echo "BROWSER_PASSWORD=$(openssl rand -hex 12)" >> .env
-grep -q '^BROWSER_HOME_URL=' .env || echo 'BROWSER_HOME_URL=about:blank' >> .env
 
 # shellcheck disable=SC1091
 set -a; . "$INSTALL_DIR/.env"; set +a
@@ -172,26 +163,7 @@ done
 echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
-# Firefox remoto: descarga tolerante a fallos (reintentos + espejo docker.io)
-pull_browser() {
-  for i in 1 2 3; do
-    docker compose pull remote-browser && return 0
-    echo -e "${YELLOW}⚠ Reintento $i/3 de descarga de Firefox...${NC}" && sleep 5
-  done
-  docker pull docker.io/linuxserver/firefox:latest \
-    && docker tag docker.io/linuxserver/firefox:latest lscr.io/linuxserver/firefox:latest \
-    && return 0
-  echo -e "${YELLOW}⚠ No se pudo descargar Firefox remoto; el panel seguirá con el proxy integrado.${NC}"
-  return 1
-}
-BROWSER_OK=0
-pull_browser && BROWSER_OK=1
-
-if [ "$BROWSER_OK" = "1" ]; then
-  docker compose up -d 2>&1 | tail -5
-else
-  docker compose up -d postgres mongo genieacs coturn wireguard api nginx 2>&1 | tail -5
-fi
+docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
@@ -238,7 +210,6 @@ check_service "Nginx"           "omnisync-nginx"
 check_service "MongoDB (ACS)"   "omnisync-mongo"
 check_service "GenieACS TR-069" "omnisync-genieacs"
 check_service "coturn (STUN)"   "omnisync-coturn"
-check_service "Firefox remoto"  "omnisync-browser"
 check_service "VPN L2TP/IPsec"  "omnisync-l2tp"
 
 ACS_CWMP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7547 2>/dev/null || true)
@@ -264,8 +235,6 @@ echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/${NC}"
 echo -e "  TR-069 público:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/${NC}"
 echo -e "  Credenciales VPN: ${GREEN}/opt/omnisync-l2tp/vpn.conf${NC}"
 echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (o genéralo desde el panel → TR-069 y VPN)"
-echo -e "  Firefox remoto:   ${GREEN}http://${VPS_PUBLIC_IP}/browser/${NC}  (usuario: ${BROWSER_USER})"
-echo -e "  Clave Firefox:    ${GREEN}${BROWSER_PASSWORD}${NC}"
 echo ""
 echo -e "  Logs:        ${CYAN}cd $INSTALL_DIR && docker compose logs -f${NC}"
 echo -e "  Reconstruir: ${CYAN}cd $INSTALL_DIR && docker compose up -d --build${NC}"
