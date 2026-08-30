@@ -72,17 +72,44 @@ cat > "$MT" <<EOF
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniACS VPN"
+    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \
+    disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
 /ip route
+remove [find comment="Ruta hacia ACS"]
 add dst-address=$TUNNEL_SRV/32 gateway="OmniACS-VPN" comment="Ruta hacia ACS"
 
 # 3) NAT para que el ACS llegue directo al segmento de las ONUs
 /ip firewall nat
+remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) TR-069 de las ONUs
+# 4) Reconexión automática. Si el túnel cae, RouterOS lo levanta sin
+#    depender del botón Conectar del panel.
+/system script
+remove [find name="OmniACS-VPN-Watchdog"]
+add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
+    :local vpn [/interface l2tp-client find where name="OmniACS-VPN"]
+    :if ([:len \$vpn] = 0) do={ :log error "OmniACS: interfaz VPN no existe"; :return }
+    :if ([/interface l2tp-client get \$vpn disabled] = true) do={
+        /interface l2tp-client enable \$vpn
+        :log warning "OmniACS: VPN estaba deshabilitada; reconectando"
+    }
+    :if ([/interface l2tp-client get \$vpn running] = false) do={
+        /interface l2tp-client disable \$vpn
+        :delay 2s
+        /interface l2tp-client enable \$vpn
+        :log warning "OmniACS: VPN sin enlace; reinicio automatico"
+    }
+}
+/system scheduler
+remove [find name="OmniACS-VPN-Watchdog"]
+add name="OmniACS-VPN-Watchdog" start-time=startup interval=30s \
+    on-event="OmniACS-VPN-Watchdog" policy=read,write,test disabled=no
+/system script run "OmniACS-VPN-Watchdog"
+
+# 5) TR-069 de las ONUs
 #   ACS URL (por VPN) : http://$TUNNEL_SRV:7547/
 #   ACS URL (público) : http://$PUBIP:7547/
 #   Usuario / clave   : omnisync / <token-del-ISP>
@@ -222,6 +249,11 @@ cat > "$DIR/l2tp-routes.sh" <<'EOS'
 set -u
 NETS="__NETS__"
 GW="__GW__"
+# La interfaz PPP creada por L2TP cambia de número después de reconectar.
+# Se usa la IP fija del peer como gateway, nunca un nombre supuesto como l2tp-eth0.
+if ! ip route get "$GW" 2>/dev/null | grep -qE 'dev ppp[0-9]+'; then
+  exit 0
+fi
 for n in $(echo "$NETS" | tr ',' ' '); do
   [ -n "$n" ] || continue
   ip route replace "$n" via "$GW" 2>/dev/null || true

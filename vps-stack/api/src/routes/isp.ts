@@ -530,17 +530,43 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=${serverHost} user="${peer.username}" password="${peer.password}" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=30 disabled=no comment="OmniACS VPN"
+    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \
+    disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
 /ip route
+remove [find comment="Ruta hacia ACS"]
 add dst-address=${VPN_SERVER_IP}/32 gateway="OmniACS-VPN" comment="Ruta hacia ACS"
 
 # 3) NAT para que el ACS llegue directo al segmento de las ONUs
 /ip firewall nat
+remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) TR-069 de las ONUs de este ISP
+# 4) Reconexión automática. El escaneo no dependerá del botón Conectar.
+/system script
+remove [find name="OmniACS-VPN-Watchdog"]
+add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
+    :local vpn [/interface l2tp-client find where name="OmniACS-VPN"]
+    :if ([:len \$vpn] = 0) do={ :log error "OmniACS: interfaz VPN no existe"; :return }
+    :if ([/interface l2tp-client get \$vpn disabled] = true) do={
+        /interface l2tp-client enable \$vpn
+        :log warning "OmniACS: VPN estaba deshabilitada; reconectando"
+    }
+    :if ([/interface l2tp-client get \$vpn running] = false) do={
+        /interface l2tp-client disable \$vpn
+        :delay 2s
+        /interface l2tp-client enable \$vpn
+        :log warning "OmniACS: VPN sin enlace; reinicio automatico"
+    }
+}
+/system scheduler
+remove [find name="OmniACS-VPN-Watchdog"]
+add name="OmniACS-VPN-Watchdog" start-time=startup interval=30s \
+    on-event="OmniACS-VPN-Watchdog" policy=read,write,test disabled=no
+/system script run "OmniACS-VPN-Watchdog"
+
+# 5) TR-069 de las ONUs de este ISP
 #   ACS URL (por VPN) : ${acs.vpn_url}
 #   ACS URL (público) : ${acs.public_url}
 #   Usuario / clave   : ${acs.acs_username} / ${acs.acs_password}
