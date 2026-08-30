@@ -118,11 +118,17 @@ MIKROTIK_USER=
 MIKROTIK_PASS=
 GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
+BROWSER_USER=admin
+BROWSER_PASSWORD=$(openssl rand -hex 8)
+BROWSER_HOME_URL=about:blank
 VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
 TZ=America/Bogota
 EOF
   echo -e "${GREEN}✓ .env generado${NC}"
 else
+  grep -q '^BROWSER_USER=' .env || echo "BROWSER_USER=admin" >> .env
+  grep -q '^BROWSER_PASSWORD=' .env || echo "BROWSER_PASSWORD=$(openssl rand -hex 8)" >> .env
+  grep -q '^BROWSER_HOME_URL=' .env || echo "BROWSER_HOME_URL=about:blank" >> .env
   grep -q '^VPS_PUBLIC_IP=' .env && sed -i "s|^VPS_PUBLIC_IP=.*|VPS_PUBLIC_IP=${VPS_PUBLIC_IP}|" .env \
     || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
   echo -e "${GREEN}✓ .env existente conservado${NC}"
@@ -147,7 +153,7 @@ echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios ═══${NC}"
 docker compose down --remove-orphans 2>/dev/null || true
 # Restos de instalaciones anteriores (NuxBill/RADIUS/Mikhmon/CMS) — ya no se usan
 for cname in omnisync-mariadb omnisync-freeradius omnisync-phpnuxbill omnisync-mikhmon \
-             omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo omnisync-browser; do
+             omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   docker rm -f "$cname" 2>/dev/null || true
 done
 
@@ -164,6 +170,9 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
 docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
+echo -e "${YELLOW}Descargando navegador remoto (Firefox)...${NC}"
+docker compose pull remote-browser 2>&1 | tail -2 || true
+docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy sigue funcionando${NC}"
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
@@ -210,6 +219,7 @@ check_service "Nginx"           "omnisync-nginx"
 check_service "MongoDB (ACS)"   "omnisync-mongo"
 check_service "GenieACS TR-069" "omnisync-genieacs"
 check_service "coturn (STUN)"   "omnisync-coturn"
+check_service "Navegador remoto" "omnisync-browser"
 check_service "VPN L2TP/IPsec"  "omnisync-l2tp"
 
 ACS_CWMP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:7547 2>/dev/null || true)
@@ -230,6 +240,7 @@ fi
 
 echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
+echo -e "  Navegador remoto: ${GREEN}http://${VPS_PUBLIC_IP}/browser/${NC}  (usuario/clave en /opt/omnisync/.env)"
 echo -e "  GenieACS UI:      ${GREEN}http://${VPS_PUBLIC_IP}:3001${NC}  (admin/admin)"
 echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/${NC}"
 echo -e "  TR-069 público:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/${NC}"
