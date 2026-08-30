@@ -17,10 +17,14 @@ if ! command -v iptables >/dev/null 2>&1; then
 fi
 
 clean_chain() {
-  local CHAIN="$1"
-  iptables -S "$CHAIN" 2>/dev/null | grep -- "$TAG" | sed 's/^-A //' | while read -r RULE; do
-    # shellcheck disable=SC2086
-    iptables -D $CHAIN $RULE 2>/dev/null || true
+  local CHAIN="$1" LINE GUARD=0
+  # Borra por número de línea (más fiable que reconstruir la regla).
+  while :; do
+    LINE=$(iptables -L "$CHAIN" --line-numbers -n 2>/dev/null | grep -- "$TAG" | head -1 | awk '{print $1}')
+    [ -n "$LINE" ] || break
+    iptables -D "$CHAIN" "$LINE" 2>/dev/null || break
+    GUARD=$((GUARD + 1))
+    [ "$GUARD" -gt 500 ] && break
   done
 }
 
