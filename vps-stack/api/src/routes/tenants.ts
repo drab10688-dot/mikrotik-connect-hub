@@ -21,7 +21,7 @@ const slugify = (value: string) =>
 tenantsPublicRouter.get('/:slug', async (req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT slug, name, logo_url, primary_color
+      `SELECT slug, name, logo_url, primary_color, landing
        FROM tenants WHERE slug = $1 AND COALESCE(is_active, true) = true LIMIT 1`,
       [String(req.params.slug).toLowerCase()]
     );
@@ -43,7 +43,7 @@ tenantsRouter.get('/me', async (req: AuthRequest, res: Response) => {
               COALESCE(enable_mikrotik, true) AS enable_mikrotik,
               COALESCE(enable_tr069, true) AS enable_tr069,
               COALESCE(enable_onu_web, true) AS enable_onu_web,
-              web_ports
+              web_ports, landing
          FROM tenants WHERE id = $1`,
       [req.tenantId]
     );
@@ -57,15 +57,17 @@ tenantsRouter.get('/me', async (req: AuthRequest, res: Response) => {
 tenantsRouter.put('/me', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.tenantId) return res.status(400).json({ error: 'Tu usuario no pertenece a ningún ISP' });
-    const { name, logo_url, primary_color } = req.body;
+    const { name, logo_url, primary_color, landing } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
          logo_url = COALESCE($3, logo_url),
          primary_color = COALESCE($4, primary_color),
+         landing = COALESCE($5::jsonb, landing),
          updated_at = now()
-       WHERE id = $1 RETURNING id, slug, name, logo_url, primary_color`,
-      [req.tenantId, name || null, logo_url || null, primary_color || null]
+       WHERE id = $1 RETURNING id, slug, name, logo_url, primary_color, landing`,
+      [req.tenantId, name || null, logo_url || null, primary_color || null,
+       landing ? JSON.stringify(landing) : null]
     );
     res.json({ data: rows[0] });
   } catch (error: any) {
@@ -150,7 +152,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, slug, logo_url, primary_color, is_active, onu_limit,
-            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web } = req.body;
+            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
@@ -166,6 +168,7 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          web_ports = COALESCE($10::jsonb, web_ports),
          enable_tr069 = COALESCE($11::boolean, enable_tr069),
          enable_onu_web = COALESCE($12::boolean, enable_onu_web),
+         landing = COALESCE($13::jsonb, landing),
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null,
@@ -176,7 +179,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
        typeof enable_mikrotik === 'boolean' ? enable_mikrotik : null,
        web_ports ? JSON.stringify(web_ports) : null,
        typeof enable_tr069 === 'boolean' ? enable_tr069 : null,
-       typeof enable_onu_web === 'boolean' ? enable_onu_web : null]
+       typeof enable_onu_web === 'boolean' ? enable_onu_web : null,
+       landing ? JSON.stringify(landing) : null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);
