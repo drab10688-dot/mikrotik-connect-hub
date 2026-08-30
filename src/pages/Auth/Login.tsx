@@ -258,8 +258,9 @@ export default function Login() {
                 La consola que tu ISP <span className="brand-text">necesita</span> para operar fibra y radio.
               </h1>
               <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-                ONUs, antenas, MikroTik y VPN en un solo panel. Diagnóstico en segundos, cambios masivos sin
+                ONUs, antenas y MikroTik en un solo panel. Diagnóstico en segundos, cambios masivos sin
                 desplazamientos y control total por operador.
+
               </p>
             </div>
 
