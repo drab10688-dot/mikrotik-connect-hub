@@ -115,6 +115,10 @@ export function ProxyBrowserDialog({
               </Button>
             </div>
           </div>
+          <p className="pt-1 text-[11px] text-muted-foreground sm:hidden">
+            Gestos táctiles: pellizca para hacer zoom · arrastra con dos dedos para desplazarte ·
+            el ícono ⛶ (pantalla completa) mejora la vista en celular.
+          </p>
           <div className="flex items-center gap-2 pt-2">
             <Input value={target?.directUrl || ""} readOnly className="h-9 min-w-0 font-mono text-xs" />
             <Button size="sm" variant="outline" onClick={copyUrl}>
