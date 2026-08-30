@@ -53,6 +53,19 @@ export const withAuthToken = (path?: string | null): string => {
   return `${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
 };
 
+/**
+ * URL de los escritorios remotos (KasmVNC). Van en puerto dedicado porque
+ * KasmVNC usa rutas absolutas y no funciona bajo un subpath (/browser/).
+ */
+export const remoteDesktopUrl = (kind: 'browser' | 'winbox'): string => {
+  const port = kind === 'winbox' ? 8082 : 8081;
+  const host = window.location.hostname;
+  const base = `http://${host}:${port}/`;
+  return withAuthToken(base);
+};
+
+
+
 
 export const getStoredUser = () => {
   const raw = localStorage.getItem(USER_KEY);
