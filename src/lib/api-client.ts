@@ -70,8 +70,14 @@ export const remoteDesktopUrl = (
     creds?.user && creds?.password
       ? `${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@`
       : '';
-  const base = `https://${auth}${host}:${p}/?autoconnect=true&reconnect=true&reconnect_delay=1000&resize=scale&quality=4&compression=9&show_control_bar=true&show_dot=true`;
+  // Barra de control y gestos táctiles activos: en celular permite pellizcar
+  // para zoom, arrastrar para desplazar y abrir el teclado en pantalla.
+  const base =
+    `https://${auth}${host}:${p}/?autoconnect=true&reconnect=true&reconnect_delay=1000` +
+    `&resize=scale&quality=4&compression=9&show_control_bar=true&show_dot=true` +
+    `&toolbar=true&clipboard_up=true&clipboard_down=true&enable_perf_stats=false`;
   return auth ? base : withAuthToken(base);
+
 };
 
 /** Visor interno con controles táctiles (zoom, teclado, pantalla completa). */
