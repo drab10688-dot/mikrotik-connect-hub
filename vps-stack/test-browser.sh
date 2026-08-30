@@ -104,6 +104,17 @@ DISPLAYS=$(docker exec omnisync-browser sh -c 'ls /tmp/.X11-unix 2>/dev/null' | 
 echo "  Displays detectados: $DISPLAYS"
 OPEN_OUT=""
 for D in $DISPLAYS; do
+  # Primero navega la ventana existente; evita perfiles bloqueados/DBus.
+  OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e TARGET_URL="$TARGET_URL" omnisync-browser sh -lc '
+    command -v xdotool >/dev/null 2>&1 || exit 127
+    WID=$(xdotool search --onlyvisible --class "firefox|Navigator" 2>/dev/null | tail -1)
+    [ -n "$WID" ] || WID=$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)
+    [ -n "$WID" ] || exit 3
+    xdotool windowactivate --sync "$WID" && xdotool key --window "$WID" ctrl+l && \
+      xdotool type --window "$WID" --delay 1 --clearmodifiers "$TARGET_URL" && \
+      xdotool key --window "$WID" Return
+  ' 2>&1 || true)
+  [ -z "$OPEN_OUT" ] && { OPEN_OUT="[$D] navegación por ventana"; break; }
   OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e HOME=/config omnisync-browser \
     /usr/bin/firefox --new-tab "$TARGET_URL" 2>&1 || true)
   echo "$OPEN_OUT" | grep -qi 'cannot open display' || { OPEN_OUT="[$D] $OPEN_OUT"; break; }

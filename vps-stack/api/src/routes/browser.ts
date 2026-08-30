@@ -55,6 +55,29 @@ async function detectDisplays(): Promise<string[]> {
   return found;
 }
 
+/**
+ * Navega la ventana ya iniciada por LinuxServer. Lanzar otro `firefox --new-tab`
+ * puede devolver código 0 pero no comunicarse con la sesión gráfica (perfil
+ * bloqueado/DBus), dejando el escritorio en blanco. xdotool actúa sobre la
+ * ventana visible y es el método más fiable en las imágenes Selkies/KasmVNC.
+ */
+async function navigateVisibleFirefox(display: string, url: string) {
+  const script = [
+    'command -v xdotool >/dev/null 2>&1 || exit 127',
+    'WID="$(xdotool search --onlyvisible --class "firefox|Navigator" 2>/dev/null | tail -1)"',
+    '[ -n "$WID" ] || WID="$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)"',
+    '[ -n "$WID" ] || exit 3',
+    'xdotool windowactivate --sync "$WID"',
+    'xdotool key --window "$WID" ctrl+l',
+    'xdotool type --window "$WID" --delay 1 --clearmodifiers "$TARGET_URL"',
+    'xdotool key --window "$WID" Return',
+  ].join(' && ');
+  return docker(
+    ['exec', '-u', 'abc', '-e', `DISPLAY=${display}`, '-e', `TARGET_URL=${url}`, CONTAINER, 'sh', '-lc', script],
+    20000
+  );
+}
+
 /** Estado del contenedor del navegador. */
 browserRouter.get('/status', async (_req, res) => {
   const inspect = await docker(['inspect', '--format', '{{.State.Status}}', CONTAINER], 8000);
@@ -93,6 +116,12 @@ browserRouter.post('/open', async (req, res) => {
 
   let lastError = '';
   for (const display of displays) {
+    const navigated = await navigateVisibleFirefox(display, url);
+    if (navigated.ok) {
+      return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'window' } });
+    }
+    lastError = navigated.err;
+
     const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
     const attempts: string[][] = [
       ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/firefox', '--new-tab', url],
@@ -112,7 +141,9 @@ browserRouter.post('/open', async (req, res) => {
     ];
     for (const args of attempts) {
       const result = await docker(args, 20000);
-      if (result.ok) return res.json({ success: true, data: { url, display, viewer: '/browser/' } });
+      if (result.ok) {
+        return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'firefox-cli' } });
+      }
       lastError = result.err;
       // Si el error no es de display, no tiene sentido probar otros displays.
       if (!/cannot open display/i.test(lastError)) continue;
