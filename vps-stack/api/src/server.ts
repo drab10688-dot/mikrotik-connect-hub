@@ -14,6 +14,7 @@ import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { netAccessRouter } from './routes/netaccess';
 import { browserRouter, authorizeBrowserAccess } from './routes/browser';
+import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { onuWebRouter } from './routes/onu-web';
@@ -109,6 +110,9 @@ cron.schedule('* * * * *', () => {
 
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
+
+  // Imagen del escritorio remoto lista de antemano (evita esperas al abrir)
+  prefetchBrowserImage().catch(() => undefined);
 
   // Esquema multi-ISP (tokens TR-069, permisos, peers VPN)
   ensureIspSchema(pool).catch((e: any) => console.error('[SCHEMA] isp:', e.message));

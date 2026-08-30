@@ -44,7 +44,7 @@ export default function RemoteDesktop() {
       if (loadedRef.current) return;
       setFailed(true);
       window.location.replace(url);
-    }, 3500);
+    }, 1500);
     return () => window.clearTimeout(id);
   }, [url, reloadKey]);
 

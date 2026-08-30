@@ -31,6 +31,7 @@ export interface UserBrowserSession {
   password: string;
   lastActivity: number;
   startedAt: number;
+  readyAt?: number;
 }
 
 const sessions = new Map<string, UserBrowserSession>();
@@ -183,21 +184,39 @@ export async function destroyUserBrowser(userId: string) {
   await docker(['rm', '-f', name], 90000);
 }
 
-/** Espera a que KasmVNC esté listo dentro del contenedor recién creado. */
-export async function waitReady(session: UserBrowserSession, attempts = 20): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    const status = await containerStatus(session.container);
-    if (status === 'running') {
-      const probe = await docker(
-        ['exec', session.container, 'sh', '-lc', 'ls /tmp/.X11-unix 2>/dev/null | head -1'],
-        8000
-      );
-      if (probe.ok && probe.out) return true;
-    }
-    if (status === 'exited' || status === 'missing') return false;
-    await new Promise((r) => setTimeout(r, 1500));
+/**
+ * Espera a que KasmVNC esté listo. El sondeo se hace DENTRO del contenedor con
+ * un solo `docker exec` (evita el coste de decenas de exec desde el host), así
+ * el escritorio queda disponible en cuanto arranca el servidor X.
+ */
+export async function waitReady(session: UserBrowserSession, timeoutMs = 30000): Promise<boolean> {
+  if (session.readyAt) return true;
+  const status = await containerStatus(session.container);
+  if (status === 'exited' || status === 'missing') return false;
+
+  const loops = Math.max(1, Math.round(timeoutMs / 250));
+  const probe = await docker(
+    [
+      'exec',
+      session.container,
+      'sh',
+      '-lc',
+      `i=0; while [ $i -lt ${loops} ]; do ls /tmp/.X11-unix/X* >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 0.25; done; exit 1`,
+    ],
+    timeoutMs + 5000
+  );
+  if (probe.ok) {
+    session.readyAt = Date.now();
+    return true;
   }
   return false;
+}
+
+/** Descarga la imagen del navegador al arrancar el API: el primer usuario ya no espera el pull. */
+export async function prefetchBrowserImage() {
+  const has = await docker(['image', 'inspect', IMAGE], 15000);
+  if (has.ok) return;
+  await docker(['pull', IMAGE], 600000);
 }
 
 /** Limpia sesiones inactivas: cierra el escritorio y libera el puerto. */
