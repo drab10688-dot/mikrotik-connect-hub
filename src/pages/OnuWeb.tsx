@@ -13,6 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TopologyTree } from "@/components/network/TopologyTree";
 import { AdvancedWeb, type AdvancedTarget } from "@/components/network/AdvancedWeb";
+import { usePagedSearch } from "@/hooks/use-paged-search";
+import { SearchBox, Pager } from "@/components/common/SearchPager";
 import { Globe, Wifi, KeyRound, Search, Save, Trash2, ShieldCheck, History, MonitorCog, Radio, Check, Network } from "lucide-react";
 
 const BRANDS = ["zyxel", "huawei", "zte", "vsol", "cdata", "fiberhome", "tplink", "ubiquiti", "mikrotik", "mimosa", "cambium", "otro"];
@@ -148,6 +150,18 @@ export default function OnuWeb() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["onu-web-profiles"] }),
   });
 
+  // Buscadores con paginación (no se cargan cientos de filas de golpe).
+  const pppoeSearch = usePagedSearch<any>(
+    pppoeData?.secrets || [],
+    (s: any) => [s.name, s.remote_address, s.profile, s.comment, s.service],
+    { pageSize: 25 },
+  );
+  const deviceSearch = usePagedSearch<any>(
+    devicesData?.devices || [],
+    (d: any) => [d.ip, d.mac, d.name, d.brand, d.source, d.platform],
+    { pageSize: 25 },
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
@@ -187,6 +201,7 @@ export default function OnuWeb() {
                 <CardDescription>La clave se cambia directo en el router por la VPN y la sesión se reinicia.</CardDescription>
               </CardHeader>
               <CardContent>
+                <SearchBox controls={pppoeSearch} placeholder="Buscar cliente PPPoE por nombre, IP o perfil…" className="mb-3" />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -198,7 +213,7 @@ export default function OnuWeb() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(pppoeData?.secrets || []).map((s: any) => (
+                    {pppoeSearch.paged.map((s: any) => (
                       <TableRow key={s.id}>
                         <TableCell className="font-medium">{s.name}</TableCell>
                         <TableCell>
@@ -225,11 +240,12 @@ export default function OnuWeb() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!(pppoeData?.secrets || []).length && (
+                    {!pppoeSearch.total && (
                       <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Sin secretos PPPoE o sin MikroTik seleccionado</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
+                <Pager controls={pppoeSearch} />
               </CardContent>
             </Card>
 
@@ -241,6 +257,7 @@ export default function OnuWeb() {
                 <CardDescription>Detectados vía PPPoE, DHCP, ARP y vecinos del MikroTik. "Gestionar" detecta el modelo y abre la configuración.</CardDescription>
               </CardHeader>
               <CardContent>
+                <SearchBox controls={deviceSearch} placeholder="Buscar equipo por IP, MAC, nombre o marca…" className="mb-3" />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -252,7 +269,7 @@ export default function OnuWeb() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(devicesData?.devices || []).map((d: any) => (
+                    {deviceSearch.paged.map((d: any) => (
                       <TableRow key={d.ip}>
                         <TableCell className="font-mono text-xs">{d.ip}</TableCell>
                         <TableCell>{d.name}</TableCell>
@@ -274,11 +291,12 @@ export default function OnuWeb() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!(devicesData?.devices || []).length && (
+                    {!deviceSearch.total && (
                       <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No se detectaron equipos</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
+                <Pager controls={deviceSearch} />
               </CardContent>
             </Card>
           </TabsContent>
