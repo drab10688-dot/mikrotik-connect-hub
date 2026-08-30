@@ -111,22 +111,31 @@ tenantsRouter.put('/me', requireRole('super_admin', 'admin'), async (req: AuthRe
 // ─── Gestión global (solo super_admin) ────────────────────────────────
 tenantsRouter.get('/', requireRole('super_admin'), async (_req: AuthRequest, res: Response) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT t.*,
-              (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users_count,
-              (SELECT COUNT(*) FROM mikrotik_devices d WHERE d.tenant_id = t.id) AS devices_count,
-              (SELECT COUNT(*) FROM acs_device_owners o
-                WHERE o.tenant_id = t.id AND o.status = 'active') AS onus_used,
-              (SELECT COUNT(*) FROM acs_device_owners o
-                WHERE o.tenant_id = t.id AND o.status = 'blocked') AS onus_blocked,
-              (SELECT COUNT(*) FROM tenant_vpn_peers p WHERE p.tenant_id = t.id) AS vpn_count
-       FROM tenants t ORDER BY t.name`
-    );
-    res.json({ data: rows });
+    await ensureTenantColumns();
+    try {
+      const { rows } = await pool.query(
+        `SELECT t.*,
+                (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS users_count,
+                (SELECT COUNT(*) FROM mikrotik_devices d WHERE d.tenant_id = t.id) AS devices_count,
+                (SELECT COUNT(*) FROM acs_device_owners o
+                  WHERE o.tenant_id = t.id AND o.status = 'active') AS onus_used,
+                (SELECT COUNT(*) FROM acs_device_owners o
+                  WHERE o.tenant_id = t.id AND o.status = 'blocked') AS onus_blocked,
+                (SELECT COUNT(*) FROM tenant_vpn_peers p WHERE p.tenant_id = t.id) AS vpn_count
+         FROM tenants t ORDER BY t.name`
+      );
+      return res.json({ data: rows });
+    } catch (inner: any) {
+      // Alguna tabla auxiliar todavía no existe: devolver el listado básico.
+      console.warn('[TENANTS] listado reducido:', inner.message);
+      const { rows } = await pool.query(`SELECT * FROM tenants ORDER BY name`);
+      return res.json({ data: rows });
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
