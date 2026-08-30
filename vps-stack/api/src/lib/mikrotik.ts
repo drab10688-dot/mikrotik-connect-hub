@@ -26,6 +26,7 @@ type NativeAuthMode = 'plain' | 'challenge-first';
 
 const authCooldowns = new Map<string, number>();
 const AUTH_COOLDOWN_MS = 60_000;
+const nativeApiQueues = new Map<string, Promise<void>>();
 
 function isAuthenticationError(error: Error): boolean {
   return /login failed|invalid user|invalid password|authentication failed|not logged in|cannot log in/i.test(error.message);
@@ -36,7 +37,41 @@ function authKey(config: MikroTikConfig): string {
   return `${config.host}:${config.port}:${config.username}:${passwordFingerprint}`;
 }
 
+/**
+ * RouterOS puede rechazar autenticaciones válidas cuando varias pantallas y
+ * cron jobs abren sesiones API al mismo router exactamente al mismo tiempo.
+ * Serializar por dispositivo evita que un rechazo transitorio active el
+ * cooldown global y parezca una contraseña incorrecta.
+ */
+async function serializeNativeApi<T>(config: MikroTikConfig, operation: () => Promise<T>): Promise<T> {
+  const key = authKey(config);
+  const previous = nativeApiQueues.get(key) || Promise.resolve();
+  let release = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queueTail = previous.catch(() => undefined).then(() => gate);
+  nativeApiQueues.set(key, queueTail);
+
+  await previous.catch(() => undefined);
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (nativeApiQueues.get(key) === queueTail) nativeApiQueues.delete(key);
+  }
+}
+
 async function tryNativeApiWithFallback(
+  config: MikroTikConfig,
+  path: string,
+  method: string = 'GET',
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  return serializeNativeApi(config, () => tryNativeApiWithFallbackUnlocked(config, path, method, body));
+}
+
+async function tryNativeApiWithFallbackUnlocked(
   config: MikroTikConfig,
   path: string,
   method: string = 'GET',
