@@ -23,11 +23,8 @@ export const browserRouter = Router();
 
 const IDLE_MINUTES = userBrowserConfig.IDLE_MINUTES;
 
-/**
- * Autoriza el acceso a los escritorios servidos por Nginx (Winbox 8082 y el
- * navegador global heredado 8081) mediante auth_request.
- */
-export async function authorizeBrowserAccess(req: Request, res: Response) {
+/** Extrae el token del panel desde ?token= o la cookie del proxy web. */
+function extractToken(req: Request): string | undefined {
   const original = String(req.headers['x-original-uri'] || req.originalUrl || '');
   let token: string | undefined;
   try {
@@ -42,15 +39,50 @@ export async function authorizeBrowserAccess(req: Request, res: Response) {
       if (k === 'omnisync_web_token') token = decodeURIComponent(v.join('='));
     }
   }
-  if (!token) return res.status(401).end();
+  return token;
+}
+
+function verifyPanelToken(token?: string): string | null {
+  if (!token) return null;
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { userId?: string };
-    if (!decoded?.userId) return res.status(401).end();
-    touchSession(decoded.userId);
+    return decoded?.userId || null;
   } catch {
-    return res.status(401).end();
+    return null;
   }
+}
+
+/**
+ * Autoriza el acceso a los escritorios servidos por Nginx (Winbox 8082 y el
+ * navegador global heredado 8081) mediante auth_request.
+ */
+export async function authorizeBrowserAccess(req: Request, res: Response) {
+  const userId = verifyPanelToken(extractToken(req));
+  if (!userId) return res.status(401).end();
+  touchSession(userId);
   return res.status(200).end();
+}
+
+/**
+ * Autorización del escritorio PRIVADO por usuario (Nginx 8081).
+ * Valida el token del panel, garantiza que el contenedor del usuario exista y
+ * devuelve a Nginx a qué contenedor enrutar y con qué credenciales internas —
+ * así el navegador NUNCA muestra el cuadro de usuario/clave.
+ */
+export async function authorizeUserVnc(req: Request, res: Response) {
+  const userId = verifyPanelToken(extractToken(req));
+  if (!userId) return res.status(401).end();
+  try {
+    let s = getSession(userId);
+    if (!s) s = await ensureUserBrowser(userId);
+    touchSession(userId);
+    if (!s.readyAt) await waitReady(s, 20000);
+    res.set('X-VNC-Target', `http://${s.container}:3000`);
+    res.set('X-VNC-Auth', `Basic ${Buffer.from(`${s.user}:${s.password}`).toString('base64')}`);
+    return res.status(200).end();
+  } catch {
+    return res.status(503).end();
+  }
 }
 
 /** Solo permitimos http/https hacia IPs privadas alcanzables por la VPN. */

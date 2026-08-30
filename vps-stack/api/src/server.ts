@@ -13,7 +13,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { netAccessRouter } from './routes/netaccess';
-import { browserRouter, authorizeBrowserAccess } from './routes/browser';
+import { browserRouter, authorizeBrowserAccess, authorizeUserVnc } from './routes/browser';
 import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
@@ -65,6 +65,8 @@ app.use('/api/onu-web', authMiddleware, requireSection('onu_web'), requireModule
 app.use('/api/netaccess', authMiddleware, requireSection('red'), requireModule('enable_mikrotik'), netAccessRouter);
 // Autorización del escritorio remoto para Nginx auth_request (sin sesión de Express)
 app.get('/api/browser-authz', authorizeBrowserAccess);
+// Escritorio PRIVADO por usuario: valida el token y enruta al contenedor propio
+app.get('/api/browser-authz-vnc', authorizeUserVnc);
 app.use('/api/browser', authMiddleware, requireSection('red'), browserRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 

@@ -142,9 +142,9 @@ export async function ensureUserBrowser(userId: string): Promise<UserBrowserSess
     '/config/.config/chromium:mode=1777,size=384m',
     '--tmpfs',
     '/config/.cache:mode=1777,size=192m',
-    // KasmVNC HTTPS interno (3001) publicado en el puerto asignado.
-    '-p',
-    `${port}:3001`,
+    // Sin publicación de puertos: el acceso es ÚNICAMENTE a través de Nginx
+    // (8081, HTTPS + token del panel). Así el navegador nunca pide clave y
+    // nadie puede conectarse directo al escritorio de otro usuario.
     IMAGE,
   ];
 
