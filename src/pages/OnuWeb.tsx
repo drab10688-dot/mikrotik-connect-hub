@@ -297,6 +297,7 @@ export default function OnuWeb() {
             <AdvancedWeb
               target={advanced}
               devices={devicesData?.devices || []}
+              mikrotikId={mikrotikId}
               onSelect={setAdvanced}
             />
           </TabsContent>
