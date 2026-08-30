@@ -368,6 +368,10 @@ export const browserApi = {
   /** Escritorio dedicado del ISP (se crea bajo demanda en el VPS). */
   status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
   open: async (url: string) => unwrapData<any>(await apiPost<any>('/browser/open', { url })),
+  /** Latido del visor: evita que se cierren las pestañas mientras se usa. */
+  ping: async () => unwrapData<any>(await apiPost<any>('/browser/ping', {})),
+  /** Cierra todas las pestañas y borra cookies/historial del escritorio. */
+  close: async () => unwrapData<any>(await apiPost<any>('/browser/close', {})),
 };
 
 // ─── Acceso web directo a la ONU (sin TR-069) con perfiles aprendidos ───

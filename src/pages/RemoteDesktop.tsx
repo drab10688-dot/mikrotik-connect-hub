@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { remoteDesktopUrl } from "@/lib/api-client";
+import { browserApi, remoteDesktopUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import {
   ZoomIn,
@@ -27,6 +27,22 @@ export default function RemoteDesktop() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const url = useMemo(() => remoteDesktopUrl(port), [port]);
+
+  // Latido: mientras el visor esté abierto, el VPS conserva las pestañas.
+  // Al cerrarlo y pasar el tiempo de inactividad, el escritorio cierra todo
+  // y borra cookies/historial automáticamente.
+  useEffect(() => {
+    let alive = true;
+    const beat = () => {
+      if (alive) browserApi.ping().catch(() => undefined);
+    };
+    beat();
+    const id = window.setInterval(beat, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const changeZoom = (delta: number) => {
     setZoom((z) => {
