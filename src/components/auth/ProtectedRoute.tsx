@@ -2,6 +2,8 @@ import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useSecretaryPermissions } from '@/hooks/useSecretaryPermissions';
+import { useModuleEnabled, TenantModule } from '@/hooks/useTenantBranding';
+import { useMyPermissions } from '@/hooks/usePermissions';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -9,9 +11,14 @@ interface ProtectedRouteProps {
   requireAdmin?: boolean;
   /** Permiso requerido para asistentes (ej: can_manage_clients) */
   permission?: string;
+  /** Módulo del ISP que debe estar activo (ej: onus) */
+  module?: TenantModule;
+  /** Sección de permisos del ISP (ej: onus, mikrotik) */
+  section?: string;
   /** Roles que NO pueden entrar a esta ruta */
   denyRoles?: Array<'secretary' | 'reseller' | 'user'>;
 }
+
 
 const Loader = () => (
   <div className="flex items-center justify-center min-h-screen">
