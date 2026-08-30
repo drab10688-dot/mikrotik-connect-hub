@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +69,9 @@ export default function Network() {
     enabled: !!deviceId && !browserOpen,
     refetchInterval: browserOpen ? false : 30_000,
     refetchOnWindowFocus: false,
+    // Mantiene la lista anterior si un refresco falla o llega vacío (VPN inestable)
+    placeholderData: (prev: any) => prev,
+    retry: 1,
   });
 
   const { data: netDevices, isLoading: loadingNet, refetch: refetchNet, error: netError } = useQuery({
@@ -187,7 +190,11 @@ export default function Network() {
     onError: (e: any) => toast.error(e.message || "No se pudo eliminar"),
   });
 
-  const secrets = pppoe?.secrets ?? [];
+  // Conserva la última lista no vacía: si un refresco llega vacío por un
+  // corte momentáneo de la VPN, la tabla no se queda en blanco.
+  const lastSecretsRef = useRef<any[]>([]);
+  if (pppoe?.secrets?.length) lastSecretsRef.current = pppoe.secrets;
+  const secrets = pppoe?.secrets?.length ? pppoe.secrets : lastSecretsRef.current;
   const equipos = netDevices?.devices ?? [];
 
   // Buscadores independientes con paginación por sección.
@@ -202,7 +209,8 @@ export default function Network() {
     { pageSize: 24 }
   );
 
-  const filteredSecrets = pppoeSearch.paged;
+  // Sin paginación en PPPoE: se muestran todos los resultados filtrados.
+  const filteredSecrets = pppoeSearch.filtered;
   const filteredEquipos = equipoSearch.paged;
 
   const openWebFig = async () => {
@@ -471,7 +479,6 @@ export default function Network() {
                         )}
                       </tbody>
                     </table>
-                    <Pager controls={pppoeSearch} />
                   </div>
                 )}
               </CardContent>
