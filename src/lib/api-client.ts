@@ -66,12 +66,20 @@ export const remoteDesktopUrl = (kind: 'browser' | 'winbox' | number): string =>
   // resize=scale: el escritorio remoto se ajusta a la vista y habilita los gestos
   // táctiles de KasmVNC en celular (pellizcar = zoom, dos dedos = desplazar).
   // Una compresión alta y calidad moderada reducen cortes en enlaces móviles/VPN.
-  const base = `https://${host}:${port}/?autoconnect=true&reconnect=true&reconnect_delay=1000&resize=scale&quality=4&compression=9`;
+  const base = `https://${host}:${port}/?autoconnect=true&reconnect=true&reconnect_delay=1000&resize=scale&quality=4&compression=9&show_control_bar=true&show_dot=true`;
   return withAuthToken(base);
 };
 
 
 
+
+/** Visor interno con controles táctiles (zoom, teclado, pantalla completa). */
+export const remoteDesktopViewerUrl = (port: number | 'browser' | 'winbox', title?: string): string => {
+  const p = typeof port === 'number' ? port : port === 'winbox' ? 8082 : 8081;
+  const q = new URLSearchParams({ port: String(p) });
+  if (title) q.set('title', title);
+  return `/vnc?${q.toString()}`;
+};
 
 export const getStoredUser = () => {
   const raw = localStorage.getItem(USER_KEY);
