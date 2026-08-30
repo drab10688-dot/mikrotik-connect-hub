@@ -151,18 +151,34 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     await ensureTenantColumns();
     await client.query('BEGIN');
 
+    // Token TR-069 único y subred VPN realmente libre (no por conteo: si se
+    // borró un ISP el conteo repite la misma red del anterior).
+    const { rows: usedRows } = await client.query(
+      `SELECT acs_token, vpn_subnet FROM tenants`
+    );
+    const usedTokens = new Set(usedRows.map((r: any) => String(r.acs_token || '').toLowerCase()));
+    const usedSubnets = new Set(usedRows.map((r: any) => String(r.vpn_subnet || '')));
+
+    let acsToken = crypto.randomBytes(8).toString('hex');
+    while (usedTokens.has(acsToken)) acsToken = crypto.randomBytes(8).toString('hex');
+
+    let vpnSubnet: string | null = null;
+    for (let octet = 14; octet <= 250; octet++) {
+      const candidate = `10.13.${octet}.0/24`;
+      if (!usedSubnets.has(candidate)) { vpnSubnet = candidate; break; }
+    }
+
     const { rows } = await client.query(
       `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit, user_limit,
                             enable_onus, enable_mikrotik,
                             acs_token, vpn_subnet)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-               encode(gen_random_bytes(8), 'hex'),
-               '10.13.' || (13 + (SELECT COUNT(*) + 1 FROM tenants))::text || '.0/24')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [name, finalSlug, logo_url || null, primary_color || null,
        Number.isFinite(Number(onu_limit)) && Number(onu_limit) > 0 ? Math.floor(Number(onu_limit)) : null,
        Number.isFinite(Number(user_limit)) && Number(user_limit) > 0 ? Math.floor(Number(user_limit)) : null,
-       enable_onus !== false, enable_mikrotik !== false]
+       enable_onus !== false, enable_mikrotik !== false,
+       acsToken, vpnSubnet]
     );
     const tenant = rows[0];
 
