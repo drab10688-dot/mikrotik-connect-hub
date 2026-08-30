@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+              mikrotikId={mikrotikId}import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { onuWebApi, netAccessApi } from "@/lib/api-client";
