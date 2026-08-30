@@ -141,7 +141,7 @@ if [ ! -f nginx/certs/remote.crt ]; then
 fi
 
 if command -v ufw >/dev/null 2>&1; then
-  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 500/udp 4500/udp 1701/udp; do
+  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 500/udp 4500/udp 1701/udp 8081/tcp 8082/tcp; do
     ufw allow "$p" >/dev/null 2>&1 || true
   done
   echo -e "${GREEN}✓ Puertos abiertos en firewall${NC}"

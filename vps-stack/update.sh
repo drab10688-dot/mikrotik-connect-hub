@@ -119,6 +119,13 @@ if [ "$NGINX_READY" != "true" ]; then
   exit 1
 fi
 
+# Firewall: puertos de los escritorios remotos (Chromium 8081 / Winbox 8082)
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 8081/tcp >/dev/null 2>&1 || true
+  ufw allow 8082/tcp >/dev/null 2>&1 || true
+  echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
+fi
+
 cd /root && rm -rf "$TEMP_DIR"
 
 echo -e "${GREEN}=== Actualizado ✓  (${COMMIT}) ===${NC}"
