@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopViewerUrl, browserApi } from "@/lib/api-client";
+import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopUrl, browserApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
@@ -279,19 +279,13 @@ export default function Network() {
               variant="secondary"
               onClick={async () => {
                 try {
-                  const s = await browserApi.session();
-                  window.open(
-                    remoteDesktopViewerUrl(Number(s?.port) || 8081, "Escritorio remoto", {
-                      user: s?.user,
-                      password: s?.password,
-                    }),
-                    "_blank",
-                    "noopener",
-                  );
+                  await browserApi.session();
+                  window.open(remoteDesktopUrl('browser'), "_blank", "noopener");
                 } catch (e: any) {
                   toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
                 }
               }}
+
               title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
             >
               <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)

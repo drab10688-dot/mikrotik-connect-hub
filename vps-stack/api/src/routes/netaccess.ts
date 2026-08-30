@@ -6,7 +6,7 @@ import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { pool } from '../lib/db';
 import { requireSection } from './isp';
-import { swr } from '../lib/cache';
+import { swr, keepWarm } from '../lib/cache';
 
 /**
  * Lectura cacheada contra la MikroTik.
@@ -14,15 +14,17 @@ import { swr } from '../lib/cache';
  * para que las tablas no queden vacías cuando la VPN responde lento.
  */
 async function mtCached(mikrotikId: string, path: string, ttlMs = 20000): Promise<any> {
-  return swr(
-    `net:${mikrotikId}:${path}`,
-    async () => {
-      const config = await getDeviceConfig(pool, mikrotikId);
-      return mikrotikRequest(config, path);
-    },
-    { ttlMs }
-  ).catch(() => []);
+  const key = `net:${mikrotikId}:${path}`;
+  const loader = async () => {
+    const config = await getDeviceConfig(pool, mikrotikId);
+    return mikrotikRequest(config, path);
+  };
+  // Se mantiene caliente: el refresco ocurre solo, así la respuesta al panel
+  // es inmediata aunque la VPN esté lenta.
+  keepWarm(key, loader, ttlMs);
+  return swr(key, loader, { ttlMs, maxAgeMs: 30 * 60_000 }).catch(() => []);
 }
+
 
 
 const editRed = requireSection('red', true);
