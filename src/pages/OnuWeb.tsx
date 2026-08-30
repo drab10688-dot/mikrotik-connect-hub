@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { onuWebApi } from "@/lib/api-client";
+import { onuWebApi, netAccessApi } from "@/lib/api-client";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Globe, Wifi, KeyRound, Search, Save, Trash2, ShieldCheck, History } from "lucide-react";
+import { Globe, Wifi, KeyRound, Search, Save, Trash2, ShieldCheck, History, MonitorCog, Radio, Check } from "lucide-react";
 
 /**
  * Acceso web directo a ONUs: el VPS entra por la VPN a la interfaz web de la ONU
