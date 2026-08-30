@@ -394,6 +394,12 @@ export default function Network() {
                 </div>
               </CardHeader>
               <CardContent>
+                <SearchBox
+                  controls={pppoeSearch}
+                  placeholder="Buscar por usuario, IP, perfil o comentario…"
+                  className="mb-3"
+                />
+
                 {pppoeError ? (
                   <p className="text-sm text-destructive">{(pppoeError as any).message}</p>
                 ) : loadingPppoe ? (
