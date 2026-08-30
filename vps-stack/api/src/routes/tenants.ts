@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import { applyTenantOnuLimit } from '../lib/acs-tenant';
+import { seedTenantPermissions } from './isp';
 
 export const tenantsPublicRouter = Router();
 export const tenantsRouter = Router();
@@ -116,6 +117,9 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
        enable_onus !== false, enable_mikrotik !== false]
     );
     const tenant = rows[0];
+
+    // Cada ISP nuevo arranca con su matriz de permisos por rol.
+    await seedTenantPermissions(client, tenant.id).catch(() => undefined);
 
     if (admin_email && admin_password) {
       const password_hash = await bcrypt.hash(admin_password, await bcrypt.genSalt(12));
