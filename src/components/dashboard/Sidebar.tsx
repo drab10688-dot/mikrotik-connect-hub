@@ -4,7 +4,7 @@ import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router,
-  ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck,
+  ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +36,8 @@ const menuItems: MenuEntry[] = [
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
   { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
+  { icon: Users, label: "Usuarios", path: "/admin/users", section: "usuarios", group: "Administración" },
+  { icon: KeyRound, label: "Roles y permisos", path: "/admin/permissions", section: "roles", group: "Administración" },
 ];
 
 export const Sidebar = () => {

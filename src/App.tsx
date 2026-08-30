@@ -46,10 +46,10 @@ const App = () => (
 
 
           {/* Administración */}
-          <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin><Permissions /></ProtectedRoute>} />
+          <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin section="roles"><Permissions /></ProtectedRoute>} />
           <Route path="/admin/isps" element={<ProtectedRoute requireSuperAdmin><Isps /></ProtectedRoute>} />
-          <Route path="/admin/users" element={<ProtectedRoute requireSuperAdmin><UsersAdmin /></ProtectedRoute>} />
-          <Route path="/admin/register-user" element={<ProtectedRoute requireSuperAdmin><RegisterUser /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute requireAdmin section="usuarios"><UsersAdmin /></ProtectedRoute>} />
+          <Route path="/admin/register-user" element={<ProtectedRoute requireAdmin section="usuarios"><RegisterUser /></ProtectedRoute>} />
           
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
