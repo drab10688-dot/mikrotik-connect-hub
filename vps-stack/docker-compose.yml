@@ -57,16 +57,11 @@ services:
       L2TP_IPSEC_PSK: ${L2TP_IPSEC_PSK:-}
       L2TP_TUNNEL_NET: ${L2TP_TUNNEL_NET:-192.168.42.0/24}
       VPN_SERVER_IP: ${VPN_SERVER_IP:-192.168.42.1}
-      # Escritorios remotos dedicados por ISP
-      BROWSER_IMAGE: ${BROWSER_IMAGE:-lscr.io/linuxserver/chromium:latest}
-      BROWSER_NETWORK: ${BROWSER_NETWORK:-omnisync_omnisync-browser-net}
-      NGINX_CONTAINER: omnisync-nginx
-      NGINX_DYN_DIR: /opt/omnisync/nginx-dyn
-      BROWSER_PORT_MIN: 8100
-      BROWSER_PORT_MAX: 8129
-      # Seguridad operativa: los navegadores por ISP se habilitan sólo después
-      # de validar puertos/rutas en el VPS. El navegador global sigue en 8081.
-      TENANT_BROWSERS_ENABLED: ${TENANT_BROWSERS_ENABLED:-false}
+      # Escritorio remoto único (Chromium + KasmVNC) en el puerto 8081
+      BROWSER_CONTAINER: ${BROWSER_CONTAINER:-omnisync-browser}
+      BROWSER_PORT: 8081
+      # Minutos sin actividad del visor antes de cerrar pestañas y borrar datos
+      BROWSER_IDLE_MINUTES: ${BROWSER_IDLE_MINUTES:-10}
       TZ: ${TZ:-America/Bogota}
     ports:
       - "3000:3000"
