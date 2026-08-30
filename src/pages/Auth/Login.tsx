@@ -10,19 +10,10 @@ import { useAuth } from '@/hooks/useAuth';
 import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
 const omnisyncLogoFull = omnisyncLogoAsset.url;
 import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
+import { mergeLanding } from '@/lib/landing';
 
-const FEATURES = [
-  { icon: Antenna, title: 'ONUs en vivo', text: 'Señal óptica, estado e inventario TR-069 en tiempo real.' },
-  { icon: Network, title: 'Mapa de red', text: 'Topología MikroTik → sector → AP → cliente con calidad de enlace.' },
-  { icon: Wifi, title: 'Wi-Fi y PPPoE', text: 'Cambia SSID, claves y credenciales sin entrar equipo por equipo.' },
-  { icon: ShieldCheck, title: 'Multi-ISP', text: 'Marca, cuotas y permisos independientes para cada operador.' },
-];
 
-const METRICS = [
-  { value: '24/7', label: 'Monitoreo' },
-  { value: '<1s', label: 'Respuesta ACS' },
-  { value: '12+', label: 'Marcas ONU' },
-];
+const FEATURE_ICONS = [Antenna, Network, Wifi, ShieldCheck];
 
 /** Reto anti-bot simple (suma aleatoria). */
 const newChallenge = () => ({
@@ -79,6 +70,7 @@ export default function Login() {
   }, [slug]);
 
   const brandName = tenant?.name || 'OmniACS';
+  const landing = mergeLanding((tenant as any)?.landing);
   const brandLogo = tenant?.logo_url || null;
 
   useEffect(() => {
@@ -139,23 +131,16 @@ export default function Login() {
 
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
-    <div className={`flex flex-col gap-3 ${size === 'lg' ? 'items-start' : 'items-center text-center'}`}>
+    <div className="flex flex-col items-center gap-2">
       <div
-        className={`relative grid place-items-center rounded-2xl bg-card/70 ring-1 ring-primary/30 glow-ring overflow-hidden ${
-          size === 'lg' ? 'h-20 w-20' : 'h-14 w-14'
+        className={`relative grid place-items-center rounded-full bg-card/70 ring-2 ring-primary/40 glow-ring overflow-hidden ${
+          size === 'lg' ? 'h-32 w-32 sm:h-40 sm:w-40' : 'h-20 w-20'
         }`}
       >
         <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
       </div>
-      <div className="min-w-0">
-        <p className={`font-bold tracking-tight brand-text ${size === 'lg' ? 'text-3xl' : 'text-xl'}`}>
-          {brandName}
-        </p>
-        <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Network Operations</p>
-      </div>
     </div>
   );
-
 
   const LoginForm = (
     <div className="glass-panel glass-panel-glow hairline-top w-full max-w-md p-7 animate-fade-in-up">
@@ -252,14 +237,13 @@ export default function Login() {
             <div className="space-y-5">
               <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
                 <Radio className="h-3.5 w-3.5" />
-                Plataforma ACS TR-069
+                {landing.badge}
               </span>
               <h1 className="text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
-                La consola que tu ISP <span className="brand-text">necesita</span> para operar fibra y radio.
+                {landing.headline} <span className="brand-text">{landing.highlight}</span>
               </h1>
               <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-                ONUs, antenas y MikroTik en un solo panel. Diagnóstico en segundos, cambios masivos sin
-                desplazamientos y control total por operador, con historial de cada acción.
+                {landing.subheadline}
               </p>
             </div>
 
@@ -267,10 +251,10 @@ export default function Login() {
               <Button
                 size="lg"
                 onClick={() => setShowForm(true)}
-                className="h-12 px-8 text-base font-semibold"
+                className="h-14 px-10 text-lg font-bold shadow-primary ring-2 ring-primary/40"
               >
                 <LogIn className="mr-2 h-5 w-5" />
-                Iniciar sesión
+                {landing.cta}
               </Button>
               <div className="flex items-center gap-2 rounded-full border border-border/60 bg-card/50 px-4 py-2 text-xs text-muted-foreground backdrop-blur">
                 <span className="status-dot text-success" />
@@ -279,7 +263,7 @@ export default function Login() {
             </div>
 
             <div className="grid max-w-lg grid-cols-3 gap-3">
-              {METRICS.map((m) => (
+              {landing.metrics.map((m) => (
                 <div key={m.label} className="glass-panel px-4 py-3 text-center">
                   <p className="text-xl font-bold text-gradient-primary">{m.value}</p>
                   <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{m.label}</p>
@@ -290,19 +274,22 @@ export default function Login() {
 
           {/* Columna de capacidades */}
           <div className="grid gap-4 sm:grid-cols-2">
-            {FEATURES.map((f, i) => (
+            {landing.features.map((f, i) => {
+              const Icon = FEATURE_ICONS[i % FEATURE_ICONS.length];
+              return (
               <div
                 key={f.title}
                 className="glass-panel group p-5 transition-smooth hover:-translate-y-1 hover:glass-panel-glow animate-fade-in-up"
                 style={{ animationDelay: `${120 + i * 90}ms` }}
               >
                 <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/25 transition-smooth group-hover:scale-105">
-                  <f.icon className="h-5 w-5" />
+                  <Icon className="h-5 w-5" />
                 </span>
                 <p className="font-semibold">{f.title}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{f.text}</p>
               </div>
-            ))}
+              );
+            })}
 
           </div>
         </div>
