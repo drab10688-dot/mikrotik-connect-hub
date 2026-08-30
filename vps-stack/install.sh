@@ -171,7 +171,21 @@ done
 
 echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
-docker compose pull remote-browser
+
+# Firefox remoto: descarga tolerante a fallos (reintentos + espejo docker.io)
+pull_browser() {
+  for i in 1 2 3; do
+    docker compose pull remote-browser && return 0
+    echo -e "${YELLOW}⚠ Reintento $i/3 de descarga de Firefox...${NC}" && sleep 5
+  done
+  docker pull docker.io/linuxserver/firefox:latest \
+    && docker tag docker.io/linuxserver/firefox:latest lscr.io/linuxserver/firefox:latest \
+    && return 0
+  echo -e "${YELLOW}⚠ No se pudo descargar Firefox remoto; el panel seguirá con el proxy integrado.${NC}"
+  return 1
+}
+pull_browser || true
+
 docker compose up -d 2>&1 | tail -5
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
