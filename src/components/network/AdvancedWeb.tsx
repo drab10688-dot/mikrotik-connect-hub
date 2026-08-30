@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Monitor } from "lucide-react";
+import { ExternalLink, MonitorCog, Stethoscope, Loader2, Monitor } from "lucide-react";
 import { withAuthToken, netAccessApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
@@ -31,31 +31,9 @@ export function AdvancedWeb({
   const [manualPort, setManualPort] = useState("80");
   const [checking, setChecking] = useState(false);
   const [diag, setDiag] = useState<any>(null);
-  const [fullscreen, setFullscreen] = useState(false);
   const [remoteTarget, setRemoteTarget] = useState<ProxyBrowserTarget | null>(null);
-  const frameWrapRef = useRef<HTMLDivElement>(null);
 
   const routerId = mikrotikId || localStorage.getItem("mikrotik_device_id") || "";
-
-  useEffect(() => {
-    const onFsChange = () => setFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, []);
-
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await frameWrapRef.current?.requestFullscreen();
-        setFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setFullscreen(false);
-      }
-    } catch {
-      toast.error("El navegador no permitió pantalla completa");
-    }
-  };
 
   const nameFor = (ip: string) => devices.find((d) => d.ip === ip)?.name || ip;
 
@@ -189,10 +167,6 @@ export function AdvancedWeb({
               {target.name} <span className="font-mono text-xs text-muted-foreground">{target.ip}</span>
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={toggleFullscreen}>
-                {fullscreen ? <Minimize className="h-4 w-4 mr-1" /> : <Maximize className="h-4 w-4 mr-1" />}
-                {fullscreen ? "Salir" : "Pantalla completa"}
-              </Button>
               <Button size="sm" variant="outline" asChild>
                 <a href={withAuthToken(target.proxy_path)} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
@@ -209,17 +183,6 @@ export function AdvancedWeb({
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">El visor mantiene la sesión, cookies y captcha separados para este equipo.</p>
-            <div ref={frameWrapRef} className="bg-background" onDoubleClick={toggleFullscreen}>
-              <iframe
-                key={target.proxy_path}
-                src={withAuthToken(target.proxy_path)}
-                title={`Sistema de ${target.name}`}
-                referrerPolicy="no-referrer"
-                allowFullScreen
-                className="w-full h-[70vh] rounded-md border bg-background"
-                style={fullscreen ? { height: "100vh" } : undefined}
-              />
-            </div>
           </CardContent>
 
         </Card>
