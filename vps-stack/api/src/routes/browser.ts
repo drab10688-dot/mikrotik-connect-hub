@@ -97,7 +97,7 @@ async function openInNewTab(container: string, display: string, url: string) {
     '[ -n "$WID" ] || exit 3',
     'xdotool windowactivate --sync "$WID"',
     'xdotool key --window "$WID" ctrl+t',
-    'sleep 1',
+    'sleep 0.4',
     'xdotool key --window "$WID" ctrl+l',
     'xdotool type --window "$WID" --delay 1 --clearmodifiers "$TARGET_URL"',
     'xdotool key --window "$WID" Return',
@@ -145,7 +145,9 @@ browserRouter.post('/session', async (req: AuthRequest, res) => {
   if (!userId) return;
   try {
     const s = await ensureUserBrowser(userId);
-    await waitReady(s);
+    // No bloqueamos la respuesta: el visor abre de inmediato y KasmVNC termina
+    // de levantar mientras carga la pestaña.
+    waitReady(s).catch(() => undefined);
     res.json({ success: true, data: { running: true, ...publicSession(s) } });
   } catch (e: any) {
     res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
