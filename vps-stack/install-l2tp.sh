@@ -72,7 +72,7 @@ cat > "$MT" <<EOF
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \\
+    add-default-route=no allow=mschap2 keepalive-timeout=30 dial-on-demand=no \
     disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
@@ -85,24 +85,12 @@ add dst-address=$TUNNEL_SRV/32 gateway="OmniACS-VPN" comment="Ruta hacia ACS"
 remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) Protección de la interfaz. RouterOS reconecta L2TP automáticamente.
-#    No se fuerza disable/enable cuando running=false porque durante la
-#    negociación ese estado es normal y reiniciarla crea un bucle.
+# 4) RouterOS reconecta L2TP de forma nativa. Se eliminan watchdogs antiguos
+#    porque reiniciar o manipular la interfaz durante la negociación corta el túnel.
 /system script
 remove [find name="OmniACS-VPN-Watchdog"]
-add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
-    :local vpn [/interface l2tp-client find where name="OmniACS-VPN"]
-    :if ([:len \$vpn] = 0) do={ :log error "OmniACS: interfaz VPN no existe"; :return }
-    :if ([/interface l2tp-client get \$vpn disabled] = true) do={
-        /interface l2tp-client enable \$vpn
-        :log warning "OmniACS: VPN estaba deshabilitada; reconectando"
-    }
-}
 /system scheduler
 remove [find name="OmniACS-VPN-Watchdog"]
-add name="OmniACS-VPN-Watchdog" start-time=startup interval=30s \
-    on-event="OmniACS-VPN-Watchdog" policy=read,write,test disabled=no
-/system script run "OmniACS-VPN-Watchdog"
 
 # 5) TR-069 de las ONUs
 #   ACS URL (por VPN) : http://$TUNNEL_SRV:7547/
@@ -135,7 +123,6 @@ grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null || echo 'net.ipv4.
 
 # --- Contenedor L2TP/IPsec ---
 info "Desplegando servidor L2TP/IPsec..."
-docker rm -f omnisync-l2tp >/dev/null 2>&1 || true
 
 cat > "$DIR/vpn.conf" <<EOF
 VPN_IPSEC_PSK=$VPN_IPSEC_PSK
@@ -152,16 +139,21 @@ chmod 600 "$DIR/vpn.conf"
 
 # IMPORTANTE: red host. Con -p (docker-proxy) IKE/ESP se rompe y el cliente
 # solo ve retransmisiones en fase 1.
-docker run -d --name omnisync-l2tp \
-  --restart unless-stopped \
-  --privileged \
-  --network host \
-  --env-file "$DIR/vpn.conf" \
-  -v "$DIR/ikev2-vpn-data":/etc/ipsec.d \
-  -v /lib/modules:/lib/modules:ro \
-  hwdsl2/ipsec-vpn-server >/dev/null
-
-sleep 8
+# No recrear un servidor sano durante una actualización: hacerlo destruye ppp0,
+# corta la MikroTik y borra las rutas hasta la siguiente negociación.
+if docker inspect omnisync-l2tp >/dev/null 2>&1; then
+  docker start omnisync-l2tp >/dev/null 2>&1 || true
+else
+  docker run -d --name omnisync-l2tp \
+    --restart unless-stopped \
+    --privileged \
+    --network host \
+    --env-file "$DIR/vpn.conf" \
+    -v "$DIR/ikev2-vpn-data":/etc/ipsec.d \
+    -v /lib/modules:/lib/modules:ro \
+    hwdsl2/ipsec-vpn-server >/dev/null
+  sleep 8
+fi
 if ! docker ps --format '{{.Names}}' | grep -q omnisync-l2tp; then
   err "El contenedor no arrancó"; docker logs --tail 40 omnisync-l2tp; exit 1
 fi
@@ -234,6 +226,7 @@ done <<< "$ROWS"
 
 docker cp "$TMP" omnisync-l2tp:/etc/ppp/chap-secrets >/dev/null 2>&1
 docker cp "$ROUTES" omnisync-l2tp:/etc/ppp/omnisync-routes >/dev/null 2>&1
+install -m 600 "$ROUTES" /opt/omnisync-l2tp/omnisync-routes
 docker exec omnisync-l2tp sh -c 'cat > /etc/ppp/ip-up.local <<'"'"'EOF'"'"'
 #!/bin/sh
 while read -r ip nets; do
@@ -304,11 +297,8 @@ else
   warn "Rutas aplicadas solo para esta sesión"
 fi
 
-# --- Watchdog de red por systemd (cada 15s) ---
-# Al iniciar/reiniciar el Firefox remoto (o cualquier contenedor), Docker
-# reescribe las cadenas iptables FORWARD/NAT del host y puede tumbar el
-# acceso a las ONUs aunque el túnel siga arriba. Este watchdog re-aplica
-# rutas + NAT + FORWARD cada 15s, así el navegador nunca deja de abrir.
+# --- Reparador de rutas por systemd (cada 30s) ---
+# Solo re-aplica rutas y reglas del host. Nunca reinicia ni modifica el túnel.
 if command -v systemctl >/dev/null 2>&1; then
   cat > /etc/systemd/system/omnisync-vpn-watchdog.service <<EOF
 [Unit]
@@ -322,11 +312,11 @@ ExecStartPost=/usr/bin/env ONU_NETS=$ONU_NETS bash $STACK_DIR/configure-browser-
 EOF
   cat > /etc/systemd/system/omnisync-vpn-watchdog.timer <<'EOF'
 [Unit]
-Description=Re-aplica rutas/NAT del túnel VPN cada 15s
+Description=Re-aplica rutas/NAT del túnel VPN cada 30s
 
 [Timer]
 OnBootSec=20s
-OnUnitActiveSec=15s
+OnUnitActiveSec=30s
 AccuracySec=5s
 
 [Install]
@@ -334,7 +324,7 @@ WantedBy=timers.target
 EOF
   systemctl daemon-reload
   systemctl enable --now omnisync-vpn-watchdog.timer >/dev/null 2>&1 \
-    && ok "Watchdog VPN activo (cada 15s sobrevive a reinicios de contenedores)" \
+    && ok "Reparador de rutas VPN activo (sin reiniciar el túnel)" \
     || warn "No se pudo activar el watchdog systemd"
 fi
 

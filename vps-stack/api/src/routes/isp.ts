@@ -530,7 +530,7 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=${serverHost} user="${peer.username}" password="${peer.password}" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=10 dial-on-demand=no \\
+    add-default-route=no allow=mschap2 keepalive-timeout=30 dial-on-demand=no \
     disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
@@ -543,24 +543,12 @@ add dst-address=${VPN_SERVER_IP}/32 gateway="OmniACS-VPN" comment="Ruta hacia AC
 remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) Protección de la interfaz. RouterOS reconecta L2TP automáticamente.
-# No se fuerza disable/enable cuando running=false: durante la negociación
-# ese estado es normal y reiniciarla provocaría desconexiones repetidas.
+# 4) RouterOS reconecta L2TP de forma nativa. Se eliminan watchdogs antiguos
+# para no manipular la interfaz mientras está negociando.
 /system script
 remove [find name="OmniACS-VPN-Watchdog"]
-add name="OmniACS-VPN-Watchdog" policy=read,write,test source={
-    :local vpn [/interface l2tp-client find where name="OmniACS-VPN"]
-    :if ([:len \$vpn] = 0) do={ :log error "OmniACS: interfaz VPN no existe"; :return }
-    :if ([/interface l2tp-client get \$vpn disabled] = true) do={
-        /interface l2tp-client enable \$vpn
-        :log warning "OmniACS: VPN estaba deshabilitada; reconectando"
-    }
-}
 /system scheduler
 remove [find name="OmniACS-VPN-Watchdog"]
-add name="OmniACS-VPN-Watchdog" start-time=startup interval=30s \
-    on-event="OmniACS-VPN-Watchdog" policy=read,write,test disabled=no
-/system script run "OmniACS-VPN-Watchdog"
 
 # 5) TR-069 de las ONUs de este ISP
 #   ACS URL (por VPN) : ${acs.vpn_url}
