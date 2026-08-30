@@ -42,6 +42,18 @@ export const clearToken = () => {
   localStorage.removeItem(USER_KEY);
 };
 
+/**
+ * Añade el token a una URL del proxy web (iframe o pestaña nueva), donde el
+ * navegador no puede enviar la cabecera Authorization.
+ */
+export const withAuthToken = (path?: string | null): string => {
+  if (!path) return '';
+  const token = getToken();
+  if (!token) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+};
+
+
 export const getStoredUser = () => {
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
