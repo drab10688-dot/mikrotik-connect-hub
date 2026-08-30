@@ -42,7 +42,7 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
   };
 
   return (
-    <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between gap-2 px-3 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
+    <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between gap-2 px-3 bg-sidebar/90 backdrop-blur-xl text-sidebar-foreground border-b border-sidebar-border shadow-[0_1px_0_hsl(var(--sidebar-primary)/0.2)]">
       <div className="flex items-center gap-2 min-w-0">
         <img
           src={logo || tenant?.logo_url || omnisyncLogo}
@@ -63,8 +63,11 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
         >
           <nav className="flex flex-col h-full">
             <div className="p-4 border-b border-sidebar-border">
-              <p className="text-sm font-semibold">{name}</p>
-              <p className="text-[11px] text-sidebar-foreground/60">Panel de gestión</p>
+              <p className="text-sm font-semibold">{tenant?.name || name}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50">
+                <span className="status-dot text-sidebar-primary" />
+                TR-069 · ACS Live
+              </p>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
               {items.map((item) => (
@@ -74,10 +77,10 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
                   onClick={() => setOpen(false)}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-lg text-base transition-colors",
+                      "flex items-center gap-3 px-4 py-3 rounded-lg text-base transition-smooth",
                       isActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60"
                     )
                   }
                 >
@@ -95,7 +98,7 @@ export const MobileNav = ({ items, showAdmin }: MobileNavProps) => {
             <div className="p-3 border-t border-sidebar-border">
               <Button
                 variant="ghost"
-                className="w-full justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent/50"
+                className="w-full justify-start text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
                 onClick={handleLogout}
               >
                 <LogOut className="w-5 h-5 mr-3" />

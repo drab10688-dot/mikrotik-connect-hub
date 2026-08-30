@@ -30,8 +30,8 @@ export const AdminMenu = () => {
           <span>Usuarios</span>
         </NavLink>
       )}
-      {isAdmin && (
-        <NavLink to="/admin/register" className={linkClass}>
+      {isSuperAdmin && (
+        <NavLink to="/admin/register-user" className={linkClass}>
           <UserPlus className="h-[18px] w-[18px]" />
           <span>Crear usuario</span>
         </NavLink>
