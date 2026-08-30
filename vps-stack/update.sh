@@ -61,8 +61,8 @@ docker compose up -d api
 [ "$BROWSER_OK" = "1" ] && docker compose up -d remote-browser || true
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
-# Actualiza también el servidor L2TP, sus hooks de rutas y el watchdog que
-# hace reconectar la MikroTik automáticamente después de una caída.
+# Conserva el servidor L2TP existente. El instalador ahora es idempotente:
+# actualiza usuarios/hooks/rutas sin eliminar el contenedor ni cortar ppp0.
 set -a
 . "$INSTALL_DIR/.env"
 set +a
