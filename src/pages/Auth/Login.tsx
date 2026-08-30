@@ -7,8 +7,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Wifi, Radio } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
-const omnisyncLogoFull = omnisyncLogoAsset.url;
+import omnisyncSphereUrl from '@/assets/omnisync-sphere.png';
 import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
 import { mergeLanding } from '@/lib/landing';
 
@@ -132,12 +131,12 @@ export default function Login() {
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
     <div className={`flex flex-col gap-2 ${size === 'lg' ? 'items-start' : 'items-center'}`}>
-      <div
-        className={`relative grid place-items-center rounded-full bg-card/70 ring-2 ring-primary/40 glow-ring overflow-hidden ${
-          size === 'lg' ? 'h-32 w-32 sm:h-40 sm:w-40' : 'h-20 w-20'
-        }`}
-      >
-        <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
+      <div className="relative grid place-items-center h-40 w-40 sm:h-52 sm:w-52">
+        <img
+          src={brandLogo || omnisyncSphereUrl}
+          alt={brandName}
+          className="h-full w-full object-contain drop-shadow-[0_0_28px_hsl(var(--primary)/0.45)]"
+        />
       </div>
     </div>
   );
