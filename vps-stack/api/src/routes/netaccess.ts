@@ -952,6 +952,12 @@ netAccessRouter.get('/:mikrotikId/web-check/:ip/:port', async (req: AuthRequest,
   });
 });
 
+// Sin barra final el firmware resuelve mal los recursos relativos: normaliza.
+netAccessRouter.all('/:mikrotikId/web/:ip/:port', (req: AuthRequest, res: Response) => {
+  const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(302, `${req.originalUrl.split('?')[0]}/${q}`);
+});
+
 netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res: Response) => {
   const mikrotikId = await guard(req, res);
   if (!mikrotikId) return;
@@ -1062,7 +1068,7 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         method: req.method,
         headers: headersOut,
         rejectUnauthorized: false,
-        timeout: 20000,
+        timeout: 45000,
       },
       (proxyRes) => {
         // Muchas ONU (V-SOL, Zyxel) usan login por formulario + captcha:
@@ -1107,12 +1113,24 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         res.removeHeader('x-frame-options');
         res.removeHeader('x-content-type-options');
 
-        const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
+        if (headers.refresh) {
+          headers.refresh = String(headers.refresh).replace(
+            /url=([^;,\s]+)/i,
+            (_m, u) => `url=${rewriteUrl(String(u))}`
+          );
+        }
+
+        const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css') ||
+          type.includes('text/plain') || type.includes('xml');
         if (textual) {
           const chunks: Buffer[] = [];
           proxyRes.on('data', (c) => chunks.push(c as Buffer));
           proxyRes.on('end', () => {
-            let body = Buffer.concat(chunks).toString('utf8');
+            // Muchos firmwares antiguos sirven gb2312 / iso-8859-1: decodificar
+            // como utf8 corrompe el HTML y la página queda en blanco.
+            const charset = (type.match(/charset=\s*"?([\w-]+)/i)?.[1] || '').toLowerCase();
+            const enc: BufferEncoding = !charset || /utf-?8|ascii|us-ascii/.test(charset) ? 'utf8' : 'latin1';
+            let body = Buffer.concat(chunks).toString(enc);
 
             // URLs absolutas al propio equipo (frames, scripts, imágenes de captcha).
             const abs = new RegExp(`https?://${ip.replace(/\./g, '\\.')}(?::\\d+)?`, 'gi');
@@ -1145,15 +1163,32 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
                 /\b(src|href|action)\s*=\s*(\/[^\s>]+)/gi,
                 (_m, attr, url) => `${attr}="${prefix}${url}"`
               );
+              // <meta http-equiv="refresh" content="0;url=/login.html">
+              body = body.replace(
+                /(content\s*=\s*["'][^"']*url=\s*)(\/[^"'\s]*)/gi,
+                (_m, head, url) => `${head}${prefix}${url}`
+              );
+              // Los atributos de integridad rompen los recursos reescritos.
+              body = body.replace(/\s(integrity|nonce)\s*=\s*(["'])[^"']*\2/gi, '');
               const base = `<base href="${prefix}/">`;
               body = /<head[^>]*>/i.test(body)
                 ? body.replace(/<head[^>]*>/i, (m) => `${m}${base}`)
                 : `${base}${body}`;
 
-              // Algunos firmwares cambian frames o realizan fetch/XHR con una
-              // ruta absoluta construida en tiempo de ejecución. Este shim la
+              // Algunos firmwares construyen rutas absolutas en tiempo de ejecución
+              // (frames, captcha, ajax, redirecciones tras el login). El shim las
               // mantiene dentro del mismo proxy autenticado.
-              const shim = `<script>(function(){var p=${JSON.stringify(prefix)};function r(u){if(typeof u!=="string"||!u.startsWith("/")||u.startsWith(p))return u;return p+u}var f=window.fetch;if(f)window.fetch=function(i,o){return f.call(this,typeof i==="string"?r(i):i,o)};var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=r(u);return xo.apply(this,arguments)};})();</script>`;
+              const shim = `<script>(function(){var p=${JSON.stringify(prefix)};
+function r(u){if(typeof u!=="string")return u;if(u.indexOf(p)===0)return u;if(/^(#|data:|javascript:|mailto:|tel:|blob:)/i.test(u))return u;var m=u.match(/^https?:\\/\\/([^\\/]+)(\\/.*)?$/i);if(m)return m[1].split(":")[0]===location.hostname?u:p+(m[2]||"/");if(u.charAt(0)==="/")return p+u;return u}
+var f=window.fetch;if(f)window.fetch=function(i,o){return f.call(this,typeof i==="string"?r(i):i,o)};
+var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=r(u);return xo.apply(this,arguments)};
+var wo=window.open;window.open=function(u){arguments[0]=r(u);return wo.apply(this,arguments)};
+var sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(/^(src|href|action|background)$/i.test(n))v=r(v);return sa.call(this,n,v)};
+function fix(el){["src","href","action"].forEach(function(a){if(el.getAttribute&&el.hasAttribute&&el.hasAttribute(a)){var v=el.getAttribute(a);var n=r(v);if(n!==v)sa.call(el,a,n)}})}
+try{new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes&&Array.prototype.forEach.call(m.addedNodes,function(n){if(n.nodeType===1){fix(n);n.querySelectorAll&&Array.prototype.forEach.call(n.querySelectorAll("[src],[href],[action]"),fix)}})})}).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}
+try{var la=location.assign.bind(location),lr=location.replace.bind(location);location.assign=function(u){return la(r(u))};location.replace=function(u){return lr(r(u))}}catch(e){}
+document.addEventListener("submit",function(e){var fm=e.target;if(fm&&fm.getAttribute){var a=fm.getAttribute("action");if(a)sa.call(fm,"action",r(a))}},true);
+})();</script>`;
               body = /<head[^>]*>/i.test(body)
                 ? body.replace(/<head[^>]*>/i, (m) => `${m}${shim}`)
                 : `${shim}${body}`;
@@ -1170,10 +1205,13 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
             );
 
             res.writeHead(proxyRes.statusCode || 200, headers);
-            res.end(body);
+            res.end(Buffer.from(body, enc));
+            return;
           });
           return;
         }
+
+
 
         res.writeHead(proxyRes.statusCode || 200, headers);
         proxyRes.pipe(res);
