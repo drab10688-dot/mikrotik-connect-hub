@@ -1089,7 +1089,7 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
               .replace(/;\s*Path=[^;]*/i, '')
               .replace(/;\s*Domain=[^;]*/i, '')
               .replace(/;\s*Secure/gi, '')
-              .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=/api/netaccess; SameSite=Lax`
+              .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=${prefix}/; SameSite=Lax`
           });
         }
 
