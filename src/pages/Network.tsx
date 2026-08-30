@@ -141,6 +141,18 @@ export default function Network() {
 
   const apCredList = (apCreds || []) as any[];
 
+  // Lectura automática: detecta cualquier AP desde la MikroTik y lee su señal
+  // probando credenciales típicas por marca. No requiere registrar nada.
+  const { data: apsAuto, isFetching: apsAutoFetching, error: apsAutoError, refetch: refetchApsAuto } = useQuery({
+    queryKey: ["aps-auto", deviceId],
+    queryFn: () => netAccessApi.apsAuto(deviceId),
+    enabled: !!deviceId && !browserOpen,
+    refetchInterval: browserOpen ? false : 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const autoAps: any[] = (apsAuto as any)?.aps ?? [];
+
+
   // Lee los clientes de todos los APs guardados en paralelo
   const { data: allApClientsRaw, isFetching: allApsFetching, error: allApClientsError, refetch: refetchAllAps } = useQuery({
     queryKey: ["ap-all-clients", deviceId],
@@ -700,14 +712,139 @@ export default function Network() {
             </Card>
           </TabsContent>
 
-          {/* ─── APs / Señal ─── */}
+          {/* ─── APs / Señal (automático) ─── */}
           <TabsContent value="aps" className="mt-4 space-y-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <div>
-                  <CardTitle className="text-lg flex items-center gap-2"><KeyRound className="w-4 h-4" /> Credenciales de APs / Antenas</CardTitle>
+                  <CardTitle className="text-lg flex items-center gap-2"><SignalHigh className="w-4 h-4" /> APs / Antenas detectados</CardTitle>
                   <CardDescription>
-                    Guarda usuario y contraseña de cada antena (MikroTik, Ubiquiti, etc.). Una vez guardadas, el panel lee automáticamente la señal de todos sus clientes wireless.
+                    El panel descubre solo las antenas desde la MikroTik (vecinos y ARP) y lee la señal de cualquier marca sin abrir navegador ni registrar nada. Se actualiza cada 60 s.
+                  </CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => refetchApsAuto()} disabled={apsAutoFetching}>
+                  {apsAutoFetching ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                  Actualizar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {apsAutoError ? (
+                  <p className="text-sm text-destructive">{(apsAutoError as any).message}</p>
+                ) : apsAutoFetching && !autoAps.length ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Buscando y leyendo antenas…</p>
+                ) : !autoAps.length ? (
+                  <p className="text-sm text-muted-foreground">No se detectaron antenas desde este MikroTik todavía.</p>
+                ) : (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Detectados</p>
+                        <p className="text-xl font-semibold">{(apsAuto as any)?.scanned ?? autoAps.length}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Leídos correctamente</p>
+                        <p className="text-xl font-semibold text-emerald-500">{(apsAuto as any)?.online ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Clientes wireless</p>
+                        <p className="text-xl font-semibold">{(apsAuto as any)?.total_clients ?? 0}</p>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-muted-foreground">
+                          <tr className="border-b">
+                            <th className="py-2 pr-4">IP</th>
+                            <th className="py-2 pr-4">Nombre</th>
+                            <th className="py-2 pr-4">Marca</th>
+                            <th className="py-2 pr-4">Acceso</th>
+                            <th className="py-2 pr-4">Clientes</th>
+                            <th className="py-2">Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {autoAps.map((ap: any) => (
+                            <tr key={ap.ip} className="border-b last:border-0">
+                              <td className="py-2 pr-4 font-mono text-xs">{ap.ip}</td>
+                              <td className="py-2 pr-4">{ap.name || "—"}</td>
+                              <td className="py-2 pr-4 capitalize">{ap.brand}</td>
+                              <td className="py-2 pr-4 text-xs">{ap.protocol}://{ap.port}</td>
+                              <td className="py-2 pr-4"><Badge variant={ap.clients?.length ? "default" : "secondary"}>{ap.clients?.length ?? 0}</Badge></td>
+                              <td className="py-2">
+                                {ap.ok ? (
+                                  <Badge variant="outline" className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30">Leído</Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">{ap.error || "Sin lectura"}</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Todos los clientes wireless consolidados */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2"><SignalHigh className="w-4 h-4" /> Clientes wireless de todos los APs</CardTitle>
+                <CardDescription>Señal consolidada de todas las antenas leídas automáticamente.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-muted-foreground">
+                      <tr className="border-b">
+                        <th className="py-2 pr-4">AP</th>
+                        <th className="py-2 pr-4">Cliente</th>
+                        <th className="py-2 pr-4">MAC</th>
+                        <th className="py-2 pr-4">Señal</th>
+                        <th className="py-2 pr-4">SNR</th>
+                        <th className="py-2 pr-4">CCQ</th>
+                        <th className="py-2 pr-4">TX / RX</th>
+                        <th className="py-2 pr-4">Uptime</th>
+                        <th className="py-2">Calidad</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autoAps.flatMap((ap: any) =>
+                        (ap.clients ?? []).map((cl: any, i: number) => {
+                          const q = AP_QUALITY[cl.quality] || AP_QUALITY.desconocida;
+                          return (
+                            <tr key={`${ap.ip}-${cl.mac || i}`} className="border-b last:border-0">
+                              <td className="py-2 pr-4 font-mono text-xs">{ap.ip}</td>
+                              <td className="py-2 pr-4 font-medium">{cl.name || "—"}</td>
+                              <td className="py-2 pr-4 font-mono text-xs">{cl.mac || "—"}</td>
+                              <td className="py-2 pr-4 font-mono">{cl.signal != null ? `${cl.signal} dBm` : "—"}</td>
+                              <td className="py-2 pr-4">{cl.snr != null ? `${cl.snr} dB` : "—"}</td>
+                              <td className="py-2 pr-4">{cl.ccq != null ? `${cl.ccq}%` : "—"}</td>
+                              <td className="py-2 pr-4 text-xs">{[cl.tx_rate, cl.rx_rate].filter(Boolean).join(" / ") || "—"}</td>
+                              <td className="py-2 pr-4 text-xs">{cl.uptime || "—"}</td>
+                              <td className="py-2"><Badge variant="outline" className={q.className}>{q.label}</Badge></td>
+                            </tr>
+                          );
+                        })
+                      )}
+                      {!autoAps.some((ap: any) => (ap.clients ?? []).length) && !apsAutoFetching && (
+                        <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">Ningún AP reporta clientes wireless todavía.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Credenciales opcionales (solo para APs con clave propia) */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2"><KeyRound className="w-4 h-4" /> Credenciales opcionales</CardTitle>
+                  <CardDescription>
+                    Solo necesarias si una antena tiene usuario/contraseña personalizados y no se pudo leer automáticamente.
                   </CardDescription>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => setShowApForm((v) => !v)}>
@@ -761,7 +898,7 @@ export default function Network() {
 
                 {apCredsLoading ? (
                   <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</p>
-                ) : apCreds && apCreds.length ? (
+                ) : apCredList.length ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="text-left text-muted-foreground">
@@ -771,107 +908,34 @@ export default function Network() {
                           <th className="py-2 pr-4">Marca</th>
                           <th className="py-2 pr-4">Usuario</th>
                           <th className="py-2 pr-4">Puerto</th>
-                          <th className="py-2 pr-4">Clientes</th>
                           <th className="py-2">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {apCreds.map((c: any) => {
-                          const apClients = allApClients[c.ip] ?? [];
-                          return (
-                            <tr key={c.id} className="border-b last:border-0">
-                              <td className="py-2 pr-4 font-mono text-xs">{c.ip}</td>
-                              <td className="py-2 pr-4">{c.name || "—"}</td>
-                              <td className="py-2 pr-4 capitalize">{c.brand}</td>
-                              <td className="py-2 pr-4">{c.username || "—"}</td>
-                              <td className="py-2 pr-4">{c.port || "auto"}</td>
-                              <td className="py-2 pr-4">
-                                <Badge variant={apClients.length ? "default" : "secondary"}>{apClients.length}</Badge>
-                              </td>
-                              <td className="py-2">
-                                <div className="flex gap-1">
-                                  <Button size="sm" variant="ghost" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "" }); setShowApForm(true); }}>
-                                    <KeyRound className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button size="sm" variant="ghost" onClick={() => deleteAp.mutate(c.id)}>
-                                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {apCredList.map((c: any) => (
+                          <tr key={c.id} className="border-b last:border-0">
+                            <td className="py-2 pr-4 font-mono text-xs">{c.ip}</td>
+                            <td className="py-2 pr-4">{c.name || "—"}</td>
+                            <td className="py-2 pr-4 capitalize">{c.brand}</td>
+                            <td className="py-2 pr-4">{c.username || "—"}</td>
+                            <td className="py-2 pr-4">{c.port || "auto"}</td>
+                            <td className="py-2">
+                              <div className="flex gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "" }); setShowApForm(true); }}>
+                                  <KeyRound className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => deleteAp.mutate(c.id)}>
+                                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No hay APs registrados. Agrega el primer AP con sus credenciales para empezar a leer la señal de sus clientes.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Todos los clientes wireless consolidados */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2"><SignalHigh className="w-4 h-4" /> Clientes wireless de todos los APs</CardTitle>
-                  <CardDescription>
-                    Señal consolidada de todos los APs con credenciales guardadas. Se actualiza cada 30 s.
-                  </CardDescription>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => refetchAllAps()} disabled={allApsFetching}>
-                  {allApsFetching ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
-                  Actualizar
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {allApClientsError ? (
-                  <p className="text-sm text-destructive">{(allApClientsError as any).message}</p>
-                ) : !apCreds?.length ? (
-                  <p className="text-sm text-muted-foreground">Registra al menos un AP con credenciales para ver sus clientes.</p>
-                ) : allApsFetching && !Object.keys(allApClients).length ? (
-                  <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Consultando APs…</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-left text-muted-foreground">
-                        <tr className="border-b">
-                          <th className="py-2 pr-4">AP</th>
-                          <th className="py-2 pr-4">Cliente</th>
-                          <th className="py-2 pr-4">MAC</th>
-                          <th className="py-2 pr-4">Señal</th>
-                          <th className="py-2 pr-4">SNR</th>
-                          <th className="py-2 pr-4">CCQ</th>
-                          <th className="py-2 pr-4">TX / RX</th>
-                          <th className="py-2 pr-4">Uptime</th>
-                          <th className="py-2">Calidad</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {apCreds.flatMap((c: any) =>
-                          (allApClients[c.ip] ?? []).map((cl: any, i: number) => {
-                            const q = AP_QUALITY[cl.quality] || AP_QUALITY.desconocida;
-                            return (
-                              <tr key={`${c.ip}-${cl.mac || i}`} className="border-b last:border-0">
-                                <td className="py-2 pr-4 font-mono text-xs">{c.ip}</td>
-                                <td className="py-2 pr-4 font-medium">{cl.name || "—"}</td>
-                                <td className="py-2 pr-4 font-mono text-xs">{cl.mac || "—"}</td>
-                                <td className="py-2 pr-4 font-mono">{cl.signal != null ? `${cl.signal} dBm` : "—"}</td>
-                                <td className="py-2 pr-4">{cl.snr != null ? `${cl.snr} dB` : "—"}</td>
-                                <td className="py-2 pr-4">{cl.ccq != null ? `${cl.ccq}%` : "—"}</td>
-                                <td className="py-2 pr-4 text-xs">{[cl.tx_rate, cl.rx_rate].filter(Boolean).join(" / ") || "—"}</td>
-                                <td className="py-2 pr-4 text-xs">{cl.uptime || "—"}</td>
-                                <td className="py-2"><Badge variant="outline" className={q.className}>{q.label}</Badge></td>
-                              </tr>
-                            );
-                          })
-                        )}
-                        {!apCreds.some((c: any) => (allApClients[c.ip] ?? []).length) && !allApsFetching && (
-                          <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">Ningún AP reporta clientes wireless todavía.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                  <p className="text-sm text-muted-foreground">Sin credenciales manuales: el panel usa las de fábrica de cada marca.</p>
                 )}
               </CardContent>
             </Card>

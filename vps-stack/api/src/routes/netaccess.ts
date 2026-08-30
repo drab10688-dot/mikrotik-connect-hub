@@ -240,6 +240,146 @@ netAccessRouter.get('/:mikrotikId/ap/:ip/clients', async (req: AuthRequest, res:
   }
 });
 
+// ─── Lectura automática de TODOS los APs (sin registrar nada) ───
+// Descubre antenas desde la MikroTik (neighbors/ARP/DHCP) y prueba
+// credenciales típicas por marca hasta obtener la tabla de clientes.
+const DEFAULT_LOGINS: Record<string, Array<{ username: string; password: string }>> = {
+  ubiquiti: [
+    { username: 'ubnt', password: 'ubnt' },
+    { username: 'admin', password: 'admin' },
+    { username: 'admin', password: '' },
+  ],
+  mikrotik: [
+    { username: 'admin', password: '' },
+    { username: 'admin', password: 'admin' },
+  ],
+  otro: [
+    { username: 'admin', password: 'admin' },
+    { username: 'admin', password: '' },
+    { username: 'ubnt', password: 'ubnt' },
+  ],
+};
+
+async function autoReadAp(
+  tenantId: string | null | undefined,
+  ip: string,
+  brandHint: string,
+  ports: Record<string, { port: number; protocol: 'http' | 'https' }>,
+  saved?: any
+) {
+  const brand = (saved?.brand && saved.brand !== 'otro' ? saved.brand : brandHint) || 'otro';
+  const cfg = ports[brand] || ports.otro;
+  const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https' }> = [];
+
+  if (saved?.username) {
+    candidates.push({
+      username: saved.username,
+      password: saved.password || '',
+      port: saved.port || cfg.port,
+      protocol: (saved.protocol || cfg.protocol) as 'http' | 'https',
+    });
+  }
+  const logins = DEFAULT_LOGINS[brand] || DEFAULT_LOGINS.otro;
+  const transports: Array<{ port: number; protocol: 'http' | 'https' }> =
+    brand === 'ubiquiti'
+      ? [{ port: cfg.port, protocol: cfg.protocol }, { port: 80, protocol: 'http' }]
+      : [{ port: cfg.port, protocol: cfg.protocol }, { port: 443, protocol: 'https' }];
+  for (const t of transports) {
+    for (const l of logins) candidates.push({ ...l, ...t });
+  }
+
+  let lastError = 'No respondió';
+  for (const c of candidates) {
+    try {
+      const clients = await readApClients({ ip, brand, port: c.port, protocol: c.protocol, username: c.username, password: c.password });
+      return { ip, brand, port: c.port, protocol: c.protocol, ok: true as const, clients, error: null };
+    } catch (error: any) {
+      lastError = error?.message || String(error);
+    }
+  }
+  return { ip, brand, port: cfg.port, protocol: cfg.protocol, ok: false as const, clients: [] as any[], error: lastError };
+}
+
+netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const data = await swr(
+      `aps-auto:${mikrotikId}:${req.tenantId ?? 'global'}`,
+      async () => {
+        const ports = await tenantWebPorts(req.tenantId);
+        const [neighborsRaw, arpRaw, savedRes] = await Promise.all([
+          mtCached(mikrotikId, '/rest/ip/neighbor', 60000),
+          mtCached(mikrotikId, '/rest/ip/arp', 60000),
+          pool
+            .query(
+              `SELECT ip, name, brand, username, password, port, protocol, sector
+                 FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1`,
+              [req.tenantId ?? null]
+            )
+            .catch(() => ({ rows: [] as any[] })),
+        ]);
+
+        const saved = new Map<string, any>((savedRes.rows || []).map((r: any) => [String(r.ip), r]));
+        const candidates = new Map<string, { ip: string; name: string; brand: string }>();
+
+        const add = (entry: any) => {
+          const ip = entry?.address;
+          if (!ip || typeof ip !== 'string' || !IPV4.test(ip)) return;
+          const brand = detectBrand(entry);
+          const prev = candidates.get(ip);
+          candidates.set(ip, {
+            ip,
+            name: entry.identity || entry['host-name'] || entry.comment || prev?.name || ip,
+            brand: brand !== 'otro' ? brand : prev?.brand || 'otro',
+          });
+        };
+        asArray(neighborsRaw).forEach(add);
+        asArray(arpRaw).forEach(add);
+        for (const [ip, row] of saved) {
+          candidates.set(ip, { ip, name: row.name || ip, brand: row.brand || 'otro' });
+        }
+
+        // Sólo equipos que pueden ser APs: marcas conocidas o registrados a mano.
+        const list = [...candidates.values()]
+          .filter((c) => saved.has(c.ip) || c.brand === 'ubiquiti' || c.brand === 'mikrotik' || c.brand === 'mimosa' || c.brand === 'cambium' || c.brand === 'tplink')
+          .slice(0, 60);
+
+        const results: any[] = [];
+        const CONCURRENCY = 8;
+        for (let i = 0; i < list.length; i += CONCURRENCY) {
+          const chunk = list.slice(i, i + CONCURRENCY);
+          const read = await Promise.all(
+            chunk.map((c) =>
+              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip)).then((r) => ({
+                ...r,
+                name: saved.get(c.ip)?.name || c.name,
+                saved: saved.has(c.ip),
+              }))
+            )
+          );
+          results.push(...read);
+        }
+
+        const aps = results.sort((a, b) => Number(b.ok) - Number(a.ok) || a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+        return {
+          scanned: list.length,
+          online: aps.filter((a) => a.ok).length,
+          total_clients: aps.reduce((n, a) => n + a.clients.length, 0),
+          aps,
+        };
+      },
+      { ttlMs: 60000 }
+    );
+
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // Señal wireless del propio router MikroTik (si tiene clientes asociados)
 netAccessRouter.get('/:mikrotikId/wireless', async (req: AuthRequest, res: Response) => {
   try {
