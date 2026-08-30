@@ -184,9 +184,14 @@ pull_browser() {
   echo -e "${YELLOW}⚠ No se pudo descargar Firefox remoto; el panel seguirá con el proxy integrado.${NC}"
   return 1
 }
-pull_browser || true
+BROWSER_OK=0
+pull_browser && BROWSER_OK=1
 
-docker compose up -d 2>&1 | tail -5
+if [ "$BROWSER_OK" = "1" ]; then
+  docker compose up -d 2>&1 | tail -5
+else
+  docker compose up -d postgres mongo genieacs-fs genieacs-nbi genieacs-cwmp genieacs-ui api nginx 2>&1 | tail -5
+fi
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
