@@ -242,6 +242,10 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        CROSS JOIN (VALUES ('admin'), ('user'), ('secretary'), ('reseller')) AS r(role)
        CROSS JOIN (VALUES ('onu_web'),('acs')) AS s(section)
      ON CONFLICT (tenant_id, role, section) DO NOTHING`,
+
+    // Sectorización de antenas/APs para el árbol de topología
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS sector TEXT`,
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS notes TEXT`,
   ];
 
 
