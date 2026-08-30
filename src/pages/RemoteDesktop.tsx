@@ -135,12 +135,20 @@ export default function RemoteDesktop() {
           id="vnc-frame"
           key={reloadKey}
           src={url}
+          onLoad={() => { loadedRef.current = true; setFailed(false); }}
           title={title}
           allow="clipboard-read; clipboard-write; fullscreen"
           className="border-0 block"
           style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, minWidth: "100%", minHeight: "100%" }}
         />
       </div>
+
+      {failed && (
+        <p className="text-[11px] text-muted-foreground px-2 py-1 border-t shrink-0">
+          Abriendo el escritorio directamente en esta pestaña… Si el navegador pide aceptar el certificado, confírmalo
+          una vez.
+        </p>
+      )}
 
       <p className="text-[11px] text-muted-foreground px-2 py-1 border-t shrink-0">
         Celular: usa +/− para el zoom y arrastra con un dedo para desplazarte. El teclado se abre desde la pestaña
