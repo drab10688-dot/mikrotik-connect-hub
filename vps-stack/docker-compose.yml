@@ -207,6 +207,8 @@ services:
       CHROME_CLI: ${BROWSER_HOME_URL:-about:blank}
     volumes:
       - browser_config:/config
+      # Quita bloqueos de perfil de Chromium al arrancar (SingletonLock).
+      - ./browser/root/custom-cont-init.d:/custom-cont-init.d:ro
     networks:
       - omnisync-net
 
