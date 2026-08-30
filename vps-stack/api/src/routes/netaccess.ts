@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import http from 'http';
 import https from 'https';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { pool } from '../lib/db';
@@ -935,6 +935,13 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
         ...req.headers,
         host: `${ip}:${targetPort}`,
         'accept-encoding': 'identity',
+        // No se reenvían credenciales del panel al equipo remoto.
+        cookie: String(req.headers.cookie || '')
+          .split(';')
+          .map((c) => c.trim())
+          .filter((c) => c && !c.startsWith(`${WEB_TOKEN_COOKIE}=`))
+          .join('; '),
+        authorization: undefined as any,
       },
       rejectUnauthorized: false,
       timeout: 20000,
