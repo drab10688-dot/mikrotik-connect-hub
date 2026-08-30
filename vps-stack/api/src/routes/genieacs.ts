@@ -70,7 +70,7 @@ async function clearDeviceBacklog(deviceId: string) {
 
 
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
-async function genieFetch(path: string, options: RequestInit = {}) {
+async function genieFetch(path: string, options: RequestInit = {}): Promise<any> {
   const taskPost = String(options.method || 'GET').toUpperCase() === 'POST'
     && /^\/devices\/([^/]+)\/tasks/.test(path);
   if (taskPost) {
@@ -91,7 +91,7 @@ async function genieFetch(path: string, options: RequestInit = {}) {
   }
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
-    return res.json();
+    return res.json() as Promise<any>;
   }
   return res.text();
 }
