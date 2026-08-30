@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { browserApi, withAuthToken } from "@/lib/api-client";
+import { browserApi, withAuthToken, remoteDesktopUrl } from "@/lib/api-client";
 
 export interface ProxyBrowserTarget {
   title: string;
@@ -90,7 +90,7 @@ export function ProxyBrowserDialog({
   };
 
   // El escritorio remoto no pide clave propia: Nginx valida el token de sesión.
-  const viewerUrl = mode === "browser" ? withAuthToken("/browser/") : target?.proxyUrl || "about:blank";
+  const viewerUrl = mode === "browser" ? remoteDesktopUrl("browser") : target?.proxyUrl || "about:blank";
 
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
