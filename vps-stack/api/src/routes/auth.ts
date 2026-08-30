@@ -88,6 +88,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     );
 
     if (!rows[0]) {
+      registerFailure(key);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
@@ -97,8 +98,12 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     const validPassword = await bcrypt.compare(password, rows[0].password_hash);
     if (!validPassword) {
+      registerFailure(key);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
+
+    attempts.delete(key);
+
 
     const jwtSecret = process.env.JWT_SECRET || 'changeme';
     const jwtExpiresIn = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
