@@ -259,6 +259,7 @@ function IspCard({
   const [color, setColor] = useState(isp.primary_color || "#0EA5A4");
   const [mkPort, setMkPort] = useState(String(isp.web_ports?.mikrotik?.port ?? 80));
   const [ubntPort, setUbntPort] = useState(String(isp.web_ports?.ubiquiti?.port ?? 443));
+  const [onuNetworks, setOnuNetworks] = useState(isp.onu_networks || "192.168.0.0/16");
   const used = Number(isp.onus_used || 0);
   const blocked = Number(isp.onus_blocked || 0);
   const max = isp.onu_limit && isp.onu_limit > 0 ? isp.onu_limit : null;
