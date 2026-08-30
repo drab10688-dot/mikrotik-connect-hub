@@ -309,6 +309,40 @@ else
   warn "Rutas aplicadas solo para esta sesión"
 fi
 
+# --- Watchdog de red por systemd (cada 15s) ---
+# Al iniciar/reiniciar el Firefox remoto (o cualquier contenedor), Docker
+# reescribe las cadenas iptables FORWARD/NAT del host y puede tumbar el
+# acceso a las ONUs aunque el túnel siga arriba. Este watchdog re-aplica
+# rutas + NAT + FORWARD cada 15s, así el navegador nunca deja de abrir.
+if command -v systemctl >/dev/null 2>&1; then
+  cat > /etc/systemd/system/omnisync-vpn-watchdog.service <<EOF
+[Unit]
+Description=OmniSync VPN routes watchdog
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$DIR/l2tp-routes.sh
+ExecStartPost=/usr/bin/env ONU_NETS=$ONU_NETS bash $STACK_DIR/configure-browser-routing.sh
+EOF
+  cat > /etc/systemd/system/omnisync-vpn-watchdog.timer <<'EOF'
+[Unit]
+Description=Re-aplica rutas/NAT del túnel VPN cada 15s
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=15s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now omnisync-vpn-watchdog.timer >/dev/null 2>&1 \
+    && ok "Watchdog VPN activo (cada 15s sobrevive a reinicios de contenedores)" \
+    || warn "No se pudo activar el watchdog systemd"
+fi
+
 echo
 echo "════════════════════════════════════════════"
 echo -e "${G} VPN L2TP/IPsec lista (VPN principal)${N}"
