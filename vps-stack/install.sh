@@ -190,7 +190,7 @@ pull_browser && BROWSER_OK=1
 if [ "$BROWSER_OK" = "1" ]; then
   docker compose up -d 2>&1 | tail -5
 else
-  docker compose up -d postgres mongo genieacs-fs genieacs-nbi genieacs-cwmp genieacs-ui api nginx 2>&1 | tail -5
+  docker compose up -d postgres mongo genieacs coturn wireguard api nginx 2>&1 | tail -5
 fi
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
