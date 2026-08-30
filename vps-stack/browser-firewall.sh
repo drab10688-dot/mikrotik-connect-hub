@@ -8,30 +8,56 @@
 set -e
 
 BROWSER_SUBNET="${BROWSER_SUBNET:-172.31.42.0/24}"
-CHAIN="DOCKER-USER"
+PRIVATE_NETS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16"
+TAG="omnisync-browser-isolation"
 
 if ! command -v iptables >/dev/null 2>&1; then
   echo "iptables no disponible; se omite el aislamiento del navegador"
   exit 0
 fi
 
-# Limpia reglas previas de este script (marcadas con el comentario)
-while iptables -S "$CHAIN" 2>/dev/null | grep -q "omnisync-browser-isolation"; do
-  RULE=$(iptables -S "$CHAIN" | grep -m1 "omnisync-browser-isolation" | sed 's/^-A //')
-  # shellcheck disable=SC2086
-  iptables -D $CHAIN $RULE || break
-done
+clean_chain() {
+  local CHAIN="$1"
+  iptables -S "$CHAIN" 2>/dev/null | grep -- "$TAG" | sed 's/^-A //' | while read -r RULE; do
+    # shellcheck disable=SC2086
+    iptables -D $CHAIN $RULE 2>/dev/null || true
+  done
+}
 
-add() { iptables -I "$CHAIN" 1 -m comment --comment omnisync-browser-isolation "$@"; }
+apply_chain() {
+  local CHAIN="$1"
+  iptables -N "$CHAIN" 2>/dev/null || true
+  clean_chain "$CHAIN"
+  add() { iptables -I "$CHAIN" 1 -m comment --comment "$TAG" "$@"; }
 
-# Las reglas se insertan al principio en orden inverso al de evaluación:
-# 1) DROP por defecto para el resto de destinos (se inserta primero)
-add -s "$BROWSER_SUBNET" -j DROP
-# 2) Permite redes privadas (VPN, LANs, equipos de clientes)
-for NET in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16; do
-  add -s "$BROWSER_SUBNET" -d "$NET" -j RETURN
-done
-# 3) Permite DNS y respuestas ya establecidas
-add -s "$BROWSER_SUBNET" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  # Se insertan al principio en orden inverso al de evaluación:
+  # 1) DROP por defecto (queda al final)
+  add -s "$BROWSER_SUBNET" -j DROP
+  # 2) Permite redes privadas (VPN, LANs, ONUs, MikroTik)
+  for NET in $PRIVATE_NETS; do
+    add -s "$BROWSER_SUBNET" -d "$NET" -j RETURN
+  done
+  # 3) Bloquea DNS hacia internet (evita fugas/resolución pública)
+  add -s "$BROWSER_SUBNET" -p udp --dport 53 ! -d 172.31.42.0/24 -j DROP 2>/dev/null || true
+  # 4) Permite respuestas de conexiones ya establecidas
+  add -s "$BROWSER_SUBNET" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  unset -f add
+}
+
+# DOCKER-USER cubre el tráfico reenviado por Docker; FORWARD como respaldo
+# en hosts donde DOCKER-USER no se evalúa.
+apply_chain DOCKER-USER
+apply_chain FORWARD
+
+# IPv6: sin salida en absoluto para los escritorios remotos
+if command -v ip6tables >/dev/null 2>&1; then
+  ip6tables -S FORWARD 2>/dev/null | grep -- "$TAG" | sed 's/^-A //' | while read -r RULE; do
+    # shellcheck disable=SC2086
+    ip6tables -D FORWARD $RULE 2>/dev/null || true
+  done
+  ip6tables -I FORWARD 1 -m comment --comment "$TAG" -j DROP 2>/dev/null || true
+fi
 
 echo "✓ Navegador remoto aislado: sólo redes privadas desde $BROWSER_SUBNET"
+echo "  Reglas activas:"
+iptables -S DOCKER-USER 2>/dev/null | grep -- "$TAG" | sed 's/^/    /' || true
