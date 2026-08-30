@@ -4,6 +4,19 @@ set -uo pipefail
 
 # Apply routes from the persistent peer -> networks map.
 ROUTES_FILE="/opt/omnisync-l2tp/omnisync-routes"
+
+# La imagen bloquea L2TP sin IPsec por defecto. Reaplicar esto aquí hace que
+# la corrección sobreviva reinicios/recreaciones y no dependa de una sola
+# ejecución del instalador.
+iptables -D INPUT -p udp --dport 1701 -m policy --dir in --pol none -j DROP 2>/dev/null || true
+iptables -C INPUT -p udp --dport 1701 -j ACCEPT 2>/dev/null || \
+  iptables -I INPUT -p udp --dport 1701 -j ACCEPT 2>/dev/null || true
+
+sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1 || true
+sysctl -w net.ipv4.conf.default.rp_filter=0 >/dev/null 2>&1 || true
+for f in /proc/sys/net/ipv4/conf/ppp*/rp_filter; do
+    [ -e "$f" ] && printf '0' > "$f" 2>/dev/null || true
+done
 if [ -f "$ROUTES_FILE" ]; then
     while read -r peer_ip nets; do
         [ -n "$peer_ip" ] || continue
