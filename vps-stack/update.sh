@@ -85,8 +85,11 @@ echo "$COMMIT" > "$INSTALL_DIR/VERSION.txt"
 
 echo -e "${YELLOW}5/5 Validando y reiniciando Nginx...${NC}"
 cd "$INSTALL_DIR"
-# Directorio de bloques Nginx dinámicos (un escritorio remoto por ISP)
+# Directorio reservado para futuras rutas de escritorios aislados.
 mkdir -p /opt/omnisync/nginx-dyn
+# Elimina bloques dinámicos anteriores: podían dejar Nginx caído si un
+# contenedor/puerto de ISP ya no existía o estaba ocupado.
+rm -f /opt/omnisync/nginx-dyn/browser-*.conf
 
 # Garantiza el certificado TLS justo antes de validar (los escritorios 8081/8082 lo exigen)
 mkdir -p "$INSTALL_DIR/nginx/certs"
@@ -128,8 +131,7 @@ fi
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 8081/tcp >/dev/null 2>&1 || true
   ufw allow 8082/tcp >/dev/null 2>&1 || true
-  ufw allow 8100:8129/tcp >/dev/null 2>&1 || true
-  echo -e "${GREEN}✓ Puertos 8081/8082 y 8100-8129 (escritorios por ISP) abiertos en UFW${NC}"
+  echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
 fi
 
 # Recrea el navegador remoto para aplicar perfil efímero / incógnito forzado
