@@ -59,7 +59,7 @@ services:
       VPN_SERVER_IP: ${VPN_SERVER_IP:-192.168.42.1}
       # Escritorios remotos dedicados por ISP
       BROWSER_IMAGE: ${BROWSER_IMAGE:-lscr.io/linuxserver/chromium:latest}
-      BROWSER_NETWORK: ${BROWSER_NETWORK:-omnisync-browser-net}
+      BROWSER_NETWORK: ${BROWSER_NETWORK:-omnisync_omnisync-browser-net}
       NGINX_CONTAINER: omnisync-nginx
       NGINX_DYN_DIR: /opt/omnisync/nginx-dyn
       BROWSER_PORT_MIN: 8100
