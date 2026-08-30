@@ -47,7 +47,9 @@ export async function upsertL2tpUser(
       `printf '%s\\n' '"${u}" l2tpd "${p}" ${ip}' >> ${SECRETS}`
   );
 
-  // Mapa tunnel_ip -> redes (lo lee el hook /etc/ppp/ip-up.local)
+  // Mapa tunnel_ip -> redes (lo lee el hook /etc/ppp/ip-up.local).
+  // La ruta se instala en el host: API y Firefox salen por su gateway Docker
+  // y el host los reenvía por la interfaz ppp activa.
   if (tunnelIp && onuNetworks) {
     const nets = escNet(onuNetworks);
     await sh(
@@ -59,7 +61,7 @@ export async function upsertL2tpUser(
 # \$5 = IP del peer. Agrega las rutas de sus redes de ONUs en el VPS.
 while read -r ip nets; do
   [ "$ip" = "$5" ] || continue
-  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null; docker exec omnisync-api ip route replace "$n" via "$5" 2>/dev/null || true; done
+  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null || true; done
 done < ${ROUTES_FILE}
 EOF
 chmod +x /etc/ppp/ip-up.local`
