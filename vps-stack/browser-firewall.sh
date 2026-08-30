@@ -48,6 +48,14 @@ apply_chain() {
   unset -f add
 }
 
+# --flush: sólo limpia las reglas y sale (útil para diagnóstico)
+if [ "${1:-}" = "--flush" ]; then
+  clean_chain DOCKER-USER
+  clean_chain FORWARD
+  echo "✓ Reglas de aislamiento eliminadas"
+  exit 0
+fi
+
 # DOCKER-USER cubre el tráfico reenviado por Docker; FORWARD como respaldo
 # en hosts donde DOCKER-USER no se evalúa.
 apply_chain DOCKER-USER
