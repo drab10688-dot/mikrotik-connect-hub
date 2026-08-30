@@ -159,14 +159,20 @@ export function AdvancedWeb({
               </a>
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Si el equipo pide código de verificación (captcha) y no carga bien aquí, ábrelo en una pestaña nueva:
+              la sesión y la imagen del captcha funcionan mejor fuera del iframe.
+            </p>
             <iframe
               key={target.proxy_path}
               src={withAuthToken(target.proxy_path)}
               title={`Sistema de ${target.name}`}
+              referrerPolicy="no-referrer"
               className="w-full h-[70vh] rounded-md border bg-background"
             />
           </CardContent>
+
         </Card>
       )}
     </div>

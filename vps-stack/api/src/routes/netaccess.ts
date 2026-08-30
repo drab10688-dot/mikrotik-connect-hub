@@ -1038,78 +1038,116 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     return u;
   };
 
-  const upstream = client.request(
-    {
-      host: ip,
-      port: targetPort,
-      path: targetPath || '/',
-      method: req.method,
-      headers: outHeaders,
-      rejectUnauthorized: false,
-      timeout: 20000,
-    },
-    (proxyRes) => {
-      const type = String(proxyRes.headers['content-type'] || '');
-      const headers = { ...proxyRes.headers };
-      delete headers['content-security-policy'];
-      delete headers['content-security-policy-report-only'];
-      delete headers['x-frame-options'];
-      delete headers['content-length'];
-      delete headers['content-encoding'];
-      if (headers.location) headers.location = rewriteUrl(String(headers.location));
-      if (headers['set-cookie']) {
-        headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) =>
-          c.replace(/;\s*Path=[^;]*/i, `; Path=${prefix}/`).replace(/;\s*Secure/gi, '')
-        );
-      }
+  const sendRequest = (useBasic: boolean, allowRetry: boolean) => {
+    const headersOut: Record<string, any> = { ...outHeaders };
+    if (useBasic && basic) headersOut.authorization = basic;
+    else delete headersOut.authorization;
 
-      const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
-      if (textual) {
-        const chunks: Buffer[] = [];
-        proxyRes.on('data', (c) => chunks.push(c as Buffer));
-        proxyRes.on('end', () => {
-          let body = Buffer.concat(chunks).toString('utf8');
+    const upstream = client.request(
+      {
+        host: ip,
+        port: targetPort,
+        path: targetPath || '/',
+        method: req.method,
+        headers: headersOut,
+        rejectUnauthorized: false,
+        timeout: 20000,
+      },
+      (proxyRes) => {
+        // Muchas ONU (V-SOL, Zyxel) usan login por formulario + captcha:
+        // solo se manda Basic auth si el equipo realmente lo pide.
+        if (proxyRes.statusCode === 401 && allowRetry && basic && !useBasic) {
+          proxyRes.resume();
+          sendRequest(true, false);
+          return;
+        }
 
-          if (type.includes('text/html')) {
-            // Reescribe rutas absolutas (src/href/action) hacia el proxy.
+        const type = String(proxyRes.headers['content-type'] || '');
+        const headers = { ...proxyRes.headers };
+        delete headers['content-security-policy'];
+        delete headers['content-security-policy-report-only'];
+        delete headers['x-frame-options'];
+        delete headers['x-content-type-options'];
+        delete headers['content-length'];
+        delete headers['content-encoding'];
+        if (headers.location) headers.location = rewriteUrl(String(headers.location));
+        if (headers['set-cookie']) {
+          // Path amplio: la sesión/captcha de la ONU debe viajar en todas las subrutas del proxy.
+          headers['set-cookie'] = (headers['set-cookie'] as string[]).map((c) =>
+            c
+              .replace(/;\s*Path=[^;]*/i, '')
+              .replace(/;\s*Domain=[^;]*/i, '')
+              .replace(/;\s*Secure/gi, '')
+              .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=/api/netaccess; SameSite=Lax`
+          );
+        }
+
+        const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
+        if (textual) {
+          const chunks: Buffer[] = [];
+          proxyRes.on('data', (c) => chunks.push(c as Buffer));
+          proxyRes.on('end', () => {
+            let body = Buffer.concat(chunks).toString('utf8');
+
+            // URLs absolutas al propio equipo (frames, scripts, imágenes de captcha).
+            const abs = new RegExp(`https?://${ip.replace(/\./g, '\\.')}(?::\\d+)?`, 'gi');
+            body = body.replace(abs, prefix);
+
+            if (type.includes('text/html')) {
+              body = body.replace(
+                /\b(src|href|action|data-src|background)\s*=\s*(["'])(\/[^"']*)\2/gi,
+                (_m, attr, q, url) => `${attr}=${q}${prefix}${url}${q}`
+              );
+              // src/href sin comillas (firmware antiguo).
+              body = body.replace(
+                /\b(src|href|action)\s*=\s*(\/[^\s>]+)/gi,
+                (_m, attr, url) => `${attr}="${prefix}${url}"`
+              );
+              const base = `<base href="${prefix}/">`;
+              body = /<head[^>]*>/i.test(body)
+                ? body.replace(/<head[^>]*>/i, (m) => `${m}${base}`)
+                : `${base}${body}`;
+            }
+
+            // Rutas absolutas usadas desde JavaScript (location, open, ajax, captcha refresh).
             body = body.replace(
-              /\b(src|href|action|data-src)\s*=\s*(["'])(\/[^"']*)\2/gi,
-              (_m, attr, q, url) => `${attr}=${q}${prefix}${url}${q}`
+              /(["'`])(\/[a-zA-Z0-9_\-./]*\.(?:js|css|png|jpg|jpeg|gif|svg|cgi|htm|html|asp|json|xml)(?:\?[^"'`]*)?)\1/g,
+              (_m, q, url) => `${q}${prefix}${url}${q}`
             );
-            const base = `<base href="${prefix}/">`;
-            body = /<head[^>]*>/i.test(body)
-              ? body.replace(/<head[^>]*>/i, (m) => `${m}${base}`)
-              : `${base}${body}`;
-          } else {
-            body = body.replace(/(["'`])(\/[a-zA-Z0-9_\-./]+\.(?:js|css|png|jpg|gif|svg|cgi|html|json))\1/g,
-              (_m, q, url) => `${q}${prefix}${url}${q}`);
-          }
+            body = body.replace(
+              /((?:location(?:\.href)?|window\.open|\.action)\s*=\s*|\.open\s*\(\s*["'][A-Z]+["']\s*,\s*)(["'])(\/[^"']*)\2/g,
+              (_m, head, q, url) => `${head}${q}${prefix}${url}${q}`
+            );
 
-          res.writeHead(proxyRes.statusCode || 200, headers);
-          res.end(body);
-        });
-        return;
+            res.writeHead(proxyRes.statusCode || 200, headers);
+            res.end(body);
+          });
+          return;
+        }
+
+        res.writeHead(proxyRes.statusCode || 200, headers);
+        proxyRes.pipe(res);
       }
+    );
 
-      res.writeHead(proxyRes.statusCode || 200, headers);
-      proxyRes.pipe(res);
-    }
-  );
+    upstream.on('timeout', () => upstream.destroy(new Error('Tiempo de espera agotado')));
+    upstream.on('error', (err: any) => {
+      if (!res.headersSent) {
+        res
+          .status(502)
+          .send(
+            `No se pudo abrir ${ip}:${targetPort} — ${err.code || err.message}. ` +
+              `Verifica que el equipo tenga la administración web habilitada en ese puerto y que sea alcanzable por la VPN.`
+          );
+      } else {
+        res.end();
+      }
+    });
 
-  upstream.on('timeout', () => upstream.destroy(new Error('Tiempo de espera agotado')));
-  upstream.on('error', (err: any) => {
-    if (!res.headersSent) {
-      res
-        .status(502)
-        .send(
-          `No se pudo abrir ${ip}:${targetPort} — ${err.code || err.message}. ` +
-            `Verifica que el equipo tenga la administración web habilitada en ese puerto y que sea alcanzable por la VPN.`
-        );
-    } else {
-      res.end();
-    }
-  });
+    upstream.end(bodyBuf);
+  };
 
-  upstream.end(bodyBuf);
+  sendRequest(false, true);
 });
+
 
