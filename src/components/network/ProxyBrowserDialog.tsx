@@ -24,10 +24,8 @@ export function ProxyBrowserDialog({
   const [browserKey, setBrowserKey] = useState(0);
   const [status, setStatus] = useState<string>("Verificando navegador remoto…");
   const [embedded, setEmbedded] = useState(false);
+  const [probing, setProbing] = useState(true);
 
-  useEffect(() => {
-    setEmbedded(false);
-  }, [browserKey]);
 
 
   useEffect(() => {
