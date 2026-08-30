@@ -176,6 +176,18 @@ browserRouter.post('/open', async (req, res) => {
         return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'chromium-cli' } });
       }
       lastError = result.err;
+      // Perfil bloqueado por un proceso anterior: quita los locks y reintenta.
+      if (/profile appears to be in use|SingletonLock/i.test(lastError)) {
+        await docker(
+          ['exec', CONTAINER, 'sh', '-c', 'rm -f /config/.config/chromium/Singleton* /config/chromium/Singleton*'],
+          8000
+        );
+        const retry = await docker(args, 20000);
+        if (retry.ok) {
+          return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'chromium-cli' } });
+        }
+        lastError = retry.err;
+      }
       // Si el error no es de display, no tiene sentido probar otros displays.
       if (!/cannot open display/i.test(lastError)) continue;
     }
