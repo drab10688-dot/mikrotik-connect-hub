@@ -41,6 +41,20 @@ function sanitizeUrl(raw: unknown): string | null {
   return parsed.toString();
 }
 
+/** Detecta los displays X disponibles dentro del contenedor del navegador. */
+async function detectDisplays(): Promise<string[]> {
+  const found: string[] = [];
+  const ls = await docker(['exec', CONTAINER, 'sh', '-c', 'ls /tmp/.X11-unix 2>/dev/null'], 8000);
+  if (ls.ok) {
+    for (const line of ls.out.split(/\s+/)) {
+      const m = /^X(\d+)$/.exec(line.trim());
+      if (m) found.push(`:${m[1]}`);
+    }
+  }
+  for (const fallback of [':1', ':0']) if (!found.includes(fallback)) found.push(fallback);
+  return found;
+}
+
 /** Estado del contenedor del navegador. */
 browserRouter.get('/status', async (_req, res) => {
   const inspect = await docker(['inspect', '--format', '{{.State.Status}}', CONTAINER], 8000);

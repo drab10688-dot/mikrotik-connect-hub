@@ -99,8 +99,15 @@ else
 fi
 
 echo -e "\n${CYAN}[6/6] Apertura real como usuario abc${NC}"
-OPEN_OUT=$(docker exec -u abc -e DISPLAY=:1 -e HOME=/config omnisync-browser \
-  /usr/bin/firefox --new-tab "$TARGET_URL" 2>&1 || true)
+DISPLAYS=$(docker exec omnisync-browser sh -c 'ls /tmp/.X11-unix 2>/dev/null' | sed 's/^X/:/' | tr '\n' ' ')
+[ -n "$DISPLAYS" ] || DISPLAYS=":1 :0"
+echo "  Displays detectados: $DISPLAYS"
+OPEN_OUT=""
+for D in $DISPLAYS; do
+  OPEN_OUT=$(docker exec -u abc -e DISPLAY="$D" -e HOME=/config omnisync-browser \
+    /usr/bin/firefox --new-tab "$TARGET_URL" 2>&1 || true)
+  echo "$OPEN_OUT" | grep -qi 'cannot open display' || { OPEN_OUT="[$D] $OPEN_OUT"; break; }
+done
 if echo "$OPEN_OUT" | grep -qiE 'root|EPERM|not supported|error'; then
   fail "Firefox rechazó la apertura: $OPEN_OUT"
 else
