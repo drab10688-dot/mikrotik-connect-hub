@@ -32,6 +32,22 @@ export default function RemoteDesktop() {
     [port, creds.user, creds.password],
   );
 
+  const [failed, setFailed] = useState(false);
+  const loadedRef = useRef(false);
+
+  // El visor embebido queda en negro cuando el navegador aún no aceptó el
+  // certificado del escritorio: en ese caso se abre directamente en la pestaña.
+  useEffect(() => {
+    loadedRef.current = false;
+    setFailed(false);
+    const id = window.setTimeout(() => {
+      if (loadedRef.current) return;
+      setFailed(true);
+      window.location.replace(url);
+    }, 3500);
+    return () => window.clearTimeout(id);
+  }, [url, reloadKey]);
+
   // Latido: mientras el visor esté abierto, el VPS conserva las pestañas.
   // Al cerrarlo y pasar el tiempo de inactividad, el escritorio cierra todo
   // y borra cookies/historial automáticamente.
@@ -47,6 +63,7 @@ export default function RemoteDesktop() {
       window.clearInterval(id);
     };
   }, []);
+
 
   const changeZoom = (delta: number) => {
     setZoom((z) => {
@@ -118,12 +135,20 @@ export default function RemoteDesktop() {
           id="vnc-frame"
           key={reloadKey}
           src={url}
+          onLoad={() => { loadedRef.current = true; setFailed(false); }}
           title={title}
           allow="clipboard-read; clipboard-write; fullscreen"
           className="border-0 block"
           style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, minWidth: "100%", minHeight: "100%" }}
         />
       </div>
+
+      {failed && (
+        <p className="text-[11px] text-muted-foreground px-2 py-1 border-t shrink-0">
+          Abriendo el escritorio directamente en esta pestaña… Si el navegador pide aceptar el certificado, confírmalo
+          una vez.
+        </p>
+      )}
 
       <p className="text-[11px] text-muted-foreground px-2 py-1 border-t shrink-0">
         Celular: usa +/− para el zoom y arrastra con un dedo para desplazarte. El teclado se abre desde la pestaña
