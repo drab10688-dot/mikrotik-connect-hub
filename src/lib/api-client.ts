@@ -350,3 +350,9 @@ export const onuWebApi = {
   apply: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/apply', payload)),
   events: async () => unwrapData<any>(await apiGet<any>('/onu-web/events')),
 };
+
+// ─── Navegador remoto (Firefox real en el VPS) ───
+export const browserApi = {
+  status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
+  open: async (url: string) => unwrapData<any>(await apiPost<any>('/browser/open', { url })),
+};
