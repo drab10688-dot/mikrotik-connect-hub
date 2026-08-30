@@ -198,10 +198,13 @@ services:
       CUSTOM_USER: ${BROWSER_USER:-admin}
       PASSWORD: ${BROWSER_PASSWORD:-omnisync}
       FF_OPEN_URL: ${BROWSER_HOME_URL:-about:blank}
+      TITLE: OmniSync Firefox
     volumes:
       - browser_config:/config
     networks:
       - omnisync-net
+    security_opt:
+      - seccomp=unconfined
 
 
 

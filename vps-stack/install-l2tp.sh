@@ -227,12 +227,23 @@ for n in $(echo "$NETS" | tr ',' ' '); do
   ip route replace "$n" via "$GW" 2>/dev/null || true
   docker exec omnisync-api ip route replace "$n" via "$GW" 2>/dev/null || true
 done
+# Permite que API y Firefox (red Docker) alcancen las ONUs a través del túnel.
+for n in $(echo "$NETS" | tr ',' ' '); do
+  [ -n "$n" ] || continue
+  iptables -C FORWARD -s 172.16.0.0/12 -d "$n" -j ACCEPT 2>/dev/null || \
+    iptables -I FORWARD -s 172.16.0.0/12 -d "$n" -j ACCEPT 2>/dev/null || true
+  iptables -C FORWARD -d 172.16.0.0/12 -s "$n" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
+    iptables -I FORWARD -d 172.16.0.0/12 -s "$n" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || true
+done
 iptables -t nat -C POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
   iptables -t nat -A POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
 EOS
 sed -i "s|__NETS__|$ONU_NETS|; s|__GW__|$TUNNEL_POOL_START|" "$DIR/l2tp-routes.sh"
 chmod +x "$DIR/l2tp-routes.sh"
 "$DIR/l2tp-routes.sh" >/dev/null 2>&1 || true
+ONU_NETS="$ONU_NETS" bash "$STACK_DIR/configure-browser-routing.sh" >/dev/null 2>&1 || true
 
 if ! command -v crontab >/dev/null 2>&1; then
   info "Instalando cron..."
