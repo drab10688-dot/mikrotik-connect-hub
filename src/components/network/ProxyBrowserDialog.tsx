@@ -26,19 +26,19 @@ export function ProxyBrowserDialog({
     let cancelled = false;
     (async () => {
       try {
-        // Cada usuario tiene su propio escritorio remoto (puerto y credenciales
-        // temporales): nadie ve las pestañas de otro operador.
+        // Cada usuario tiene su propio escritorio remoto. El acceso es por el
+        // puerto 8081 (HTTPS): Nginx valida el token del panel y enruta al
+        // contenedor privado del usuario — sin cuadro de usuario/clave.
         // 1) Se asegura el escritorio del usuario (respuesta inmediata) y se
         //    abre el visor de una vez para no esperar a que cargue la pestaña.
-        const session = await browserApi.session();
+        await browserApi.session();
         if (cancelled) return;
-        const port = Number(session?.port) || 8081;
         window.open(
-          remoteDesktopViewerUrl(port, target.title, { user: session?.user, password: session?.password }),
+          remoteDesktopViewerUrl('browser', target.title),
           "_blank",
           "noopener,noreferrer",
         );
-        toast.success(`${target.title}: abriendo en el escritorio remoto`);
+        toast.success(`${target.title}: abriendo en tu escritorio remoto`);
         // 2) La navegación al equipo se lanza en paralelo.
         browserApi.open(target.directUrl, target.mikrotikId).catch((e: any) => {
           if (!cancelled) toast.error(e?.message || "No hay ruta VPN hacia el equipo");
