@@ -197,6 +197,17 @@ export default function Isps() {
                   onChange={(e) => setForm({ ...form, admin_password: e.target.value })}
                 />
               </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Red de ONUs / antenas (detrás de la MikroTik)</Label>
+                <Input
+                  placeholder="192.168.0.0/16"
+                  value={form.onu_networks}
+                  onChange={(e) => setForm({ ...form, onu_networks: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Subredes a las que el VPS llegará por la VPN. Separa varias con coma. Define el enrutamiento del navegador remoto y el panel.
+                </p>
+              </div>
               <div className="md:col-span-2">
                 <Button
                   disabled={!form.name || createIsp.isPending}
