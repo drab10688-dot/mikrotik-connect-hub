@@ -26,7 +26,7 @@ onuRouter.get('/:mikrotikId', async (req: AuthRequest, res: Response) => {
        FROM onu_devices o
        LEFT JOIN isp_clients c ON c.id = o.client_id
        WHERE o.mikrotik_id = $1
-         AND ($2::uuid IS NULL OR o.tenant_id IS NULL OR o.tenant_id = $2::uuid)
+         AND ($2::uuid IS NULL OR COALESCE(o.tenant_id, (SELECT md.tenant_id FROM mikrotik_devices md WHERE md.id = o.mikrotik_id)) = $2::uuid)
        ORDER BY o.created_at DESC`,
       [mikrotikId, req.tenantId || null]
     );
@@ -48,7 +48,7 @@ onuRouter.get('/:mikrotikId/:onuId', async (req: AuthRequest, res: Response) => 
        FROM onu_devices o
        LEFT JOIN isp_clients c ON c.id = o.client_id
        WHERE o.id = $1 AND o.mikrotik_id = $2
-         AND ($3::uuid IS NULL OR o.tenant_id IS NULL OR o.tenant_id = $3::uuid)`,
+         AND ($3::uuid IS NULL OR COALESCE(o.tenant_id, (SELECT md.tenant_id FROM mikrotik_devices md WHERE md.id = o.mikrotik_id)) = $3::uuid)`,
       [onuId, mikrotikId, req.tenantId || null]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'ONU no encontrada' });
@@ -156,7 +156,7 @@ onuRouter.put('/:mikrotikId/:onuId', async (req: AuthRequest, res: Response) => 
     const result = await pool.query(
       `UPDATE onu_devices SET ${updates.join(', ')}
         WHERE id = $${idx++} AND mikrotik_id = $${idx++}
-          AND ($${idx}::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $${idx}::uuid)
+          AND ($${idx}::uuid IS NULL OR COALESCE(tenant_id, (SELECT md.tenant_id FROM mikrotik_devices md WHERE md.id = onu_devices.mikrotik_id)) = $${idx}::uuid)
         RETURNING *`,
       values
     );
@@ -177,7 +177,7 @@ onuRouter.delete('/:mikrotikId/:onuId', async (req: AuthRequest, res: Response) 
 
     const result = await pool.query(
       `DELETE FROM onu_devices WHERE id = $1 AND mikrotik_id = $2
-         AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3::uuid)
+         AND ($3::uuid IS NULL OR COALESCE(tenant_id, (SELECT md.tenant_id FROM mikrotik_devices md WHERE md.id = onu_devices.mikrotik_id)) = $3::uuid)
        RETURNING id`,
       [onuId, mikrotikId, req.tenantId || null]
     );
@@ -204,7 +204,7 @@ onuRouter.post('/:mikrotikId/:onuId/wifi', async (req: AuthRequest, res: Respons
     // Get ONU data
     const onuResult = await pool.query(
       `SELECT * FROM onu_devices WHERE id = $1 AND mikrotik_id = $2
-         AND ($3::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $3::uuid)`,
+         AND ($3::uuid IS NULL OR COALESCE(tenant_id, (SELECT md.tenant_id FROM mikrotik_devices md WHERE md.id = onu_devices.mikrotik_id)) = $3::uuid)`,
       [onuId, mikrotikId, req.tenantId || null]
     );
     if (onuResult.rows.length === 0) return res.status(404).json({ error: 'ONU no encontrada' });
