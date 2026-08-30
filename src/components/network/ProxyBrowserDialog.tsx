@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { browserApi, remoteDesktopViewerUrl } from "@/lib/api-client";
+import { browserApi, remoteDesktopUrl } from "@/lib/api-client";
+
 
 export interface ProxyBrowserTarget {
   title: string;
