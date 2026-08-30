@@ -24,10 +24,8 @@ export function ProxyBrowserDialog({
   const [browserKey, setBrowserKey] = useState(0);
   const [status, setStatus] = useState<string>("Verificando navegador remoto…");
   const [embedded, setEmbedded] = useState(false);
+  const [probing, setProbing] = useState(true);
 
-  useEffect(() => {
-    setEmbedded(false);
-  }, [browserKey]);
 
 
   useEffect(() => {
@@ -88,6 +86,33 @@ export function ProxyBrowserDialog({
   // El escritorio remoto no pide clave propia: Nginx valida el token de sesión.
   const viewerUrl = remoteDesktopUrl("browser");
 
+  // El certificado del VPS es autofirmado: dentro del iframe el navegador lo
+  // rechaza en silencio (pantalla en blanco) hasta que se acepta una vez en una
+  // pestaña normal. Comprobamos el origen antes de incrustarlo.
+  useEffect(() => {
+    if (!target) return;
+    let cancelled = false;
+    setEmbedded(false);
+    setProbing(true);
+    (async () => {
+      try {
+        await fetch(viewerUrl, { mode: "no-cors", cache: "no-store" });
+        if (!cancelled) {
+          setEmbedded(true);
+          setProbing(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setEmbedded(false);
+          setProbing(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target, browserKey, viewerUrl]);
+
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
       <DialogContent
@@ -132,34 +157,39 @@ export function ProxyBrowserDialog({
           </div>
         </DialogHeader>
         <div className="relative min-h-0 flex-1 bg-muted">
-          <iframe
-            key={browserKey}
-            src={viewerUrl}
-            title="Navegador remoto"
-            allow="clipboard-read; clipboard-write; fullscreen"
-            className="absolute inset-0 h-full w-full border-0 bg-background"
-            onLoad={() => setEmbedded(true)}
-          />
+          {embedded && (
+            <iframe
+              key={browserKey}
+              src={viewerUrl}
+              title="Navegador remoto"
+              allow="clipboard-read; clipboard-write; fullscreen"
+              className="absolute inset-0 h-full w-full border-0 bg-background"
+            />
+          )}
           {!embedded && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/95 p-6 text-center">
               <Monitor className="h-8 w-8 text-muted-foreground" />
               <p className="max-w-md text-sm text-muted-foreground">
-                El escritorio remoto usa un certificado propio del VPS. Si ves la pantalla en negro, ábrelo una vez
-                en una pestaña nueva y acepta el aviso del certificado; después funcionará dentro del panel.
+                {probing
+                  ? "Comprobando el escritorio remoto…"
+                  : "El escritorio remoto usa un certificado propio del VPS y por eso no puede mostrarse aquí todavía. Ábrelo una vez en una pestaña nueva, acepta el aviso del certificado, vuelve y pulsa «Reintentar aquí»."}
               </p>
-              <div className="flex gap-2">
-                <Button size="sm" asChild>
-                  <a href={viewerUrl} target="_blank" rel="noreferrer">
-                    <ExternalLink className="mr-1 h-4 w-4" /> Abrir escritorio en pestaña nueva
-                  </a>
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setBrowserKey((k) => k + 1)}>
-                  <RotateCw className="mr-1 h-4 w-4" /> Reintentar aquí
-                </Button>
-              </div>
+              {!probing && (
+                <div className="flex gap-2">
+                  <Button size="sm" asChild>
+                    <a href={viewerUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="mr-1 h-4 w-4" /> Abrir escritorio en pestaña nueva
+                    </a>
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setBrowserKey((k) => k + 1)}>
+                    <RotateCw className="mr-1 h-4 w-4" /> Reintentar aquí
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
+
 
       </DialogContent>
     </Dialog>
