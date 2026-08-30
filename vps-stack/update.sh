@@ -72,6 +72,13 @@ set -a
 set +a
 bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets "${ONU_NETS:-10.82.0.0/21}"
 
+# No confundir un contenedor L2TP encendido con una MikroTik conectada.
+if ! ip -o -4 addr show 2>/dev/null | grep -qE ' ppp[0-9]+ .* peer 192\.168\.42\.'; then
+  echo -e "${YELLOW}⚠ El servidor VPN está activo, pero no hay sesión PPP de MikroTik.${NC}"
+  echo -e "${YELLOW}  Pega nuevamente el script actual: /opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC}"
+  echo -e "${YELLOW}  Diagnóstico: docker logs --tail=100 omnisync-l2tp${NC}"
+fi
+
 echo -e "${YELLOW}4/5 Compilando frontend...${NC}"
 cd "$TEMP_DIR"
 echo "VITE_API_BASE_URL=/api" > .env.production

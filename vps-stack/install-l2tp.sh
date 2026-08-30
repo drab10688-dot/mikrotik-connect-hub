@@ -157,7 +157,7 @@ fi
 if ! docker ps --format '{{.Names}}' | grep -q omnisync-l2tp; then
   err "El contenedor no arrancó"; docker logs --tail 40 omnisync-l2tp; exit 1
 fi
-ok "Servidor L2TP/IPsec activo"
+ok "Servidor L2TP activo; esperando conexión de la MikroTik"
 
 # --- Firewall ---
 if command -v ufw >/dev/null 2>&1; then
@@ -307,12 +307,16 @@ echo "════════════════════════�
 echo -e "${G} VPN L2TP/IPsec lista (VPN principal)${N}"
 echo "════════════════════════════════════════════"
 echo " Servidor    : $PUBIP"
-echo " Usuario     : $VPN_USER"
-echo " Contraseña  : $VPN_PASSWORD"
-echo " IPsec PSK   : $VPN_IPSEC_PSK"
 echo " Red túnel   : $TUNNEL_NET (VPS = $TUNNEL_SRV)"
 echo " Redes ONU   : $ONU_NETS"
+if ip -o -4 addr show 2>/dev/null | grep -qE ' ppp[0-9]+ .* peer 192\.168\.42\.'; then
+  echo -e " Estado VPN  : ${G}MikroTik conectada${N}"
+  ip -o -4 addr show 2>/dev/null | grep -E ' ppp[0-9]+ .* peer 192\.168\.42\.' | sed 's/^/               /'
+else
+  echo -e " Estado VPN  : ${Y}SIN SESIÓN PPP — vuelve a pegar el script actual en la MikroTik${N}"
+fi
 echo
+echo " Credenciales: $ENVF (no se muestran en la consola)"
 echo " Script MikroTik: $MT"
 echo " (o genéralo por ISP desde el panel → TR-069 y VPN)"
 echo "════════════════════════════════════════════"
