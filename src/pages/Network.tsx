@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopViewerUrl, browserApi } from "@/lib/api-client";
+import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopUrl, browserApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
