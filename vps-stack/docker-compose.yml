@@ -209,6 +209,7 @@ volumes:
   postgres_data:
   backup_data:
   wireguard_config:
+  browser_config:
   mongo_data:
 
 networks:
