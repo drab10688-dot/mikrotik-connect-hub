@@ -256,6 +256,13 @@ export default function Network() {
             >
               <Monitor className="w-4 h-4 mr-2" /> Abrir Winbox
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => window.open(withAuthToken("/browser/"), "_blank", "noopener")}
+              title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
+            >
+              <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
+            </Button>
           </div>
         </div>
 
