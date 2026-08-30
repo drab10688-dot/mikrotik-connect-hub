@@ -905,9 +905,22 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
     return res.status(400).send('Destino inválido');
   }
 
+  // Al abrir en pestaña nueva o iframe no viaja la cabecera Authorization:
+  // el token llega por ?token= y se guarda en cookie para las peticiones hijas.
+  if (typeof req.query.token === 'string' && req.query.token) {
+    res.setHeader(
+      'Set-Cookie',
+      `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
+    );
+  }
+
   const prefix = `/api/netaccess/${mikrotikId}/web/${ip}/${targetPort}`;
-  const rest = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) : '/';
+  const rawRest = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) : '/';
+  const rest = rawRest
+    .replace(/([?&])token=[^&]*&?/, '$1')
+    .replace(/[?&]$/, '');
   const targetPath = rest.startsWith('/') ? rest : `/${rest}`;
+
 
   const secure = targetPort === 443 || targetPort === 8443;
   const client = secure ? https : http;
