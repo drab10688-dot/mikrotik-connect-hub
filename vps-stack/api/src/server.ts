@@ -31,6 +31,9 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(helmet());
 app.use(cors());
+// El proxy debe reenviar exactamente los cuerpos de formularios de firmware antiguo,
+// incluidos multipart/captcha, antes de que los parsers JSON los transformen.
+app.use(/^\/api\/netaccess\/[^/]+\/web\//, express.raw({ type: '*/*', limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 

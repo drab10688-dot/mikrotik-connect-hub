@@ -1003,7 +1003,9 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
   // Cuerpo re-codificado según el content-type original (los formularios web fallan con JSON).
   const reqType = String(req.headers['content-type'] || '');
   let bodyBuf: Buffer | undefined;
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Object.keys(req.body).length) {
+  if (Buffer.isBuffer(req.body)) {
+    bodyBuf = req.body;
+  } else if (req.method !== 'GET' && req.method !== 'HEAD' && req.body && Object.keys(req.body).length) {
     if (reqType.includes('application/x-www-form-urlencoded')) {
       bodyBuf = Buffer.from(new URLSearchParams(req.body as any).toString());
     } else {
@@ -1022,13 +1024,13 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
       .filter((c) => c.startsWith(cookieNamespace))
       .map((c) => c.slice(cookieNamespace.length))
       .join('; '),
-    origin: upstreamOrigin,
-    referer: `${upstreamOrigin}${targetPath || '/'}`,
   };
   delete outHeaders.authorization;
   delete outHeaders.referer;
   delete outHeaders.origin;
   delete outHeaders['content-length'];
+  outHeaders.origin = upstreamOrigin;
+  outHeaders.referer = `${upstreamOrigin}${targetPath || '/'}`;
   if (basic) outHeaders.authorization = basic;
   if (bodyBuf) outHeaders['content-length'] = bodyBuf.length;
 
@@ -1091,6 +1093,13 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
           });
         }
 
+        // Helmet protege el panel, pero sus cabeceras no pueden aplicarse al firmware
+        // embebido: las ONUs antiguas dependen de scripts inline y frames propios.
+        res.removeHeader('content-security-policy');
+        res.removeHeader('content-security-policy-report-only');
+        res.removeHeader('x-frame-options');
+        res.removeHeader('x-content-type-options');
+
         const textual = type.includes('text/html') || type.includes('javascript') || type.includes('text/css');
         if (textual) {
           const chunks: Buffer[] = [];
@@ -1101,6 +1110,15 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
             // URLs absolutas al propio equipo (frames, scripts, imágenes de captcha).
             const abs = new RegExp(`https?://${ip.replace(/\./g, '\\.')}(?::\\d+)?`, 'gi');
             body = body.replace(abs, prefix);
+            const protocolRelative = new RegExp(`//${ip.replace(/\./g, '\\.')}(?::\\d+)?`, 'gi');
+            body = body.replace(protocolRelative, prefix);
+
+            if (type.includes('text/css')) {
+              body = body.replace(
+                /url\(\s*(["']?)(\/[^)'"\s]+)\1\s*\)/gi,
+                (_m, q, url) => `url(${q}${prefix}${url}${q})`
+              );
+            }
 
             if (type.includes('text/html')) {
               body = body.replace(
