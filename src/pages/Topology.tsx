@@ -14,11 +14,13 @@ export default function Topology() {
   const mikrotikId = localStorage.getItem("mikrotik_device_id") || "";
   const [advanced, setAdvanced] = useState<AdvancedTarget | null>(null);
   const [tab, setTab] = useState("mapa");
+  const proxyActive = tab === "avanzado" && Boolean(advanced);
 
   const { data: devicesData } = useQuery({
     queryKey: ["netaccess-devices", mikrotikId],
     queryFn: () => netAccessApi.devices(mikrotikId),
-    enabled: !!mikrotikId,
+    enabled: !!mikrotikId && !proxyActive,
+    refetchOnWindowFocus: false,
   });
   const devices = devicesData?.devices || [];
 

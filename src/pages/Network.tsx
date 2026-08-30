@@ -66,14 +66,16 @@ export default function Network() {
   const { data: pppoe, isLoading: loadingPppoe, refetch: refetchPppoe, error: pppoeError } = useQuery({
     queryKey: ["net-pppoe", deviceId],
     queryFn: () => netAccessApi.pppoe(deviceId),
-    enabled: !!deviceId,
+    enabled: !!deviceId && !browserOpen,
     refetchInterval: browserOpen ? false : 30_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: netDevices, isLoading: loadingNet, refetch: refetchNet, error: netError } = useQuery({
     queryKey: ["net-equipos", deviceId],
     queryFn: () => netAccessApi.devices(deviceId),
-    enabled: !!deviceId,
+    enabled: !!deviceId && !browserOpen,
+    refetchOnWindowFocus: false,
   });
 
   const { data: ports } = useQuery({
@@ -84,23 +86,26 @@ export default function Network() {
   const { data: ethernet, isLoading: loadingEth, isFetching: fetchingEth, refetch: refetchEth, error: ethError } = useQuery({
     queryKey: ["net-ethernet", deviceId],
     queryFn: () => netAccessApi.ethernet(deviceId),
-    enabled: !!deviceId,
+    enabled: !!deviceId && !browserOpen,
     refetchInterval: browserOpen ? false : 20_000,
+    refetchOnWindowFocus: false,
   });
 
   const [eventDays, setEventDays] = useState("7");
   const { data: pppoeEvents, isLoading: loadingEvents, isFetching: fetchingEvents, refetch: refetchEvents, error: eventsError } = useQuery({
     queryKey: ["net-pppoe-events", deviceId, eventDays],
     queryFn: () => netAccessApi.pppoeEvents(deviceId, Number(eventDays)),
-    enabled: !!deviceId,
+    enabled: !!deviceId && !browserOpen,
     refetchInterval: browserOpen ? false : 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: lanAlerts, isFetching: fetchingAlerts, refetch: refetchAlerts } = useQuery({
     queryKey: ["net-lan-alerts", deviceId],
     queryFn: () => netAccessApi.lanAlerts(deviceId),
-    enabled: !!deviceId,
+    enabled: !!deviceId && !browserOpen,
     refetchInterval: browserOpen ? false : 30_000,
+    refetchOnWindowFocus: false,
   });
   const alertList: any[] = (lanAlerts as any)?.alerts ?? [];
 
@@ -148,8 +153,9 @@ export default function Network() {
       });
       return map;
     },
-    enabled: !!deviceId && apCredList.length > 0,
+    enabled: !!deviceId && apCredList.length > 0 && !browserOpen,
     refetchInterval: browserOpen ? false : 30_000,
+    refetchOnWindowFocus: false,
   });
 
   const allApClients = (allApClientsRaw || {}) as Record<string, any[]>;
