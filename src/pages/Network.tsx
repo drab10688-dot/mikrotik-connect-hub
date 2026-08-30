@@ -674,6 +674,7 @@ export default function Network() {
                     )}
                   </div>
                 )}
+                {!loadingNet && !netError && <Pager controls={equipoSearch} />}
               </CardContent>
             </Card>
           </TabsContent>
