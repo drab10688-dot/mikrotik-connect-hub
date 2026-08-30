@@ -42,8 +42,23 @@ grep -q '^BROWSER_USER=' .env || echo 'BROWSER_USER=admin' >> .env
 grep -q '^BROWSER_PASSWORD=' .env || echo "BROWSER_PASSWORD=$(openssl rand -hex 12)" >> .env
 grep -q '^BROWSER_HOME_URL=' .env || echo 'BROWSER_HOME_URL=about:blank' >> .env
 docker compose build --no-cache api
-docker compose pull remote-browser
-docker compose up -d api remote-browser
+
+# Firefox remoto: descarga tolerante a fallos (reintentos + espejo docker.io)
+pull_browser() {
+  for i in 1 2 3; do
+    docker compose pull remote-browser && return 0
+    echo -e "${YELLOW}⚠ Reintento $i/3 de descarga de Firefox...${NC}" && sleep 5
+  done
+  docker pull docker.io/linuxserver/firefox:latest \
+    && docker tag docker.io/linuxserver/firefox:latest lscr.io/linuxserver/firefox:latest \
+    && return 0
+  echo -e "${YELLOW}⚠ No se pudo descargar Firefox remoto; el panel seguirá con el proxy integrado.${NC}"
+  return 1
+}
+BROWSER_OK=0
+pull_browser && BROWSER_OK=1
+docker compose up -d api
+[ "$BROWSER_OK" = "1" ] && docker compose up -d remote-browser || true
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}4/5 Compilando frontend...${NC}"
@@ -58,16 +73,19 @@ echo "$COMMIT" > "$FRONTEND_DIR/VERSION.txt"
 
 echo -e "${YELLOW}5/5 Reiniciando Nginx...${NC}"
 cd "$INSTALL_DIR"
-docker compose up -d nginx remote-browser
+docker compose up -d nginx
+[ "$BROWSER_OK" = "1" ] && docker compose up -d remote-browser || true
 docker compose restart nginx
 
 # Verifica el Firefox remoto (causa habitual de 502 en /browser/)
-sleep 5
-if [ "$(docker inspect -f '{{.State.Running}}' omnisync-browser 2>/dev/null)" != "true" ]; then
-  echo -e "${YELLOW}⚠ Firefox remoto no está corriendo. Reintentando...${NC}"
-  docker compose up -d --force-recreate remote-browser || true
+if [ "$BROWSER_OK" = "1" ]; then
   sleep 5
-  docker compose logs --tail=40 remote-browser || true
+  if [ "$(docker inspect -f '{{.State.Running}}' omnisync-browser 2>/dev/null)" != "true" ]; then
+    echo -e "${YELLOW}⚠ Firefox remoto no está corriendo. Reintentando...${NC}"
+    docker compose up -d --force-recreate remote-browser || true
+    sleep 5
+    docker compose logs --tail=40 remote-browser || true
+  fi
 fi
 
 cd /root && rm -rf "$TEMP_DIR"
