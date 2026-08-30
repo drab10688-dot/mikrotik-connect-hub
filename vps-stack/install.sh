@@ -5,8 +5,9 @@
 # Compatible: Ubuntu 20.04/22.04/24.04 · Debian 11/12
 #
 # Servicios que levanta:
-#   PostgreSQL · API Node · Nginx · MongoDB · GenieACS · coturn (STUN) · L2TP/IPsec
-# NO instala: PHPNuxBill, FreeRADIUS, Mikhmon, C-Data CMS
+#   PostgreSQL · API Node · Nginx · MongoDB · GenieACS · coturn (STUN) · L2TP (sin IPsec)
+#   Escritorio remoto privado por usuario (Chromium/KasmVNC bajo demanda, puerto 8081)
+# NO instala: PHPNuxBill, FreeRADIUS, Mikhmon, C-Data CMS, UISP, Winbox
 # ============================================
 
 set -e
@@ -15,7 +16,8 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC
 
 REPO_URL="https://github.com/drab10688-dot/mikrotik-connect-hub.git"
 INSTALL_DIR="/opt/omnisync"
-ONU_NETS="${ONU_NETS:-10.82.0.0/21}"
+# Redes de ONUs/antenas detrás de la MikroTik (PPPoE 192.168.x.x cubierto por /16)
+ONU_NETS="${ONU_NETS:-192.168.0.0/16}"
 
 is_public_ipv4() {
   local ip="$1"
@@ -141,11 +143,9 @@ if [ ! -f nginx/certs/remote.crt ]; then
 fi
 
 if command -v ufw >/dev/null 2>&1; then
-  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 500/udp 4500/udp 1701/udp 8081/tcp 8082/tcp; do
-    ufw allow "$p" >/dev/null 2>&1 || true
-  done
-  # Escritorios privados por usuario (Chromium/KasmVNC bajo demanda)
-  for p in 8100:8129/tcp; do
+  # 8081 = escritorio remoto privado (HTTPS + token). Los escritorios por
+  # usuario NO publican puertos: sólo son accesibles a través de Nginx.
+  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 1701/udp 8081/tcp; do
     ufw allow "$p" >/dev/null 2>&1 || true
   done
   echo -e "${GREEN}✓ Puertos abiertos en firewall${NC}"
@@ -156,8 +156,9 @@ echo ""
 echo -e "${CYAN}═══ FASE 4/5: Iniciando servicios ═══${NC}"
 
 docker compose down --remove-orphans 2>/dev/null || true
-# Restos de instalaciones anteriores (NuxBill/RADIUS/Mikhmon/CMS) — ya no se usan
+# Restos de instalaciones anteriores (NuxBill/RADIUS/Mikhmon/CMS/Winbox) — ya no se usan
 for cname in omnisync-mariadb omnisync-freeradius omnisync-phpnuxbill omnisync-mikhmon \
+             omnisync-winbox omnisync-uisp \
              omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   docker rm -f "$cname" 2>/dev/null || true
 done
@@ -175,12 +176,11 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
 docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
+# Imagen base de los escritorios remotos privados (Chromium + KasmVNC).
+# Se precarga para que el primer usuario no espere la descarga.
 echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
 docker compose pull remote-browser 2>&1 | tail -2 || true
-docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy sigue funcionando${NC}"
-echo -e "${YELLOW}Construyendo Winbox remoto (Wine, sin licencias Windows)...${NC}"
-docker compose build remote-winbox 2>&1 | tail -3 || true
-docker compose up -d remote-winbox 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Winbox remoto no disponible; usa WebFig${NC}"
+docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; se creará al primer uso${NC}"
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
