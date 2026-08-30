@@ -190,8 +190,6 @@ export async function destroyUserBrowser(userId: string) {
  * el escritorio queda disponible en cuanto arranca el servidor X.
  */
 export async function waitReady(session: UserBrowserSession, timeoutMs = 30000): Promise<boolean> {
-  const ready = new Set(sessions.get(session.userId) ? [] : []);
-  void ready;
   if (session.readyAt) return true;
   const status = await containerStatus(session.container);
   if (status === 'exited' || status === 'missing') return false;
