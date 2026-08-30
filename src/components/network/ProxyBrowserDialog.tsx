@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { browserApi, remoteDesktopUrl } from "@/lib/api-client";
+import { browserApi, remoteDesktopViewerUrl } from "@/lib/api-client";
 
 export interface ProxyBrowserTarget {
   title: string;
@@ -31,7 +31,7 @@ export function ProxyBrowserDialog({
         if (cancelled) return;
         // Cada ISP tiene su propio escritorio en un puerto dedicado.
         const port = Number(opened?.port || st?.port) || 8081;
-        window.open(remoteDesktopUrl(port), "_blank", "noopener,noreferrer");
+        window.open(remoteDesktopViewerUrl(port, target.title), "_blank", "noopener,noreferrer");
         toast.success(`${target.title}: abriendo en el escritorio remoto`);
       } catch (e: any) {
         if (!cancelled) toast.error(e?.message || "No se pudo usar el navegador remoto");

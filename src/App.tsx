@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./pages/Auth/Login";
+import RemoteDesktop from "./pages/RemoteDesktop";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Isps from "./pages/Admin/Isps";
 import Dashboard from "./pages/Dashboard";
@@ -53,6 +54,7 @@ const App = () => (
           
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/vnc" element={<ProtectedRoute><RemoteDesktop /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

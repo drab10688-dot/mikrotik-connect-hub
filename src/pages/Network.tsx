@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopUrl } from "@/lib/api-client";
+import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopViewerUrl } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
@@ -271,7 +271,7 @@ export default function Network() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => window.open(remoteDesktopUrl("browser"), "_blank", "noopener")}
+              onClick={() => window.open(remoteDesktopViewerUrl("browser", "Escritorio remoto"), "_blank", "noopener")}
               title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
             >
               <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
