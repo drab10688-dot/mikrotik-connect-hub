@@ -47,3 +47,21 @@ export function useMyTenant() {
 
   return { tenant: (data as TenantBranding | null) || null, isLoading };
 }
+
+export type TenantModule = 'onus' | 'mikrotik' | 'onu_web' | 'tr069';
+
+/** ¿Está habilitado el módulo para el ISP del usuario? */
+export function useModuleEnabled() {
+  const { tenant, isLoading } = useMyTenant();
+
+  const isEnabled = (module?: TenantModule) => {
+    if (!module) return true;
+    if (!tenant) return true; // instalación sin multi-ISP
+    if (module === 'onus') return tenant.enable_onus !== false;
+    if (module === 'onu_web') return tenant.enable_onu_web !== false;
+    if (module === 'tr069') return tenant.enable_tr069 !== false;
+    return tenant.enable_mikrotik !== false;
+  };
+
+  return { isEnabled, isLoading, tenant };
+}

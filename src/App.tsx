@@ -36,13 +36,14 @@ const App = () => (
 
           {/* Panel de gestión de ONUs */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu"><Onus /></ProtectedRoute>} />
-          <Route path="/mikrotik" element={<ProtectedRoute permission="can_manage_pppoe"><Network /></ProtectedRoute>} />
-          <Route path="/onu-web" element={<ProtectedRoute><OnuWeb /></ProtectedRoute>} />
-          <Route path="/topology" element={<ProtectedRoute><Topology /></ProtectedRoute>} />
-          <Route path="/acs" element={<ProtectedRoute><IspAcs /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings"><Settings /></ProtectedRoute>} />
-          <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics"><Diagnostics /></ProtectedRoute>} />
+          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu" module="onus" section="onus"><Onus /></ProtectedRoute>} />
+          <Route path="/mikrotik" element={<ProtectedRoute permission="can_manage_pppoe" module="mikrotik" section="mikrotik"><Network /></ProtectedRoute>} />
+          <Route path="/onu-web" element={<ProtectedRoute module="onu_web" section="onu_web"><OnuWeb /></ProtectedRoute>} />
+          <Route path="/topology" element={<ProtectedRoute module="mikrotik" section="topology"><Topology /></ProtectedRoute>} />
+          <Route path="/acs" element={<ProtectedRoute section="vpn"><IspAcs /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings" section="configuracion"><Settings /></ProtectedRoute>} />
+          <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics" section="diagnostico"><Diagnostics /></ProtectedRoute>} />
+
 
           {/* Administración */}
           <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin><Permissions /></ProtectedRoute>} />

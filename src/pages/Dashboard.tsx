@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
+import { useModuleEnabled } from "@/hooks/useTenantBranding";
+import { useMyPermissions } from "@/hooks/usePermissions";
 import KpiCard, { KpiTone } from "@/components/dashboard/KpiCard";
 import OpticalMeter from "@/components/onu/OpticalMeter";
 import { Antenna, Wifi, Server, Settings, Activity, SignalHigh, SignalLow, RefreshCw } from "lucide-react";
@@ -56,6 +58,9 @@ const sinceLabel = (lastInform: string | null) => {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { isSuperAdmin } = useAuth();
+  const { isEnabled } = useModuleEnabled();
+  const { can } = useMyPermissions();
+  const onusEnabled = isSuperAdmin || (isEnabled("onus") && can("onus"));
 
   useEffect(() => {
     if (isSuperAdmin) navigate("/admin/isps", { replace: true });
@@ -66,6 +71,7 @@ const Dashboard = () => {
   const [acsOnline, setAcsOnline] = useState<boolean | null>(null);
 
   const load = useCallback(async (spinner = true) => {
+    if (!onusEnabled) { setLoading(false); return; }
     if (spinner) setLoading(true);
     try {
       const res = await api("/genieacs/overview");
@@ -77,7 +83,7 @@ const Dashboard = () => {
     } finally {
       if (spinner) setLoading(false);
     }
-  }, []);
+  }, [onusEnabled]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -100,10 +106,11 @@ const Dashboard = () => {
 
 
   const quickActions = [
-    { title: "Gestión de ONUs", description: "Señal, WiFi, PPPoE y alias", icon: Antenna, path: "/onus" },
-    { title: "Credenciales y VPN", description: "Datos TR-069, STUN y script MikroTik", icon: Server, path: "/acs" },
-    { title: "Configuración", description: "Ajustes del panel", icon: Settings, path: "/settings" },
-  ];
+    onusEnabled && { title: "Gestión de ONUs", description: "Señal, WiFi, PPPoE y alias", icon: Antenna, path: "/onus" },
+    (isSuperAdmin || can("mikrotik")) && isEnabled("mikrotik") && { title: "Conexión MikroTik", description: "PPPoE, cableado y sesiones", icon: Server, path: "/mikrotik" },
+    (isSuperAdmin || can("vpn")) && { title: "Credenciales y VPN", description: "Datos TR-069, STUN y script MikroTik", icon: Server, path: "/acs" },
+    (isSuperAdmin || can("configuracion")) && { title: "Configuración", description: "Ajustes del panel", icon: Settings, path: "/settings" },
+  ].filter(Boolean) as { title: string; description: string; icon: typeof Antenna; path: string }[];
 
   const recent = [...devices]
     .sort((a, b) => new Date(b.lastInform || 0).getTime() - new Date(a.lastInform || 0).getTime())
@@ -119,16 +126,21 @@ const Dashboard = () => {
             <p className="text-muted-foreground">Monitoreo y gestión de ONUs por TR-069</p>
           </div>
           <div className="flex items-center gap-3">
+            {onusEnabled && (
             <Badge variant={acsOnline === false ? "destructive" : "secondary"}>
               ACS {acsOnline === false ? "sin conexión" : acsOnline ? "en línea" : "…"}
             </Badge>
+            )}
+            {onusEnabled && (
             <Button variant="outline" size="sm" onClick={() => load()} disabled={loading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Actualizar
             </Button>
+            )}
           </div>
         </header>
 
+        {onusEnabled && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
           {stats.map((s) => (
             <KpiCard
@@ -143,6 +155,7 @@ const Dashboard = () => {
             />
           ))}
         </div>
+        )}
 
 
         <Card className="mb-8">
@@ -172,6 +185,7 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
+        {onusEnabled && (
         <Card>
           <CardHeader>
             <CardTitle>Actividad reciente de ONUs</CardTitle>
@@ -230,6 +244,7 @@ const Dashboard = () => {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   );

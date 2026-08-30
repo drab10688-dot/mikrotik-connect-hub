@@ -49,14 +49,14 @@ app.use('/api/public', ispPublicRouter); // resolución del token TR-069 por ISP
 app.use('/api/tenants', authMiddleware, tenantsRouter);
 app.use('/api/isp', authMiddleware, ispRouter);
 app.use('/api/devices', authMiddleware, devicesRouter);
-app.use('/api/pppoe', authMiddleware, requirePermission('can_manage_pppoe'), pppoeRouter);
+app.use('/api/pppoe', authMiddleware, requirePermission('can_manage_pppoe'), requireSection('mikrotik'), requireModule('enable_mikrotik'), pppoeRouter);
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
-app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), onuRouter);
-app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), requireModule('enable_tr069'), genieacsRouter);
+app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), requireModule('enable_onus'), onuRouter);
+app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), requireModule('enable_onus'), requireModule('enable_tr069'), genieacsRouter);
 // Acceso web directo a la ONU (sin TR-069), con perfiles aprendidos por modelo
 app.use('/api/onu-web', authMiddleware, requireSection('onu_web'), requireModule('enable_onu_web'), onuWebRouter);
-app.use('/api/netaccess', authMiddleware, requireSection('red'), netAccessRouter);
+app.use('/api/netaccess', authMiddleware, requireSection('red'), requireModule('enable_mikrotik'), netAccessRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 
 

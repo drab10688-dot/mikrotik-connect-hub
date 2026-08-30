@@ -399,7 +399,7 @@ export function requireSection(section: Section, edit = false) {
 }
 
 /** Middleware: exige que el ISP tenga activo el módulo (TR-069 / web ONU). */
-export function requireModule(column: 'enable_tr069' | 'enable_onu_web') {
+export function requireModule(column: 'enable_tr069' | 'enable_onu_web' | 'enable_onus' | 'enable_mikrotik') {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.tenantId) return next();
     try {
@@ -411,6 +411,10 @@ export function requireModule(column: 'enable_tr069' | 'enable_onu_web') {
         return res.status(403).json({
           error: column === 'enable_tr069'
             ? 'TR-069 está desactivado para este ISP'
+            : column === 'enable_onus'
+            ? 'La gestión de ONUs está desactivada para este ISP'
+            : column === 'enable_mikrotik'
+            ? 'El módulo MikroTik está desactivado para este ISP'
             : 'El acceso web directo a ONUs está desactivado para este ISP',
         });
       }
