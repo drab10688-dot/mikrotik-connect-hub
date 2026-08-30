@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
