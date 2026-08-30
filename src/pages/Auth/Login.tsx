@@ -131,7 +131,7 @@ export default function Login() {
 
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
-    <div className="flex flex-col items-center gap-2">
+    <div className={`flex flex-col gap-2 ${size === 'lg' ? 'items-start' : 'items-center'}`}>
       <div
         className={`relative grid place-items-center rounded-full bg-card/70 ring-2 ring-primary/40 glow-ring overflow-hidden ${
           size === 'lg' ? 'h-32 w-32 sm:h-40 sm:w-40' : 'h-20 w-20'

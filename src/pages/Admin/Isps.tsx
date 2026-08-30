@@ -10,7 +10,9 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { tenantsApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Building2, Copy, Plus, Save, Trash2, Antenna, ExternalLink } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Building2, Copy, Plus, Save, Trash2, Antenna, ExternalLink, Megaphone } from "lucide-react";
+import { mergeLanding, type LandingContent } from "@/lib/landing";
 
 interface Isp {
   id: string;
@@ -26,6 +28,7 @@ interface Isp {
   enable_tr069?: boolean;
   enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
+  landing?: any;
   users_count: string | number;
   onus_used: string | number;
   onus_blocked: string | number;
@@ -402,6 +405,8 @@ function IspCard({
           </Button>
         </div>
 
+        <LandingEditor isp={isp} onSave={onSave} />
+
         <div className="flex flex-wrap items-center gap-2">
           <Label
             htmlFor={`logo-${isp.id}`}
@@ -427,5 +432,127 @@ function IspCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Editor de la publicidad que ve el cliente en /isp/:slug */
+function LandingEditor({ isp, onSave }: { isp: Isp; onSave: (data: any) => void }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<LandingContent>(() => mergeLanding(isp.landing));
+
+  const setField = (key: keyof LandingContent, value: string) =>
+    setData((prev) => ({ ...prev, [key]: value }));
+
+  return (
+    <div className="rounded-lg border p-3 space-y-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Megaphone className="w-3.5 h-3.5" />
+          Publicidad de la página de inicio
+        </span>
+        <span className="text-xs text-muted-foreground">{open ? "Ocultar" : "Editar"}</span>
+      </button>
+
+      {open && (
+        <div className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Etiqueta superior</Label>
+              <Input value={data.badge} onChange={(e) => setField("badge", e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Texto del botón</Label>
+              <Input value={data.cta} onChange={(e) => setField("cta", e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Titular</Label>
+              <Input value={data.headline} onChange={(e) => setField("headline", e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Palabra destacada</Label>
+              <Input value={data.highlight} onChange={(e) => setField("highlight", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Descripción</Label>
+            <Textarea
+              rows={3}
+              value={data.subheadline}
+              onChange={(e) => setField("subheadline", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Indicadores (3)</p>
+            {data.metrics.map((m, i) => (
+              <div key={i} className="grid grid-cols-2 gap-2">
+                <Input
+                  value={m.value}
+                  placeholder="24/7"
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      metrics: prev.metrics.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)),
+                    }))
+                  }
+                />
+                <Input
+                  value={m.label}
+                  placeholder="Monitoreo"
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      metrics: prev.metrics.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)),
+                    }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Tarjetas de beneficios (4)</p>
+            {data.features.map((f, i) => (
+              <div key={i} className="grid gap-2 sm:grid-cols-[1fr_2fr]">
+                <Input
+                  value={f.title}
+                  placeholder="Título"
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      features: prev.features.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)),
+                    }))
+                  }
+                />
+                <Input
+                  value={f.text}
+                  placeholder="Descripción corta"
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      features: prev.features.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)),
+                    }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => onSave({ landing: data })}>
+              <Save className="w-4 h-4 mr-2" /> Guardar publicidad
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setData(mergeLanding(null))}>
+              Restaurar textos por defecto
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
