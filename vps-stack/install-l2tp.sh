@@ -275,10 +275,6 @@ fi
 for n in $(echo "$NETS" | tr ',' ' '); do
   [ -n "$n" ] || continue
   ip route replace "$n" via "$GW" 2>/dev/null || true
-  docker exec omnisync-api ip route replace "$n" via "$GW" 2>/dev/null || true
-  # Ensure NAT to tunnel IP
-  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$GW" -j MASQUERADE 2>/dev/null || \
-    iptables -t nat -I POSTROUTING -s 172.16.0.0/12 -d "$GW" -j MASQUERADE 2>/dev/null || true
 done
 # Permite que API y Firefox (red Docker) alcancen las ONUs a través del túnel.
 for n in $(echo "$NETS" | tr ',' ' '); do
@@ -290,10 +286,6 @@ for n in $(echo "$NETS" | tr ',' ' '); do
   iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || \
     iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || true
 done
-  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
-    iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
-  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
-    iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
 iptables -t nat -C POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
   iptables -t nat -A POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
 EOS
