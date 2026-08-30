@@ -51,6 +51,7 @@ export default function Network() {
   const [deviceId, setDeviceId] = useState<string>(() => localStorage.getItem("mikrotik_device_id") || "");
   const [search, setSearch] = useState("");
   const [browserTarget, setBrowserTarget] = useState<RemoteBrowserTarget | null>(null);
+  const browserOpen = Boolean(browserTarget);
   const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
 
   const { data: devices = [] } = useQuery({
@@ -66,7 +67,7 @@ export default function Network() {
     queryKey: ["net-pppoe", deviceId],
     queryFn: () => netAccessApi.pppoe(deviceId),
     enabled: !!deviceId,
-    refetchInterval: 30_000,
+    refetchInterval: browserOpen ? false : 30_000,
   });
 
   const { data: netDevices, isLoading: loadingNet, refetch: refetchNet, error: netError } = useQuery({
@@ -84,7 +85,7 @@ export default function Network() {
     queryKey: ["net-ethernet", deviceId],
     queryFn: () => netAccessApi.ethernet(deviceId),
     enabled: !!deviceId,
-    refetchInterval: 20_000,
+    refetchInterval: browserOpen ? false : 20_000,
   });
 
   const [eventDays, setEventDays] = useState("7");
@@ -92,14 +93,14 @@ export default function Network() {
     queryKey: ["net-pppoe-events", deviceId, eventDays],
     queryFn: () => netAccessApi.pppoeEvents(deviceId, Number(eventDays)),
     enabled: !!deviceId,
-    refetchInterval: 60_000,
+    refetchInterval: browserOpen ? false : 60_000,
   });
 
   const { data: lanAlerts, isFetching: fetchingAlerts, refetch: refetchAlerts } = useQuery({
     queryKey: ["net-lan-alerts", deviceId],
     queryFn: () => netAccessApi.lanAlerts(deviceId),
     enabled: !!deviceId,
-    refetchInterval: 30_000,
+    refetchInterval: browserOpen ? false : 30_000,
   });
   const alertList: any[] = (lanAlerts as any)?.alerts ?? [];
 
@@ -148,7 +149,7 @@ export default function Network() {
       return map;
     },
     enabled: !!deviceId && apCredList.length > 0,
-    refetchInterval: 30_000,
+    refetchInterval: browserOpen ? false : 30_000,
   });
 
   const allApClients = (allApClientsRaw || {}) as Record<string, any[]>;

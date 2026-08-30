@@ -24,6 +24,18 @@ function normalizePort(port: number | string): number {
 
 type NativeAuthMode = 'plain' | 'challenge-first';
 
+const authCooldowns = new Map<string, number>();
+const AUTH_COOLDOWN_MS = 60_000;
+
+function isAuthenticationError(error: Error): boolean {
+  return /login failed|invalid user|invalid password|authentication failed|not logged in|cannot log in/i.test(error.message);
+}
+
+function authKey(config: MikroTikConfig): string {
+  const passwordFingerprint = crypto.createHash('sha256').update(config.password).digest('hex').slice(0, 12);
+  return `${config.host}:${config.port}:${config.username}:${passwordFingerprint}`;
+}
+
 async function tryNativeApiWithFallback(
   config: MikroTikConfig,
   path: string,
@@ -31,6 +43,11 @@ async function tryNativeApiWithFallback(
   body?: Record<string, unknown>
 ): Promise<unknown> {
   const port = normalizePort(config.port);
+  const cooldownKey = authKey({ ...config, port });
+  const blockedUntil = authCooldowns.get(cooldownKey) || 0;
+  if (blockedUntil > Date.now()) {
+    throw new Error('Credenciales MikroTik rechazadas. Corrige el usuario o la contraseña antes de reintentar.');
+  }
   const tlsCandidates: boolean[] = [];
 
   if (typeof config.useTls === 'boolean') tlsCandidates.push(config.useTls);
@@ -45,9 +62,17 @@ async function tryNativeApiWithFallback(
   for (const authMode of authModes) {
     for (const useTls of tlsCandidates) {
       try {
-        return await nativeApiCommand({ ...config, port, useTls }, path, method, body, authMode, 7000);
+        const result = await nativeApiCommand({ ...config, port, useTls }, path, method, body, authMode, 7000);
+        authCooldowns.delete(cooldownKey);
+        return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+        // Una credencial rechazada no se arregla probando TLS u otro modo de login.
+        // Detener aquí evita ráfagas que activan la protección de RouterOS.
+        if (isAuthenticationError(lastError)) {
+          authCooldowns.set(cooldownKey, Date.now() + AUTH_COOLDOWN_MS);
+          throw lastError;
+        }
       }
     }
   }
