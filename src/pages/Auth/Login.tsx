@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Gauge, Wifi, Radio } from 'lucide-react';
+import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Wifi, Radio } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
 const omnisyncLogoFull = omnisyncLogoAsset.url;
