@@ -135,7 +135,7 @@ export default function Login() {
       <div
         className="relative grid place-items-center rounded-full bg-card/70 ring-2 ring-primary/40 glow-ring overflow-hidden h-32 w-32 sm:h-40 sm:w-40"
       >
-        <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
+        <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-contain p-2" />
       </div>
     </div>
   );
