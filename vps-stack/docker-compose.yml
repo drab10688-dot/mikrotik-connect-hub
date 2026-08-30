@@ -191,6 +191,10 @@ services:
     container_name: omnisync-browser
     restart: unless-stopped
     shm_size: "1gb"
+    # Necesario en kernels/libseccomp antiguos (p. ej. algunos VPS Contabo).
+    # Evita: CanCreateUserNamespace() clone() failure: EPERM.
+    security_opt:
+      - seccomp=unconfined
     environment:
       PUID: 1000
       PGID: 1000

@@ -42,7 +42,8 @@ docker compose build --no-cache api
 docker compose up -d api
 # Navegador remoto: se actualiza/levanta SIN tocar el túnel L2TP.
 docker compose pull remote-browser >/dev/null 2>&1 || true
-docker compose up -d remote-browser >/dev/null 2>&1 || \
+# --force-recreate aplica cambios de seguridad/red aunque la imagen sea la misma.
+docker compose up -d --force-recreate remote-browser >/dev/null 2>&1 || \
   echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy integrado sigue activo${NC}"
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
@@ -74,4 +75,5 @@ cd /root && rm -rf "$TEMP_DIR"
 echo -e "${GREEN}=== Actualizado ✓  (${COMMIT}) ===${NC}"
 echo "Verifica versión desplegada:  curl -s http://localhost/VERSION.txt"
 echo "Logs API:                     docker compose -f $INSTALL_DIR/docker-compose.yml logs --tail=50 api"
+echo "Probar navegador/ONU:         sudo bash $INSTALL_DIR/test-browser.sh 10.82.0.29 80"
 echo -e "${CYAN}Recuerda en el navegador: Ctrl+Shift+R (recarga forzada)${NC}"
