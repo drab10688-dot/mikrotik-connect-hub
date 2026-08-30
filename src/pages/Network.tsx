@@ -237,6 +237,7 @@ export default function Network() {
         title: `WebFig — ${info.host}:${info.port}`,
         directUrl: info.direct_url || `http://${info.host}:${info.port}/`,
         proxyUrl: proxyUrl(info.proxy_path),
+        mikrotikId: deviceId,
       });
     } catch (e: any) {
       toast.error(e.message || "No se pudo abrir WebFig");
@@ -501,6 +502,7 @@ export default function Network() {
                                       proxyUrl: proxyUrl(
                                         `/api/netaccess/${deviceId}/web/${s.remote_address}/${portDraft.otro?.port || 80}/`
                                       ),
+                                      mikrotikId: deviceId,
                                     })
                                   }
                                 >
@@ -719,6 +721,7 @@ export default function Network() {
                               title: `${d.name} — ${d.ip}:${d.web_port}`,
                               directUrl: `${d.web_protocol || "http"}://${d.ip}:${d.web_port}/`,
                               proxyUrl: proxyUrl(d.proxy_path),
+                              mikrotikId: deviceId,
                             })}
                           >
                             <Monitor className="w-3.5 h-3.5 mr-1" /> Abrir
