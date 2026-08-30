@@ -290,7 +290,7 @@ export default function OnuWeb() {
                     <Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} />
                   </div>
                   <div className="flex items-end">
-                    <Button className="w-full" disabled={!ip || probe.isPending} onClick={() => probe.mutate()}>
+                    <Button className="w-full" disabled={!ip || probe.isPending} onClick={() => probe.mutate(undefined)}>
                       {probe.isPending ? "Detectando…" : "Detectar modelo"}
                     </Button>
                   </div>
