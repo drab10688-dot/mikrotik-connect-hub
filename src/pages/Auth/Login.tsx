@@ -7,8 +7,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Wifi, Radio } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import omnisyncSphereAsset from '@/assets/omnisync-sphere.png.asset.json';
-const omnisyncLogoFull = omnisyncSphereAsset.url;
+import omnisyncSphereUrl from '@/assets/omnisync-sphere.png';
 import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
 import { mergeLanding } from '@/lib/landing';
 
