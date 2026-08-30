@@ -22,6 +22,7 @@ interface Isp {
   primary_color: string | null;
   acs_token: string | null;
   onu_limit: number | null;
+  user_limit: number | null;
   is_active: boolean;
   enable_onus?: boolean;
   enable_mikrotik?: boolean;
@@ -57,6 +58,7 @@ export default function Isps() {
     name: "",
     slug: "",
     onu_limit: "",
+    user_limit: "",
     admin_email: "",
     admin_password: "",
   });
@@ -73,12 +75,13 @@ export default function Isps() {
         name: form.name,
         slug: form.slug || undefined,
         onu_limit: form.onu_limit ? Number(form.onu_limit) : undefined,
+        user_limit: form.user_limit ? Number(form.user_limit) : undefined,
         admin_email: form.admin_email || undefined,
         admin_password: form.admin_password || undefined,
       }),
     onSuccess: () => {
       toast.success("ISP creado con su propio enlace TR-069");
-      setForm({ name: "", slug: "", onu_limit: "", admin_email: "", admin_password: "" });
+      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "" });
       setCreating(false);
       qc.invalidateQueries({ queryKey: ["admin-isps"] });
     },
@@ -164,7 +167,16 @@ export default function Isps() {
                   onChange={(e) => setForm({ ...form, onu_limit: e.target.value })}
                 />
               </div>
-              <div />
+              <div className="space-y-1.5">
+                <Label>Límite de usuarios del panel</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="0 = ilimitado"
+                  value={form.user_limit}
+                  onChange={(e) => setForm({ ...form, user_limit: e.target.value })}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label>Email del administrador</Label>
                 <Input
@@ -228,6 +240,7 @@ function IspCard({
   onDelete: () => void;
 }) {
   const [limit, setLimit] = useState(String(isp.onu_limit ?? ""));
+  const [userLimit, setUserLimit] = useState(String(isp.user_limit ?? ""));
   const [color, setColor] = useState(isp.primary_color || "#0EA5A4");
   const [mkPort, setMkPort] = useState(String(isp.web_ports?.mikrotik?.port ?? 80));
   const [ubntPort, setUbntPort] = useState(String(isp.web_ports?.ubiquiti?.port ?? 443));
@@ -300,7 +313,13 @@ function IspCard({
           {blocked > 0 && (
             <Badge variant="destructive">{blocked} fuera de cupo</Badge>
           )}
-          <span className="text-muted-foreground">{isp.users_count} usuarios</span>
+          <span className="text-muted-foreground">
+            {isp.users_count}
+            {isp.user_limit && isp.user_limit > 0 ? ` / ${isp.user_limit}` : ""} usuarios
+          </span>
+          {!!isp.user_limit && isp.user_limit > 0 && Number(isp.users_count) >= isp.user_limit && (
+            <Badge variant="destructive">Cupo de usuarios lleno</Badge>
+          )}
           <span className="text-muted-foreground">{isp.vpn_count} VPN</span>
         </div>
 
@@ -317,6 +336,20 @@ function IspCard({
                 onChange={(e) => setLimit(e.target.value)}
               />
               <Button variant="secondary" onClick={() => onSave({ onu_limit: Number(limit || 0) })}>
+                <Save className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Límite de usuarios (0 = ilimitado)</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={0}
+                value={userLimit}
+                onChange={(e) => setUserLimit(e.target.value)}
+              />
+              <Button variant="secondary" onClick={() => onSave({ user_limit: Number(userLimit || 0) })}>
                 <Save className="w-4 h-4" />
               </Button>
             </div>
