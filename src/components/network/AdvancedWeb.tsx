@@ -165,28 +165,38 @@ export function AdvancedWeb({
 
       {target && (
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader className="flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">
               {target.name} <span className="font-mono text-xs text-muted-foreground">{target.ip}</span>
             </CardTitle>
-            <Button size="sm" variant="outline" asChild>
-              <a href={withAuthToken(target.proxy_path)} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
-              </a>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={toggleFullscreen}>
+                {fullscreen ? <Minimize className="h-4 w-4 mr-1" /> : <Maximize className="h-4 w-4 mr-1" />}
+                {fullscreen ? "Salir" : "Pantalla completa"}
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a href={withAuthToken(target.proxy_path)} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
+                </a>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
               Si el equipo pide código de verificación (captcha) y no carga bien aquí, ábrelo en una pestaña nueva:
               la sesión y la imagen del captcha funcionan mejor fuera del iframe.
             </p>
-            <iframe
-              key={target.proxy_path}
-              src={withAuthToken(target.proxy_path)}
-              title={`Sistema de ${target.name}`}
-              referrerPolicy="no-referrer"
-              className="w-full h-[70vh] rounded-md border bg-background"
-            />
+            <div ref={frameWrapRef} className="bg-background" onDoubleClick={toggleFullscreen}>
+              <iframe
+                key={target.proxy_path}
+                src={withAuthToken(target.proxy_path)}
+                title={`Sistema de ${target.name}`}
+                referrerPolicy="no-referrer"
+                allowFullScreen
+                className="w-full h-[70vh] rounded-md border bg-background"
+                style={fullscreen ? { height: "100vh" } : undefined}
+              />
+            </div>
           </CardContent>
 
         </Card>
