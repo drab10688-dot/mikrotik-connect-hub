@@ -57,27 +57,34 @@ export const withAuthToken = (path?: string | null): string => {
  * URL de los escritorios remotos (KasmVNC). Van en puerto dedicado porque
  * KasmVNC usa rutas absolutas y no funciona bajo un subpath (/browser/).
  */
-export const remoteDesktopUrl = (kind: 'browser' | 'winbox' | number): string => {
-  const port = typeof kind === 'number' ? kind : kind === 'winbox' ? 8082 : 8081;
+export const remoteDesktopUrl = (
+  port: number | 'browser' | 'winbox',
+  creds?: { user?: string; password?: string } | null,
+): string => {
+  const p = typeof port === 'number' ? port : port === 'winbox' ? 8082 : 8081;
   const host = window.location.hostname;
   // KasmVNC sólo funciona en contexto seguro: los escritorios se sirven por HTTPS
   // (certificado autofirmado; la primera vez hay que aceptar el aviso del navegador).
-  // autoconnect/reconnect: entra directo y conserva el visor durante cortes breves.
-  // resize=scale: el escritorio remoto se ajusta a la vista y habilita los gestos
-  // táctiles de KasmVNC en celular (pellizcar = zoom, dos dedos = desplazar).
-  // Una compresión alta y calidad moderada reducen cortes en enlaces móviles/VPN.
-  const base = `https://${host}:${port}/?autoconnect=true&reconnect=true&reconnect_delay=1000&resize=scale&quality=4&compression=9&show_control_bar=true&show_dot=true`;
-  return withAuthToken(base);
+  // Cada usuario tiene su propio escritorio con credenciales temporales.
+  const auth =
+    creds?.user && creds?.password
+      ? `${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@`
+      : '';
+  const base = `https://${auth}${host}:${p}/?autoconnect=true&reconnect=true&reconnect_delay=1000&resize=scale&quality=4&compression=9&show_control_bar=true&show_dot=true`;
+  return auth ? base : withAuthToken(base);
 };
 
-
-
-
 /** Visor interno con controles táctiles (zoom, teclado, pantalla completa). */
-export const remoteDesktopViewerUrl = (port: number | 'browser' | 'winbox', title?: string): string => {
+export const remoteDesktopViewerUrl = (
+  port: number | 'browser' | 'winbox',
+  title?: string,
+  creds?: { user?: string; password?: string } | null,
+): string => {
   const p = typeof port === 'number' ? port : port === 'winbox' ? 8082 : 8081;
   const q = new URLSearchParams({ port: String(p) });
   if (title) q.set('title', title);
+  if (creds?.user) q.set('u', creds.user);
+  if (creds?.password) q.set('p', creds.password);
   return `/vnc?${q.toString()}`;
 };
 
@@ -365,8 +372,10 @@ export const netAccessApi = {
 
 // ─── Navegador remoto (Firefox real en el VPS) ───
 export const browserApi = {
-  /** Escritorio dedicado del ISP (se crea bajo demanda en el VPS). */
+  /** Escritorio privado del usuario (se crea bajo demanda en el VPS). */
   status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
+  /** Crea/reutiliza el escritorio propio y devuelve puerto y credenciales. */
+  session: async () => unwrapData<any>(await apiPost<any>('/browser/session', {})),
   open: async (url: string) => unwrapData<any>(await apiPost<any>('/browser/open', { url })),
   /** Latido del visor: evita que se cierren las pestañas mientras se usa. */
   ping: async () => unwrapData<any>(await apiPost<any>('/browser/ping', {})),
