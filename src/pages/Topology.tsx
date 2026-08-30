@@ -64,7 +64,7 @@ export default function Topology() {
           </TabsContent>
 
           <TabsContent value="avanzado" className="mt-4">
-            <AdvancedWeb target={advanced} devices={devices} onSelect={setAdvanced} />
+            <AdvancedWeb target={advanced} devices={devices} mikrotikId={mikrotikId} onSelect={setAdvanced} />
           </TabsContent>
         </Tabs>
       </div>
