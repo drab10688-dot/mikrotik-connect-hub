@@ -436,7 +436,8 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
   if (!tenant) return;
 
   const name: string = (req.body?.name || 'mikrotik-1').toString().replace(/[^a-zA-Z0-9_-]/g, '');
-  const onuNetworks: string = (req.body?.onu_networks || '10.82.0.0/21').toString();
+  const onuNetworks: string = (req.body?.onu_networks || tenant.onu_networks || '10.82.0.0/21').toString();
+
   const serverHost = PUBLIC_HOST || req.get('host')?.split(':')[0] || 'IP_DEL_VPS';
   const mode: string = (req.body?.mode || 'vpn').toString();
 
