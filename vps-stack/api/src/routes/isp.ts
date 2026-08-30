@@ -13,6 +13,8 @@ export const SECTIONS = [
   'dashboard',
   'onus',
   'onu_web',
+  'mikrotik',
+  'topology',
   'acs',
   'wifi',
   'pppoe',
@@ -24,6 +26,63 @@ export const SECTIONS = [
   'roles',
 ] as const;
 export type Section = (typeof SECTIONS)[number];
+
+export const SECTION_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  onus: 'Gestion de ONUs',
+  onu_web: 'Mini-panel de equipos',
+  mikrotik: 'Conexion MikroTik',
+  topology: 'Mapa de red',
+  acs: 'ACS / TR-069',
+  wifi: 'Wi-Fi dual band',
+  pppoe: 'PPPoE / clientes',
+  red: 'Red, APs y senal',
+  vpn: 'Credenciales y VPN',
+  configuracion: 'Configuracion',
+  diagnostico: 'Diagnostico API',
+  usuarios: 'Usuarios',
+  roles: 'Roles y permisos',
+};
+
+export type RoleName = 'admin' | 'user' | 'secretary' | 'reseller';
+export const ROLE_NAMES: RoleName[] = ['admin', 'user', 'secretary', 'reseller'];
+
+/**
+ * Permisos por defecto que recibe cada ISP nuevo.
+ * view = ver la seccion | edit = puede modificar.
+ */
+export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, { view: string[]; edit: string[] }> = {
+  admin: { view: [...SECTIONS], edit: [...SECTIONS] },
+  user: {
+    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'topology', 'acs', 'wifi', 'pppoe', 'red', 'vpn', 'diagnostico'],
+    edit: ['onus', 'onu_web', 'wifi', 'pppoe', 'red'],
+  },
+  secretary: {
+    view: ['dashboard', 'onus', 'onu_web', 'topology', 'pppoe', 'red'],
+    edit: ['onus', 'pppoe'],
+  },
+  reseller: {
+    view: ['dashboard', 'onus', 'topology', 'red'],
+    edit: [],
+  },
+};
+
+/** Crea la matriz de permisos por defecto de un ISP (idempotente). */
+export async function seedTenantPermissions(db: { query: Function }, tenantId: string) {
+  for (const role of ROLE_NAMES) {
+    const def = DEFAULT_ROLE_PERMISSIONS[role];
+    for (const section of SECTIONS) {
+      const canEdit = def.edit.includes(section);
+      const canView = canEdit || def.view.includes(section);
+      await db.query(
+        `INSERT INTO role_permissions (tenant_id, role, section, can_view, can_edit)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, role, section) DO NOTHING`,
+        [tenantId, role, section, canView, canEdit]
+      );
+    }
+  }
+}
 
 const PUBLIC_HOST = process.env.PUBLIC_HOST || process.env.VPS_PUBLIC_IP || process.env.L2TP_HOST || '';
 // VPN principal: L2TP/IPsec. El VPS es la IP local del túnel.
@@ -184,11 +243,56 @@ ispRouter.put('/acs/credentials', requireRole('super_admin', 'admin'), async (re
 ispRouter.get('/permissions', async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
-  const { rows } = await pool.query(
+  let { rows } = await pool.query(
     `SELECT role, section, can_view, can_edit FROM role_permissions WHERE tenant_id = $1`,
     [tenant.id]
   );
-  res.json({ data: { sections: SECTIONS, permissions: rows } });
+  // ISP sin matriz de permisos (recien creado o migrado): sembrar defaults.
+  if (!rows.length) {
+    await seedTenantPermissions(pool, tenant.id).catch(() => undefined);
+    ({ rows } = await pool.query(
+      `SELECT role, section, can_view, can_edit FROM role_permissions WHERE tenant_id = $1`,
+      [tenant.id]
+    ));
+  }
+  res.json({ data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: rows } });
+});
+
+/** Permisos efectivos del usuario autenticado (rol + anulaciones individuales). */
+ispRouter.get('/my-permissions', async (req: AuthRequest, res: Response) => {
+  const empty = { sections: SECTIONS, labels: SECTION_LABELS, permissions: [] as any[], full_access: false };
+  try {
+    if (req.userRole === 'super_admin' || !req.tenantId) {
+      return res.json({ data: { ...empty, full_access: true } });
+    }
+    const { rows: rolePerms } = await pool.query(
+      `SELECT section, can_view, can_edit FROM role_permissions
+        WHERE tenant_id = $1 AND role = $2`,
+      [req.tenantId, req.userRole]
+    );
+    if (!rolePerms.length) {
+      await seedTenantPermissions(pool, req.tenantId).catch(() => undefined);
+    }
+    const { rows: fresh } = await pool.query(
+      `SELECT section, can_view, can_edit FROM role_permissions
+        WHERE tenant_id = $1 AND role = $2`,
+      [req.tenantId, req.userRole]
+    );
+    const { rows: own } = await pool.query(
+      `SELECT section, can_view, can_edit FROM user_permissions
+        WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
+      [req.userId, req.tenantId]
+    );
+    const map = new Map<string, any>();
+    for (const p of fresh) map.set(p.section, { ...p });
+    for (const p of own) map.set(p.section, { ...p });
+    res.json({
+      data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: [...map.values()], full_access: false },
+    });
+  } catch {
+    // Instalaciones antiguas sin tablas: no bloquear el panel.
+    res.json({ data: { ...empty, full_access: true } });
+  }
 });
 
 ispRouter.put('/permissions', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
@@ -202,7 +306,7 @@ ispRouter.put('/permissions', requireRole('super_admin', 'admin'), async (req: A
     await client.query('BEGIN');
     for (const item of items) {
       if (!SECTIONS.includes(item.section)) continue;
-      if (!['admin', 'user', 'secretary', 'reseller'].includes(item.role)) continue;
+      if (!ROLE_NAMES.includes(item.role)) continue;
       await client.query(
         `INSERT INTO role_permissions (tenant_id, role, section, can_view, can_edit)
          VALUES ($1, $2, $3, $4, $5)
@@ -230,7 +334,7 @@ ispRouter.get('/user-permissions/:userId', requireRole('super_admin', 'admin'), 
       WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
     [req.params.userId, tenant.id]
   );
-  res.json({ data: { sections: SECTIONS, permissions: rows } });
+  res.json({ data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: rows } });
 });
 
 ispRouter.put('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {

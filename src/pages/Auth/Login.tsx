@@ -4,13 +4,43 @@ import { authApi, setToken, setStoredUser, setApiBaseUrl } from '@/lib/api-clien
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { LogIn, ArrowLeft } from 'lucide-react';
+import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Gauge, Wifi, Radio } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
 const omnisyncLogoFull = omnisyncLogoAsset.url;
 import { usePublicTenant, setStoredTenantSlug } from '@/hooks/useTenantBranding';
+
+const FEATURES = [
+  { icon: Antenna, title: 'ONUs en vivo', text: 'Señal óptica, estado e inventario TR-069 en tiempo real.' },
+  { icon: Network, title: 'Mapa de red', text: 'Topología MikroTik → sector → AP → cliente con calidad de enlace.' },
+  { icon: Wifi, title: 'Wi-Fi y PPPoE', text: 'Cambia SSID, claves y credenciales sin entrar equipo por equipo.' },
+  { icon: ShieldCheck, title: 'Multi-ISP', text: 'Marca, cuotas y permisos independientes para cada operador.' },
+];
+
+const METRICS = [
+  { value: '24/7', label: 'Monitoreo' },
+  { value: '<1s', label: 'Respuesta VPN' },
+  { value: '12+', label: 'Marcas ONU' },
+];
+
+/** Fondo técnico compartido: rejilla, auroras y anillos de señal. */
+const TechBackdrop = () => (
+  <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+    <div
+      className="absolute inset-0 opacity-[0.35]"
+      style={{
+        backgroundImage:
+          'linear-gradient(hsl(var(--primary) / 0.10) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.10) 1px, transparent 1px)',
+        backgroundSize: '54px 54px',
+        maskImage: 'radial-gradient(ellipse 80% 70% at 30% 20%, black 10%, transparent 75%)',
+      }}
+    />
+    <div className="absolute -top-40 -left-24 h-[32rem] w-[32rem] rounded-full bg-primary/20 blur-[120px] animate-aurora" />
+    <div className="absolute bottom-[-14rem] right-[-8rem] h-[34rem] w-[34rem] rounded-full bg-accent/20 blur-[130px] animate-aurora [animation-delay:4s]" />
+    <div className="absolute top-1/3 right-1/4 h-72 w-72 rounded-full bg-primary-glow/15 blur-[100px] animate-aurora [animation-delay:8s]" />
+  </div>
+);
 
 export default function Login() {
   const navigate = useNavigate();
@@ -19,34 +49,25 @@ export default function Login() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [apiUrl] = useState('');
 
   useEffect(() => {
     if (slug) setStoredTenantSlug(slug);
   }, [slug]);
 
-  const brandName = tenant?.name || 'Omnisync';
+  const brandName = tenant?.name || 'OmniACS';
   const brandLogo = tenant?.logo_url || null;
 
   useEffect(() => {
-    if (isAuthenticated && !authLoading) {
-      navigate('/dashboard');
-    }
+    if (isAuthenticated && !authLoading) navigate('/dashboard');
   }, [isAuthenticated, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
-      if (apiUrl.trim()) {
-        setApiBaseUrl(apiUrl.trim());
-      }
-
+      if (apiUrl.trim()) setApiBaseUrl(apiUrl.trim());
       const { token, user } = await authApi.login(formData.email, formData.password);
       setToken(token);
       setStoredUser(user);
@@ -62,147 +83,168 @@ export default function Login() {
     }
   };
 
-  // Landing promocional
+  const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
+    <div className="flex items-center gap-3">
+      <div
+        className={`relative grid place-items-center rounded-2xl bg-card/70 ring-1 ring-primary/30 glow-ring overflow-hidden ${
+          size === 'lg' ? 'h-16 w-16' : 'h-12 w-12'
+        }`}
+      >
+        <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
+      </div>
+      <div className="min-w-0">
+        <p className={`font-bold tracking-tight brand-text ${size === 'lg' ? 'text-2xl' : 'text-lg'}`}>
+          {brandName}
+        </p>
+        <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Network Operations</p>
+      </div>
+    </div>
+  );
+
+  const LoginForm = (
+    <div className="glass-panel glass-panel-glow hairline-top w-full max-w-md p-7 animate-fade-in-up">
+      <div className="mb-6 space-y-1">
+        <h2 className="text-2xl font-bold tracking-tight">Acceso al panel</h2>
+        <p className="text-sm text-muted-foreground">Ingresa tus credenciales para entrar a la consola.</p>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Correo electrónico</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="operador@tuisp.com"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            required
+            disabled={loading}
+            className="h-11 bg-background/60"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Contraseña</Label>
+          <Input
+            id="password"
+            type="password"
+            placeholder="••••••••"
+            value={formData.password}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            required
+            disabled={loading}
+            className="h-11 bg-background/60"
+          />
+        </div>
+        <Button
+          type="submit"
+          disabled={loading}
+          className="relative w-full h-11 overflow-hidden bg-gradient-primary text-primary-foreground font-semibold shadow-primary hover:opacity-95"
+        >
+          <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-12 bg-primary-foreground/20 animate-sheen" aria-hidden />
+          <LogIn className="mr-2 h-4 w-4" />
+          {loading ? 'Verificando…' : 'Entrar'}
+        </Button>
+        <p className="pt-1 text-center text-xs text-muted-foreground">
+          ¿Sin cuenta? Solicítala al administrador de tu ISP.
+        </p>
+      </form>
+    </div>
+  );
+
+  // ── Landing comercial ───────────────────────────────────────
   if (!showForm) {
     return (
-      <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-green-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
-          <div className="absolute bottom-1/3 left-1/3 w-72 h-72 bg-yellow-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }} />
-        </div>
-        
-        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
-          <div className="mb-8 animate-fade-in flex items-center justify-center">
-            <div className="relative w-40 h-40 md:w-52 md:h-52 lg:w-60 lg:h-60 rounded-full p-3 bg-slate-900/60 border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(34,211,238,0.3)] hover:shadow-[0_0_60px_rgba(34,211,238,0.5)] transition-all duration-500 hover:scale-105 overflow-hidden">
-              <img 
-                src={brandLogo || omnisyncLogoFull} 
-                alt={brandName} 
-                className="w-full h-full object-cover rounded-full drop-shadow-2xl"
-              />
+      <div className="relative min-h-screen overflow-hidden bg-background">
+        <TechBackdrop />
+
+        <div className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl items-center gap-12 px-6 py-12 lg:grid-cols-[1.05fr_0.95fr]">
+          {/* Columna de venta */}
+          <div className="space-y-8 animate-fade-in-up">
+            <Brand />
+
+            <div className="space-y-5">
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                <Radio className="h-3.5 w-3.5" />
+                Plataforma ACS TR-069
+              </span>
+              <h1 className="text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
+                La consola que tu ISP <span className="brand-text">necesita</span> para operar fibra y radio.
+              </h1>
+              <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
+                ONUs, antenas, MikroTik y VPN en un solo panel. Diagnóstico en segundos, cambios masivos sin
+                desplazamientos y control total por operador.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                size="lg"
+                onClick={() => setShowForm(true)}
+                className="relative h-12 overflow-hidden bg-gradient-primary px-8 text-base font-semibold text-primary-foreground shadow-primary hover:opacity-95"
+              >
+                <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-12 bg-primary-foreground/20 animate-sheen" aria-hidden />
+                <LogIn className="mr-2 h-5 w-5" />
+                Iniciar sesión
+              </Button>
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-card/50 px-4 py-2 text-xs text-muted-foreground backdrop-blur">
+                <span className="status-dot text-success" />
+                Servicio operativo
+              </div>
+            </div>
+
+            <div className="grid max-w-lg grid-cols-3 gap-3">
+              {METRICS.map((m) => (
+                <div key={m.label} className="glass-panel px-4 py-3 text-center">
+                  <p className="text-xl font-bold text-gradient-primary">{m.value}</p>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                </div>
+              ))}
             </div>
           </div>
-          
-          <div className="text-center space-y-6 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <h1 className="text-3xl md:text-4xl font-bold text-white">{brandName}</h1>
-            <p className="text-base md:text-lg text-slate-400 max-w-md">
-              Tu plataforma integral de gestión de redes MikroTik
-            </p>
-            
-            <div className="flex flex-wrap justify-center gap-6 mt-8">
-              <div className="flex items-center gap-2 text-cyan-400">
-                <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="text-sm">Monitoreo en tiempo real</span>
-              </div>
-              <div className="flex items-center gap-2 text-green-400">
-                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" style={{ animationDelay: '0.5s' }} />
-                <span className="text-sm">Gestión simplificada</span>
-              </div>
-              <div className="flex items-center gap-2 text-yellow-400">
-                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" style={{ animationDelay: '1s' }} />
-                <span className="text-sm">Control total</span>
-              </div>
-            </div>
 
-            <div className="mt-10 animate-fade-in" style={{ animationDelay: '0.6s' }}>
-              <Button 
-                onClick={() => setShowForm(true)}
-                size="lg"
-                className="h-14 px-10 text-lg font-semibold bg-gradient-to-r from-cyan-500 to-green-500 hover:from-cyan-600 hover:to-green-600 text-white shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 transition-all duration-300 hover:scale-105"
+          {/* Columna de capacidades */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {FEATURES.map((f, i) => (
+              <div
+                key={f.title}
+                className="glass-panel group p-5 transition-smooth hover:-translate-y-1 hover:glass-panel-glow animate-fade-in-up"
+                style={{ animationDelay: `${120 + i * 90}ms` }}
               >
-                <LogIn className="w-5 h-5 mr-2" />
-                Iniciar Sesión
-              </Button>
+                <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/25 transition-smooth group-hover:scale-105">
+                  <f.icon className="h-5 w-5" />
+                </span>
+                <p className="font-semibold">{f.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{f.text}</p>
+              </div>
+            ))}
+            <div className="glass-panel hairline-top sm:col-span-2 flex items-center gap-4 p-5">
+              <Gauge className="h-8 w-8 shrink-0 text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Todo viaja por tu VPN privada: sin exponer routers ni ONUs a Internet.
+              </p>
             </div>
-
-            <p className="text-sm text-slate-500 mt-6">
-              Contacta al administrador para obtener una cuenta
-            </p>
           </div>
         </div>
       </div>
     );
   }
 
+  // ── Pantalla de acceso ──────────────────────────────────────
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-      </div>
-      
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
+    <div className="relative min-h-screen overflow-hidden bg-background">
+      <TechBackdrop />
+
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-10">
         <Button
           variant="ghost"
           onClick={() => setShowForm(false)}
-          className="absolute top-6 left-6 text-slate-400 hover:text-white hover:bg-slate-800/50"
+          className="absolute left-4 top-5 text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="w-5 h-5 mr-2" />
+          <ArrowLeft className="mr-2 h-4 w-4" />
           Volver
         </Button>
 
-        <div className="mb-6 animate-fade-in flex items-center justify-center">
-          <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full p-2 bg-slate-900/60 border-2 border-cyan-500/40 shadow-[0_0_30px_rgba(34,211,238,0.3)] overflow-hidden">
-            <img 
-              src={brandLogo || omnisyncLogoFull} 
-              alt={brandName} 
-              className="w-full h-full object-cover rounded-full drop-shadow-xl"
-            />
-          </div>
-        </div>
-
-        <Card className="w-full max-w-md shadow-2xl border-slate-700/50 bg-slate-800/80 backdrop-blur-xl animate-fade-in">
-          <CardHeader className="space-y-1 text-center">
-            <CardTitle className="text-2xl font-bold text-white">Iniciar Sesión</CardTitle>
-            <CardDescription className="text-slate-400">
-              Ingresa tus credenciales para acceder al sistema
-            </CardDescription>
-          </CardHeader>
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-300">Correo Electrónico</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="correo@ejemplo.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                  disabled={loading}
-                  className="h-11 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-cyan-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-slate-300">Contraseña</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                  disabled={loading}
-                  className="h-11 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-cyan-500"
-                />
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col space-y-4">
-              <Button 
-                type="submit" 
-                className="w-full h-11 text-base font-semibold bg-gradient-to-r from-cyan-500 to-green-500 hover:from-cyan-600 hover:to-green-600" 
-                disabled={loading}
-              >
-                {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
-              </Button>
-              <p className="text-sm text-center text-slate-400">
-                Contacta al administrador para obtener una cuenta
-              </p>
-            </CardFooter>
-          </form>
-        </Card>
+        <Brand size="sm" />
+        {LoginForm}
       </div>
     </div>
   );

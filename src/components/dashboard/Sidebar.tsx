@@ -1,12 +1,10 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import {
-  LayoutDashboard, Users, Wifi, Activity, Settings, LogOut, Router,
-  ShieldCheck, BarChart3, Ticket, ListChecks, Gauge, Database,
-  UserPlus, ImagePlus, X, CreditCard, Monitor, PiggyBank, ScrollText,
-  Server, Radio, Antenna, Building2, Globe, Network
+  LayoutDashboard, Activity, Settings, LogOut, Router,
+  ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -17,27 +15,34 @@ import { MobileNav } from "./MobileNav";
 import { useAuth } from "@/hooks/useAuth";
 import { useMyTenant } from "@/hooks/useTenantBranding";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
+import { useMyPermissions } from "@/hooks/usePermissions";
 import { useState, useEffect, useRef } from "react";
-import { Receipt } from "lucide-react";
 
+type MenuEntry = {
+  icon: any;
+  label: string;
+  path: string;
+  module?: "onus" | "mikrotik" | "onu_web";
+  section?: string;
+  group: string;
+};
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus" as const },
-  { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik" as const },
-  { icon: Globe, label: "Mini-panel de equipos", path: "/onu-web", module: "onu_web" as const },
-  { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik" as const },
-  { icon: Radio, label: "Credenciales y VPN", path: "/acs" },
-  { icon: Settings, label: "Configuración", path: "/settings" },
-  { icon: Activity, label: "Diagnóstico API", path: "/diagnostics" },
+const menuItems: MenuEntry[] = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", section: "dashboard", group: "Operación" },
+  { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus", section: "onus", group: "Operación" },
+  { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik", group: "Operación" },
+  { icon: Globe, label: "Mini-panel de equipos", path: "/onu-web", module: "onu_web", section: "onu_web", group: "Operación" },
+  { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
+  { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
+  { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
+  { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
 ];
-
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { signOut, isSecretary, isReseller, isSuperAdmin } = useAuth();
+  const { signOut, isSecretary, isReseller, isSuperAdmin, user } = useAuth();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
+  const { can, isLoading: loadingSections } = useMyPermissions();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [customLogo, setCustomLogo] = useState<string | null>(null);
@@ -46,7 +51,6 @@ export const Sidebar = () => {
   const { tenant } = useMyTenant();
   const displayLogo = customLogo || tenant?.logo_url || null;
   const displayName = tenant?.name || businessName;
-
 
   useEffect(() => {
     const savedLogo = localStorage.getItem("sidebar_logo");
@@ -76,7 +80,6 @@ export const Sidebar = () => {
     toast.info("Logo eliminado");
   };
 
-  // Get current device's secretary permissions (device-specific or global assignment)
   const currentDeviceId = localStorage.getItem("mikrotik_device_id") || "";
   const currentPerms =
     secretaryAssignments?.find((a: any) => a.mikrotik_id === currentDeviceId) ||
@@ -102,17 +105,19 @@ export const Sidebar = () => {
   };
 
   // El super admin usa el panel solo para administrar ISPs
-  const superAdminMenu = [
-    { icon: Building2, label: "Panel de ISPs", path: "/admin/isps" },
+  const superAdminMenu: MenuEntry[] = [
+    { icon: Building2, label: "Panel de ISPs", path: "/admin/isps", group: "Administración" },
   ];
 
-  const moduleMenuItems = menuItems.filter((item) => moduleEnabled((item as any).module));
+  const moduleMenuItems = menuItems
+    .filter((item) => moduleEnabled(item.module))
+    // Permisos por sección definidos para cada ISP
+    .filter((item) => item.path === "/dashboard" || can(item.section));
 
   const filteredMenuItems = isSuperAdmin
     ? superAdminMenu
     : isSecretary
     ? moduleMenuItems.filter(item => {
-        // Always show dashboard
         if (item.path === '/dashboard') return true;
         if (!currentPerms) return false;
         const permKey = secretaryPermMap[item.path];
@@ -121,7 +126,10 @@ export const Sidebar = () => {
       })
     : moduleMenuItems;
 
-
+  const groups = filteredMenuItems.reduce<Record<string, MenuEntry[]>>((acc, item) => {
+    (acc[item.group] ||= []).push(item);
+    return acc;
+  }, {});
 
   const handleLogout = async () => {
     await signOut();
@@ -133,86 +141,146 @@ export const Sidebar = () => {
     navigate("/login");
   };
 
+  const roleLabel = isSuperAdmin
+    ? "Super admin"
+    : isSecretary
+    ? "Secretaría"
+    : isReseller
+    ? "Reseller"
+    : "Operador";
+
   return (
     <>
-    <MobileNav items={filteredMenuItems} showAdmin={!isSecretary && !isReseller} />
-    <div className="bg-sidebar text-sidebar-foreground h-screen w-64 fixed left-0 top-0 z-40 flex-col border-r border-sidebar-border hidden md:flex">
+      <MobileNav items={filteredMenuItems} showAdmin={!isSecretary && !isReseller} />
 
-      {/* Logo section */}
-      <div className="p-3 border-b border-sidebar-border shrink-0">
-        <div className="relative group">
-          {displayLogo ? (
-            <div className="relative flex items-center justify-center py-1">
-              <img src={displayLogo} alt={displayName} className="h-14 w-auto max-w-full object-contain" />
-              <button onClick={handleRemoveLogo} className="absolute top-0 right-0 w-4 h-4 bg-destructive rounded-full items-center justify-center hidden group-hover:flex">
-                <X className="w-2.5 h-2.5 text-destructive-foreground" />
+      <aside className="hidden md:flex h-screen w-64 fixed left-0 top-0 z-40 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+        {/* Halo de marca */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-56 opacity-60"
+          style={{ background: "radial-gradient(120% 70% at 50% 0%, hsl(var(--sidebar-primary) / 0.18), transparent 70%)" }}
+          aria-hidden
+        />
+
+        {/* Marca */}
+        <div className="relative p-4 border-b border-sidebar-border/80 shrink-0">
+          <div className="relative group rounded-xl bg-sidebar-accent/40 ring-1 ring-sidebar-border/70 p-2">
+            <div className="flex items-center justify-center">
+              <img
+                src={displayLogo || omnisyncLogo}
+                alt={displayName}
+                className="h-12 w-auto max-w-full object-contain drop-shadow-[0_0_14px_hsl(var(--sidebar-primary)/0.35)]"
+              />
+            </div>
+            {displayLogo && (
+              <button
+                onClick={handleRemoveLogo}
+                aria-label="Quitar logo"
+                className="absolute -top-2 -right-2 w-5 h-5 bg-destructive rounded-full items-center justify-center hidden group-hover:flex"
+              >
+                <X className="w-3 h-3 text-destructive-foreground" />
               </button>
+            )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Cambiar logo"
+              className="absolute inset-0 bg-sidebar/80 backdrop-blur-sm items-center justify-center hidden group-hover:flex rounded-xl"
+            >
+              <ImagePlus className="w-4 h-4 text-sidebar-primary" />
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold truncate text-sidebar-foreground">{displayName}</p>
+            <span className="shrink-0 rounded-full bg-sidebar-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-primary">
+              {roleLabel}
+            </span>
+          </div>
+          <p className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50">
+            <span className="status-dot text-sidebar-primary" />
+            TR-069 · ACS Live
+          </p>
+        </div>
+
+        {/* Navegación */}
+        <nav className="relative flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+          {(isSecretary && loadingPermissions) || loadingSections ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-sidebar-primary mx-auto" />
             </div>
           ) : (
-            <div className="flex items-center justify-center py-1">
-              <img src={omnisyncLogo} alt={displayName} className="h-14 w-auto max-w-full object-contain" />
-            </div>
+            <>
+              {Object.entries(groups).map(([group, items]) => (
+                <div key={group} className="space-y-1">
+                  <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/40">
+                    {group}
+                  </p>
+                  {items.map((item) => (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      className={({ isActive }) =>
+                        cn(
+                          "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-smooth overflow-hidden",
+                          isActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold shadow-[inset_0_1px_0_hsl(var(--sidebar-primary)/0.25)]"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                        )
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <span
+                            className={cn(
+                              "absolute left-0 top-1/2 h-6 -translate-y-1/2 rounded-r-full bg-sidebar-primary transition-smooth",
+                              isActive ? "w-[3px] opacity-100" : "w-0 opacity-0"
+                            )}
+                            aria-hidden
+                          />
+                          <item.icon
+                            className={cn(
+                              "w-[18px] h-[18px] shrink-0 transition-smooth",
+                              isActive ? "text-sidebar-primary" : "group-hover:text-sidebar-primary"
+                            )}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              ))}
+
+              {!isSecretary && !isReseller && (
+                <div className="pt-4 mt-2 border-t border-sidebar-border/70">
+                  <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/40">
+                    Administración
+                  </p>
+                  <AdminMenu />
+                </div>
+              )}
+            </>
           )}
-          <button onClick={() => fileInputRef.current?.click()} className="absolute inset-0 bg-black/50 items-center justify-center hidden group-hover:flex rounded">
-            <ImagePlus className="w-4 h-4 text-white" />
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-        </div>
-        <p className="text-[11px] text-sidebar-foreground/60 text-center mt-1 truncate">{displayName} · TR-069 / ACS</p>
-      </div>
+        </nav>
 
-
-
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {isSecretary && loadingPermissions ? (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+        {/* Pie */}
+        <div className="relative p-3 border-t border-sidebar-border/80 space-y-2">
+          <div className="flex items-center gap-2 rounded-lg bg-sidebar-accent/40 px-3 py-2 ring-1 ring-sidebar-border/60">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-sidebar-primary" />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-sidebar-foreground/70">
+              {user?.email || "Sesión activa"}
+            </span>
           </div>
-        ) : (
-          <>
-
-            {filteredMenuItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                  )
-                }
-              >
-                <item.icon className="w-5 h-5" />
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
-
-
-
-
-            {!isSecretary && !isReseller && (
-              <div className="pt-4 mt-4 border-t border-sidebar-border">
-                <AdminMenu />
-              </div>
-            )}
-          </>
-        )}
-      </nav>
-
-      <div className="p-4 border-t border-sidebar-border">
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-          onClick={handleLogout}
-        >
-          <LogOut className="w-5 h-5 mr-3" />
-          Cerrar Sesión
-        </Button>
-      </div>
-    </div>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
+            onClick={handleLogout}
+          >
+            <LogOut className="w-4 h-4 mr-3" />
+            Cerrar sesión
+          </Button>
+        </div>
+      </aside>
     </>
   );
-
 };

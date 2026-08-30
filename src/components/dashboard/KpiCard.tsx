@@ -1,14 +1,39 @@
 import { LucideIcon } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export type KpiTone = "neutral" | "success" | "danger" | "warning" | "info";
 
-const TONE: Record<KpiTone, { icon: string; bar: string; value: string }> = {
-  neutral: { icon: "text-foreground bg-muted", bar: "bg-muted-foreground/40", value: "text-foreground" },
-  success: { icon: "text-success bg-success/10", bar: "bg-success", value: "text-success" },
-  danger: { icon: "text-destructive bg-destructive/10", bar: "bg-destructive", value: "text-destructive" },
-  warning: { icon: "text-warning bg-warning/10", bar: "bg-warning", value: "text-warning" },
-  info: { icon: "text-primary bg-primary/10", bar: "bg-primary", value: "text-primary" },
+const TONE: Record<KpiTone, { icon: string; bar: string; value: string; glow: string }> = {
+  neutral: {
+    icon: "text-foreground bg-muted",
+    bar: "bg-muted-foreground/40",
+    value: "text-foreground",
+    glow: "from-muted-foreground/10",
+  },
+  success: {
+    icon: "text-success bg-success/10 ring-success/25",
+    bar: "bg-gradient-success",
+    value: "text-success",
+    glow: "from-success/15",
+  },
+  danger: {
+    icon: "text-destructive bg-destructive/10 ring-destructive/25",
+    bar: "bg-gradient-danger",
+    value: "text-destructive",
+    glow: "from-destructive/15",
+  },
+  warning: {
+    icon: "text-warning bg-warning/10 ring-warning/25",
+    bar: "bg-gradient-warning",
+    value: "text-warning",
+    glow: "from-warning/15",
+  },
+  info: {
+    icon: "text-primary bg-primary/10 ring-primary/25",
+    bar: "bg-gradient-primary",
+    value: "text-primary",
+    glow: "from-primary/15",
+  },
 };
 
 interface KpiCardProps {
@@ -34,27 +59,45 @@ export default function KpiCard({
 }: KpiCardProps) {
   const t = TONE[tone];
   return (
-    <Card
+    <div
       onClick={onClick}
-      className={`relative overflow-hidden transition-shadow ${onClick ? "cursor-pointer hover:shadow-md" : ""} ${
-        active ? "ring-2 ring-ring" : ""
-      }`}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={cn(
+        "glass-panel group overflow-hidden p-0 transition-smooth animate-fade-in-up",
+        onClick && "cursor-pointer hover:-translate-y-0.5 hover:glass-panel-glow",
+        active && "glass-panel-glow border-primary/50"
+      )}
     >
-      <span className={`absolute inset-x-0 top-0 h-1 ${t.bar}`} aria-hidden />
-      <CardContent className="p-4 pt-5">
+      <span className={cn("absolute inset-x-0 top-0 h-[3px]", t.bar)} aria-hidden />
+      <span
+        className={cn(
+          "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br to-transparent blur-2xl opacity-70",
+          t.glow
+        )}
+        aria-hidden
+      />
+      <div className="relative p-4 pt-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground truncate">{label}</p>
-            <p className={`mt-1 text-2xl md:text-3xl font-bold tabular-nums ${t.value}`}>
-              {loading ? "…" : value}
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground truncate">
+              {label}
             </p>
-            {hint && <p className="mt-1 text-[11px] text-muted-foreground truncate">{hint}</p>}
+            <p className={cn("mt-1.5 text-3xl font-bold tabular-nums leading-none", t.value)}>
+              {loading ? <span className="opacity-40">—</span> : value}
+            </p>
+            {hint && <p className="mt-2 text-[11px] text-muted-foreground truncate">{hint}</p>}
           </div>
-          <span className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center ${t.icon}`}>
+          <span
+            className={cn(
+              "h-11 w-11 shrink-0 rounded-xl flex items-center justify-center ring-1 ring-border/60 transition-smooth group-hover:scale-105",
+              t.icon
+            )}
+          >
             <Icon className="h-5 w-5" />
           </span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
