@@ -61,7 +61,9 @@ export function AdvancedWeb({
 
   const open = (ip: string, port: number) => {
     if (!routerId || !ip) return;
-    onSelect({ ip, name: nameFor(ip), proxy_path: `/api/netaccess/${routerId}/web/${ip}/${port}/` });
+    const selected = { ip, name: nameFor(ip), proxy_path: `/api/netaccess/${routerId}/web/${ip}/${port}/` };
+    onSelect(selected);
+    openRemote(ip, port, selected.name, selected.proxy_path);
   };
 
   const openManual = () => open(manualIp.trim(), Number(manualPort) || 80);
@@ -198,7 +200,7 @@ export function AdvancedWeb({
               </Button>
               <Button
                 size="sm"
-                variant="secondary"
+                variant="default"
                 onClick={() => openRemote(target.ip, Number(target.proxy_path.match(/\/(\d+)\/$/)?.[1]) || 80, target.name, target.proxy_path)}
               >
                 <Globe className="h-4 w-4 mr-1" /> Firefox
@@ -206,10 +208,7 @@ export function AdvancedWeb({
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Si el equipo pide código de verificación (captcha) y no carga bien aquí, ábrelo en una pestaña nueva:
-              la sesión y la imagen del captcha funcionan mejor fuera del iframe.
-            </p>
+            <p className="text-xs text-muted-foreground">Usa Firefox para equipos con captcha o firmware antiguo; el proxy queda disponible como respaldo.</p>
             <div ref={frameWrapRef} className="bg-background" onDoubleClick={toggleFullscreen}>
               <iframe
                 key={target.proxy_path}
