@@ -965,12 +965,9 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
 
   // Al abrir en pestaña nueva o iframe no viaja la cabecera Authorization:
   // el token llega por ?token= y se guarda en cookie para las peticiones hijas.
-  if (typeof req.query.token === 'string' && req.query.token) {
-    res.setHeader(
-      'Set-Cookie',
-      `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
-    );
-  }
+  const webTokenCookie = typeof req.query.token === 'string' && req.query.token
+    ? `${WEB_TOKEN_COOKIE}=${encodeURIComponent(req.query.token)}; Path=/api/netaccess; HttpOnly; SameSite=Lax; Max-Age=43200`
+    : null;
 
   const prefix = `/api/netaccess/${mikrotikId}/web/${ip}/${targetPort}`;
   const rawRest = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) : '/';
@@ -1091,6 +1088,10 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
               .replace(/;\s*Secure/gi, '')
               .replace(/;\s*SameSite=[^;]*/i, '') + `; Path=${prefix}/; SameSite=Lax`
           });
+        }
+        if (webTokenCookie) {
+          const upstreamCookies = Array.isArray(headers['set-cookie']) ? headers['set-cookie'] : [];
+          headers['set-cookie'] = [...upstreamCookies, webTokenCookie];
         }
 
         // Helmet protege el panel, pero sus cabeceras no pueden aplicarse al firmware
