@@ -128,6 +128,9 @@ if command -v ufw >/dev/null 2>&1; then
   echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
 fi
 
+# Recrea el navegador remoto para aplicar perfil efímero / incógnito forzado
+docker compose -f "$INSTALL_DIR/docker-compose.yml" up -d --force-recreate remote-browser >/dev/null 2>&1 || true
+
 # Aislamiento del navegador remoto (sin salida a internet, sólo redes privadas)
 if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
