@@ -207,11 +207,35 @@ services:
     networks:
       - omnisync-net
 
+  # ============================================
+  # Winbox nativo bajo Wine (escritorio XFCE + KasmVNC)
+  # Acceso a MikroTik por la VPN, protegido por la sesión de OmniSync en /winbox/
+  # ============================================
+  remote-winbox:
+    build:
+      context: ./winbox
+    image: omnisync/winbox:latest
+    container_name: omnisync-winbox
+    restart: unless-stopped
+    shm_size: "512mb"
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ:-America/Bogota}
+      TITLE: "Winbox — OmniSync"
+    volumes:
+      - winbox_config:/config
+    networks:
+      - omnisync-net
+
 volumes:
   postgres_data:
   backup_data:
   wireguard_config:
   browser_config:
+  winbox_config:
   mongo_data:
 
 networks:

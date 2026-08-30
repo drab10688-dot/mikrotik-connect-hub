@@ -249,6 +249,13 @@ export default function Network() {
             <Button onClick={openWebFig} disabled={!deviceId}>
               <Monitor className="w-4 h-4 mr-2" /> Abrir WebFig
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => window.open(withAuthToken("/winbox/"), "_blank", "noopener")}
+              title="Winbox nativo (Wine) ejecutándose en el VPS, a través de la VPN"
+            >
+              <Monitor className="w-4 h-4 mr-2" /> Abrir Winbox
+            </Button>
           </div>
         </div>
 
