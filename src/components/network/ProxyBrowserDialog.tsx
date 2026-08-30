@@ -129,7 +129,7 @@ export function ProxyBrowserDialog({
         </DialogHeader>
         <div className="relative min-h-0 flex-1 bg-muted">
           <iframe
-            key={`${mode}-${browserKey}`}
+            key={browserKey}
             src={viewerUrl}
             title="Navegador remoto"
             allow="clipboard-read; clipboard-write; fullscreen"
