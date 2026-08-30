@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { execFile } from 'child_process';
 import jwt from 'jsonwebtoken';
+import { pool } from '../lib/db';
+import { AuthRequest } from '../middleware/auth';
+import { ensureTenantBrowser, tenantOwnsPort } from '../lib/tenant-browser';
 
 /**
  * Navegador remoto (Chromium real dentro del VPS, sin contraseña propia).
@@ -17,7 +20,7 @@ const CONTAINER = process.env.BROWSER_CONTAINER || 'omnisync-browser';
  * Acepta el token JWT por query (?token= en la URI original) o por la cookie
  * omnisync_web_token que se fija al abrir el visor. Responde 200/401 sin cuerpo.
  */
-export function authorizeBrowserAccess(req: Request, res: Response) {
+export async function authorizeBrowserAccess(req: Request, res: Response) {
   const original = String(req.headers['x-original-uri'] || req.originalUrl || '');
   let token: string | undefined;
   try {
@@ -33,11 +36,24 @@ export function authorizeBrowserAccess(req: Request, res: Response) {
     }
   }
   if (!token) return res.status(401).end();
+  let userId: string | undefined;
   try {
-    jwt.verify(token, process.env.JWT_SECRET || 'changeme');
-    return res.status(200).end();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { userId?: string };
+    userId = decoded?.userId;
   } catch {
     return res.status(401).end();
+  }
+  if (!userId) return res.status(401).end();
+
+  // Escritorio dedicado por ISP: el puerto solicitado debe ser el del tenant.
+  const port = Number(req.headers['x-browser-port'] || 0);
+  if (!port) return res.status(200).end();
+  try {
+    const { rows } = await pool.query(`SELECT tenant_id FROM users WHERE id = $1 LIMIT 1`, [userId]);
+    const allowed = await tenantOwnsPort(rows[0]?.tenant_id || null, port);
+    return res.status(allowed ? 200 : 403).end();
+  } catch {
+    return res.status(200).end();
   }
 }
 
@@ -73,9 +89,9 @@ function sanitizeUrl(raw: unknown): string | null {
 }
 
 /** Detecta los displays X disponibles dentro del contenedor del navegador. */
-async function detectDisplays(): Promise<string[]> {
+async function detectDisplays(container = CONTAINER): Promise<string[]> {
   const found: string[] = [];
-  const ls = await docker(['exec', CONTAINER, 'sh', '-c', 'ls /tmp/.X11-unix 2>/dev/null'], 8000);
+  const ls = await docker(['exec', container, 'sh', '-c', 'ls /tmp/.X11-unix 2>/dev/null'], 8000);
   if (ls.ok) {
     for (const line of ls.out.split(/\s+/)) {
       const m = /^X(\d+)$/.exec(line.trim());
@@ -92,7 +108,7 @@ async function detectDisplays(): Promise<string[]> {
  * bloqueado/DBus), dejando el escritorio en blanco. xdotool actúa sobre la
  * ventana visible y es el método más fiable en las imágenes KasmVNC.
  */
-async function navigateVisibleBrowser(display: string, url: string) {
+async function navigateVisibleBrowser(display: string, url: string, container = CONTAINER) {
   const script = [
     'command -v xdotool >/dev/null 2>&1 || exit 127',
     'WID="$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)"',
@@ -104,64 +120,72 @@ async function navigateVisibleBrowser(display: string, url: string) {
     'xdotool key --window "$WID" Return',
   ].join(' && ');
   return docker(
-    ['exec', '-u', 'abc', '-e', `DISPLAY=${display}`, '-e', `TARGET_URL=${url}`, CONTAINER, 'sh', '-lc', script],
+    ['exec', '-u', 'abc', '-e', `DISPLAY=${display}`, '-e', `TARGET_URL=${url}`, container, 'sh', '-lc', script],
     20000
   );
 }
 
-/** Estado del contenedor del navegador. */
-browserRouter.get('/status', async (_req, res) => {
-  const inspect = await docker(['inspect', '--format', '{{.State.Status}}', CONTAINER], 8000);
-  const status = inspect.ok ? inspect.out : 'missing';
-  res.json({
-    success: true,
-    data: {
-      container: CONTAINER,
-      status,
-      running: status === 'running',
-      url: '/browser/',
-      hint:
-        status === 'running'
-          ? null
-          : 'El navegador remoto no está activo. Ejecuta: docker compose -f /opt/omnisync/docker-compose.yml up -d remote-browser',
-    },
-  });
+/** Estado del escritorio remoto del ISP (se crea bajo demanda). */
+browserRouter.get('/status', async (req: AuthRequest, res) => {
+  try {
+    const info = await ensureTenantBrowser(req.tenantId);
+    res.json({
+      success: true,
+      data: {
+        container: info.container,
+        status: info.running ? 'running' : 'stopped',
+        running: info.running,
+        port: info.port,
+        slug: info.slug,
+        url: `/browser/`,
+        hint: info.running ? null : 'El escritorio remoto de este ISP se está iniciando, reintenta en unos segundos.',
+      },
+    });
+  } catch (e: any) {
+    res.status(503).json({ success: false, error: e?.message || 'No se pudo preparar el escritorio remoto' });
+  }
 });
 
 /** Abre (o reutiliza) una pestaña del Firefox remoto en la URL del equipo. */
-browserRouter.post('/open', async (req, res) => {
-  const url = sanitizeUrl(req.body?.url);
+browserRouter.post('/open', async (req: AuthRequest, res) => {
+  const url = sanitizeUrl((req as any).body?.url);
   if (!url) return res.status(400).json({ success: false, error: 'URL no permitida (solo IPs privadas http/https)' });
 
-  const state = await docker(['inspect', '--format', '{{.State.Status}}', CONTAINER], 8000);
-  if (!state.ok || state.out !== 'running') {
+  let info;
+  try {
+    info = await ensureTenantBrowser((req as AuthRequest).tenantId);
+  } catch (e: any) {
+    return res.status(503).json({ success: false, error: e?.message || 'Escritorio remoto no disponible' });
+  }
+  if (!info.running) {
     return res.status(503).json({
       success: false,
-      error: 'El navegador remoto no está en ejecución',
-      data: { container: CONTAINER, status: state.ok ? state.out : 'missing' },
+      error: 'El escritorio remoto de este ISP se está iniciando, reintenta en unos segundos',
+      data: { container: info.container, port: info.port },
     });
   }
+  const target = info.container;
 
   // El display depende de la imagen (selkies usa :0, kasm usa :1): lo detectamos.
-  const displays = await detectDisplays();
+  const displays = await detectDisplays(target);
 
   let lastError = '';
   for (const display of displays) {
-    const navigated = await navigateVisibleBrowser(display, url);
+    const navigated = await navigateVisibleBrowser(display, url, target);
     if (navigated.ok) {
-      return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'window' } });
+      return res.json({ success: true, data: { url, display, port: info.port, method: 'window' } });
     }
     lastError = navigated.err;
 
     const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
     const attempts: string[][] = [
-      ['exec', '-u', 'abc', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
-      ['exec', '-u', '1000', ...env, CONTAINER, '/usr/bin/chromium', '--new-tab', url],
-      ['exec', ...env, CONTAINER, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
+      ['exec', '-u', 'abc', ...env, target, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', '-u', '1000', ...env, target, '/usr/bin/chromium', '--new-tab', url],
+      ['exec', ...env, target, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
       [
         'exec',
         ...env,
-        CONTAINER,
+        target,
         'su',
         '-s',
         '/bin/sh',
@@ -173,18 +197,18 @@ browserRouter.post('/open', async (req, res) => {
     for (const args of attempts) {
       const result = await docker(args, 20000);
       if (result.ok) {
-        return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'chromium-cli' } });
+        return res.json({ success: true, data: { url, display, port: info.port, method: 'chromium-cli' } });
       }
       lastError = result.err;
       // Perfil bloqueado por un proceso anterior: quita los locks y reintenta.
       if (/profile appears to be in use|SingletonLock/i.test(lastError)) {
         await docker(
-          ['exec', CONTAINER, 'sh', '-c', 'rm -f /config/.config/chromium/Singleton* /config/chromium/Singleton*'],
+          ['exec', target, 'sh', '-c', 'rm -f /config/.config/chromium/Singleton* /config/chromium/Singleton*'],
           8000
         );
         const retry = await docker(args, 20000);
         if (retry.ok) {
-          return res.json({ success: true, data: { url, display, viewer: '/browser/', method: 'chromium-cli' } });
+          return res.json({ success: true, data: { url, display, port: info.port, method: 'chromium-cli' } });
         }
         lastError = retry.err;
       }
