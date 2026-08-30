@@ -26,6 +26,12 @@ export function ProxyBrowserDialog({
   const [browserKey, setBrowserKey] = useState(0);
   const [mode, setMode] = useState<ViewerMode>("browser");
   const [status, setStatus] = useState<string>("Verificando navegador remoto…");
+  const [embedded, setEmbedded] = useState(false);
+
+  useEffect(() => {
+    setEmbedded(false);
+  }, [browserKey, mode]);
+
 
   useEffect(() => {
     const onFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
