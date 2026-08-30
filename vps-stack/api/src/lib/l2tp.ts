@@ -51,7 +51,7 @@ export async function upsertL2tpUser(
   // La ruta se instala directamente sobre la interfaz PPP. En enlaces punto
   // a punto esto es más fiable que declarar al peer como gateway.
   if (tunnelIp) {
-    const nets = escNet(onuNetworks?.trim() || '10.82.0.0/21');
+    const nets = escNet(onuNetworks?.trim() || '192.168.0.0/16');
     await sh(
       `touch ${ROUTES_FILE}; sed -i "/^${esc(tunnelIp)}[[:space:]]/d" ${ROUTES_FILE}; ` +
         `printf '%s\\n' '${esc(tunnelIp)} ${nets}' >> ${ROUTES_FILE}; ` +
