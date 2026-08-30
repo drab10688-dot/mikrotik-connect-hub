@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clipboard, ExternalLink, Globe, Maximize, Minimize, Monitor, RotateCw } from "lucide-react";
+import { Clipboard, ExternalLink, Maximize, Minimize, Monitor, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,8 +12,6 @@ export interface ProxyBrowserTarget {
   proxyUrl?: string;
 }
 
-type ViewerMode = "browser" | "proxy";
-
 export function ProxyBrowserDialog({
   target,
   onOpenChange,
@@ -24,13 +22,12 @@ export function ProxyBrowserDialog({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [browserKey, setBrowserKey] = useState(0);
-  const [mode, setMode] = useState<ViewerMode>("browser");
   const [status, setStatus] = useState<string>("Verificando navegador remoto…");
   const [embedded, setEmbedded] = useState(false);
 
   useEffect(() => {
     setEmbedded(false);
-  }, [browserKey, mode]);
+  }, [browserKey]);
 
 
   useEffect(() => {
@@ -61,14 +58,7 @@ export function ProxyBrowserDialog({
   useEffect(() => {
     if (!target) return;
     setBrowserKey((k) => k + 1);
-    setMode("browser");
-    void (async () => {
-      const ok = await launchRemote(target.directUrl, true);
-      if (!ok && target.proxyUrl) {
-        setMode("proxy");
-        toast.message("Navegador remoto no disponible; se usará el proxy integrado");
-      }
-    })();
+    void launchRemote(target.directUrl, true);
   }, [target, launchRemote]);
 
   const copyUrl = async () => {
@@ -91,12 +81,12 @@ export function ProxyBrowserDialog({
   };
 
   const reload = async () => {
-    if (mode === "browser" && target) await launchRemote(target.directUrl);
+    if (target) await launchRemote(target.directUrl);
     else setBrowserKey((k) => k + 1);
   };
 
   // El escritorio remoto no pide clave propia: Nginx valida el token de sesión.
-  const viewerUrl = mode === "browser" ? remoteDesktopUrl("browser") : target?.proxyUrl || "about:blank";
+  const viewerUrl = remoteDesktopUrl("browser");
 
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
@@ -110,34 +100,7 @@ export function ProxyBrowserDialog({
               <Monitor className="h-4 w-4 shrink-0" />
               <span className="truncate">{target?.title}</span>
             </DialogTitle>
-            <div className="flex items-center gap-1 rounded-md border p-0.5">
-              <Button
-                size="sm"
-                variant={mode === "browser" ? "default" : "ghost"}
-                className="h-7 px-2 text-xs"
-                title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
-                onClick={async () => {
-                  setMode("browser");
-                  if (target) await launchRemote(target.directUrl);
-                }}
-              >
-                <Globe className="mr-1 h-3.5 w-3.5" /> Escritorio remoto (VNC)
-              </Button>
-              <Button
-                size="sm"
-                variant={mode === "proxy" ? "default" : "ghost"}
-                className="h-7 px-2 text-xs"
-                disabled={!target?.proxyUrl}
-                onClick={() => {
-                  setMode("proxy");
-                  setBrowserKey((k) => k + 1);
-                }}
-              >
-                Proxy
-              </Button>
-            </div>
-
-            <span className="text-xs text-muted-foreground">{mode === "browser" ? status : "Proxy integrado"}</span>
+            <span className="text-xs text-muted-foreground">{status}</span>
             <div className="ml-auto flex items-center gap-1">
               <Button size="icon" variant="ghost" title="Recargar" onClick={reload}>
                 <RotateCw className="h-4 w-4" />
@@ -168,12 +131,12 @@ export function ProxyBrowserDialog({
           <iframe
             key={`${mode}-${browserKey}`}
             src={viewerUrl}
-            title={mode === "browser" ? "Navegador remoto" : "Proxy integrado"}
+            title="Navegador remoto"
             allow="clipboard-read; clipboard-write; fullscreen"
             className="absolute inset-0 h-full w-full border-0 bg-background"
             onLoad={() => setEmbedded(true)}
           />
-          {mode === "browser" && !embedded && (
+          {!embedded && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/95 p-6 text-center">
               <Monitor className="h-8 w-8 text-muted-foreground" />
               <p className="max-w-md text-sm text-muted-foreground">
