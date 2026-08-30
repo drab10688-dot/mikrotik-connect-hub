@@ -182,10 +182,32 @@ services:
     networks:
       - omnisync-net
 
+  # ============================================
+  # Navegador remoto (Firefox real) — acceso a ONUs/antenas por la VPN
+  # Se muestra dentro del panel en /browser/
+  # ============================================
+  remote-browser:
+    image: lscr.io/linuxserver/firefox:latest
+    container_name: omnisync-browser
+    restart: unless-stopped
+    shm_size: "1gb"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ:-America/Bogota}
+      CUSTOM_USER: ${BROWSER_USER:-admin}
+      PASSWORD: ${BROWSER_PASSWORD:-omnisync}
+      FIREFOX_CLI: ${BROWSER_HOME_URL:-about:blank}
+    volumes:
+      - browser_config:/config
+    networks:
+      - omnisync-net
+
 volumes:
   postgres_data:
   backup_data:
   wireguard_config:
+  browser_config:
   mongo_data:
 
 networks:

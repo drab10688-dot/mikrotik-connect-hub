@@ -13,6 +13,7 @@ import { onuRouter } from './routes/onu';
 import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { netAccessRouter } from './routes/netaccess';
+import { browserRouter } from './routes/browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { onuWebRouter } from './routes/onu-web';
@@ -61,6 +62,7 @@ app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), re
 // Acceso web directo a la ONU (sin TR-069), con perfiles aprendidos por modelo
 app.use('/api/onu-web', authMiddleware, requireSection('onu_web'), requireModule('enable_onu_web'), onuWebRouter);
 app.use('/api/netaccess', authMiddleware, requireSection('red'), requireModule('enable_mikrotik'), netAccessRouter);
+app.use('/api/browser', authMiddleware, requireSection('red'), browserRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 
 

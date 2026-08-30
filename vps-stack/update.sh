@@ -40,8 +40,10 @@ echo -e "${YELLOW}3/5 Reconstruyendo API (sin caché)...${NC}"
 cd "$INSTALL_DIR"
 docker compose build --no-cache api
 docker compose up -d api
-# Retira instalaciones antiguas del navegador sin tocar el túnel L2TP.
-docker rm -f omnisync-browser >/dev/null 2>&1 || true
+# Navegador remoto: se actualiza/levanta SIN tocar el túnel L2TP.
+docker compose pull remote-browser >/dev/null 2>&1 || true
+docker compose up -d remote-browser >/dev/null 2>&1 || \
+  echo -e "${YELLOW}⚠ Navegador remoto no disponible; el proxy integrado sigue activo${NC}"
 bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 # Conserva el servidor L2TP existente. El instalador ahora es idempotente:
@@ -60,6 +62,7 @@ mkdir -p "$FRONTEND_DIR"
 rm -rf "${FRONTEND_DIR:?}"/*
 cp -r dist/* "$FRONTEND_DIR"/
 echo "$COMMIT" > "$FRONTEND_DIR/VERSION.txt"
+echo "$COMMIT" > "$INSTALL_DIR/VERSION.txt"
 
 echo -e "${YELLOW}5/5 Reiniciando Nginx...${NC}"
 cd "$INSTALL_DIR"
