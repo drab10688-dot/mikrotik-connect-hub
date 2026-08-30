@@ -25,13 +25,16 @@ export function ProxyBrowserDialog({
     let cancelled = false;
     (async () => {
       try {
-        const st = await browserApi.status();
-        if (!st?.running) throw new Error(st?.hint || "El escritorio remoto de tu ISP se está iniciando");
+        // Cada usuario tiene su propio escritorio remoto (puerto y credenciales
+        // temporales): nadie ve las pestañas de otro operador.
         const opened = await browserApi.open(target.directUrl);
         if (cancelled) return;
-        // Cada ISP tiene su propio escritorio en un puerto dedicado.
-        const port = Number(opened?.port || st?.port) || 8081;
-        window.open(remoteDesktopViewerUrl(port, target.title), "_blank", "noopener,noreferrer");
+        const port = Number(opened?.port) || 8081;
+        window.open(
+          remoteDesktopViewerUrl(port, target.title, { user: opened?.user, password: opened?.password }),
+          "_blank",
+          "noopener,noreferrer",
+        );
         toast.success(`${target.title}: abriendo en el escritorio remoto`);
       } catch (e: any) {
         if (!cancelled) toast.error(e?.message || "No se pudo usar el navegador remoto");

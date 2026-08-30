@@ -60,6 +60,10 @@ services:
       # Escritorio remoto único (Chromium + KasmVNC) en el puerto 8081
       BROWSER_CONTAINER: ${BROWSER_CONTAINER:-omnisync-browser}
       BROWSER_PORT: 8081
+      # Escritorio privado por usuario: rango de puertos asignados dinámicamente
+      BROWSER_NETWORK: ${BROWSER_NETWORK:-omnisync_omnisync-browser-net}
+      BROWSER_USER_PORT_START: ${BROWSER_USER_PORT_START:-8100}
+      BROWSER_USER_PORT_COUNT: ${BROWSER_USER_PORT_COUNT:-30}
       # Minutos sin actividad del visor antes de cerrar pestañas y borrar datos
       BROWSER_IDLE_MINUTES: ${BROWSER_IDLE_MINUTES:-10}
       TZ: ${TZ:-America/Bogota}
@@ -68,7 +72,7 @@ services:
     volumes:
       - backup_data:/opt/omnisync/backups
       - ./nginx-dyn:/opt/omnisync/nginx-dyn
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
