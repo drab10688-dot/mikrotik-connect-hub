@@ -131,7 +131,7 @@ export default function Login() {
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
     <div className={`flex flex-col gap-2 ${size === 'lg' ? 'items-start' : 'items-center'}`}>
-      <div className="relative grid place-items-center h-32 w-32 sm:h-40 sm:w-40">
+      <div className="relative grid place-items-center h-40 w-40 sm:h-52 sm:w-52">
         <img
           src={brandLogo || omnisyncSphereUrl}
           alt={brandName}
