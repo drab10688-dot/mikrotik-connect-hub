@@ -5,17 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-export interface RemoteBrowserTarget {
+export interface ProxyBrowserTarget {
   title: string;
   directUrl: string;
   proxyUrl?: string;
 }
 
-export function RemoteBrowserDialog({
+export function ProxyBrowserDialog({
   target,
   onOpenChange,
 }: {
-  target: RemoteBrowserTarget | null;
+  target: ProxyBrowserTarget | null;
   onOpenChange: (open: boolean) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ExternalLink, MonitorCog, Stethoscope, Loader2, Maximize, Minimize, Monitor } from "lucide-react";
 import { withAuthToken, netAccessApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
+import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 
 export interface AdvancedTarget {
   ip: string;
@@ -32,7 +32,7 @@ export function AdvancedWeb({
   const [checking, setChecking] = useState(false);
   const [diag, setDiag] = useState<any>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [remoteTarget, setRemoteTarget] = useState<RemoteBrowserTarget | null>(null);
+  const [remoteTarget, setRemoteTarget] = useState<ProxyBrowserTarget | null>(null);
   const frameWrapRef = useRef<HTMLDivElement>(null);
 
   const routerId = mikrotikId || localStorage.getItem("mikrotik_device_id") || "";
@@ -224,7 +224,7 @@ export function AdvancedWeb({
 
         </Card>
       )}
-      <RemoteBrowserDialog target={remoteTarget} onOpenChange={(open) => !open && setRemoteTarget(null)} />
+      <ProxyBrowserDialog target={remoteTarget} onOpenChange={(open) => !open && setRemoteTarget(null)} />
     </div>
   );
 }
