@@ -306,6 +306,8 @@ export const netAccessApi = {
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/devices`)),
   webfig: async (mikrotikId: string, port?: number) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/webfig${port ? `?port=${port}` : ''}`)),
+  webCheck: async (mikrotikId: string, ip: string, port: number) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/web-check/${ip}/${port}`)),
   getWebPorts: async () => unwrapData<any>(await apiGet<any>('/netaccess/web-ports')),
   setWebPorts: async (web_ports: any) =>
     unwrapData<any>(await apiPut<any>('/netaccess/web-ports', { web_ports })),
