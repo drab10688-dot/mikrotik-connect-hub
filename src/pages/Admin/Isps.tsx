@@ -63,6 +63,7 @@ export default function Isps() {
     user_limit: "",
     admin_email: "",
     admin_password: "",
+    onu_networks: "192.168.0.0/16",
   });
 
   const { data: isps = [], isLoading } = useQuery<Isp[]>({
@@ -80,10 +81,11 @@ export default function Isps() {
         user_limit: form.user_limit ? Number(form.user_limit) : undefined,
         admin_email: form.admin_email || undefined,
         admin_password: form.admin_password || undefined,
+        onu_networks: form.onu_networks || undefined,
       }),
     onSuccess: () => {
       toast.success("ISP creado con su propio enlace TR-069");
-      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "" });
+      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "", onu_networks: "192.168.0.0/16" });
       setCreating(false);
       qc.invalidateQueries({ queryKey: ["admin-isps"] });
     },
