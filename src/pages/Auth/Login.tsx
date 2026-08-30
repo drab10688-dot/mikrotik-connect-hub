@@ -20,9 +20,16 @@ const FEATURES = [
 
 const METRICS = [
   { value: '24/7', label: 'Monitoreo' },
-  { value: '<1s', label: 'Respuesta VPN' },
+  { value: '<1s', label: 'Respuesta ACS' },
   { value: '12+', label: 'Marcas ONU' },
 ];
+
+/** Reto anti-bot simple (suma aleatoria). */
+const newChallenge = () => ({
+  a: Math.floor(Math.random() * 9) + 1,
+  b: Math.floor(Math.random() * 9) + 1,
+});
+
 
 /** Fondo técnico compartido: rejilla, auroras y anillos de señal. */
 const TechBackdrop = () => (
