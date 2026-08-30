@@ -147,7 +147,9 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     const finalSlug = slugify(slug || name);
     if (!finalSlug) return res.status(400).json({ error: 'Slug inválido' });
 
+    await ensureTenantColumns();
     await client.query('BEGIN');
+
     const { rows } = await client.query(
       `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit,
                             enable_onus, enable_mikrotik,
