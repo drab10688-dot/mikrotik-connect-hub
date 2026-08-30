@@ -59,7 +59,9 @@ export async function openInBrowser(url: string): Promise<{ ok: boolean; error?:
   const state = await browserStatus();
   if (!state.running) return { ok: false, error: state.error || 'Firefox remoto no está corriendo' };
 
-  const command = `DISPLAY=:1 /usr/bin/firefox --new-tab ${JSON.stringify(url)} >/dev/null 2>&1 &`;
+  // Algunas imágenes traen firefox en /usr/bin, otras solo en /usr/lib/firefox.
+  const bin = 'FF=$(command -v firefox || echo /usr/lib/firefox/firefox)';
+  const command = `${bin}; DISPLAY=:1 "$FF" --new-tab ${JSON.stringify(url)} >/dev/null 2>&1 &`;
 
   const exec = await dockerRequest('POST', `/containers/${BROWSER_CONTAINER}/exec`, {
     AttachStdout: false,
@@ -67,7 +69,7 @@ export async function openInBrowser(url: string): Promise<{ ok: boolean; error?:
     Tty: false,
     User: process.env.BROWSER_EXEC_USER || 'abc',
     Env: ['DISPLAY=:1', 'HOME=/config'],
-    Cmd: ['/bin/bash', '-c', command],
+    Cmd: ['/bin/sh', '-c', command],
   });
 
   if (exec.status >= 400 || !exec.data?.Id) {
