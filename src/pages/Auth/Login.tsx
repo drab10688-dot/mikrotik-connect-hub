@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Gauge, Wifi, Radio } from 'lucide-react';
+import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Wifi, Radio } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import omnisyncLogoAsset from '@/assets/omnisync-logo-full.png.asset.json';
 const omnisyncLogoFull = omnisyncLogoAsset.url;
@@ -20,9 +20,16 @@ const FEATURES = [
 
 const METRICS = [
   { value: '24/7', label: 'Monitoreo' },
-  { value: '<1s', label: 'Respuesta VPN' },
+  { value: '<1s', label: 'Respuesta ACS' },
   { value: '12+', label: 'Marcas ONU' },
 ];
+
+/** Reto anti-bot simple (suma aleatoria). */
+const newChallenge = () => ({
+  a: Math.floor(Math.random() * 9) + 1,
+  b: Math.floor(Math.random() * 9) + 1,
+});
+
 
 /** Fondo técnico compartido: rejilla, auroras y anillos de señal. */
 const TechBackdrop = () => (
@@ -51,6 +58,21 @@ export default function Login() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [apiUrl] = useState('');
+  const [challenge, setChallenge] = useState(newChallenge);
+  const [answer, setAnswer] = useState('');
+  const [honeypot, setHoneypot] = useState('');
+  const [fails, setFails] = useState(0);
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!lockUntil) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [lockUntil]);
+
+  const lockedSeconds = lockUntil ? Math.max(0, Math.ceil((lockUntil - now) / 1000)) : 0;
+  const isLocked = lockedSeconds > 0;
 
   useEffect(() => {
     if (slug) setStoredTenantSlug(slug);
@@ -63,17 +85,49 @@ export default function Login() {
     if (isAuthenticated && !authLoading) navigate('/dashboard');
   }, [isAuthenticated, authLoading, navigate]);
 
+  const resetChallenge = () => {
+    setChallenge(newChallenge());
+    setAnswer('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
+
+    // Honeypot: los bots rellenan campos ocultos
+    if (honeypot.trim()) {
+      toast.error('Verificación fallida.');
+      return;
+    }
+    if (Number(answer) !== challenge.a + challenge.b) {
+      toast.error('Respuesta de verificación incorrecta.');
+      resetChallenge();
+      return;
+    }
+
     setLoading(true);
     try {
       if (apiUrl.trim()) setApiBaseUrl(apiUrl.trim());
-      const { token, user } = await authApi.login(formData.email, formData.password);
+      const { token, user } = await authApi.login(formData.email.trim(), formData.password);
       setToken(token);
       setStoredUser(user);
+      setFails(0);
       navigate('/dashboard');
     } catch (error: any) {
-      if (error?.status === 404) {
+      const next = fails + 1;
+      setFails(next);
+      resetChallenge();
+      if (error?.status === 429) {
+        const secs = Number(error?.data?.retry_after) || 900;
+        setLockUntil(Date.now() + secs * 1000);
+        setNow(Date.now());
+        toast.error(error.message || 'Demasiados intentos. Espera unos minutos.');
+      } else if (next >= 5) {
+        setLockUntil(Date.now() + 60_000);
+        setNow(Date.now());
+        setFails(0);
+        toast.error('Demasiados intentos fallidos. Espera 1 minuto.');
+      } else if (error?.status === 404) {
         toast.error('No se encontró la API. Ingresa la URL de tu VPS (ej: https://tu-dominio.com)');
       } else {
         toast.error(error.message || 'Error al iniciar sesión');
@@ -82,6 +136,7 @@ export default function Login() {
       setLoading(false);
     }
   };
+
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
     <div className="flex items-center gap-3">
@@ -134,20 +189,53 @@ export default function Login() {
             className="h-11 bg-background/60"
           />
         </div>
+
+        {/* Honeypot invisible para bots */}
+        <input
+          type="text"
+          name="company"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+          className="hidden"
+          aria-hidden
+        />
+
+        <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3">
+          <Label htmlFor="captcha" className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+            Verificación de seguridad
+          </Label>
+          <div className="flex items-center gap-3">
+            <span className="select-none rounded-lg bg-primary/10 px-3 py-2 font-mono text-base font-semibold text-primary ring-1 ring-primary/25">
+              {challenge.a} + {challenge.b} = ?
+            </span>
+            <Input
+              id="captcha"
+              inputMode="numeric"
+              placeholder="Resultado"
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              required
+              disabled={loading || isLocked}
+              className="h-10 flex-1 bg-background/60"
+            />
+          </div>
+        </div>
+
         <Button
           type="submit"
-          disabled={loading}
+          disabled={loading || isLocked}
           className="relative w-full h-11 overflow-hidden bg-gradient-primary text-primary-foreground font-semibold shadow-primary hover:opacity-95"
         >
           <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-12 bg-primary-foreground/20 animate-sheen" aria-hidden />
           <LogIn className="mr-2 h-4 w-4" />
-          {loading ? 'Verificando…' : 'Entrar'}
+          {isLocked ? `Bloqueado ${lockedSeconds}s` : loading ? 'Verificando…' : 'Entrar'}
         </Button>
-        <p className="pt-1 text-center text-xs text-muted-foreground">
-          ¿Sin cuenta? Solicítala al administrador de tu ISP.
-        </p>
       </form>
     </div>
+
   );
 
   // ── Landing comercial ───────────────────────────────────────
@@ -170,8 +258,9 @@ export default function Login() {
                 La consola que tu ISP <span className="brand-text">necesita</span> para operar fibra y radio.
               </h1>
               <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-                ONUs, antenas, MikroTik y VPN en un solo panel. Diagnóstico en segundos, cambios masivos sin
+                ONUs, antenas y MikroTik en un solo panel. Diagnóstico en segundos, cambios masivos sin
                 desplazamientos y control total por operador.
+
               </p>
             </div>
 
@@ -216,12 +305,7 @@ export default function Login() {
                 <p className="mt-1 text-sm text-muted-foreground">{f.text}</p>
               </div>
             ))}
-            <div className="glass-panel hairline-top sm:col-span-2 flex items-center gap-4 p-5">
-              <Gauge className="h-8 w-8 shrink-0 text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Todo viaja por tu VPN privada: sin exponer routers ni ONUs a Internet.
-              </p>
-            </div>
+
           </div>
         </div>
       </div>
