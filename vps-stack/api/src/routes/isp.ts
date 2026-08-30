@@ -470,6 +470,25 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 
 
 
+  // Las redes del ISP deben ser exclusivas: dos ISP con el mismo rango se
+  // pisan las rutas del VPS y el panel no puede entrar a ninguno.
+  const wanted = onuNetworks.split(',').map((s) => s.trim()).filter(Boolean);
+  const { rows: others } = await pool.query(
+    `SELECT p.onu_networks, t.name AS tenant_name
+       FROM tenant_vpn_peers p JOIN tenants t ON t.id = p.tenant_id
+      WHERE p.tenant_id <> $1`,
+    [tenant.id]
+  );
+  for (const row of others) {
+    const used = String(row.onu_networks || '').split(',').map((s: string) => s.trim());
+    const clash = wanted.find((n) => used.includes(n));
+    if (clash) {
+      return res.status(409).json({
+        error: `La red ${clash} ya está en uso por el ISP "${row.tenant_name}". Usa un rango distinto para este ISP (por ejemplo 192.168.50.0/24).`,
+      });
+    }
+  }
+
   // Credenciales persistentes: si el peer ya existe, se reutilizan.
   const existing = await pool.query(
     `SELECT * FROM tenant_vpn_peers WHERE tenant_id = $1 AND name = $2`,
@@ -478,12 +497,19 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 
   let peer = existing.rows[0];
   if (!peer) {
-    // IP fija dentro del pool L2TP (única en todo el servidor VPN)
+    // IP fija dentro del pool L2TP: se toma la primera libre real (contar
+    // peers repite direcciones cuando alguno fue eliminado).
     const base = L2TP_TUNNEL_NET.split('/')[0].split('.').slice(0, 3).join('.');
-    const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM tenant_vpn_peers`
+    const { rows: usedRows } = await pool.query(
+      `SELECT tunnel_ip FROM tenant_vpn_peers WHERE tunnel_ip IS NOT NULL`
     );
-    const tunnelIp = `${base}.${10 + countRows[0].total}`;
+    const taken = new Set(usedRows.map((r: any) => String(r.tunnel_ip)));
+    let tunnelIp = '';
+    for (let i = 10; i <= 250; i++) {
+      const candidate = `${base}.${i}`;
+      if (!taken.has(candidate)) { tunnelIp = candidate; break; }
+    }
+    if (!tunnelIp) return res.status(507).json({ error: 'No hay direcciones libres en el pool de la VPN' });
     const { rows } = await pool.query(
       `INSERT INTO tenant_vpn_peers (tenant_id, name, vpn_type, tunnel_ip, psk, username, password, onu_networks)
        VALUES ($1, $2, 'l2tp', $3, $4, $5, $6, $7) RETURNING *`,
@@ -499,6 +525,7 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
     );
     peer = rows[0];
     await upsertL2tpUser(peer.username, peer.password, peer.tunnel_ip, peer.onu_networks);
+
   } else if (onuNetworks && onuNetworks !== peer.onu_networks) {
     const { rows } = await pool.query(
       `UPDATE tenant_vpn_peers SET onu_networks = $2, updated_at = now() WHERE id = $1 RETURNING *`,
