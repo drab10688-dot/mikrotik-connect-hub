@@ -5,6 +5,46 @@ import { pool } from '../lib/db';
 
 export const authRouter = Router();
 
+// ── Protección de fuerza bruta (memoria del proceso) ─────────────────
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
+const LOCK_MS = 15 * 60 * 1000;
+type Attempt = { count: number; first: number; lockedUntil?: number };
+const attempts = new Map<string, Attempt>();
+
+function clientIp(req: Request) {
+  const fwd = (req.headers['x-forwarded-for'] as string) || '';
+  return fwd.split(',')[0].trim() || req.ip || 'unknown';
+}
+function bruteKey(req: Request, email: string) {
+  return `${clientIp(req)}|${(email || '').toLowerCase()}`;
+}
+function checkLock(key: string): number {
+  const a = attempts.get(key);
+  if (!a) return 0;
+  const now = Date.now();
+  if (a.lockedUntil && a.lockedUntil > now) return Math.ceil((a.lockedUntil - now) / 1000);
+  if (a.lockedUntil && a.lockedUntil <= now) attempts.delete(key);
+  return 0;
+}
+function registerFailure(key: string) {
+  const now = Date.now();
+  const a = attempts.get(key);
+  if (!a || now - a.first > WINDOW_MS) {
+    attempts.set(key, { count: 1, first: now });
+    return;
+  }
+  a.count += 1;
+  if (a.count >= MAX_ATTEMPTS) a.lockedUntil = now + LOCK_MS;
+}
+// Limpieza periódica
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, a] of attempts) {
+    if ((a.lockedUntil && a.lockedUntil < now) || now - a.first > WINDOW_MS * 2) attempts.delete(k);
+  }
+}, 5 * 60 * 1000).unref?.();
+
 // Login
 authRouter.post('/login', async (req: Request, res: Response) => {
   try {
@@ -13,6 +53,16 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     if (!email || !password) {
       return res.status(400).json({ error: 'Email y contraseña son requeridos' });
     }
+
+    const key = bruteKey(req, email);
+    const lockedFor = checkLock(key);
+    if (lockedFor > 0) {
+      return res.status(429).json({
+        error: `Demasiados intentos fallidos. Intenta de nuevo en ${Math.ceil(lockedFor / 60)} minuto(s).`,
+        retry_after: lockedFor,
+      });
+    }
+
 
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.password_hash, u.full_name, u.is_active,
