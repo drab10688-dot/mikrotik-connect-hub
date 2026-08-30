@@ -31,10 +31,14 @@ export const ProtectedRoute = ({
   requireSuperAdmin = false,
   requireAdmin = false,
   permission,
+  module,
+  section,
   denyRoles,
 }: ProtectedRouteProps) => {
   const { user, role, loading, isSecretary } = useAuth();
   const { assignments, isLoading: loadingPerms } = useSecretaryPermissions();
+  const { isEnabled, isLoading: loadingModules } = useModuleEnabled();
+  const { can, isLoading: loadingSections } = useMyPermissions();
 
   if (loading) return <Loader />;
 
@@ -54,6 +58,18 @@ export const ProtectedRoute = ({
     return <Navigate to="/dashboard" replace />;
   }
 
+  // Módulos desactivados por el super admin para este ISP
+  if (module && role !== 'super_admin') {
+    if (loadingModules) return <Loader />;
+    if (!isEnabled(module)) return <Navigate to="/dashboard" replace />;
+  }
+
+  // Secciones de permisos del ISP
+  if (section && role !== 'super_admin') {
+    if (loadingSections) return <Loader />;
+    if (!can(section)) return <Navigate to="/dashboard" replace />;
+  }
+
   // Los asistentes solo entran a los módulos habilitados en su asignación
   if (isSecretary && permission) {
     if (loadingPerms) return <Loader />;
@@ -62,4 +78,5 @@ export const ProtectedRoute = ({
   }
 
   return <>{children}</>;
+
 };
