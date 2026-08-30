@@ -233,6 +233,11 @@ else
   echo -e "  ${YELLOW}⚠ GenieACS CWMP HTTP ${ACS_CWMP_STATUS:-000} (revisa logs)${NC}"
 fi
 
+# Aislamiento del navegador remoto (sin salida a internet, sólo redes privadas)
+if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
+  bash "$INSTALL_DIR/browser-firewall.sh" || true
+fi
+
 echo ""
 if [ "$TOTAL_FAIL" -eq 0 ]; then
   echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
