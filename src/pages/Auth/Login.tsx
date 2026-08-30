@@ -133,7 +133,7 @@ export default function Login() {
     <div className={`flex flex-col gap-2 ${size === 'lg' ? 'items-start' : 'items-center'}`}>
       <div className="relative grid place-items-center h-32 w-32 sm:h-40 sm:w-40">
         <img
-          src={brandLogo || omnisyncLogoFull}
+          src={brandLogo || omnisyncSphereUrl}
           alt={brandName}
           className="h-full w-full object-contain drop-shadow-[0_0_28px_hsl(var(--primary)/0.45)]"
         />
