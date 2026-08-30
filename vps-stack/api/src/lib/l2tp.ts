@@ -59,7 +59,7 @@ export async function upsertL2tpUser(
 # \$5 = IP del peer. Agrega las rutas de sus redes de ONUs en el VPS.
 while read -r ip nets; do
   [ "$ip" = "$5" ] || continue
-  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null; done
+  for n in $nets; do ip route replace "$n" via "$5" 2>/dev/null; docker exec omnisync-api ip route replace "$n" via "$5" 2>/dev/null || true; done
 done < ${ROUTES_FILE}
 EOF
 chmod +x /etc/ppp/ip-up.local`
