@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 import { RemoteBrowserDialog, type RemoteBrowserTarget } from "@/components/network/RemoteBrowserDialog";
+import { usePagedSearch } from "@/hooks/use-paged-search";
+import { SearchBox, Pager } from "@/components/common/SearchPager";
 
 const AP_QUALITY: Record<string, { label: string; className: string }> = {
   excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
