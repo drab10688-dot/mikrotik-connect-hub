@@ -1,6 +1,15 @@
-import { Link } from 'react-router-dom';
-import { Shield, Users, Building2 } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { Shield, KeyRound, Building2, UserPlus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+
+const linkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-smooth',
+    isActive
+      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
+      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
+  );
 
 export const AdminMenu = () => {
   const { isSuperAdmin, isAdmin } = useAuth();
@@ -8,39 +17,31 @@ export const AdminMenu = () => {
   if (!isAdmin && !isSuperAdmin) return null;
 
   return (
-    <div className="px-3 py-2">
-      <h3 className="mb-2 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-        Administración
-      </h3>
-      <div className="space-y-1">
-        {isSuperAdmin && (
-          <Link
-            to="/admin/isps"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
-          >
-            <Building2 className="h-4 w-4" />
-            <span>ISPs</span>
-          </Link>
-        )}
-        {isSuperAdmin && (
-          <Link
-            to="/admin/users"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
-          >
-            <Shield className="h-4 w-4" />
-            <span>Usuarios</span>
-          </Link>
-        )}
-        {isAdmin && (
-          <Link
-            to="/admin/permissions"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent"
-          >
-            <Users className="h-4 w-4" />
-            <span>Roles y permisos</span>
-          </Link>
-        )}
-      </div>
+    <div className="space-y-1">
+      {isSuperAdmin && (
+        <NavLink to="/admin/isps" className={linkClass}>
+          <Building2 className="h-[18px] w-[18px]" />
+          <span>ISPs</span>
+        </NavLink>
+      )}
+      {isSuperAdmin && (
+        <NavLink to="/admin/users" className={linkClass}>
+          <Shield className="h-[18px] w-[18px]" />
+          <span>Usuarios</span>
+        </NavLink>
+      )}
+      {isAdmin && (
+        <NavLink to="/admin/register" className={linkClass}>
+          <UserPlus className="h-[18px] w-[18px]" />
+          <span>Crear usuario</span>
+        </NavLink>
+      )}
+      {isAdmin && (
+        <NavLink to="/admin/permissions" className={linkClass}>
+          <KeyRound className="h-[18px] w-[18px]" />
+          <span>Roles y permisos</span>
+        </NavLink>
+      )}
     </div>
   );
 };
