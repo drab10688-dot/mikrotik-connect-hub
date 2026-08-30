@@ -189,20 +189,53 @@ export default function Login() {
             className="h-11 bg-background/60"
           />
         </div>
+
+        {/* Honeypot invisible para bots */}
+        <input
+          type="text"
+          name="company"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+          className="hidden"
+          aria-hidden
+        />
+
+        <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3">
+          <Label htmlFor="captcha" className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+            Verificación de seguridad
+          </Label>
+          <div className="flex items-center gap-3">
+            <span className="select-none rounded-lg bg-primary/10 px-3 py-2 font-mono text-base font-semibold text-primary ring-1 ring-primary/25">
+              {challenge.a} + {challenge.b} = ?
+            </span>
+            <Input
+              id="captcha"
+              inputMode="numeric"
+              placeholder="Resultado"
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              required
+              disabled={loading || isLocked}
+              className="h-10 flex-1 bg-background/60"
+            />
+          </div>
+        </div>
+
         <Button
           type="submit"
-          disabled={loading}
+          disabled={loading || isLocked}
           className="relative w-full h-11 overflow-hidden bg-gradient-primary text-primary-foreground font-semibold shadow-primary hover:opacity-95"
         >
           <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-12 bg-primary-foreground/20 animate-sheen" aria-hidden />
           <LogIn className="mr-2 h-4 w-4" />
-          {loading ? 'Verificando…' : 'Entrar'}
+          {isLocked ? `Bloqueado ${lockedSeconds}s` : loading ? 'Verificando…' : 'Entrar'}
         </Button>
-        <p className="pt-1 text-center text-xs text-muted-foreground">
-          ¿Sin cuenta? Solicítala al administrador de tu ISP.
-        </p>
       </form>
     </div>
+
   );
 
   // ── Landing comercial ───────────────────────────────────────
