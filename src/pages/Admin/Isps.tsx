@@ -30,6 +30,8 @@ interface Isp {
   enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
   landing?: any;
+  onu_networks?: string | null;
+  vpn_subnet?: string | null;
   users_count: string | number;
   onus_used: string | number;
   onus_blocked: string | number;
