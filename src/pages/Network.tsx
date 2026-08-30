@@ -69,6 +69,9 @@ export default function Network() {
     enabled: !!deviceId && !browserOpen,
     refetchInterval: browserOpen ? false : 30_000,
     refetchOnWindowFocus: false,
+    // Mantiene la lista anterior si un refresco falla o llega vacío (VPN inestable)
+    placeholderData: (prev: any) => prev,
+    retry: 1,
   });
 
   const { data: netDevices, isLoading: loadingNet, refetch: refetchNet, error: netError } = useQuery({
@@ -202,7 +205,8 @@ export default function Network() {
     { pageSize: 24 }
   );
 
-  const filteredSecrets = pppoeSearch.paged;
+  // Sin paginación en PPPoE: se muestran todos los resultados filtrados.
+  const filteredSecrets = pppoeSearch.filtered;
   const filteredEquipos = equipoSearch.paged;
 
   const openWebFig = async () => {
