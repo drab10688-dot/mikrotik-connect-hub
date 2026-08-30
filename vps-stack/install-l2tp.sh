@@ -212,7 +212,7 @@ docker ps --format '{{.Names}}' | grep -q '^omnisync-l2tp$' || exit 0
 docker ps --format '{{.Names}}' | grep -q '^omnisync-postgres$' || exit 0
 
 ROWS=$(docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAF'|' \
-  -c "SELECT username, password, tunnel_ip, COALESCE(onu_networks, '') FROM tenant_vpn_peers WHERE username IS NOT NULL" 2>/dev/null)
+  -c "SELECT username, password, tunnel_ip, COALESCE(NULLIF(TRIM(onu_networks), ''), '10.82.0.0/21') FROM tenant_vpn_peers WHERE username IS NOT NULL" 2>/dev/null)
 [ -n "$ROWS" ] || exit 0
 
 TMP=$(mktemp)
