@@ -128,6 +128,11 @@ if command -v ufw >/dev/null 2>&1; then
   echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
 fi
 
+# Aislamiento del navegador remoto (sin salida a internet, sólo redes privadas)
+if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
+  bash "$INSTALL_DIR/browser-firewall.sh" || true
+fi
+
 # Comprobación real de los escritorios remotos (HTTPS autofirmado)
 for P in 8081 8082; do
   CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:$P/" || echo 000)
