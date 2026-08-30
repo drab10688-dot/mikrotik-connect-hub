@@ -17,6 +17,39 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40);
 
+/**
+ * Auto-reparación: si la base viene de una instalación anterior, faltan
+ * columnas nuevas en `tenants` y cualquier alta falla. Se ejecuta bajo demanda.
+ */
+const TENANT_COLUMNS = [
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_color TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_limit INTEGER`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_token TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vpn_subnet TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_networks TEXT`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onus BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_mikrotik BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_tr069 BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onu_web BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS web_ports JSONB`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS landing JSONB`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()`,
+];
+
+let tenantColumnsReady = false;
+async function ensureTenantColumns() {
+  if (tenantColumnsReady) return;
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => undefined);
+  for (const sql of TENANT_COLUMNS) {
+    await pool.query(sql).catch((e: any) => console.warn('[TENANTS] schema:', e.message));
+  }
+  tenantColumnsReady = true;
+}
+
+
+
 // ─── Público: branding por slug (login personalizado por ISP) ─────────
 tenantsPublicRouter.get('/:slug', async (req: Request, res: Response) => {
   try {
