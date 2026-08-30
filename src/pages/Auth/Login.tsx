@@ -139,22 +139,23 @@ export default function Login() {
 
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
-    <div className="flex items-center gap-3">
+    <div className={`flex flex-col gap-3 ${size === 'lg' ? 'items-start' : 'items-center text-center'}`}>
       <div
         className={`relative grid place-items-center rounded-2xl bg-card/70 ring-1 ring-primary/30 glow-ring overflow-hidden ${
-          size === 'lg' ? 'h-16 w-16' : 'h-12 w-12'
+          size === 'lg' ? 'h-20 w-20' : 'h-14 w-14'
         }`}
       >
         <img src={brandLogo || omnisyncLogoFull} alt={brandName} className="h-full w-full object-cover" />
       </div>
       <div className="min-w-0">
-        <p className={`font-bold tracking-tight brand-text ${size === 'lg' ? 'text-2xl' : 'text-lg'}`}>
+        <p className={`font-bold tracking-tight brand-text ${size === 'lg' ? 'text-3xl' : 'text-xl'}`}>
           {brandName}
         </p>
         <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Network Operations</p>
       </div>
     </div>
   );
+
 
   const LoginForm = (
     <div className="glass-panel glass-panel-glow hairline-top w-full max-w-md p-7 animate-fade-in-up">
@@ -227,9 +228,8 @@ export default function Login() {
         <Button
           type="submit"
           disabled={loading || isLocked}
-          className="relative w-full h-11 overflow-hidden bg-gradient-primary text-primary-foreground font-semibold shadow-primary hover:opacity-95"
+          className="w-full h-11 font-semibold"
         >
-          <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-12 bg-primary-foreground/20 animate-sheen" aria-hidden />
           <LogIn className="mr-2 h-4 w-4" />
           {isLocked ? `Bloqueado ${lockedSeconds}s` : loading ? 'Verificando…' : 'Entrar'}
         </Button>
@@ -259,8 +259,7 @@ export default function Login() {
               </h1>
               <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
                 ONUs, antenas y MikroTik en un solo panel. Diagnóstico en segundos, cambios masivos sin
-                desplazamientos y control total por operador.
-
+                desplazamientos y control total por operador, con historial de cada acción.
               </p>
             </div>
 
@@ -268,9 +267,8 @@ export default function Login() {
               <Button
                 size="lg"
                 onClick={() => setShowForm(true)}
-                className="relative h-12 overflow-hidden bg-gradient-primary px-8 text-base font-semibold text-primary-foreground shadow-primary hover:opacity-95"
+                className="h-12 px-8 text-base font-semibold"
               >
-                <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-12 bg-primary-foreground/20 animate-sheen" aria-hidden />
                 <LogIn className="mr-2 h-5 w-5" />
                 Iniciar sesión
               </Button>
