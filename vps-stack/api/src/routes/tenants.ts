@@ -143,7 +143,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
   const client = await pool.connect();
   try {
     const { name, slug, logo_url, primary_color, onu_limit, user_limit, admin_email, admin_password, admin_name,
-            enable_onus, enable_mikrotik } = req.body;
+            enable_onus, enable_mikrotik, onu_networks } = req.body;
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' });
 
     const finalSlug = slugify(slug || name);
@@ -169,17 +169,24 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
       if (!usedSubnets.has(candidate)) { vpnSubnet = candidate; break; }
     }
 
+    // Red de ONUs/antenas de este ISP: define qué subredes detrás de la
+    // MikroTik son alcanzables por la VPN. Por defecto 192.168.0.0/16 cubre
+    // la mayoría de despliegues residenciales (192.168.0/24, .1/24, ...).
+    const finalOnuNetworks = (typeof onu_networks === 'string' && onu_networks.trim())
+      ? onu_networks.trim().replace(/[^0-9a-fA-F:.,/ ]/g, '')
+      : '192.168.0.0/16';
+
     const { rows } = await client.query(
       `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit, user_limit,
                             enable_onus, enable_mikrotik,
-                            acs_token, vpn_subnet)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                            acs_token, vpn_subnet, onu_networks)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [name, finalSlug, logo_url || null, primary_color || null,
        Number.isFinite(Number(onu_limit)) && Number(onu_limit) > 0 ? Math.floor(Number(onu_limit)) : null,
        Number.isFinite(Number(user_limit)) && Number(user_limit) > 0 ? Math.floor(Number(user_limit)) : null,
        enable_onus !== false, enable_mikrotik !== false,
-       acsToken, vpnSubnet]
+       acsToken, vpnSubnet, finalOnuNetworks]
     );
     const tenant = rows[0];
 
@@ -216,7 +223,7 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
   try {
     await ensureTenantColumns();
     const { name, slug, logo_url, primary_color, is_active, onu_limit, user_limit,
-            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing } = req.body;
+            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing, onu_networks } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
@@ -235,6 +242,7 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          enable_tr069 = COALESCE($11::boolean, enable_tr069),
          enable_onu_web = COALESCE($12::boolean, enable_onu_web),
          landing = COALESCE($13::jsonb, landing),
+         onu_networks = COALESCE($15::text, onu_networks),
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null,
@@ -247,7 +255,9 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
        typeof enable_tr069 === 'boolean' ? enable_tr069 : null,
        typeof enable_onu_web === 'boolean' ? enable_onu_web : null,
        landing ? JSON.stringify(landing) : null,
-       user_limit === undefined || user_limit === null || user_limit === '' ? null : Math.floor(Number(user_limit))]
+       user_limit === undefined || user_limit === null || user_limit === '' ? null : Math.floor(Number(user_limit)),
+       onu_networks === undefined || onu_networks === null || onu_networks === ''
+         ? null : String(onu_networks).replace(/[^0-9a-fA-F:.,/ ]/g, '')]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);

@@ -30,6 +30,8 @@ interface Isp {
   enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
   landing?: any;
+  onu_networks?: string | null;
+  vpn_subnet?: string | null;
   users_count: string | number;
   onus_used: string | number;
   onus_blocked: string | number;
@@ -61,6 +63,7 @@ export default function Isps() {
     user_limit: "",
     admin_email: "",
     admin_password: "",
+    onu_networks: "192.168.0.0/16",
   });
 
   const { data: isps = [], isLoading } = useQuery<Isp[]>({
@@ -78,10 +81,11 @@ export default function Isps() {
         user_limit: form.user_limit ? Number(form.user_limit) : undefined,
         admin_email: form.admin_email || undefined,
         admin_password: form.admin_password || undefined,
+        onu_networks: form.onu_networks || undefined,
       }),
     onSuccess: () => {
       toast.success("ISP creado con su propio enlace TR-069");
-      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "" });
+      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "", onu_networks: "192.168.0.0/16" });
       setCreating(false);
       qc.invalidateQueries({ queryKey: ["admin-isps"] });
     },
@@ -193,6 +197,17 @@ export default function Isps() {
                   onChange={(e) => setForm({ ...form, admin_password: e.target.value })}
                 />
               </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Red de ONUs / antenas (detrás de la MikroTik)</Label>
+                <Input
+                  placeholder="192.168.0.0/16"
+                  value={form.onu_networks}
+                  onChange={(e) => setForm({ ...form, onu_networks: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Subredes a las que el VPS llegará por la VPN. Separa varias con coma. Define el enrutamiento del navegador remoto y el panel.
+                </p>
+              </div>
               <div className="md:col-span-2">
                 <Button
                   disabled={!form.name || createIsp.isPending}
@@ -244,6 +259,7 @@ function IspCard({
   const [color, setColor] = useState(isp.primary_color || "#0EA5A4");
   const [mkPort, setMkPort] = useState(String(isp.web_ports?.mikrotik?.port ?? 80));
   const [ubntPort, setUbntPort] = useState(String(isp.web_ports?.ubiquiti?.port ?? 443));
+  const [onuNetworks, setOnuNetworks] = useState(isp.onu_networks || "192.168.0.0/16");
   const used = Number(isp.onus_used || 0);
   const blocked = Number(isp.onus_blocked || 0);
   const max = isp.onu_limit && isp.onu_limit > 0 ? isp.onu_limit : null;
@@ -363,6 +379,24 @@ function IspCard({
               </Button>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+          <Label className="text-xs font-medium">Red de ONUs / antenas (detrás de la MikroTik)</Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="192.168.0.0/16"
+              value={onuNetworks}
+              onChange={(e) => setOnuNetworks(e.target.value)}
+            />
+            <Button variant="secondary" onClick={() => onSave({ onu_networks: onuNetworks })}>
+              <Save className="w-4 h-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Subredes a las que el VPS llega por la VPN. Separa varias con coma (ej: 192.168.0.0/24,192.168.1.0/24).
+            Al cambiarla, regenera la VPN del ISP para que el VPS instale las rutas nuevas.
+          </p>
         </div>
 
         <div className="rounded-lg border p-3 space-y-3">
