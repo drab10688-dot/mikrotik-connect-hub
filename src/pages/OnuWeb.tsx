@@ -19,6 +19,8 @@ import { Globe, Wifi, KeyRound, Search, Save, Trash2, ShieldCheck, History, Moni
  */
 export default function OnuWeb() {
   const qc = useQueryClient();
+  const mikrotikId = localStorage.getItem("mikrotik_device_id") || "";
+  const [tab, setTab] = useState("equipos");
   const [ip, setIp] = useState("");
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
@@ -28,6 +30,36 @@ export default function OnuWeb() {
   const [pppoe, setPppoe] = useState({ username: "", password: "" });
   const [selectedProfile, setSelectedProfile] = useState<string>("");
   const [cred, setCred] = useState({ ip: "", name: "", username: "admin", password: "", port: "", protocol: "http" });
+  const [newPass, setNewPass] = useState<Record<string, string>>({});
+
+  const { data: pppoeData } = useQuery({
+    queryKey: ["mini-pppoe", mikrotikId],
+    queryFn: () => netAccessApi.pppoe(mikrotikId),
+    enabled: !!mikrotikId,
+    refetchInterval: 30000,
+  });
+  const { data: devicesData } = useQuery({
+    queryKey: ["mini-devices", mikrotikId],
+    queryFn: () => netAccessApi.devices(mikrotikId),
+    enabled: !!mikrotikId,
+    refetchInterval: 30000,
+  });
+
+  const changePppoePass = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      netAccessApi.setPppoePassword(mikrotikId, id, password, true),
+    onSuccess: (_d: any, vars) => {
+      toast.success("Clave PPPoE actualizada en el MikroTik (sesión reiniciada)");
+      setNewPass((p) => ({ ...p, [vars.id]: "" }));
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const manageDevice = (deviceIp: string) => {
+    setIp(deviceIp);
+    setTab("gestion");
+    probe.mutate({ ip: deviceIp });
+  };
 
   const { data: credentials = [] } = useQuery({
     queryKey: ["onu-web-credentials"],
@@ -113,21 +145,123 @@ export default function OnuWeb() {
       <div className="p-4 md:p-8 md:ml-64 space-y-6">
         <header className="space-y-1">
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Globe className="h-6 w-6 text-primary" /> Acceso web a ONUs
+            <Globe className="h-6 w-6 text-primary" /> Mini-panel de equipos
           </h1>
           <p className="text-sm text-muted-foreground">
-            Entra por la VPN a la web de la ONU y cambia solo WiFi y PPPoE. Sin TR-069.
-            Cada modelo se aprende una vez y el perfil se reutiliza para las demás.
+            Un solo panel para antenas y ONUs: cambia claves PPPoE en el MikroTik y entra por la VPN
+            a la web de cada equipo para configurar WiFi y PPPoE. Cada modelo se aprende una vez y se reutiliza.
           </p>
         </header>
 
-        <Tabs defaultValue="gestion">
+        <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
-            <TabsTrigger value="gestion">Gestionar ONU</TabsTrigger>
+            <TabsTrigger value="equipos">Equipos</TabsTrigger>
+            <TabsTrigger value="gestion">Gestionar equipo</TabsTrigger>
             <TabsTrigger value="credenciales">Credenciales</TabsTrigger>
             <TabsTrigger value="perfiles">Perfiles aprendidos</TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
+
+          {/* ── Equipos detectados + clientes PPPoE ───── */}
+          <TabsContent value="equipos" className="space-y-4">
+            {!mikrotikId && (
+              <Card><CardContent className="py-6 text-sm text-muted-foreground">Selecciona un MikroTik en Ajustes para ver los equipos de la red.</CardContent></Card>
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <KeyRound className="h-4 w-4" /> Clientes PPPoE (cambio de clave en el MikroTik)
+                </CardTitle>
+                <CardDescription>La clave se cambia directo en el router por la VPN y la sesión se reinicia.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>IP</TableHead>
+                      <TableHead>Nueva clave</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(pppoeData?.secrets || []).map((s: any) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.name}</TableCell>
+                        <TableCell>
+                          {s.online ? <Badge>Conectado</Badge> : <Badge variant="outline">Desconectado</Badge>}
+                        </TableCell>
+                        <TableCell className="text-xs">{s.remote_address || "—"}</TableCell>
+                        <TableCell>
+                          <Input
+                            className="h-8 w-36"
+                            placeholder="Nueva clave"
+                            value={newPass[s.id] || ""}
+                            onChange={(e) => setNewPass({ ...newPass, [s.id]: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={(newPass[s.id] || "").length < 4 || changePppoePass.isPending}
+                            onClick={() => changePppoePass.mutate({ id: s.id, password: newPass[s.id] })}
+                          >
+                            <Check className="h-4 w-4 mr-1" /> Cambiar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!(pppoeData?.secrets || []).length && (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Sin secretos PPPoE o sin MikroTik seleccionado</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Radio className="h-4 w-4" /> Equipos detectados en la red (antenas, ONUs, CPEs)
+                </CardTitle>
+                <CardDescription>Detectados vía PPPoE, DHCP, ARP y vecinos del MikroTik. "Gestionar" detecta el modelo y abre la configuración.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>IP</TableHead>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Marca</TableHead>
+                      <TableHead>Detectado por</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(devicesData?.devices || []).map((d: any) => (
+                      <TableRow key={d.ip}>
+                        <TableCell className="font-mono text-xs">{d.ip}</TableCell>
+                        <TableCell>{d.name}</TableCell>
+                        <TableCell><Badge variant="secondary">{d.brand}</Badge></TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{d.source}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" onClick={() => manageDevice(d.ip)} disabled={probe.isPending}>
+                            <MonitorCog className="h-4 w-4 mr-1" /> Gestionar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!(devicesData?.devices || []).length && (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No se detectaron equipos</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* ── Gestión ───────────────────────────────── */}
           <TabsContent value="gestion" className="space-y-4">
