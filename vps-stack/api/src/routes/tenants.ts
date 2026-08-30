@@ -4,6 +4,7 @@ import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import { applyTenantOnuLimit } from '../lib/acs-tenant';
 import { seedTenantPermissions } from './isp';
+import { removeTenantBrowser } from '../lib/tenant-browser';
 
 export const tenantsPublicRouter = Router();
 export const tenantsRouter = Router();
