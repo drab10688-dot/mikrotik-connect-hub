@@ -141,6 +141,18 @@ export default function Network() {
 
   const apCredList = (apCreds || []) as any[];
 
+  // Lectura automática: detecta cualquier AP desde la MikroTik y lee su señal
+  // probando credenciales típicas por marca. No requiere registrar nada.
+  const { data: apsAuto, isFetching: apsAutoFetching, error: apsAutoError, refetch: refetchApsAuto } = useQuery({
+    queryKey: ["aps-auto", deviceId],
+    queryFn: () => netAccessApi.apsAuto(deviceId),
+    enabled: !!deviceId && !browserOpen,
+    refetchInterval: browserOpen ? false : 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const autoAps: any[] = (apsAuto as any)?.aps ?? [];
+
+
   // Lee los clientes de todos los APs guardados en paralelo
   const { data: allApClientsRaw, isFetching: allApsFetching, error: allApClientsError, refetch: refetchAllAps } = useQuery({
     queryKey: ["ap-all-clients", deviceId],
