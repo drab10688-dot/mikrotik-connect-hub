@@ -58,6 +58,21 @@ export default function Login() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [apiUrl] = useState('');
+  const [challenge, setChallenge] = useState(newChallenge);
+  const [answer, setAnswer] = useState('');
+  const [honeypot, setHoneypot] = useState('');
+  const [fails, setFails] = useState(0);
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!lockUntil) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [lockUntil]);
+
+  const lockedSeconds = lockUntil ? Math.max(0, Math.ceil((lockUntil - now) / 1000)) : 0;
+  const isLocked = lockedSeconds > 0;
 
   useEffect(() => {
     if (slug) setStoredTenantSlug(slug);
@@ -70,17 +85,49 @@ export default function Login() {
     if (isAuthenticated && !authLoading) navigate('/dashboard');
   }, [isAuthenticated, authLoading, navigate]);
 
+  const resetChallenge = () => {
+    setChallenge(newChallenge());
+    setAnswer('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
+
+    // Honeypot: los bots rellenan campos ocultos
+    if (honeypot.trim()) {
+      toast.error('Verificación fallida.');
+      return;
+    }
+    if (Number(answer) !== challenge.a + challenge.b) {
+      toast.error('Respuesta de verificación incorrecta.');
+      resetChallenge();
+      return;
+    }
+
     setLoading(true);
     try {
       if (apiUrl.trim()) setApiBaseUrl(apiUrl.trim());
-      const { token, user } = await authApi.login(formData.email, formData.password);
+      const { token, user } = await authApi.login(formData.email.trim(), formData.password);
       setToken(token);
       setStoredUser(user);
+      setFails(0);
       navigate('/dashboard');
     } catch (error: any) {
-      if (error?.status === 404) {
+      const next = fails + 1;
+      setFails(next);
+      resetChallenge();
+      if (error?.status === 429) {
+        const secs = Number(error?.data?.retry_after) || 900;
+        setLockUntil(Date.now() + secs * 1000);
+        setNow(Date.now());
+        toast.error(error.message || 'Demasiados intentos. Espera unos minutos.');
+      } else if (next >= 5) {
+        setLockUntil(Date.now() + 60_000);
+        setNow(Date.now());
+        setFails(0);
+        toast.error('Demasiados intentos fallidos. Espera 1 minuto.');
+      } else if (error?.status === 404) {
         toast.error('No se encontró la API. Ingresa la URL de tu VPS (ej: https://tu-dominio.com)');
       } else {
         toast.error(error.message || 'Error al iniciar sesión');
@@ -89,6 +136,7 @@ export default function Login() {
       setLoading(false);
     }
   };
+
 
   const Brand = ({ size = 'lg' }: { size?: 'lg' | 'sm' }) => (
     <div className="flex items-center gap-3">
