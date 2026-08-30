@@ -60,7 +60,9 @@ export const withAuthToken = (path?: string | null): string => {
 export const remoteDesktopUrl = (kind: 'browser' | 'winbox'): string => {
   const port = kind === 'winbox' ? 8082 : 8081;
   const host = window.location.hostname;
-  const base = `http://${host}:${port}/`;
+  // KasmVNC sólo funciona en contexto seguro: los escritorios se sirven por HTTPS
+  // (certificado autofirmado; la primera vez hay que aceptar el aviso del navegador).
+  const base = `https://${host}:${port}/`;
   return withAuthToken(base);
 };
 

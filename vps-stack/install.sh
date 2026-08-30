@@ -134,6 +134,11 @@ fi
 set -a; . "$INSTALL_DIR/.env"; set +a
 
 mkdir -p nginx/certs frontend/dist scripts
+if [ ! -f nginx/certs/remote.crt ]; then
+  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
+    -keyout nginx/certs/remote.key -out nginx/certs/remote.crt \
+    -subj "/CN=omnisync-remote" >/dev/null 2>&1
+fi
 
 if command -v ufw >/dev/null 2>&1; then
   for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 500/udp 4500/udp 1701/udp; do
