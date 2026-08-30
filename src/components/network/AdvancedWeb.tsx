@@ -185,6 +185,11 @@ export function AdvancedWeb({
                   <ExternalLink className="h-4 w-4 mr-1" /> Nueva pestaña
                 </a>
               </Button>
+              <Button size="sm" variant="secondary" asChild>
+                <a href="/browser/" target="_blank" rel="noreferrer" title="Firefox real dentro del VPS (captchas, JS pesado)">
+                  <Globe className="h-4 w-4 mr-1" /> Navegador remoto
+                </a>
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
