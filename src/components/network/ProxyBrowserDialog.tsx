@@ -109,12 +109,13 @@ export function ProxyBrowserDialog({
                 size="sm"
                 variant={mode === "browser" ? "default" : "ghost"}
                 className="h-7 px-2 text-xs"
+                title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
                 onClick={async () => {
                   setMode("browser");
                   if (target) await launchRemote(target.directUrl);
                 }}
               >
-                <Globe className="mr-1 h-3.5 w-3.5" /> Navegador
+                <Globe className="mr-1 h-3.5 w-3.5" /> Escritorio remoto (VNC)
               </Button>
               <Button
                 size="sm"
@@ -129,6 +130,7 @@ export function ProxyBrowserDialog({
                 Proxy
               </Button>
             </div>
+
             <span className="text-xs text-muted-foreground">{mode === "browser" ? status : "Proxy integrado"}</span>
             <div className="ml-auto flex items-center gap-1">
               <Button size="icon" variant="ghost" title="Recargar" onClick={reload}>
