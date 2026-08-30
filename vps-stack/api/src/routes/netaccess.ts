@@ -1128,9 +1128,17 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
             }
 
             if (type.includes('text/html')) {
+              // Convierte también rutas relativas de frames y recursos. Varias
+              // interfaces BOA antiguas ignoran <base> en frameset/iframe.
               body = body.replace(
-                /\b(src|href|action|data-src|background)\s*=\s*(["'])(\/[^"']*)\2/gi,
-                (_m, attr, q, url) => `${attr}=${q}${prefix}${url}${q}`
+                /\b(src|href|action|data-src|background)\s*=\s*(["'])(?!#|data:|javascript:|mailto:|tel:|https?:|\/\/)([^"']+)\2/gi,
+                (_m, attr, q, url) => {
+                  if (url.startsWith(prefix)) return `${attr}=${q}${url}${q}`;
+                  const resolved = url.startsWith('/')
+                    ? `${prefix}${url}`
+                    : `${prefix}/${url.replace(/^\.\//, '')}`;
+                  return `${attr}=${q}${resolved}${q}`;
+                }
               );
               // src/href sin comillas (firmware antiguo).
               body = body.replace(
@@ -1141,6 +1149,14 @@ netAccessRouter.all('/:mikrotikId/web/:ip/:port/*', async (req: AuthRequest, res
               body = /<head[^>]*>/i.test(body)
                 ? body.replace(/<head[^>]*>/i, (m) => `${m}${base}`)
                 : `${base}${body}`;
+
+              // Algunos firmwares cambian frames o realizan fetch/XHR con una
+              // ruta absoluta construida en tiempo de ejecución. Este shim la
+              // mantiene dentro del mismo proxy autenticado.
+              const shim = `<script>(function(){var p=${JSON.stringify(prefix)};function r(u){if(typeof u!=="string"||!u.startsWith("/")||u.startsWith(p))return u;return p+u}var f=window.fetch;if(f)window.fetch=function(i,o){return f.call(this,typeof i==="string"?r(i):i,o)};var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=r(u);return xo.apply(this,arguments)};})();</script>`;
+              body = /<head[^>]*>/i.test(body)
+                ? body.replace(/<head[^>]*>/i, (m) => `${m}${shim}`)
+                : `${shim}${body}`;
             }
 
             // Rutas absolutas usadas desde JavaScript (location, open, ajax, captcha refresh).
