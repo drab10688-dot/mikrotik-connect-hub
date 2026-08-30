@@ -22,6 +22,17 @@ function sh(script: string): Promise<string> {
   });
 }
 
+function copyRoutesToHost(): Promise<void> {
+  return new Promise((resolve) => {
+    execFile(
+      'docker',
+      ['cp', `${CONTAINER}:${ROUTES_FILE}`, '/opt/omnisync-l2tp/omnisync-routes'],
+      { timeout: 15000 },
+      () => resolve()
+    );
+  });
+}
+
 const esc = (v: string) => v.replace(/[^a-zA-Z0-9_.@-]/g, '');
 const escNet = (v: string) => v.replace(/[^0-9a-fA-F:.,/ ]/g, '');
 
@@ -68,9 +79,7 @@ chmod +x /etc/ppp/ip-up.local`
     );
 
     // Mantener también el mapa en el host para el reparador systemd.
-    await sh(
-      `docker cp ${CONTAINER}:${ROUTES_FILE} /opt/omnisync-l2tp/omnisync-routes 2>/dev/null || true`
-    );
+    await copyRoutesToHost();
 
     // Si el túnel ya está activo, aplica las rutas ahora mismo
     for (const net of onuNetworks.split(',').map((s) => s.trim()).filter(Boolean)) {

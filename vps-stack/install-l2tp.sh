@@ -72,7 +72,7 @@ cat > "$MT" <<EOF
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=30 dial-on-demand=no \
+    add-default-route=no allow=mschap2 keepalive-timeout=30 dial-on-demand=no \\
     disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
@@ -248,36 +248,9 @@ chmod +x "$DIR/l2tp-users-sync.sh"
 [ -f "$STACK_DIR/.env" ] && set -a && . "$STACK_DIR/.env" 2>/dev/null; set +a
 "$DIR/l2tp-users-sync.sh" >/dev/null 2>&1 || true
 
-# --- Rutas hacia las redes de ONUs por el túnel L2TP ---
-cat > "$DIR/l2tp-routes.sh" <<'EOS'
-#!/usr/bin/env bash
-# Reaplica rutas hacia las redes de ONUs a través del cliente L2TP (MikroTik)
-set -u
-NETS="__NETS__"
-GW="__GW__"
-# La interfaz PPP creada por L2TP cambia de número después de reconectar.
-# Se usa la IP fija del peer como gateway, nunca un nombre supuesto como l2tp-eth0.
-if ! ip route get "$GW" 2>/dev/null | grep -qE 'dev ppp[0-9]+'; then
-  exit 0
-fi
-for n in $(echo "$NETS" | tr ',' ' '); do
-  [ -n "$n" ] || continue
-  ip route replace "$n" via "$GW" 2>/dev/null || true
-done
-# Permite que API y Firefox (red Docker) alcancen las ONUs a través del túnel.
-for n in $(echo "$NETS" | tr ',' ' '); do
-  [ -n "$n" ] || continue
-  iptables -C FORWARD -s 172.16.0.0/12 -d "$n" -j ACCEPT 2>/dev/null || \
-    iptables -I FORWARD -s 172.16.0.0/12 -d "$n" -j ACCEPT 2>/dev/null || true
-  iptables -C FORWARD -d 172.16.0.0/12 -s "$n" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
-    iptables -I FORWARD -d 172.16.0.0/12 -s "$n" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
-  iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || \
-    iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d "$n" -j MASQUERADE 2>/dev/null || true
-done
-iptables -t nat -C POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || \
-  iptables -t nat -A POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null || true
-EOS
-sed -i "s|__NETS__|$ONU_NETS|; s|__GW__|$TUNNEL_POOL_START|" "$DIR/l2tp-routes.sh"
+# --- Rutas hacia las redes de ONUs por cada túnel L2TP activo ---
+# El reparador recorre el mapa peer->redes; no presupone ppp0 ni .10.
+cp "$STACK_DIR/restore-l2tp-routes.sh" "$DIR/l2tp-routes.sh"
 chmod +x "$DIR/l2tp-routes.sh"
 "$DIR/l2tp-routes.sh" >/dev/null 2>&1 || true
 ONU_NETS="$ONU_NETS" bash "$STACK_DIR/configure-browser-routing.sh" >/dev/null 2>&1 || true
