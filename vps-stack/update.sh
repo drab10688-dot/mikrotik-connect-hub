@@ -99,7 +99,9 @@ if ! docker compose run --rm --no-deps nginx nginx -t; then
   echo -e "${RED}✗ Configuración Nginx inválida. No se reinició el proxy.${NC}"
   exit 1
 fi
-docker compose up -d nginx
+# --force-recreate: los cambios de mapeo de puertos (8081/8082) sólo se
+# aplican si el contenedor se recrea; un simple `up -d` lo deja igual.
+docker compose up -d --force-recreate nginx
 
 # `docker compose up` puede mostrar "Started" aunque Nginx falle enseguida.
 # Esperamos brevemente y comprobamos tanto el contenedor como el frontend.
