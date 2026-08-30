@@ -35,6 +35,12 @@ export function AdvancedWeb({
 
   const routerId = mikrotikId || localStorage.getItem("mikrotik_device_id") || "";
 
+  useEffect(() => {
+    const onFsChange = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
   const toggleFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
