@@ -99,7 +99,9 @@ if ! docker compose run --rm --no-deps nginx nginx -t; then
   echo -e "${RED}✗ Configuración Nginx inválida. No se reinició el proxy.${NC}"
   exit 1
 fi
-docker compose up -d nginx
+# --force-recreate: los cambios de mapeo de puertos (8081/8082) sólo se
+# aplican si el contenedor se recrea; un simple `up -d` lo deja igual.
+docker compose up -d --force-recreate nginx
 
 # `docker compose up` puede mostrar "Started" aunque Nginx falle enseguida.
 # Esperamos brevemente y comprobamos tanto el contenedor como el frontend.
@@ -125,6 +127,18 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 8082/tcp >/dev/null 2>&1 || true
   echo -e "${GREEN}✓ Puertos 8081/8082 abiertos en UFW${NC}"
 fi
+
+# Comprobación real de los escritorios remotos (HTTPS autofirmado)
+for P in 8081 8082; do
+  CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:$P/" || echo 000)
+  if [ "$CODE" = "000" ]; then
+    echo -e "${RED}✗ Puerto $P no responde. Mapeo publicado:${NC}"
+    docker port omnisync-nginx || true
+  else
+    echo -e "${GREEN}✓ Puerto $P responde (HTTP $CODE)${NC}"
+  fi
+done
+
 
 cd /root && rm -rf "$TEMP_DIR"
 
