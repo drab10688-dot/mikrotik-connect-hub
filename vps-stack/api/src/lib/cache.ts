@@ -63,3 +63,37 @@ export function invalidate(prefix: string) {
     if (key.startsWith(prefix)) store.delete(key);
   }
 }
+
+/**
+ * Mantiene "calientes" las claves más consultadas: las refresca en segundo
+ * plano cada pocos segundos para que el panel las reciba SIEMPRE al instante
+ * (nunca espera a la VPN/MikroTik).
+ */
+const warm = new Map<string, { loader: () => Promise<any>; everyMs: number; lastUse: number }>();
+
+export function keepWarm(key: string, loader: () => Promise<any>, everyMs = 15000) {
+  const cur = warm.get(key);
+  if (cur) {
+    cur.lastUse = Date.now();
+    cur.loader = loader;
+    return;
+  }
+  warm.set(key, { loader, everyMs, lastUse: Date.now() });
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, w] of warm) {
+    // Deja de refrescar lo que nadie mira hace 10 minutos.
+    if (now - w.lastUse > 10 * 60_000) {
+      warm.delete(key);
+      continue;
+    }
+    const entry = store.get(key);
+    if (entry && now - entry.at < w.everyMs) continue;
+    w.loader()
+      .then((value) => store.set(key, { value, at: Date.now(), refreshing: false }))
+      .catch(() => undefined);
+  }
+}, 5000).unref?.();
+
