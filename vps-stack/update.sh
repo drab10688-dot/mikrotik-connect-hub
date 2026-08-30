@@ -99,9 +99,14 @@ if [ ! -s "$INSTALL_DIR/nginx/certs/remote.crt" ] || [ ! -s "$INSTALL_DIR/nginx/
     -out "$INSTALL_DIR/nginx/certs/remote.crt" \
     -subj "/CN=omnisync-remote" >/dev/null 2>&1
 fi
-# No reemplazar el proxy por una configuración inválida. Esta validación
-# detecta llaves faltantes, upstreams mal escritos y directivas incorrectas.
-if ! docker compose run --rm --no-deps nginx nginx -t; then
+# Validación aislada: `docker compose run` intentaba recrear redes y fallaba
+# con "network has active endpoints". Usamos un contenedor efímero sin redes.
+if ! docker run --rm --network none \
+  -v "$INSTALL_DIR/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+  -v "$INSTALL_DIR/nginx-dyn:/etc/nginx/conf.d:ro" \
+  -v "$INSTALL_DIR/nginx/certs:/etc/nginx/certs:ro" \
+  -v "$FRONTEND_DIR:/usr/share/nginx/html:ro" \
+  nginx:alpine nginx -t; then
   echo -e "${RED}✗ Configuración Nginx inválida. No se reinició el proxy.${NC}"
   exit 1
 fi
