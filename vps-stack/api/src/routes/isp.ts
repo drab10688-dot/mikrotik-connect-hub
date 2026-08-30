@@ -560,19 +560,30 @@ add name="OmniACS-VPN" connect-to=${serverHost} user="${peer.username}" password
 remove [find comment="Ruta hacia ACS"]
 add dst-address=${VPN_SERVER_IP}/32 gateway="OmniACS-VPN" comment="Ruta hacia ACS"
 
-# 3) NAT para que el ACS llegue directo al segmento de las ONUs
+# 3) Permitir que el VPS entre a la LAN/ONUs a través del túnel.
+# Muchos MikroTik tienen DROP al final de forward; sin estas reglas el túnel
+# conecta y el panel descubre equipos, pero el navegador queda en timeout.
+/ip firewall filter
+remove [find comment="OmniACS VPS a LAN"]
+remove [find comment="OmniACS LAN a VPS"]
+add chain=forward in-interface="OmniACS-VPN" action=accept \
+    place-before=0 comment="OmniACS VPS a LAN"
+add chain=forward out-interface="OmniACS-VPN" connection-state=established,related action=accept \
+    place-before=0 comment="OmniACS LAN a VPS"
+
+# 4) NAT de retorno hacia el VPS para TR-069 y administración remota
 /ip firewall nat
 remove [find comment="NAT TR-069 OmniACS"]
 add chain=srcnat out-interface="OmniACS-VPN" action=masquerade comment="NAT TR-069 OmniACS"
 
-# 4) RouterOS reconecta L2TP de forma nativa. Se eliminan watchdogs antiguos
+# 5) RouterOS reconecta L2TP de forma nativa. Se eliminan watchdogs antiguos
 # para no manipular la interfaz mientras está negociando.
 /system script
 remove [find name="OmniACS-VPN-Watchdog"]
 /system scheduler
 remove [find name="OmniACS-VPN-Watchdog"]
 
-# 5) TR-069 de las ONUs de este ISP
+# 6) TR-069 de las ONUs de este ISP
 #   ACS URL (por VPN) : ${acs.vpn_url}
 #   ACS URL (público) : ${acs.public_url}
 #   Usuario / clave   : ${acs.acs_username} / ${acs.acs_password}
