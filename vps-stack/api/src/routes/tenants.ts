@@ -26,6 +26,7 @@ const TENANT_COLUMNS = [
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_color TEXT`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_limit INTEGER`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS user_limit INTEGER`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS acs_token TEXT`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS vpn_subnet TEXT`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onu_networks TEXT`,
@@ -140,7 +141,7 @@ tenantsRouter.get('/', requireRole('super_admin'), async (_req: AuthRequest, res
 tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
   try {
-    const { name, slug, logo_url, primary_color, onu_limit, admin_email, admin_password, admin_name,
+    const { name, slug, logo_url, primary_color, onu_limit, user_limit, admin_email, admin_password, admin_name,
             enable_onus, enable_mikrotik } = req.body;
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' });
 
@@ -151,15 +152,16 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     await client.query('BEGIN');
 
     const { rows } = await client.query(
-      `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit,
+      `INSERT INTO tenants (name, slug, logo_url, primary_color, onu_limit, user_limit,
                             enable_onus, enable_mikrotik,
                             acs_token, vpn_subnet)
-       VALUES ($1, $2, $3, $4, $5, $6, $7,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
                encode(gen_random_bytes(8), 'hex'),
                '10.13.' || (13 + (SELECT COUNT(*) + 1 FROM tenants))::text || '.0/24')
        RETURNING *`,
       [name, finalSlug, logo_url || null, primary_color || null,
        Number.isFinite(Number(onu_limit)) && Number(onu_limit) > 0 ? Math.floor(Number(onu_limit)) : null,
+       Number.isFinite(Number(user_limit)) && Number(user_limit) > 0 ? Math.floor(Number(user_limit)) : null,
        enable_onus !== false, enable_mikrotik !== false]
     );
     const tenant = rows[0];
@@ -196,7 +198,7 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
 tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
     await ensureTenantColumns();
-    const { name, slug, logo_url, primary_color, is_active, onu_limit,
+    const { name, slug, logo_url, primary_color, is_active, onu_limit, user_limit,
             enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
@@ -208,6 +210,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          is_active = COALESCE($6, is_active),
          onu_limit = CASE WHEN $7::int IS NULL THEN onu_limit
                           WHEN $7::int <= 0 THEN NULL ELSE $7::int END,
+         user_limit = CASE WHEN $14::int IS NULL THEN user_limit
+                           WHEN $14::int <= 0 THEN NULL ELSE $14::int END,
          enable_onus = COALESCE($8::boolean, enable_onus),
          enable_mikrotik = COALESCE($9::boolean, enable_mikrotik),
          web_ports = COALESCE($10::jsonb, web_ports),
@@ -225,7 +229,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
        web_ports ? JSON.stringify(web_ports) : null,
        typeof enable_tr069 === 'boolean' ? enable_tr069 : null,
        typeof enable_onu_web === 'boolean' ? enable_onu_web : null,
-       landing ? JSON.stringify(landing) : null]
+       landing ? JSON.stringify(landing) : null,
+       user_limit === undefined || user_limit === null || user_limit === '' ? null : Math.floor(Number(user_limit))]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);
