@@ -272,8 +272,9 @@ networks:
     driver: bridge
   # Red dedicada de los escritorios remotos. Subred fija para poder aplicar
   # reglas de firewall (sin salida a internet) en el host: browser-firewall.sh
+  # Sin `name:` fijo: forzarlo obligaba a Docker a recrear la red y fallaba
+  # ("network has active endpoints"), dejando Nginx sin reiniciar.
   omnisync-browser-net:
-    name: omnisync-browser-net
     driver: bridge
     ipam:
       config:
