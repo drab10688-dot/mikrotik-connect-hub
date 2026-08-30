@@ -304,12 +304,6 @@ export default function Login() {
                 <p className="mt-1 text-sm text-muted-foreground">{f.text}</p>
               </div>
             ))}
-            <div className="glass-panel hairline-top sm:col-span-2 flex items-center gap-4 p-5">
-              <Gauge className="h-8 w-8 shrink-0 text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Acceso seguro y centralizado: sin exponer routers ni ONUs a Internet.
-              </p>
-            </div>
 
           </div>
         </div>
