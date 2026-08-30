@@ -726,15 +726,17 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
     });
 
     const claimed = new Set<string>();
+    const clientWeb = ports.otro || { port: 80, protocol: 'http' };
     const clientNode = (c: any, apIp: string) => {
       const mac = normalizeMac(c.mac);
       const link = mac ? macToPppoe.get(mac) : null;
       if (link?.name) claimed.add(String(link.name));
+      const ip = link?.address || null;
       return {
         type: 'cliente' as const,
         mac: c.mac,
         name: link?.name || c.name || c.mac || 'cliente',
-        ip: link?.address || null,
+        ip,
         signal: c.signal ?? null,
         noise: c.noise ?? null,
         snr: c.snr ?? null,
@@ -745,6 +747,9 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
         distance: c.distance ?? null,
         quality: c.quality || signalQuality(c.signal ?? null, c.snr ?? null),
         via_ap: apIp,
+        // Web del CPE/antena del cliente accesible por el proxy del VPS
+        web_url: ip ? `${clientWeb.protocol}://${ip}:${clientWeb.port}/` : null,
+        proxy_path: ip ? `/api/netaccess/${mikrotikId}/web/${ip}/${clientWeb.port}/` : null,
       };
     };
 
