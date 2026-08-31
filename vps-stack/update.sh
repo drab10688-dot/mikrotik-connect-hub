@@ -128,7 +128,6 @@ fi
 # --force-recreate: los cambios de mapeo de puertos (8081) sólo se
 # aplican si el contenedor se recrea; un simple `up -d` lo deja igual.
 docker compose up -d --force-recreate nginx
-...
 # Firewall: escritorio remoto (Chromium 8081, HTTPS + token del panel).
 # Los escritorios por usuario no publican puertos: van por Nginx.
 if command -v ufw >/dev/null 2>&1; then
