@@ -33,7 +33,7 @@ interface Props {
 export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
   const qc = useQueryClient();
   const [showCreds, setShowCreds] = useState(false);
-  const [form, setForm] = useState({ username: "", password: "", port: "", protocol: "http", brand: "otro" });
+  const [form, setForm] = useState({ username: "", password: "", port: "", protocol: "http", accessMethod: "auto", sshPort: "22", brand: "otro" });
 
   const { data: saved } = useQuery({
     queryKey: ["ap-credentials"],
@@ -49,6 +49,8 @@ export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
       password: "",
       port: entry?.port ? String(entry.port) : "",
       protocol: entry?.protocol || (target.brand === "ubiquiti" ? "https" : "http"),
+      accessMethod: entry?.access_method || "auto",
+      sshPort: String(entry?.ssh_port || 22),
       brand: entry?.brand || target.brand || "otro",
     });
   }, [target, saved]);
@@ -71,6 +73,8 @@ export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
         password: form.password,
         port: form.port ? Number(form.port) : null,
         protocol: form.protocol,
+        access_method: form.accessMethod,
+        ssh_port: Number(form.sshPort) || 22,
       }),
     onSuccess: () => {
       toast.success("Credenciales guardadas");
@@ -91,8 +95,7 @@ export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
             <SignalHigh className="w-4 h-4" /> Señal — {target?.name || target?.ip}
           </DialogTitle>
           <DialogDescription>
-            Clientes wireless leídos directamente del AP {target?.ip} ({data?.protocol || form.protocol}:
-            {data?.port || form.port || "auto"}).
+            Clientes wireless leídos directamente del AP {target?.ip}. En modo automático se intenta Web y luego SSH.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,7 +110,7 @@ export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
         </div>
 
         {showCreds && (
-          <div className="grid gap-3 md:grid-cols-5 rounded-lg border p-3">
+          <div className="grid gap-3 md:grid-cols-4 rounded-lg border p-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Marca</Label>
               <Select value={form.brand} onValueChange={(v) => setForm({ ...form, brand: v })}>
@@ -123,6 +126,17 @@ export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs">Método</Label>
+              <Select value={form.accessMethod} onValueChange={(v) => setForm({ ...form, accessMethod: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Automático (Web + SSH)</SelectItem>
+                  <SelectItem value="ssh">Solo SSH</SelectItem>
+                  <SelectItem value="web">Solo Web</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs">Usuario</Label>
               <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
             </div>
@@ -131,8 +145,12 @@ export function ApSignalDialog({ mikrotikId, target, onOpenChange }: Props) {
               <Input type="password" placeholder="••••••" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Puerto</Label>
+              <Label className="text-xs">Puerto Web</Label>
               <Input type="number" placeholder="auto" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Puerto SSH</Label>
+              <Input type="number" placeholder="22" value={form.sshPort} onChange={(e) => setForm({ ...form, sshPort: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Protocolo</Label>

@@ -1,5 +1,6 @@
 import http from 'http';
 import https from 'https';
+import { Client } from 'ssh2';
 
 /**
  * Lectura de calidad de señal directamente desde cada AP (MikroTik, Ubiquiti airOS,
@@ -12,6 +13,8 @@ export interface ApTarget {
   brand: string;
   port: number;
   protocol: 'http' | 'https';
+  accessMethod?: 'auto' | 'web' | 'ssh';
+  sshPort?: number;
   username?: string | null;
   password?: string | null;
 }
@@ -112,6 +115,114 @@ function finalize(partial: Partial<ApClient>): ApClient {
     distance: partial.distance ?? null,
     quality: signalQuality(signal, snr),
   };
+}
+
+function sshExec(target: ApTarget, command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const connection = new Client();
+    let settled = false;
+    const finish = (error?: Error, output = '') => {
+      if (settled) return;
+      settled = true;
+      connection.end();
+      error ? reject(error) : resolve(output);
+    };
+    connection
+      .on('ready', () => {
+        connection.exec(command, (error, stream) => {
+          if (error) return finish(error);
+          let stdout = '';
+          let stderr = '';
+          stream.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+          stream.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+          stream.on('close', (code: number) => {
+            if (code && !stdout.trim()) return finish(new Error(stderr.trim() || `SSH terminó con código ${code}`));
+            finish(undefined, stdout);
+          });
+        });
+      })
+      .on('error', (error) => finish(error))
+      .connect({
+        host: target.ip,
+        port: target.sshPort || 22,
+        username: target.username || (target.brand === 'ubiquiti' ? 'ubnt' : 'admin'),
+        password: target.password || '',
+        readyTimeout: 8_000,
+        keepaliveInterval: 2_000,
+        keepaliveCountMax: 2,
+        algorithms: {
+          kex: ['curve25519-sha256', 'curve25519-sha256@libssh.org', 'ecdh-sha2-nistp256', 'diffie-hellman-group14-sha256', 'diffie-hellman-group14-sha1', 'diffie-hellman-group-exchange-sha1', 'diffie-hellman-group1-sha1'],
+          serverHostKey: ['ssh-ed25519', 'ecdsa-sha2-nistp256', 'rsa-sha2-512', 'rsa-sha2-256', 'ssh-rsa'],
+          cipher: ['aes128-gcm', 'aes256-gcm', 'aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-cbc', 'aes256-cbc', '3des-cbc'],
+        },
+      });
+  });
+}
+
+function parseUbiquitiSsh(output: string): ApClient[] {
+  const start = output.indexOf('[');
+  const end = output.lastIndexOf(']');
+  if (start < 0 || end < start) throw new Error('SSH de airOS no devolvió la lista de estaciones');
+  const stations = JSON.parse(output.slice(start, end + 1));
+  if (!Array.isArray(stations)) throw new Error('Respuesta SSH inesperada de airOS');
+  return stations.map((station: any) => {
+    const signal = num(station.signal);
+    const noise = num(station.noise ?? station.noisefloor);
+    return finalize({
+      mac: station.mac || null,
+      name: station.name || station.hostname || station.lastip || null,
+      signal,
+      noise,
+      snr: num(station.snr ?? (signal !== null && noise !== null ? signal - noise : null)),
+      ccq: num(station.ccq ?? station.airmax?.quality),
+      tx_rate: station.tx != null ? `${station.tx} Mbps` : null,
+      rx_rate: station.rx != null ? `${station.rx} Mbps` : null,
+      tx_bytes: num(station.tx_bytes ?? station.stats?.tx_bytes),
+      rx_bytes: num(station.rx_bytes ?? station.stats?.rx_bytes),
+      uptime: station.uptime != null ? `${station.uptime}s` : null,
+      distance: station.distance != null ? `${station.distance} m` : null,
+    });
+  });
+}
+
+function parseMikrotikTerse(output: string): ApClient[] {
+  return output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes('mac-address=')).map((line) => {
+    const fields: Record<string, string> = {};
+    const pattern = /(?:^|\s)([\w-]+)=((?:(?!\s[\w-]+=).)*)/g;
+    for (const match of line.matchAll(pattern)) fields[match[1]] = match[2].replace(/\\ /g, ' ').trim();
+    const signal = num(fields['signal-strength'] ?? fields.signal);
+    return finalize({
+      mac: fields['mac-address'] || null,
+      name: fields.comment || fields['last-ip'] || fields.interface || null,
+      signal,
+      noise: num(fields['noise-floor']),
+      snr: num(fields['signal-to-noise']),
+      ccq: num(fields['tx-ccq'] ?? fields.ccq),
+      tx_rate: fields['tx-rate'] || null,
+      rx_rate: fields['rx-rate'] || null,
+      uptime: fields.uptime || null,
+      distance: fields.distance || null,
+    });
+  });
+}
+
+async function readSsh(target: ApTarget): Promise<ApClient[]> {
+  const commands = target.brand === 'ubiquiti'
+    ? ['wstalist']
+    : target.brand === 'mikrotik'
+      ? ['/interface wifi registration-table print terse without-paging', '/interface wifiwave2 registration-table print terse without-paging', '/interface wireless registration-table print terse without-paging']
+      : ['wstalist', '/interface wifi registration-table print terse without-paging', '/interface wireless registration-table print terse without-paging'];
+  const errors: string[] = [];
+  for (const command of commands) {
+    try {
+      const output = await sshExec(target, command);
+      const clients = command === 'wstalist' ? parseUbiquitiSsh(output) : parseMikrotikTerse(output);
+      if (clients.length || output.trim() === '[]' || /registration-table/i.test(command)) return clients;
+    } catch (error: any) {
+      errors.push(`${command}: ${error?.message || error}`);
+    }
+  }
+  throw new Error(`SSH ${target.ip}:${target.sshPort || 22} no pudo leer la señal — ${errors.join('; ')}`);
 }
 
 // ── MikroTik (RouterOS v7 REST: wireless o wifi) ─────────────────
@@ -290,6 +401,7 @@ async function readOne(target: ApTarget): Promise<ApClient[]> {
 }
 
 export async function readApClients(target: ApTarget): Promise<ApClient[]> {
+  if (target.accessMethod === 'ssh') return readSsh(target);
   // Prueba el transporte configurado y luego los habituales: muchos APs
   // responden la API sólo por HTTP aunque su panel esté en HTTPS.
   const seen = new Set<string>();
@@ -317,7 +429,14 @@ export async function readApClients(target: ApTarget): Promise<ApClient[]> {
 
       // Si el puerto elegido sí respondió pero rechazó la sesión o sus datos,
       // no ocultar ese diagnóstico probando después un 8080 que está cerrado.
-      if (!isTransportError(message)) throw new Error(message);
+      if (!isTransportError(message)) break;
+    }
+  }
+  if (target.accessMethod !== 'web') {
+    try {
+      return await readSsh(target);
+    } catch (error: any) {
+      attempts.push(`ssh:${target.sshPort || 22} — ${error?.message || error}`);
     }
   }
   throw new Error(

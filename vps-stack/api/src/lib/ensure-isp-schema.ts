@@ -249,6 +249,8 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     // Sectorización de antenas/APs para el árbol de topología
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS sector TEXT`,
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS notes TEXT`,
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS access_method TEXT NOT NULL DEFAULT 'auto'`,
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS ssh_port INTEGER NOT NULL DEFAULT 22`,
   ];
 
 
