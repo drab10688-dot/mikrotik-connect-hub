@@ -91,6 +91,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # CWMP multi-ISP: Nginx recibe /tr069/<token>/, valida el formato y
+      # elimina el prefijo antes de entregar la sesión a GenieACS.
+      - "7547:7547"
       # Escritorio remoto privado por usuario (KasmVNC, HTTPS + token del panel)
       - "8081:8081"   # Chromium remoto
     volumes:
@@ -141,7 +144,7 @@ services:
       GENIEACS_UI_ACCESS_LOG_FILE: /dev/stdout
       GENIEACS_UDP_CONNECTION_REQUEST_PORT: "3478"
     ports:
-      - "7547:7547"          # CWMP TCP (las ONUs se conectan aquí)
+      # TCP entra por Nginx para conservar el enlace /tr069/<token>/.
       - "7547:7547/udp"      # CWMP UDP / STUN (Connection Request NAT traversal)
       - "7567:7567"          # File Server (firmware/config)
       - "7557:7557"          # NBI (API GenieACS)
