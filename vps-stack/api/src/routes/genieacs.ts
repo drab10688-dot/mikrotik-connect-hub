@@ -167,6 +167,21 @@ interface AcsScope {
   usernames: Set<string>;
   /** ONUs que ya pertenecen a OTRO ISP: nunca se muestran aquí. */
   foreign: Set<string>;
+  /** Tokens TR-069 del ISP actual (/tr069/<token>/): filtro autoritativo. */
+  tokens: Set<string>;
+}
+
+function tokenFromAcsUrl(url: string): string | null {
+  const m = String(url || '').match(/\/tr069\/([a-f0-9]{8,64})/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+function deviceAcsUrl(device: any): string {
+  return (
+    device?.InternetGatewayDevice?.ManagementServer?.URL?._value ||
+    device?.Device?.ManagementServer?.URL?._value ||
+    ''
+  );
 }
 
 // Multi-ISP: cada ISP solo ve las ONUs que informan por SU enlace TR-069
@@ -181,6 +196,7 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     serials: new Set(),
     usernames: new Set(),
     foreign: new Set(),
+    tokens: new Set(),
   };
 
   if (SINGLE_ISP) return { ...empty, unrestricted: true };
