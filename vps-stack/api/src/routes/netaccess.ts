@@ -917,6 +917,7 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
         let clients: any[] = [];
         let error: string | null = null;
         try {
+          await ensureApRoute(mikrotikId, req.tenantId, ap.ip);
           clients = await readApClients(target);
         } catch (e: any) {
           error = e?.message || 'sin respuesta';
