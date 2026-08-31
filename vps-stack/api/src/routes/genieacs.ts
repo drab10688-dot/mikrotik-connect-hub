@@ -199,6 +199,7 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     usernames: new Set(),
     foreign: new Set(),
     tokens: new Set(),
+    tokenIds: new Set(),
   };
 
   if (SINGLE_ISP) return { ...empty, unrestricted: true };
@@ -238,6 +239,17 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
       );
       rows.forEach((r: any) => empty.tokens.add(String(r.acs_token).toLowerCase()));
     } catch { /* columna opcional */ }
+
+    // ONUs ya reclamadas por token para este ISP (para endpoints que no
+    // exponen la URL de gestión, p. ej. históricos de señal).
+    try {
+      const { rows } = await pool.query(
+        `SELECT acs_device_id FROM acs_device_owners
+          WHERE tenant_id = $1 AND source = 'token'`,
+        [req.tenantId]
+      );
+      rows.forEach((r: any) => empty.tokenIds.add(String(r.acs_device_id)));
+    } catch { /* tabla opcional */ }
 
     // ONUs registradas manualmente al ISP
     try {
@@ -287,8 +299,16 @@ function acsAllows(
   // Filtro autoritativo: si la ONU informa por un enlace /tr069/<token>/,
   // solo la ve el ISP dueño de ese token. Token de otro ISP => nunca se muestra.
   const urlToken = tokenFromAcsUrl(String(info.acsUrl || ''));
-  if (urlToken) return scope.tokens.has(urlToken);
   const id = String(info.deviceId || '');
+  // Modo estricto: si el ISP tiene su enlace TR-069, SOLO se ven las ONUs que
+  // informan por ese enlace. Las que apuntan a la IP pública (sin token) o al
+  // enlace de otro ISP quedan ocultas.
+  if (scope.tokens.size > 0) {
+    if (urlToken) return scope.tokens.has(urlToken);
+    if (info.acsUrl !== undefined && info.acsUrl !== null) return false;
+    return scope.tokenIds.has(id);
+  }
+  if (urlToken) return scope.tokens.has(urlToken);
   // Si la ONU ya está reclamada por otra empresa, no se muestra nunca.
   if (id && scope.foreign.has(id)) return false;
   if (id && scope.ids.has(id)) return true;
@@ -1210,6 +1230,8 @@ const FAST_PROJECTION = [
   '_id', '_deviceId', '_lastInform',
   'InternetGatewayDevice.DeviceInfo',
   'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
+  'InternetGatewayDevice.ManagementServer.URL',
+  'Device.ManagementServer.URL',
   'InternetGatewayDevice.WANDevice',
   'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
   'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
@@ -1368,16 +1390,18 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
         alias: aliases[device._id] || null,
         lastInform: device?._lastInform || null,
         informInterval: informInterval(device),
+        acsUrl: deviceAcsUrl(device),
       };
 
     });
 
     const scope = await getAcsScope(req);
-    const visible = scope.unrestricted
+    const visible = (scope.unrestricted
       ? data
       : data.filter((d: any) =>
-          acsAllows(scope, { deviceId: d.deviceId, serial: d.serial, pppoe: d.pppoeUsername })
-        );
+          acsAllows(scope, { deviceId: d.deviceId, serial: d.serial, pppoe: d.pppoeUsername, acsUrl: d.acsUrl })
+        )
+    ).map(({ acsUrl, ...rest }: any) => rest);
 
     res.json({ success: true, data: visible });
   } catch (err: any) {
@@ -1388,7 +1412,7 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
   try {
-    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,_lastInform');
+    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_lastInform');
 
     const overview = (devices || []).map((device: any) => {
       const igd = device?.InternetGatewayDevice || device?.Device || {};
@@ -1448,15 +1472,17 @@ genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) =
         quality: quality(rxNorm),
         lastInform: device?._lastInform || null,
         informInterval: informInterval(device),
+        acsUrl: deviceAcsUrl(device),
       };
     });
 
     const scope = await getAcsScope(req);
-    const visibleOverview = scope.unrestricted
+    const visibleOverview = (scope.unrestricted
       ? overview
       : overview.filter((d: any) =>
-          acsAllows(scope, { deviceId: d.deviceId || d.device_id, serial: d.serial })
-        );
+          acsAllows(scope, { deviceId: d.deviceId || d.device_id, serial: d.serial, acsUrl: d.acsUrl })
+        )
+    ).map(({ acsUrl, ...rest }: any) => rest);
 
     res.json({ success: true, data: visibleOverview });
   } catch (err: any) {
