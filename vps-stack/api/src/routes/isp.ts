@@ -14,6 +14,7 @@ export const SECTIONS = [
   'onus',
   'onu_web',
   'mikrotik',
+  'pppoe',
   'topology',
   'red',
   'vpn',
@@ -29,6 +30,7 @@ export const SECTION_LABELS: Record<string, string> = {
   onus: 'Gestion de ONUs',
   onu_web: 'Mini-panel de equipos',
   mikrotik: 'Conexion MikroTik',
+  pppoe: 'Usuarios PPPoE',
   topology: 'Mapa de red',
   red: 'Red, APs y senal',
   vpn: 'Credenciales y VPN',
@@ -48,11 +50,11 @@ export const ROLE_NAMES: RoleName[] = ['admin', 'user', 'secretary', 'reseller']
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, { view: string[]; edit: string[] }> = {
   admin: { view: [...SECTIONS], edit: [...SECTIONS] },
   user: {
-    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'topology', 'red', 'vpn', 'diagnostico'],
-    edit: ['onus', 'onu_web', 'red'],
+    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'pppoe', 'topology', 'red', 'vpn', 'diagnostico'],
+    edit: ['onus', 'onu_web', 'pppoe', 'red'],
   },
   secretary: {
-    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'topology', 'red'],
+    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'pppoe', 'topology', 'red'],
     edit: ['onus'],
   },
   reseller: {
@@ -280,6 +282,13 @@ ispRouter.get('/my-permissions', async (req: AuthRequest, res: Response) => {
     const map = new Map<string, any>();
     for (const p of fresh) map.set(p.section, { ...p });
     for (const p of own) map.set(p.section, { ...p });
+    // El administrador del ISP siempre conserva la administración de su ISP:
+    // así nunca puede dejarse fuera al desactivar interruptores por error.
+    if (req.userRole === 'admin') {
+      for (const section of ['dashboard', 'usuarios', 'roles'] as const) {
+        map.set(section, { section, can_view: true, can_edit: true });
+      }
+    }
     res.json({
       data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: [...map.values()], full_access: false },
     });
