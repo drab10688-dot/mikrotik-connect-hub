@@ -280,6 +280,27 @@ export const devicesApi = {
   diagnoseConnection: (id: string) => apiPost<any>(`/devices/${id}/connect/diagnose`),
 };
 
+// ─── PPPoE: usuarios y contraseña global por ISP ──────────
+export const pppoeApi = {
+  secrets: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/secrets`)),
+  active: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/active`)),
+  profiles: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/profiles`)),
+  getSettings: async (mikrotikId: string) => unwrapData<any>(await apiGet<any>(`/pppoe/${mikrotikId}/settings`)),
+  saveSettings: async (mikrotikId: string, payload: any) =>
+    unwrapData<any>(await apiPut<any>(`/pppoe/${mikrotikId}/settings`, payload)),
+  createUsers: async (mikrotikId: string, users: any[]) =>
+    unwrapData<any>(await apiPost<any>(`/pppoe/${mikrotikId}/users`, { users })),
+  deleteSecret: (mikrotikId: string, secretId: string) =>
+    apiDelete(`/pppoe/${mikrotikId}/secrets/${encodeURIComponent(secretId)}`),
+};
+
+// ─── Permisos por usuario dentro del ISP ──────────────────
+export const permissionsApi = {
+  forUser: async (userId: string) => unwrapData<any>(await apiGet<any>(`/isp/user-permissions/${userId}`)),
+  saveForUser: async (userId: string, permissions: any[]) =>
+    unwrapData<any>(await apiPut<any>(`/isp/user-permissions/${userId}`, { permissions })),
+};
+
 // ─── System API ───────────────────────────────────────────
 export const systemApi = {
   resources: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/system/${mikrotikId}/resource`)),

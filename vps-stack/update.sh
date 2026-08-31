@@ -38,6 +38,16 @@ rsync -a --delete \
   "$TEMP_DIR/vps-stack/" "$INSTALL_DIR/"
 chmod 700 "$INSTALL_DIR/recover-super-admin.sh"
 
+# Migraciones idempotentes de base de datos (multi-ISP, permisos, PPPoE)
+if [ -d "$INSTALL_DIR/db/migrations" ]; then
+  for f in "$INSTALL_DIR"/db/migrations/*.sql; do
+    [ -f "$f" ] || continue
+    docker exec -i omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" < "$f" >/dev/null 2>&1 \
+      && echo -e "${GREEN}✓ Migración $(basename "$f")${NC}" \
+      || echo -e "${YELLOW}⚠ Migración $(basename "$f") omitida${NC}"
+  done
+fi
+
 echo -e "${YELLOW}3/5 Reconstruyendo API (sin caché)...${NC}"
 cd "$INSTALL_DIR"
 docker compose build --no-cache api

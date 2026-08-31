@@ -12,12 +12,15 @@ import { Sidebar } from '@/components/dashboard/Sidebar';
 import { UserPlus, Shield, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { apiGet, apiPost, apiDelete, apiPut } from '@/lib/api-client';
+import { UserPermissionsDialog } from '@/components/admin/UserPermissionsDialog';
+import { ShieldCheck } from 'lucide-react';
 
 export default function UsersAdmin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [deviceToDelete, setDeviceToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [permUser, setPermUser] = useState<{ id: string; label: string } | null>(null);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -218,9 +221,19 @@ export default function UsersAdmin() {
                             </TableCell>
                             <TableCell>{new Date(user.created_at).toLocaleDateString('es-ES')}</TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(userId, user.full_name || user.email)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setPermUser({ id: userId, label: user.full_name || user.email })}
+                                >
+                                  <ShieldCheck className="h-4 w-4 mr-1.5" />
+                                  Permisos
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(userId, user.full_name || user.email)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                           {isExpanded && shouldShowDevices && (
@@ -345,6 +358,13 @@ export default function UsersAdmin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UserPermissionsDialog
+        userId={permUser?.id || null}
+        userLabel={permUser?.label}
+        open={!!permUser}
+        onOpenChange={(o) => !o && setPermUser(null)}
+      />
     </div>
   );
 }

@@ -4,12 +4,11 @@ import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router,
-  ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound,
+  ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound, UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { AdminMenu } from "./AdminMenu";
 import { MobileNav } from "./MobileNav";
 
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +30,7 @@ const menuItems: MenuEntry[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", section: "dashboard", group: "Operación" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus", section: "onus", group: "Operación" },
   { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik", group: "Operación" },
+  { icon: UserPlus, label: "Usuarios PPPoE", path: "/pppoe", module: "mikrotik", section: "pppoe", group: "Operación" },
   
   { icon: Globe, label: "Mini-panel de equipos", path: "/onu-web", module: "onu_web", section: "onu_web", group: "Operación" },
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
@@ -43,7 +43,7 @@ const menuItems: MenuEntry[] = [
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const { signOut, isSecretary, isReseller, isSuperAdmin, user } = useAuth();
+  const { signOut, isSecretary, isReseller, isSuperAdmin, isAdmin, user } = useAuth();
   const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
   const { can, isLoading: loadingSections } = useMyPermissions();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +94,7 @@ export const Sidebar = () => {
     '/onu-web': 'can_manage_onu',
     '/topology': 'can_manage_pppoe',
     '/mikrotik': 'can_manage_pppoe',
+    '/pppoe': 'can_manage_pppoe',
     '/settings': 'can_manage_settings',
     '/diagnostics': 'can_manage_diagnostics',
   };
@@ -110,12 +111,20 @@ export const Sidebar = () => {
   // El super admin usa el panel solo para administrar ISPs
   const superAdminMenu: MenuEntry[] = [
     { icon: Building2, label: "Panel de ISPs", path: "/admin/isps", group: "Administración" },
+    { icon: Users, label: "Usuarios", path: "/admin/users", group: "Administración" },
+    { icon: UserPlus, label: "Crear usuario", path: "/admin/register-user", group: "Administración" },
   ];
 
   const moduleMenuItems = menuItems
     .filter((item) => moduleEnabled(item.module))
     // Permisos por sección definidos para cada ISP
-    .filter((item) => item.path === "/dashboard" || can(item.section));
+    .filter(
+      (item) =>
+        item.path === "/dashboard" ||
+        // El admin del ISP nunca pierde la administración de su propio ISP
+        (isAdmin && (item.section === "usuarios" || item.section === "roles")) ||
+        can(item.section)
+    );
 
   const filteredMenuItems = isSuperAdmin
     ? superAdminMenu
@@ -254,14 +263,6 @@ export const Sidebar = () => {
                 </div>
               ))}
 
-              {!isSecretary && !isReseller && (
-                <div className="pt-4 mt-2 border-t border-sidebar-border/70">
-                  <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/40">
-                    Administración
-                  </p>
-                  <AdminMenu />
-                </div>
-              )}
             </>
           )}
         </nav>
