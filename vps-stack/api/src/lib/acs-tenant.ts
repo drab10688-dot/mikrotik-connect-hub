@@ -81,7 +81,7 @@ export function resolveTenantForDevice(
 
 // ─── Sincronización (con caché corta) ────────────────────
 let lastSync = 0;
-let inflight: Promise<void> | null = null;
+let inflight: Promise<AcsOwnershipSyncResult> | null = null;
 
 export interface AcsOwnershipSyncResult {
   scanned: number;
