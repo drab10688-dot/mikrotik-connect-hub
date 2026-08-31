@@ -355,3 +355,5 @@ echo
 c_ok "Listo. Abre GenieACS, pulsa Ctrl+Shift+R y presiona 'Summon' en la ONU para poblar las columnas."
 c_ok "TR-069 escuchando por WireGuard: http://${ACS_HOST}:${ACS_PORT}/ (inform cada ${ACS_INFORM_INTERVAL}s)"
 
+c_ok "Connection Request: usuario '${ACS_CR_USER}' (las órdenes se aplican en 1-3 s)"
+c_inf "En la ONU, 'Connect Request Username/Password' deben ser ${ACS_CR_USER} / la clave configurada."
