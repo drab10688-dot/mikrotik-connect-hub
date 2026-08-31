@@ -197,7 +197,6 @@ async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
     cookie = mergeCookies('', seed);
   } catch { /* algunos modelos no exponen /login.cgi por GET */ }
   if (!cookie.includes('AIROS_SESSIONID')) {
-    cookie = mergeCookies(cookie, { status: 0, body: '', headers: {} } as RawResponse);
     cookie = [cookie, 'AIROS_SESSIONID=' + '0'.repeat(32)].filter(Boolean).join('; ');
   }
 
