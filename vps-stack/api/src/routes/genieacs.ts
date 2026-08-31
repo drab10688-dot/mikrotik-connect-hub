@@ -289,25 +289,12 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   return empty;
 }
 
-function acsAllows(
+/** ONU registrada manualmente en el ISP (p. ej. acceso independiente vía VPN). */
+function matchesManualClaim(
   scope: AcsScope,
-  info: { deviceId?: string | null; serial?: string | null; pppoe?: string | null; acsUrl?: string | null }
+  info: { deviceId?: string | null; serial?: string | null; pppoe?: string | null }
 ): boolean {
-  if (scope.unrestricted) return true;
-  // Filtro autoritativo: si la ONU informa por un enlace /tr069/<token>/,
-  // solo la ve el ISP dueño de ese token. Token de otro ISP => nunca se muestra.
-  const urlToken = tokenFromAcsUrl(String(info.acsUrl || ''));
   const id = String(info.deviceId || '');
-  // Modo estricto: si el ISP tiene su enlace TR-069, SOLO se ven las ONUs que
-  // informan por ese enlace. Las que apuntan a la IP pública (sin token) o al
-  // enlace de otro ISP quedan ocultas.
-  if (scope.tokenRequired) {
-    if (urlToken) return scope.tokens.has(urlToken);
-    if (info.acsUrl !== undefined && info.acsUrl !== null) return false;
-    return scope.tokenIds.has(id);
-  }
-  if (urlToken) return scope.tokens.has(urlToken);
-  // Si la ONU ya está reclamada por otra empresa, no se muestra nunca.
   if (id && scope.foreign.has(id)) return false;
   if (id && scope.ids.has(id)) return true;
   const upperId = id.toUpperCase();
@@ -322,8 +309,27 @@ function acsAllows(
   const user = String(info.pppoe || '').toLowerCase();
   if (user && scope.usernames.has(user)) return true;
   return false;
-
 }
+
+function acsAllows(
+  scope: AcsScope,
+  info: { deviceId?: string | null; serial?: string | null; pppoe?: string | null; acsUrl?: string | null }
+): boolean {
+  if (scope.unrestricted) return true;
+  // Filtro autoritativo: si la ONU informa por un enlace /tr069/<token>/,
+  // solo la ve el ISP dueño de ese token. Token de otro ISP => nunca se muestra.
+  const urlToken = tokenFromAcsUrl(String(info.acsUrl || ''));
+  const id = String(info.deviceId || '');
+  if (urlToken) return scope.tokens.has(urlToken);
+  // Sin token en la URL (IP pública base o acceso independiente por VPN):
+  // solo se ve si el ISP la reclamó por token antes o la registró manualmente.
+  if (scope.tokenRequired) {
+    if (id && scope.tokenIds.has(id)) return true;
+    return matchesManualClaim(scope, info);
+  }
+  return matchesManualClaim(scope, info);
+}
+
 
 async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<boolean> {
   const scope = await getAcsScope(req);
