@@ -4,9 +4,36 @@ import https from 'https';
 import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
+import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import { pool } from '../lib/db';
 import { requireSection } from './isp';
 import { swr, keepWarm } from '../lib/cache';
+
+/**
+ * Garantiza que exista ruta por el túnel L2TP del ISP hacia la IP del AP
+ * antes de leer su señal. Sin esto la lectura falla con EHOSTUNREACH aunque
+ * la VPN esté conectada y las credenciales sean correctas.
+ */
+async function ensureApRoute(mikrotikId: string, tenantId: string | null | undefined, ip: string): Promise<void> {
+  try {
+    let tId = tenantId ?? null;
+    if (!tId) {
+      const device = await pool.query(`SELECT tenant_id FROM mikrotik_devices WHERE id = $1 LIMIT 1`, [mikrotikId]);
+      tId = device.rows[0]?.tenant_id ?? null;
+    }
+    const { rows } = await pool.query(
+      `SELECT tunnel_ip
+         FROM tenant_vpn_peers
+        WHERE ($1::uuid IS NULL OR tenant_id = $1)
+          AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC
+        LIMIT 1`,
+      [tId]
+    );
+    const tunnelIp = rows[0]?.tunnel_ip;
+    if (tunnelIp) await ensureL2tpTargetRoute(String(tunnelIp), ip);
+  } catch { /* mejor esfuerzo: la lectura igual se intenta */ }
+}
 
 /**
  * Lectura cacheada contra la MikroTik.
@@ -225,6 +252,7 @@ netAccessRouter.get('/:mikrotikId/ap/:ip/clients', async (req: AuthRequest, res:
     if (!IPV4.test(ip)) return res.status(400).json({ success: false, error: 'IP inválida' });
 
     const target = await apTarget(req.tenantId, ip, String(req.query.brand || ''));
+    await ensureApRoute(mikrotikId, req.tenantId, ip);
     const clients = await readApClients(target);
     res.json({
       success: true,
@@ -267,8 +295,10 @@ async function autoReadAp(
   ip: string,
   brandHint: string,
   ports: Record<string, { port: number; protocol: 'http' | 'https' }>,
-  saved?: any
+  saved?: any,
+  mikrotikId?: string
 ) {
+  if (mikrotikId) await ensureApRoute(mikrotikId, tenantId, ip);
   const brand = (saved?.brand && saved.brand !== 'otro' ? saved.brand : brandHint) || 'otro';
   const cfg = ports[brand] || ports.otro;
   const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https' }> = [];
@@ -354,7 +384,7 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
           const chunk = list.slice(i, i + CONCURRENCY);
           const read = await Promise.all(
             chunk.map((c) =>
-              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip)).then((r) => ({
+              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip), mikrotikId).then((r) => ({
                 ...r,
                 name: saved.get(c.ip)?.name || c.name,
                 saved: saved.has(c.ip),
@@ -887,6 +917,7 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
         let clients: any[] = [];
         let error: string | null = null;
         try {
+          await ensureApRoute(mikrotikId, req.tenantId, ap.ip);
           clients = await readApClients(target);
         } catch (e: any) {
           error = e?.message || 'sin respuesta';
