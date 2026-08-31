@@ -251,6 +251,58 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS notes TEXT`,
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS access_method TEXT NOT NULL DEFAULT 'auto'`,
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS ssh_port INTEGER NOT NULL DEFAULT 22`,
+
+    // Servidor de correo (SMTP): tenant_id NULL = configuración global del sistema
+    `CREATE TABLE IF NOT EXISTS smtp_settings (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       host TEXT NOT NULL DEFAULT '',
+       port INTEGER NOT NULL DEFAULT 587,
+       secure BOOLEAN NOT NULL DEFAULT false,
+       username TEXT,
+       password TEXT,
+       from_email TEXT NOT NULL DEFAULT '',
+       from_name TEXT,
+       domain TEXT,
+       is_active BOOLEAN NOT NULL DEFAULT true,
+       created_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS smtp_settings_tenant_key
+       ON smtp_settings(COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid))`,
+
+    // Tokens de restablecimiento de contraseña (un solo uso, 60 minutos)
+    `CREATE TABLE IF NOT EXISTS password_resets (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       token_hash TEXT NOT NULL UNIQUE,
+       expires_at TIMESTAMPTZ NOT NULL,
+       used_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS password_resets_user_idx ON password_resets(user_id)`,
+
+    // Historial de copias de seguridad (por ISP o del sistema completo)
+    `CREATE TABLE IF NOT EXISTS backup_jobs (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       scope TEXT NOT NULL DEFAULT 'tenant',
+       filename TEXT NOT NULL,
+       size_bytes BIGINT NOT NULL DEFAULT 0,
+       status TEXT NOT NULL DEFAULT 'ok',
+       error TEXT,
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       created_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS backup_jobs_idx ON backup_jobs(tenant_id, created_at DESC)`,
+
+    // Nuevas secciones de permisos: correo y respaldos (solo admin por defecto)
+    `INSERT INTO role_permissions (tenant_id, role, section, can_view, can_edit)
+     SELECT t.id, r.role, s.section, r.role = 'admin', r.role = 'admin'
+       FROM tenants t
+       CROSS JOIN (VALUES ('admin'), ('user'), ('secretary'), ('reseller')) AS r(role)
+       CROSS JOIN (VALUES ('correo'),('respaldos')) AS s(section)
+     ON CONFLICT (tenant_id, role, section) DO NOTHING`,
   ];
 
 
