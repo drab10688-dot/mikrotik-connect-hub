@@ -162,7 +162,7 @@ export const Sidebar = () => {
   const roleLabel = isSuperAdmin
     ? "Super admin"
     : isSecretary
-    ? "Secretaría"
+    ? "Asistente"
     : isReseller
     ? "Reseller"
     : "Operador";
