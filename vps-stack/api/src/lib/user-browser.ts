@@ -34,6 +34,10 @@ export interface UserBrowserSession {
   readyAt?: number;
   /** Última URL con la que se lanzó Chromium (página de inicio del escritorio). */
   lastLaunchUrl?: string;
+  /** Resolución del escritorio (ej. "412x780" en celular). */
+  resolution?: string;
+  /** Indica si ya se intentó aplicar la resolución con xrandr. */
+  resolutionApplied?: boolean;
 }
 
 const sessions = new Map<string, UserBrowserSession>();
@@ -77,9 +81,14 @@ async function allocatePort(): Promise<number | null> {
 }
 
 /** Crea (o reutiliza) el escritorio del usuario y devuelve sus datos de acceso. */
-export async function ensureUserBrowser(userId: string, launchUrl?: string): Promise<UserBrowserSession> {
+export async function ensureUserBrowser(
+  userId: string,
+  launchUrl?: string,
+  opts?: { resolution?: string },
+): Promise<UserBrowserSession> {
   const name = containerName(userId);
   const existing = sessions.get(userId);
+  const resolution = opts?.resolution && /^\d{3,4}x\d{3,4}$/.test(opts.resolution) ? opts.resolution : undefined;
 
   if (existing && (await containerStatus(name)) === 'running') {
     existing.lastActivity = Date.now();
@@ -87,7 +96,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
     // DIRECTO en esa IP/puerto (como página de inicio). Es la forma más
     // confiable de "pasar la IP": nada de teclear la URL en un navegador ya
     // abierto, que era lo que fallaba.
-    if (launchUrl && launchUrl !== existing.lastLaunchUrl) {
+    if ((launchUrl && launchUrl !== existing.lastLaunchUrl) || resolution !== existing.resolution) {
       await docker(['rm', '-f', name], 30000);
       sessions.delete(userId);
     } else {
@@ -109,6 +118,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
   // La URL del equipo se pasa como PÁGINA DE INICIO de Chromium: al abrir el
   // escritorio remoto, el equipo ya está cargando (igual que antes).
   const homePage = launchUrl && !/\s/.test(launchUrl) ? launchUrl : 'about:blank';
+  const [resW, resH] = resolution ? resolution.split('x') : [];
   const chromeCli = [
     '--incognito',
     '--disable-sync',
@@ -116,6 +126,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
     '--no-default-browser-check',
     '--password-store=basic',
     '--disable-features=Translate,AutofillServerCommunication',
+    ...(resW && resH ? [`--window-size=${resW},${resH}`, '--start-maximized'] : []),
     homePage,
   ].join(' ');
 
@@ -177,6 +188,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
     lastActivity: Date.now(),
     startedAt: Date.now(),
     lastLaunchUrl: launchUrl,
+    resolution,
   };
   sessions.set(userId, session);
   return session;
@@ -222,9 +234,40 @@ export async function waitReady(session: UserBrowserSession, timeoutMs = 30000):
   );
   if (probe.ok) {
     session.readyAt = Date.now();
+    if (session.resolution && !session.resolutionApplied) {
+      applyResolution(session).catch(() => undefined);
+    }
     return true;
   }
   return false;
+}
+
+/**
+ * Ajusta la resolución del escritorio X a la solicitada (modo celular).
+ * Es "best effort": si el servidor KasmVNC no permite modos nuevos, el visor
+ * sigue funcionando con resize=scale en el cliente.
+ */
+export async function applyResolution(session: UserBrowserSession): Promise<void> {
+  session.resolutionApplied = true;
+  const m = session.resolution?.match(/^(\d{3,4})x(\d{3,4})$/);
+  if (!m) return;
+  const w = m[1];
+  const h = m[2];
+  await docker(
+    [
+      'exec',
+      session.container,
+      'sh',
+      '-lc',
+      `OUT=$(xrandr 2>/dev/null | awk '/ connected/{print $1; exit}'); [ -n "$OUT" ] || exit 0; ` +
+        `MODELINE=$(cvt ${w} ${h} 60 2>/dev/null | sed -n 's/^Modeline //p'); [ -n "$MODELINE" ] || exit 0; ` +
+        `MODENAME=$(echo "$MODELINE" | cut -d'"' -f2); ` +
+        `xrandr --delmode "$OUT" "$MODENAME" >/dev/null 2>&1; xrandr --rmmode "$MODENAME" >/dev/null 2>&1; ` +
+        `xrandr --newmode $MODELINE >/dev/null 2>&1; xrandr --addmode "$OUT" "$MODENAME" >/dev/null 2>&1; ` +
+        `xrandr --output "$OUT" --mode "$MODENAME" >/dev/null 2>&1 || true`,
+    ],
+    20000
+  );
 }
 
 /** Descarga la imagen del navegador al arrancar el API: el primer usuario ya no espera el pull. */

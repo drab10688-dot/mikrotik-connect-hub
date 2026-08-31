@@ -223,9 +223,14 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
 
   // La IP/puerto se pasa como PÁGINA DE INICIO: si el equipo cambió, el
   // contenedor se recrea y Chromium arranca ya cargando esa URL (como antes).
+  // Desde celular se arranca el escritorio en resolución de teléfono (vertical):
+  // así la pantalla cabe completa y se puede leer, hacer zoom y escribir.
+  const mobile = (req as any).body?.mobile === true;
+  const resolution = mobile ? '412x780' : undefined;
+
   let session: UserBrowserSession;
   try {
-    session = await ensureUserBrowser(userId, url);
+    session = await ensureUserBrowser(userId, url, { resolution });
   } catch (e: any) {
     return res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
   }
