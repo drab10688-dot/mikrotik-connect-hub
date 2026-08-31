@@ -13,7 +13,6 @@ import Diagnostics from "./pages/Diagnostics";
 import Onus from "./pages/Onus";
 import IspAcs from "./pages/IspAcs";
 import Network from "./pages/Network";
-import Queues from "./pages/Queues";
 import OnuWeb from "./pages/OnuWeb";
 import Topology from "./pages/Topology";
 import Permissions from "./pages/Admin/Permissions";
