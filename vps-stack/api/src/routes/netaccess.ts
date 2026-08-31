@@ -295,8 +295,10 @@ async function autoReadAp(
   ip: string,
   brandHint: string,
   ports: Record<string, { port: number; protocol: 'http' | 'https' }>,
-  saved?: any
+  saved?: any,
+  mikrotikId?: string
 ) {
+  if (mikrotikId) await ensureApRoute(mikrotikId, tenantId, ip);
   const brand = (saved?.brand && saved.brand !== 'otro' ? saved.brand : brandHint) || 'otro';
   const cfg = ports[brand] || ports.otro;
   const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https' }> = [];
