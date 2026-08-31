@@ -85,12 +85,11 @@ const InformMonitor = () => {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {totals && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
               { l: "Reportando (5 min)", v: totals.informing5m },
               { l: "ONUs de este ISP", v: totals.visible },
               { l: "Vistas por el ACS", v: totals.acs },
-              { l: "De otro enlace", v: totals.otherIsp },
             ].map((k) => (
               <div key={k.l} className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{k.l}</p>
@@ -100,27 +99,6 @@ const InformMonitor = () => {
           </div>
         )}
 
-        {data && data.tokens.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Enlace TR-069 esperado: <code>/tr069/{data.tokens[0]}/</code>
-          </p>
-        )}
-
-        {data && data.unclaimed.length > 0 && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-            <p className="flex items-center gap-2 font-medium">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              Hay ONUs reportando al ACS que no coinciden con tu enlace TR-069
-            </p>
-            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-              {data.unclaimed.map((u) => (
-                <li key={u.serial}>
-                  {u.serial} · {ago(u.secondsAgo)} · token: {u.urlToken || "sin token en la URL"}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {!loading && data && data.devices.length === 0 ? (
           <p className="text-muted-foreground text-center py-6 text-sm">
