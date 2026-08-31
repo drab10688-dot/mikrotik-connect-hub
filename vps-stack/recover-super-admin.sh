@@ -45,27 +45,33 @@ RESULT="$(docker exec -i omnisync-postgres psql -X -v ON_ERROR_STOP=1 \
   -U "$DB_USER" -d "$DB_NAME" -At \
   -v email="$EMAIL" -v tenant_search="$TENANT_SEARCH" -v password_hash="$PASSWORD_HASH" <<'SQL'
 BEGIN;
+SELECT set_config('omnisync.recovery_email', :'email', true);
+SELECT set_config('omnisync.recovery_tenant', :'tenant_search', true);
+SELECT set_config('omnisync.recovery_hash', :'password_hash', true);
 DO $recover$
 DECLARE
   selected_tenant UUID;
   matched_tenants INTEGER;
   recovered_user UUID;
+  recovery_email TEXT := current_setting('omnisync.recovery_email');
+  recovery_tenant TEXT := current_setting('omnisync.recovery_tenant');
+  recovery_hash TEXT := current_setting('omnisync.recovery_hash');
 BEGIN
   SELECT count(*), min(id)
     INTO matched_tenants, selected_tenant
     FROM tenants
-   WHERE lower(name) = lower(:'tenant_search')
-      OR lower(slug) = lower(regexp_replace(:'tenant_search', '[^a-zA-Z0-9]+', '-', 'g'))
-      OR name ILIKE '%' || :'tenant_search' || '%';
+   WHERE lower(name) = lower(recovery_tenant)
+      OR lower(slug) = lower(regexp_replace(recovery_tenant, '[^a-zA-Z0-9]+', '-', 'g'))
+      OR name ILIKE '%' || recovery_tenant || '%';
 
   IF matched_tenants = 0 THEN
-    RAISE EXCEPTION 'No se encontró la empresa "%"', :'tenant_search';
+    RAISE EXCEPTION 'No se encontró la empresa "%"', recovery_tenant;
   ELSIF matched_tenants > 1 THEN
-    RAISE EXCEPTION 'Hay varias empresas que coinciden con "%"', :'tenant_search';
+    RAISE EXCEPTION 'Hay varias empresas que coinciden con "%"', recovery_tenant;
   END IF;
 
   INSERT INTO users (email, password_hash, full_name, is_active, tenant_id)
-  VALUES (lower(:'email'), :'password_hash', 'Super Administrador Suros', true, selected_tenant)
+  VALUES (lower(recovery_email), recovery_hash, 'Super Administrador Suros', true, selected_tenant)
   ON CONFLICT (email) DO UPDATE
     SET password_hash = EXCLUDED.password_hash,
         full_name = EXCLUDED.full_name,
