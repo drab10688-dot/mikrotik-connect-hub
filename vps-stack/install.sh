@@ -199,8 +199,7 @@ sleep 20
 if [ -f "$INSTALL_DIR/genieacs-config.sh" ]; then
   ACS_HOST="$VPS_PUBLIC_IP" \
   ACS_CR_USER="${ACS_CR_USER:-omnisync}" ACS_CR_PASS="${ACS_CR_PASS:-OmniSync2026}" \
-  bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -10 \
-    || echo -e "${YELLOW}⚠ Configuración GenieACS incompleta; reintenta: bash $INSTALL_DIR/genieacs-config.sh${NC}"
+  bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -10
 fi
 
 
