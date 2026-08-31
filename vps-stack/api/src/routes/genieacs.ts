@@ -372,6 +372,70 @@ async function guardAcsDevice(req: AuthRequest, res: Response, next: NextFunctio
   }
 }
 
+// ─── Monitor en vivo: ¿está llegando señal (Inform) de las ONUs? ──────
+genieacsRouter.get('/inform-monitor', async (req: AuthRequest, res: Response) => {
+  try {
+    const scope = await getAcsScope(req);
+    let acsOnline = true;
+    let devices: any[] = [];
+    try {
+      const projection = '_id,_lastInform,_deviceId,InternetGatewayDevice.DeviceInfo.SerialNumber,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL';
+      const data = await genieFetch(`/devices/?projection=${encodeURIComponent(projection)}`);
+      devices = Array.isArray(data) ? data : [];
+    } catch {
+      acsOnline = false;
+    }
+
+    const now = Date.now();
+    const list = devices.map((d: any) => {
+      const acsUrl = deviceAcsUrl(d);
+      const lastInform = d?._lastInform || null;
+      const t = lastInform ? new Date(lastInform).getTime() : NaN;
+      const serial =
+        getParam(d, 'InternetGatewayDevice.DeviceInfo.SerialNumber') ||
+        d?._deviceId?._SerialNumber ||
+        String(d?._id || '').split('-').slice(2).join('-') ||
+        '-';
+      return {
+        deviceId: d?._id,
+        serial: String(serial),
+        manufacturer: d?._deviceId?._Manufacturer || null,
+        model: d?._deviceId?._ProductClass || null,
+        lastInform,
+        secondsAgo: Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1000)) : null,
+        urlToken: tokenFromAcsUrl(acsUrl),
+        visible: scope.unrestricted || acsAllows(scope, { deviceId: d?._id, serial, acsUrl }),
+      };
+    }).sort((a, b) => (a.secondsAgo ?? 1e12) - (b.secondsAgo ?? 1e12));
+
+    const mine = list.filter((d) => d.visible);
+    res.json({
+      success: true,
+      acsOnline,
+      tokens: [...scope.tokens],
+      unrestricted: scope.unrestricted,
+      totals: {
+        acs: list.length,
+        visible: mine.length,
+        informing5m: mine.filter((d) => d.secondsAgo !== null && d.secondsAgo <= 300).length,
+        otherIsp: list.length - mine.length,
+      },
+      // Se listan también las que llegan al ACS pero no son de este ISP,
+      // sin datos sensibles, para saber si el enlace TR-069 está mal.
+      devices: (scope.unrestricted ? list : mine).slice(0, 100),
+      unclaimed: scope.unrestricted
+        ? []
+        : list
+            .filter((d) => !d.visible && d.secondsAgo !== null && d.secondsAgo <= 900)
+            .slice(0, 20)
+            .map((d) => ({ serial: d.serial, secondsAgo: d.secondsAgo, urlToken: d.urlToken })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // ─── Diagnóstico de visibilidad de ONUs (por qué no aparecen) ─────────
 genieacsRouter.get('/scope-debug', async (req: AuthRequest, res: Response) => {
   try {
