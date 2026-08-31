@@ -252,6 +252,7 @@ netAccessRouter.get('/:mikrotikId/ap/:ip/clients', async (req: AuthRequest, res:
     if (!IPV4.test(ip)) return res.status(400).json({ success: false, error: 'IP inválida' });
 
     const target = await apTarget(req.tenantId, ip, String(req.query.brand || ''));
+    await ensureApRoute(mikrotikId, req.tenantId, ip);
     const clients = await readApClients(target);
     res.json({
       success: true,
