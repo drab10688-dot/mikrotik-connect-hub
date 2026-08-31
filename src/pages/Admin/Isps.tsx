@@ -72,6 +72,9 @@ export default function Isps() {
     refetchInterval: 30_000,
   });
 
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.admin_email.trim());
+  const passwordOk = form.admin_password.length >= 10;
+
   const createIsp = useMutation({
     mutationFn: () =>
       tenantsApi.create({
