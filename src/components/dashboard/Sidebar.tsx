@@ -281,6 +281,17 @@ export const Sidebar = () => {
               {user?.email || "Sesión activa"}
             </span>
           </div>
+          <ChangePasswordDialog
+            trigger={
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+              >
+                <Lock className="w-4 h-4 mr-3" />
+                Cambiar contraseña
+              </Button>
+            }
+          />
           <Button
             variant="ghost"
             className="w-full justify-start text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
