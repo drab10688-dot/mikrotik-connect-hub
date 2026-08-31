@@ -328,7 +328,10 @@ function acsAllows(
 async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<boolean> {
   const scope = await getAcsScope(req);
   if (scope.unrestricted) return true;
-  if (acsAllows(scope, { deviceId })) return true;
+  // En modo por token nunca autorizar solo con la propiedad cacheada: la ONU
+  // puede haber cambiado su URL desde la última sincronización. Se comprueba
+  // siempre el ManagementServer.URL actual antes de permitir leer o modificar.
+  if (!scope.tokenRequired && acsAllows(scope, { deviceId })) return true;
   try {
     const device = await fetchDevice(deviceId, 'InternetGatewayDevice.DeviceInfo.SerialNumber,InternetGatewayDevice.WANDevice,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_deviceId');
     const serial =
