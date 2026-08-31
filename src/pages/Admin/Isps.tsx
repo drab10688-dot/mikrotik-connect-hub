@@ -182,20 +182,34 @@ export default function Isps() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Email del administrador</Label>
+                <Label>
+                  Email del administrador <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   type="email"
+                  required
+                  placeholder="admin@tuisp.com"
                   value={form.admin_email}
                   onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
                 />
+                {form.admin_email && !emailOk && (
+                  <p className="text-xs text-destructive">Escribe un correo válido</p>
+                )}
               </div>
               <div className="space-y-1.5">
-                <Label>Contraseña del administrador</Label>
+                <Label>
+                  Contraseña del administrador <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   type="password"
+                  required
+                  placeholder="Mínimo 10 caracteres"
                   value={form.admin_password}
                   onChange={(e) => setForm({ ...form, admin_password: e.target.value })}
                 />
+                {form.admin_password && !passwordOk && (
+                  <p className="text-xs text-destructive">Debe tener al menos 10 caracteres</p>
+                )}
               </div>
               <div className="space-y-1.5 md:col-span-2">
                 <Label>Red de ONUs / antenas (detrás de la MikroTik)</Label>
@@ -208,9 +222,12 @@ export default function Isps() {
                   Subredes a las que el VPS llegará por la VPN. Separa varias con coma. Define el enrutamiento del navegador remoto y el panel.
                 </p>
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  El correo y la contraseña del administrador son obligatorios: con ellos entra al ISP y recibe el enlace de restablecimiento.
+                </p>
                 <Button
-                  disabled={!form.name || createIsp.isPending}
+                  disabled={!form.name || !emailOk || !passwordOk || createIsp.isPending}
                   onClick={() => createIsp.mutate()}
                 >
                   <Save className="w-4 h-4 mr-2" /> Crear ISP
