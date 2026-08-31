@@ -325,14 +325,18 @@ function acsAllows(
   // solo la ve el ISP dueño de ese token. Token de otro ISP => nunca se muestra.
   const urlToken = tokenFromAcsUrl(String(info.acsUrl || ''));
   const id = String(info.deviceId || '');
-  if (urlToken) return scope.tokens.has(urlToken);
+  if (urlToken) {
+    if (scope.tokens.has(urlToken)) return true;
+    // El ISP aún no tiene token propio configurado: no se puede filtrar por
+    // token, se cae al reclamo manual en vez de ocultar todo.
+    if (!scope.tokens.size) return matchesManualClaim(scope, info);
+    return false;
+  }
   // Sin token en la URL (IP pública base o acceso independiente por VPN):
   // solo se ve si el ISP la reclamó por token antes o la registró manualmente.
-  if (scope.tokenRequired) {
-    if (id && scope.tokenIds.has(id)) return true;
-    return matchesManualClaim(scope, info);
-  }
+  if (id && scope.tokenIds.has(id)) return true;
   return matchesManualClaim(scope, info);
+
 }
 
 
