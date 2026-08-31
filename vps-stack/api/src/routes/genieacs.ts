@@ -424,26 +424,20 @@ genieacsRouter.get('/inform-monitor', async (req: AuthRequest, res: Response) =>
     }).sort((a, b) => (a.secondsAgo ?? 1e12) - (b.secondsAgo ?? 1e12));
 
     const mine = list.filter((d) => d.visible);
+    // Por seguridad no se exponen tokens de enlace ni equipos ajenos al ISP.
+    const safe = (scope.unrestricted ? list : mine)
+      .slice(0, 100)
+      .map(({ urlToken, ...rest }) => rest);
     res.json({
       success: true,
       acsOnline,
-      tokens: [...scope.tokens],
       unrestricted: scope.unrestricted,
       totals: {
-        acs: list.length,
+        acs: scope.unrestricted ? list.length : mine.length,
         visible: mine.length,
         informing5m: mine.filter((d) => d.secondsAgo !== null && d.secondsAgo <= 300).length,
-        otherIsp: list.length - mine.length,
       },
-      // Se listan también las que llegan al ACS pero no son de este ISP,
-      // sin datos sensibles, para saber si el enlace TR-069 está mal.
-      devices: (scope.unrestricted ? list : mine).slice(0, 100),
-      unclaimed: scope.unrestricted
-        ? []
-        : list
-            .filter((d) => !d.visible && d.secondsAgo !== null && d.secondsAgo <= 900)
-            .slice(0, 20)
-            .map((d) => ({ serial: d.serial, secondsAgo: d.secondsAgo, urlToken: d.urlToken })),
+      devices: safe,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1376,6 +1370,37 @@ const FAST_PROJECTION = [
 ].join(',');
 
 
+// Intervalo objetivo de Inform (segundos) para que el panel se actualice rápido.
+const FAST_INFORM_SECONDS = Number(process.env.ACS_FAST_INFORM || 60);
+const fastInformApplied = new Set<string>();
+
+async function ensureFastInform(devices: any[]): Promise<void> {
+  for (const d of devices) {
+    const id = d?.deviceId;
+    if (!id || fastInformApplied.has(id)) continue;
+    const current = Number(d?.informInterval);
+    if (Number.isFinite(current) && current > 0 && current <= FAST_INFORM_SECONDS) {
+      fastInformApplied.add(id);
+      continue;
+    }
+    fastInformApplied.add(id);
+    try {
+      await queueTasksWithSingleConnectionRequest(id, [
+        {
+          name: 'setParameterValues',
+          parameterValues: [
+            ['InternetGatewayDevice.ManagementServer.PeriodicInformEnable', true, 'xsd:boolean'],
+            ['InternetGatewayDevice.ManagementServer.PeriodicInformInterval', FAST_INFORM_SECONDS, 'xsd:unsignedInt'],
+          ],
+        },
+      ]);
+    } catch {
+      // ONU sin soporte o fuera de línea: se reintentará en el próximo reinicio del API.
+      fastInformApplied.delete(id);
+    }
+  }
+}
+
 function sanitizePower(val: any): number | null {
   let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
   if (!Number.isFinite(num)) return null;
@@ -1535,6 +1560,10 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
           acsAllows(scope, { deviceId: d.deviceId, serial: d.serial, pppoe: d.pppoeUsername, acsUrl: d.acsUrl })
         )
     ).map(({ acsUrl, ...rest }: any) => rest);
+
+    // Lectura TR-069 más rápida: si una ONU reporta con un intervalo lento,
+    // se le baja a FAST_INFORM_SECONDS una sola vez (sin bloquear la respuesta).
+    void ensureFastInform(visible);
 
     res.json({ success: true, data: visible });
   } catch (err: any) {

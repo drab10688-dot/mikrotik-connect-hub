@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api-client";
-import { RefreshCw, RadioTower, AlertTriangle } from "lucide-react";
+import { RefreshCw, RadioTower } from "lucide-react";
 
 interface InformDevice {
   deviceId: string;
@@ -13,17 +13,14 @@ interface InformDevice {
   model: string | null;
   lastInform: string | null;
   secondsAgo: number | null;
-  urlToken: string | null;
   visible: boolean;
 }
 
 interface MonitorData {
   acsOnline: boolean;
-  tokens: string[];
   unrestricted: boolean;
-  totals: { acs: number; visible: number; informing5m: number; otherIsp: number };
+  totals: { acs: number; visible: number; informing5m: number };
   devices: InformDevice[];
-  unclaimed: { serial: string; secondsAgo: number | null; urlToken: string | null }[];
 }
 
 const ago = (s: number | null) => {
@@ -54,7 +51,7 @@ const InformMonitor = () => {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(() => load(false), 5000);
+    const t = window.setInterval(() => load(false), 3000);
     return () => window.clearInterval(t);
   }, [load]);
 
@@ -70,7 +67,7 @@ const InformMonitor = () => {
           <div>
             <CardTitle>Monitor TR-069 en vivo</CardTitle>
             <CardDescription>
-              Muestra si el ACS está recibiendo reportes (Inform) de las ONUs. Se actualiza cada 5 s.
+              Muestra si el ACS está recibiendo reportes (Inform) de las ONUs. Se actualiza cada 3 s.
             </CardDescription>
           </div>
         </div>
@@ -87,12 +84,11 @@ const InformMonitor = () => {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {totals && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
               { l: "Reportando (5 min)", v: totals.informing5m },
               { l: "ONUs de este ISP", v: totals.visible },
               { l: "Vistas por el ACS", v: totals.acs },
-              { l: "De otro enlace", v: totals.otherIsp },
             ].map((k) => (
               <div key={k.l} className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{k.l}</p>
@@ -102,27 +98,6 @@ const InformMonitor = () => {
           </div>
         )}
 
-        {data && data.tokens.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Enlace TR-069 esperado: <code>/tr069/{data.tokens[0]}/</code>
-          </p>
-        )}
-
-        {data && data.unclaimed.length > 0 && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-            <p className="flex items-center gap-2 font-medium">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              Hay ONUs reportando al ACS que no coinciden con tu enlace TR-069
-            </p>
-            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-              {data.unclaimed.map((u) => (
-                <li key={u.serial}>
-                  {u.serial} · {ago(u.secondsAgo)} · token: {u.urlToken || "sin token en la URL"}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {!loading && data && data.devices.length === 0 ? (
           <p className="text-muted-foreground text-center py-6 text-sm">
@@ -133,7 +108,6 @@ const InformMonitor = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>ONU</TableHead>
-                <TableHead>Enlace</TableHead>
                 <TableHead className="text-right">Último Inform</TableHead>
               </TableRow>
             </TableHeader>
@@ -148,7 +122,6 @@ const InformMonitor = () => {
                         {[d.manufacturer, d.model].filter(Boolean).join(" ") || "—"}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs">{d.urlToken ? `token ${d.urlToken}` : "sin token"}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant={live ? "secondary" : "destructive"}>{ago(d.secondsAgo)}</Badge>
                     </TableCell>
