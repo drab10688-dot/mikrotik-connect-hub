@@ -57,42 +57,81 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
   const [forms, setForms] = useState<Record<string, { ssid: string; password: string; channel: string }>>({});
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
   const [showDisabled, setShowDisabled] = useState(false);
+  const [applying, setApplying] = useState<{ path: string; label: string } | null>(null);
+  const dirtyRef = useRef<Set<string>>(new Set());
+  const pollRef = useRef<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
-      const data: OnuStatus = res?.data ?? res;
-      if (!data || typeof data !== "object") {
-        throw new Error("El ACS no devolvió información de esta ONU");
-      }
-      const radios = Array.isArray(data.radios) ? data.radios : [];
-      setStatus({ ...data, radios, catv: data.catv || { path: null, enabled: null } });
-      const next: Record<string, { ssid: string; password: string; channel: string }> = {};
-      radios.forEach((r) => {
+  const fetchStatus = useCallback(async (): Promise<OnuStatus> => {
+    const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
+    const data: OnuStatus = res?.data ?? res;
+    if (!data || typeof data !== "object") throw new Error("El ACS no devolvió información de esta ONU");
+    return { ...data, radios: Array.isArray(data.radios) ? data.radios : [], catv: data.catv || { path: null, enabled: null } };
+  }, [deviceId]);
+
+  const applyStatus = useCallback((data: OnuStatus) => {
+    setStatus(data);
+    setForms((prev) => {
+      const next = { ...prev };
+      data.radios.forEach((r) => {
+        // No sobrescribir lo que el usuario está editando
+        if (dirtyRef.current.has(r.path) && next[r.path]) return;
         next[r.path] = {
           ssid: r.ssid || "",
           password: r.password || "",
           channel: r.channel !== null && r.channel !== undefined ? String(r.channel) : "",
         };
       });
-      setForms(next);
+      return next;
+    });
+  }, []);
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      applyStatus(await fetchStatus());
     } catch (err: any) {
-      setError(err.message || "Error cargando la ONU");
+      if (!silent) setError(err.message || "Error cargando la ONU");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [deviceId]);
+  }, [fetchStatus, applyStatus]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => () => { if (pollRef.current) window.clearInterval(pollRef.current); }, []);
 
-  const confirmFromOnu = () => {
-    window.setTimeout(load, 1500);
-    window.setTimeout(load, 4000);
-  };
+  /** Espera hasta que la ONU confirme el cambio (o venza el tiempo). */
+  const waitUntilApplied = useCallback(
+    (path: string, label: string, matches: (r: Radio) => boolean) => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      setApplying({ path, label });
+      const started = Date.now();
+      pollRef.current = window.setInterval(async () => {
+        try {
+          const data = await fetchStatus();
+          applyStatus(data);
+          const radio = data.radios.find((r) => r.path === path);
+          if (radio && matches(radio)) {
+            window.clearInterval(pollRef.current!);
+            pollRef.current = null;
+            dirtyRef.current.delete(path);
+            setApplying(null);
+            toast.success(`${label}: cambio confirmado por la ONU`);
+            return;
+          }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 180000) {
+          window.clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setApplying(null);
+          toast.warning(`${label}: la ONU aún no confirma el cambio. Quedará aplicado en su próximo reporte.`);
+        }
+      }, 4000);
+    },
+    [fetchStatus, applyStatus],
+  );
 
   const passwordError = (pw: string) => {
     if (!pw) return null;
@@ -100,6 +139,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     if (!/^[\x20-\x7E]+$/.test(pw)) return "Sin tildes, ñ ni emojis (solo ASCII)";
     return null;
   };
+
 
   const saveRadio = async (radio: Radio) => {
     const form = forms[radio.path];
