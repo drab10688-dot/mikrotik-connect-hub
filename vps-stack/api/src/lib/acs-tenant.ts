@@ -176,11 +176,32 @@ export async function syncAcsOwnership(force = false): Promise<void> {
 
       for (const device of list) {
         const deviceId = device?._id;
-        if (!deviceId || owned.has(deviceId)) continue;
+        if (!deviceId) continue;
+
+        // El token del enlace TR-069 manda: si la ONU informa por el enlace
+        // de OTRO ISP, se reasigna aunque ya estuviera reclamada (corrige
+        // reclamos antiguos por red o por "ISP único").
+        const tokenMatch = resolveTenantForDevice(device, matchers);
+        const existing = owned.get(deviceId);
+        if (existing) {
+          if (
+            tokenMatch &&
+            tokenMatch.source === 'token' &&
+            String(existing.tenant_id) !== String(tokenMatch.tenantId)
+          ) {
+            await pool.query(
+              `UPDATE acs_device_owners
+                  SET tenant_id = $2, source = 'token', updated_at = now()
+                WHERE acs_device_id = $1`,
+              [deviceId, tokenMatch.tenantId]
+            );
+          }
+          continue;
+        }
 
         // Con un solo ISP en el sistema, todas las ONUs son suyas.
         const match =
-          resolveTenantForDevice(device, matchers) ||
+          tokenMatch ||
           (matchers.length === 1 ? { tenantId: matchers[0].id, source: 'single' } : null);
         if (!match) continue;
 
