@@ -184,7 +184,7 @@ docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
 # TR-069 TCP :7547 lo publica NGINX (valida /tr069/<token>/ y añade X-Tenant-Token).
 # --force-recreate garantiza el mapeo correcto aunque exista un despliegue previo.
 docker compose up -d --force-recreate genieacs nginx 2>&1 | tail -3
-chmod 700 "$INSTALL_DIR/recover-super-admin.sh" 2>/dev/null || true
+
 # Imagen base de los escritorios remotos privados (Chromium + KasmVNC).
 # Se precarga para que el primer usuario no espere la descarga.
 echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
@@ -288,7 +288,7 @@ echo -e "  TR-069 por ISP:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/tr069/<token>/
 echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/tr069/<token>/${NC}"
 echo -e "  Credenciales VPN: ${GREEN}/opt/omnisync-l2tp/vpn.conf${NC}"
 echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (o genéralo desde el panel → Credenciales y VPN)"
-echo -e "  Superadmin:       ${GREEN}sudo $INSTALL_DIR/recover-super-admin.sh${NC}"
+
 echo ""
 echo -e "  Logs:        ${CYAN}cd $INSTALL_DIR && docker compose logs -f${NC}"
 echo -e "  Reconstruir: ${CYAN}cd $INSTALL_DIR && docker compose up -d --build${NC}"

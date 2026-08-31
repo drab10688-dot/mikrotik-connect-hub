@@ -36,7 +36,7 @@ rsync -a --delete \
   --exclude 'nginx/certs' \
   --exclude '*.log' \
   "$TEMP_DIR/vps-stack/" "$INSTALL_DIR/"
-chmod 700 "$INSTALL_DIR/recover-super-admin.sh"
+rm -f "$INSTALL_DIR/recover-super-admin.sh"
 
 # Migraciones idempotentes de base de datos (multi-ISP, permisos, PPPoE)
 if [ -d "$INSTALL_DIR/db/migrations" ]; then
@@ -179,6 +179,6 @@ cd /root && rm -rf "$TEMP_DIR"
 echo -e "${GREEN}=== Actualizado ✓  (${COMMIT}) ===${NC}"
 echo "Verifica versión desplegada:  curl -s http://localhost/VERSION.txt"
 echo "Logs API:                     docker compose -f $INSTALL_DIR/docker-compose.yml logs --tail=50 api"
-echo "Recuperar superadministrador: sudo $INSTALL_DIR/recover-super-admin.sh"
+
 echo "Probar navegador/ONU:         sudo bash $INSTALL_DIR/test-browser.sh 10.82.0.29 80"
 echo -e "${CYAN}Recuerda en el navegador: Ctrl+Shift+R (recarga forzada)${NC}"
