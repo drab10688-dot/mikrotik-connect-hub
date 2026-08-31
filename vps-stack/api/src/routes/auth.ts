@@ -246,3 +246,117 @@ authRouter.get('/debug-roles', async (req: Request, res: Response) => {
     res.status(401).json({ error: 'Token inválido', detail: err.message });
   }
 });
+
+// ─── Restablecer contraseña por correo ───────────────────────────────
+import crypto from 'crypto';
+import { sendMail, resetPasswordEmail, getSmtpSettings } from '../lib/mailer';
+
+const RESET_TTL_MS = 60 * 60 * 1000; // 60 minutos
+const isEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+
+/** Base pública del panel para armar el enlace del correo. */
+function panelBaseUrl(req: Request, domain?: string | null): string {
+  const candidate = String(req.body?.origin || '').trim();
+  if (/^https?:\/\/[^\s]+$/i.test(candidate)) return candidate.replace(/\/$/, '');
+  if (process.env.APP_URL) return String(process.env.APP_URL).replace(/\/$/, '');
+  if (domain) return `https://${domain}`;
+  const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
+  return `${proto}://${req.headers.host}`;
+}
+
+// Solicitud: siempre responde 200 para no revelar qué correos existen.
+authRouter.post('/forgot-password', async (req: Request, res: Response) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const generic = { success: true, message: 'Si el correo existe, te enviamos las instrucciones.' };
+  if (!isEmail(email)) return res.status(400).json({ error: 'Correo inválido' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.id, u.email, u.full_name, u.is_active, u.tenant_id,
+              COALESCE(t.name, 'OmniSync') AS brand, t.slug
+         FROM users u LEFT JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.email = $1 LIMIT 1`,
+      [email]
+    );
+    const user = rows[0];
+    if (!user || user.is_active === false) return res.json(generic);
+
+    const raw = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
+
+    await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [user.id]);
+    await pool.query(
+      `INSERT INTO password_resets (user_id, token_hash, expires_at)
+       VALUES ($1, $2, now() + interval '60 minutes')`,
+      [user.id, tokenHash]
+    );
+
+    const smtp = await getSmtpSettings(user.tenant_id);
+    const base = panelBaseUrl(req, smtp?.domain);
+    const link = `${base}/reset-password?token=${raw}`;
+    const mail = resetPasswordEmail(link, user.brand);
+
+    await sendMail(user.tenant_id, { to: user.email, subject: mail.subject, html: mail.html });
+    res.json(generic);
+  } catch (error: any) {
+    console.error('[AUTH] forgot-password:', error.message);
+    // El fallo de SMTP sí se informa: el usuario debe saber que no llegará el correo.
+    res.status(500).json({ error: error.message || 'No se pudo enviar el correo' });
+  }
+});
+
+// Confirmación: valida el token y guarda la nueva contraseña.
+authRouter.post('/reset-password', async (req: Request, res: Response) => {
+  const token = String(req.body?.token || '').trim();
+  const password = String(req.body?.password || '');
+  if (!token) return res.status(400).json({ error: 'Enlace inválido' });
+  if (password.length < 10) return res.status(400).json({ error: 'La contraseña debe tener al menos 10 caracteres' });
+
+  try {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const { rows } = await pool.query(
+      `SELECT id, user_id FROM password_resets
+        WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() LIMIT 1`,
+      [tokenHash]
+    );
+    if (!rows[0]) return res.status(400).json({ error: 'El enlace expiró o ya fue utilizado' });
+
+    const hash = await bcrypt.hash(password, await bcrypt.genSalt(12));
+    await pool.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [rows[0].user_id, hash]);
+    await pool.query(`UPDATE password_resets SET used_at = now() WHERE id = $1`, [rows[0].id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[AUTH] reset-password:', error.message);
+    res.status(500).json({ error: 'No se pudo actualizar la contraseña' });
+  }
+});
+
+// Cambio de contraseña del propio usuario (panel principal y dentro del ISP).
+authRouter.post('/change-password', async (req: Request, res: Response) => {
+  const bearer = req.headers.authorization?.replace('Bearer ', '');
+  if (!bearer) return res.status(401).json({ error: 'No autenticado' });
+
+  const current = String(req.body?.current_password || '');
+  const next = String(req.body?.new_password || '');
+  if (next.length < 10) return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 10 caracteres' });
+  if (current === next) return res.status(400).json({ error: 'La nueva contraseña debe ser distinta a la actual' });
+
+  try {
+    const decoded = jwt.verify(bearer, process.env.JWT_SECRET || 'changeme') as any;
+    const { rows } = await pool.query(`SELECT id, password_hash FROM users WHERE id = $1`, [decoded.userId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const ok = await bcrypt.compare(current, rows[0].password_hash);
+    if (!ok) return res.status(400).json({ error: 'La contraseña actual no es correcta' });
+
+    const hash = await bcrypt.hash(next, await bcrypt.genSalt(12));
+    await pool.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [rows[0].id, hash]);
+    res.json({ success: true });
+  } catch (error: any) {
+    if (error?.name === 'JsonWebTokenError' || error?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token inválido' });
+    }
+    console.error('[AUTH] change-password:', error.message);
+    res.status(500).json({ error: 'No se pudo cambiar la contraseña' });
+  }
+});
