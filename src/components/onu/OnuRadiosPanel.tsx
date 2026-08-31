@@ -334,7 +334,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                       <Input
                         className="h-8 text-xs"
                         value={form.ssid}
-                        onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, ssid: e.target.value } }))}
+                        onChange={(e) => { dirtyRef.current.add(radio.path); setForms((f) => ({ ...f, [radio.path]: { ...form, ssid: e.target.value } })); }}
                       />
                     </div>
                     <div className="space-y-1">
@@ -344,7 +344,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                           className="h-8 text-xs"
                           type={showPass[radio.path] ? "text" : "password"}
                           value={form.password}
-                          onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, password: e.target.value } }))}
+                          onChange={(e) => { dirtyRef.current.add(radio.path); setForms((f) => ({ ...f, [radio.path]: { ...form, password: e.target.value } })); }}
                           aria-invalid={!!passwordError(form.password)}
                         />
                         <Button
@@ -365,7 +365,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                           className="h-8 text-xs"
                           value={form.channel}
                           placeholder="auto"
-                          onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, channel: e.target.value } }))}
+                          onChange={(e) => { dirtyRef.current.add(radio.path); setForms((f) => ({ ...f, [radio.path]: { ...form, channel: e.target.value } })); }}
                         />
                       </div>
                       <Button
