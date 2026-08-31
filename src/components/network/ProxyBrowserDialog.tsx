@@ -42,7 +42,9 @@ export function ProxyBrowserDialog({
     if (win) win.opener = null;
 
     (async () => {
-      const url = remoteDesktopUrl('browser');
+      // En celular se usa la variante móvil (resolución adaptada + barra táctil);
+      // en portátil se conserva EXACTAMENTE el visor que ya funciona.
+      const url = isMobileDevice() ? remoteDesktopMobileUrl('browser') : remoteDesktopUrl('browser');
       try {
         // Primero se crea Chromium con la IP y el puerto como página inicial.
         // Sólo después se dirige esta misma pestaña al visor. Si el visor se
