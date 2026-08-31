@@ -230,6 +230,34 @@ export default function Login() {
           {isLocked ? `Bloqueado ${lockedSeconds}s` : loading ? 'Verificando…' : 'Entrar'}
         </Button>
       </form>
+
+      {/* Restablecer contraseña por correo */}
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Restablecer contraseña</DialogTitle>
+            <DialogDescription>
+              Te enviaremos un enlace para crear una nueva contraseña.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleForgot} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="forgot-email">Correo electrónico</Label>
+              <Input
+                id="forgot-email"
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="operador@tuisp.com"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={forgotSending || !forgotEmail}>
+              {forgotSending ? 'Enviando…' : 'Enviar enlace'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
 
   );
