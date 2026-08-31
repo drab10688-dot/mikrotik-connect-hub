@@ -158,9 +158,14 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         },
       });
       toast.success(res.message || "Cambios enviados a la ONU", {
-        description: "Verificando la configuración aplicada…",
+        description: "Esperando confirmación de la ONU…",
       });
-      confirmFromOnu();
+      waitUntilApplied(radio.path, bandLabel[radio.band], (r) => {
+        const ssidOk = !form.ssid || (r.ssid || "") === form.ssid;
+        const chOk = form.channel === "" || String(r.channel ?? "") === form.channel;
+        const pwOk = !form.password || !r.password || r.password === form.password;
+        return ssidOk && chOk && pwOk;
+      });
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -175,11 +180,11 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         method: "POST",
         body: { path: radio.path, enable },
       });
-      toast.success(`${bandLabel[radio.band]} ${enable ? "activado" : "desactivado"}`);
+      toast.success(`${bandLabel[radio.band]} ${enable ? "activando" : "desactivando"}…`);
       setStatus((s) =>
         s ? { ...s, radios: s.radios.map((r) => (r.path === radio.path ? { ...r, enabled: enable } : r)) } : s,
       );
-      confirmFromOnu();
+      waitUntilApplied(radio.path, bandLabel[radio.band], (r) => r.enabled === enable);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -196,7 +201,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
       });
       toast.success(res.message);
       setStatus((s) => (s ? { ...s, catv: { ...s.catv, enabled: enable } } : s));
-      confirmFromOnu();
+      window.setTimeout(() => load(true), 5000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -209,13 +214,15 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     try {
       const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-onu`, { method: "POST" });
       toast.success(res.message);
-      confirmFromOnu();
+      window.setTimeout(() => load(true), 3000);
+      window.setTimeout(() => load(true), 8000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setBusy(null);
     }
   };
+
 
   return (
     <Card>
