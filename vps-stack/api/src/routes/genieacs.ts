@@ -259,14 +259,22 @@ function acsAllows(
 ): boolean {
   if (scope.unrestricted) return true;
   const id = String(info.deviceId || '');
+  // Si la ONU ya está reclamada por otra empresa, no se muestra nunca.
+  if (id && scope.foreign.has(id)) return false;
   if (id && scope.ids.has(id)) return true;
   const upperId = id.toUpperCase();
+  const infoSerial = String(info.serial || '').toUpperCase();
   for (const serial of scope.serials) {
-    if (serial && (upperId.includes(serial) || String(info.serial || '').toUpperCase() === serial)) return true;
+    if (!serial) continue;
+    if (infoSerial && infoSerial === serial) return true;
+    // El serial forma parte del _id del ACS (OUI-Modelo-Serial); se exige un
+    // serial suficientemente largo para no cruzar equipos de otras empresas.
+    if (serial.length >= 6 && upperId.includes(serial)) return true;
   }
   const user = String(info.pppoe || '').toLowerCase();
   if (user && scope.usernames.has(user)) return true;
   return false;
+
 }
 
 async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<boolean> {
