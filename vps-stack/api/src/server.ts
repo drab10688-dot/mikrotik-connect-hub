@@ -18,6 +18,8 @@ import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { onuWebRouter } from './routes/onu-web';
+import { mailRouter } from './routes/mail';
+import { backupRouter } from './routes/backup';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
