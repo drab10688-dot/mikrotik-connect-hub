@@ -424,26 +424,20 @@ genieacsRouter.get('/inform-monitor', async (req: AuthRequest, res: Response) =>
     }).sort((a, b) => (a.secondsAgo ?? 1e12) - (b.secondsAgo ?? 1e12));
 
     const mine = list.filter((d) => d.visible);
+    // Por seguridad no se exponen tokens de enlace ni equipos ajenos al ISP.
+    const safe = (scope.unrestricted ? list : mine)
+      .slice(0, 100)
+      .map(({ urlToken, ...rest }) => rest);
     res.json({
       success: true,
       acsOnline,
-      tokens: [...scope.tokens],
       unrestricted: scope.unrestricted,
       totals: {
-        acs: list.length,
+        acs: scope.unrestricted ? list.length : mine.length,
         visible: mine.length,
         informing5m: mine.filter((d) => d.secondsAgo !== null && d.secondsAgo <= 300).length,
-        otherIsp: list.length - mine.length,
       },
-      // Se listan también las que llegan al ACS pero no son de este ISP,
-      // sin datos sensibles, para saber si el enlace TR-069 está mal.
-      devices: (scope.unrestricted ? list : mine).slice(0, 100),
-      unclaimed: scope.unrestricted
-        ? []
-        : list
-            .filter((d) => !d.visible && d.secondsAgo !== null && d.secondsAgo <= 900)
-            .slice(0, 20)
-            .map((d) => ({ serial: d.serial, secondsAgo: d.secondsAgo, urlToken: d.urlToken })),
+      devices: safe,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
