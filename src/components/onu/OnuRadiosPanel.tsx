@@ -243,6 +243,12 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
+        {applying && (
+          <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-xs">
+            <Loader2 className="w-3 h-3 animate-spin text-primary" />
+            Aplicando cambios en {applying.label}… esperando confirmación de la ONU (sin recargar la vista).
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" /></div>
         ) : error ? (
