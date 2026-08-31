@@ -78,8 +78,10 @@ function seedAuthCookie(req: Request, res: Response, token: string) {
  * navegador global heredado 8081) mediante auth_request.
  */
 export async function authorizeBrowserAccess(req: Request, res: Response) {
-  const userId = verifyPanelToken(extractToken(req));
+  const token = extractToken(req);
+  const userId = verifyPanelToken(token);
   if (!userId) return res.status(401).end();
+  seedAuthCookie(req, res, token!);
   touchSession(userId);
   return res.status(200).end();
 }
