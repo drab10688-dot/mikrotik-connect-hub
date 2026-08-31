@@ -191,9 +191,10 @@ function deviceAcsUrl(device: any): string {
 async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   const empty: AcsScope = {
     unrestricted: false,
-    // Todo usuario de ISP debe tener tenant + token. Una cuenta sin tenant no
-    // puede degradarse al emparejamiento por serial/PPPoE porque eso mezcla ONUs.
-    tokenRequired: req.userRole !== 'super_admin' || Boolean(req.tenantId),
+    // El modo estricto por token solo aplica a cuentas ligadas a un ISP.
+    // Una cuenta sin empresa (instalación de un solo ISP) no puede quedarse
+    // sin ninguna ONU visible por no tener token asignado.
+    tokenRequired: Boolean(req.tenantId),
     ids: new Set(),
     serials: new Set(),
     usernames: new Set(),
@@ -201,6 +202,7 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     tokens: new Set(),
     tokenIds: new Set(),
   };
+
 
   // El super_admin sin empresa seleccionada ve todo el ACS; si está operando
   // dentro de una empresa, ve únicamente las ONUs de esa empresa.
