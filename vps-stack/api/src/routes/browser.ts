@@ -52,12 +52,36 @@ function verifyPanelToken(token?: string): string | null {
 }
 
 /**
+ * Siembra la cookie `omnisync_web_token` cuando el token llegó por la URL.
+ * KasmVNC pide sus recursos (/src/..., /icon.png, /websockify) SIN el query
+ * token; sin cookie esos requests reciben 401 y el visor queda en blanco.
+ * Nginx propaga este Set-Cookie al navegador vía auth_request_set.
+ */
+function seedAuthCookie(req: Request, res: Response, token: string) {
+  const original = String(req.headers['x-original-uri'] || req.originalUrl || '');
+  let fromQuery = false;
+  try {
+    fromQuery = new URL(original, 'http://local').searchParams.get('token') === token;
+  } catch {
+    /* ignore */
+  }
+  if (fromQuery) {
+    res.set(
+      'Set-Cookie',
+      `omnisync_web_token=${encodeURIComponent(token)}; Path=/; Max-Age=43200; SameSite=Lax; Secure`,
+    );
+  }
+}
+
+/**
  * Autoriza el acceso a los escritorios servidos por Nginx (Winbox 8082 y el
  * navegador global heredado 8081) mediante auth_request.
  */
 export async function authorizeBrowserAccess(req: Request, res: Response) {
-  const userId = verifyPanelToken(extractToken(req));
+  const token = extractToken(req);
+  const userId = verifyPanelToken(token);
   if (!userId) return res.status(401).end();
+  seedAuthCookie(req, res, token!);
   touchSession(userId);
   return res.status(200).end();
 }
@@ -69,8 +93,10 @@ export async function authorizeBrowserAccess(req: Request, res: Response) {
  * así el navegador NUNCA muestra el cuadro de usuario/clave.
  */
 export async function authorizeUserVnc(req: Request, res: Response) {
-  const userId = verifyPanelToken(extractToken(req));
+  const token = extractToken(req);
+  const userId = verifyPanelToken(token);
   if (!userId) return res.status(401).end();
+  seedAuthCookie(req, res, token!);
   try {
     let s = getSession(userId);
     if (!s) s = await ensureUserBrowser(userId);
