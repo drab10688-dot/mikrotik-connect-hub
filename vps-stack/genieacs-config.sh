@@ -177,8 +177,10 @@ JS_PERF=$(cat <<EOJS2
 function put(id, value) {
   db.config.replaceOne({_id: id}, {_id: id, value: value}, {upsert: true});
 }
-// Autenticación del Connection Request (HTTP digest hacia la ONU).
-put('cwmp.connectionRequestAuth', 'AUTH("${ACS_CR_USER}", "${ACS_CR_PASS}")');
+// GenieACS recibe `username` y `password` desde los parámetros reales de cada
+// ONU. Usarlos aquí permite credenciales distintas por ISP y evita que una
+// clave global desactualizada provoque el fallback al próximo Inform.
+put('cwmp.connectionRequestAuth', 'AUTH(username, password)');
 // Ventanas de espera cortas: por VPN la latencia es de milisegundos.
 put('cwmp.connectionRequestTimeout', '4000');
 put('cwmp.deviceOnlineThreshold', '4000');
@@ -311,21 +313,29 @@ vparam PppoeStatus "$VP_PPPOESTATUS"
 # La URL y credenciales NO se fuerzan: son distintas por ISP y deben conservar
 # el token /tr069/<token>/. Sobrescribirlas rompe el aislamiento multi-ISP.
 PROV=$(cat <<EOF
-const igd = declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: 1});
-const root = (igd.size > 0) ? "InternetGatewayDevice" : "Device";
+let root = "InternetGatewayDevice";
+try {
+  const igd = declare("InternetGatewayDevice.ManagementServer.URL", {value: 1});
+  if (!igd || igd.size === 0) root = "Device";
+} catch (e) {
+  root = "Device";
+}
 
 // La URL con /tr069/<token>/ es la fuente de verdad del aislamiento multi-ISP:
 // hay que LEERLA en cada Inform (sin escribirla) o el dispositivo queda sin dueño.
-declare(root + ".ManagementServer.URL", {value: Date.now()});
+try { declare(root + ".ManagementServer.URL", {value: Date.now()}); } catch (e) {}
 
-declare(root + ".ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
-declare(root + ".ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
+try { declare(root + ".ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true}); } catch (e) {}
+try { declare(root + ".ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}}); } catch (e) {}
 
-// Credenciales de Connection Request: deben coincidir con cwmp.connectionRequestAuth
-// para que el ACS pueda despertar la ONU al instante (sin esperar el Inform).
+// Credenciales por defecto para equipos nuevos. Si el ISP ya configuró otras,
+// no se reemplazan: AUTH(username,password) usa los valores reales del equipo.
 try {
-  declare(root + ".ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "${ACS_CR_USER}"});
-  declare(root + ".ManagementServer.ConnectionRequestPassword", {value: Date.now()}, {value: "${ACS_CR_PASS}"});
+  const crUser = declare(root + ".ManagementServer.ConnectionRequestUsername", {value: Date.now()});
+  if (!crUser.value || !crUser.value[0]) {
+    declare(root + ".ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "${ACS_CR_USER}"});
+    declare(root + ".ManagementServer.ConnectionRequestPassword", {value: Date.now()}, {value: "${ACS_CR_PASS}"});
+  }
 } catch (e) {}
 
 // Sin NAT dentro del túnel VPN: STUN no es necesario (y añade latencia)
@@ -355,5 +365,5 @@ echo
 c_ok "Listo. Abre GenieACS, pulsa Ctrl+Shift+R y presiona 'Summon' en la ONU para poblar las columnas."
 c_ok "TR-069 escuchando por WireGuard: http://${ACS_HOST}:${ACS_PORT}/ (inform cada ${ACS_INFORM_INTERVAL}s)"
 
-c_ok "Connection Request: usuario '${ACS_CR_USER}' (las órdenes se aplican en 1-3 s)"
-c_inf "En la ONU, 'Connect Request Username/Password' deben ser ${ACS_CR_USER} / la clave configurada."
+c_ok "Connection Request: credenciales dinámicas por ONU (órdenes inmediatas por VPN)"
+c_inf "En la ONU, Connect Request Username/Password deben coincidir con los mostrados en el panel del ISP."
