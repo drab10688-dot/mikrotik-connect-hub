@@ -4,7 +4,6 @@ import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import {
-  docker,
   ensureUserBrowser,
   destroyUserBrowser,
   getSession,
@@ -224,47 +223,19 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
     });
   }
 
+  // La IP/puerto se pasa como PÁGINA DE INICIO: si el equipo cambió, el
+  // contenedor se recrea y Chromium arranca ya cargando esa URL (como antes).
   let session: UserBrowserSession;
   try {
-    session = await ensureUserBrowser(userId);
+    session = await ensureUserBrowser(userId, url);
   } catch (e: any) {
     return res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
   }
 
-  const ready = await waitReady(session);
-  if (!ready) {
-    return res.status(503).json({
-      success: false,
-      error: 'Tu escritorio remoto se está iniciando, reintenta en unos segundos',
-      data: publicSession(session),
-    });
-  }
-
   touchSession(userId);
+  // El visor abre enseguida; KasmVNC muestra el escritorio en cuanto el
+  // contenedor termina de arrancar. No bloqueamos la respuesta.
+  waitReady(session, 30000).catch(() => undefined);
 
-  const displays = await detectDisplays(session.container);
-  let lastError = '';
-  for (const display of displays) {
-    const navigated = await openInNewTab(session.container, display, url);
-    if (navigated.ok) {
-      return res.json({ success: true, data: { url, display, method: 'new-tab', ...publicSession(session) } });
-    }
-    lastError = navigated.err;
-
-    const env = ['-e', `DISPLAY=${display}`, '-e', 'HOME=/config'];
-    const attempts: string[][] = [
-      ['exec', '-u', 'abc', ...env, session.container, '/usr/bin/chromium', '--new-tab', url],
-      ['exec', '-u', '1000', ...env, session.container, '/usr/bin/chromium', '--new-tab', url],
-      ['exec', ...env, session.container, 's6-setuidgid', 'abc', '/usr/bin/chromium', '--new-tab', url],
-    ];
-    for (const args of attempts) {
-      const result = await docker(args, 20000);
-      if (result.ok) {
-        return res.json({ success: true, data: { url, display, method: 'chromium-cli', ...publicSession(session) } });
-      }
-      lastError = result.err;
-    }
-  }
-
-  res.status(502).json({ success: false, error: lastError || 'No se pudo abrir la URL en tu escritorio remoto' });
+  return res.json({ success: true, data: { url, method: 'launch-url', ...publicSession(session) } });
 });
