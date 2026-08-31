@@ -248,7 +248,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         ) : error ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-2">
             <p className="text-xs text-destructive">{error}</p>
-            <Button size="sm" variant="outline" onClick={load}>
+            <Button size="sm" variant="outline" onClick={() => load()}>
               <RotateCcw className="w-3 h-3 mr-1" /> Reintentar
             </Button>
           </div>
