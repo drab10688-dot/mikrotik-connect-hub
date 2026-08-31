@@ -384,7 +384,7 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
           const chunk = list.slice(i, i + CONCURRENCY);
           const read = await Promise.all(
             chunk.map((c) =>
-              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip)).then((r) => ({
+              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip), mikrotikId).then((r) => ({
                 ...r,
                 name: saved.get(c.ip)?.name || c.name,
                 saved: saved.has(c.ip),
