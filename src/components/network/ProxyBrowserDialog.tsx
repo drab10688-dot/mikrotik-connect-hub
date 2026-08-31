@@ -34,18 +34,15 @@ export function ProxyBrowserDialog({
     (async () => {
       const url = remoteDesktopUrl('browser');
       try {
-        await browserApi.session();
-        if (cancelled) return;
-
-        // El visor se muestra de inmediato y la navegación se reintenta hasta
-        // que el Chromium remoto acepta la IP/puerto (el contenedor puede estar
-        // terminando de arrancar en el primer intento).
+        // La IP/puerto se pasa directo al arrancar el escritorio: Chromium
+        // abre ya cargando el equipo (como antes). El visor se muestra de
+        // inmediato y KasmVNC aparece en cuanto el contenedor termina.
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
 
         let navError = '';
         let opened = false;
-        for (let attempt = 0; attempt < 5 && !cancelled; attempt++) {
+        for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
           try {
             await browserApi.open(target.directUrl, target.mikrotikId);
             opened = true;

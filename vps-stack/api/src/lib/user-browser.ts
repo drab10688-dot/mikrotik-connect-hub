@@ -32,6 +32,8 @@ export interface UserBrowserSession {
   lastActivity: number;
   startedAt: number;
   readyAt?: number;
+  /** Última URL con la que se lanzó Chromium (página de inicio del escritorio). */
+  lastLaunchUrl?: string;
 }
 
 const sessions = new Map<string, UserBrowserSession>();
@@ -75,13 +77,22 @@ async function allocatePort(): Promise<number | null> {
 }
 
 /** Crea (o reutiliza) el escritorio del usuario y devuelve sus datos de acceso. */
-export async function ensureUserBrowser(userId: string): Promise<UserBrowserSession> {
+export async function ensureUserBrowser(userId: string, launchUrl?: string): Promise<UserBrowserSession> {
   const name = containerName(userId);
   const existing = sessions.get(userId);
 
   if (existing && (await containerStatus(name)) === 'running') {
     existing.lastActivity = Date.now();
-    return existing;
+    // Si piden otro equipo, se recrea el contenedor para que Chromium arranque
+    // DIRECTO en esa IP/puerto (como página de inicio). Es la forma más
+    // confiable de "pasar la IP": nada de teclear la URL en un navegador ya
+    // abierto, que era lo que fallaba.
+    if (launchUrl && launchUrl !== existing.lastLaunchUrl) {
+      await docker(['rm', '-f', name], 30000);
+      sessions.delete(userId);
+    } else {
+      return existing;
+    }
   }
 
   // Contenedor huérfano de un despliegue anterior: se elimina y se recrea limpio.
@@ -95,6 +106,9 @@ export async function ensureUserBrowser(userId: string): Promise<UserBrowserSess
   const password = crypto.randomBytes(9).toString('base64url');
   const user = 'omnisync';
 
+  // La URL del equipo se pasa como PÁGINA DE INICIO de Chromium: al abrir el
+  // escritorio remoto, el equipo ya está cargando (igual que antes).
+  const homePage = launchUrl && !/\s/.test(launchUrl) ? launchUrl : 'about:blank';
   const chromeCli = [
     '--incognito',
     '--disable-sync',
@@ -102,7 +116,7 @@ export async function ensureUserBrowser(userId: string): Promise<UserBrowserSess
     '--no-default-browser-check',
     '--password-store=basic',
     '--disable-features=Translate,AutofillServerCommunication',
-    'about:blank',
+    homePage,
   ].join(' ');
 
   const args = [
@@ -162,6 +176,7 @@ export async function ensureUserBrowser(userId: string): Promise<UserBrowserSess
     password,
     lastActivity: Date.now(),
     startedAt: Date.now(),
+    lastLaunchUrl: launchUrl,
   };
   sessions.set(userId, session);
   return session;
