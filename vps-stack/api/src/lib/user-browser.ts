@@ -77,13 +77,22 @@ async function allocatePort(): Promise<number | null> {
 }
 
 /** Crea (o reutiliza) el escritorio del usuario y devuelve sus datos de acceso. */
-export async function ensureUserBrowser(userId: string): Promise<UserBrowserSession> {
+export async function ensureUserBrowser(userId: string, launchUrl?: string): Promise<UserBrowserSession> {
   const name = containerName(userId);
   const existing = sessions.get(userId);
 
   if (existing && (await containerStatus(name)) === 'running') {
     existing.lastActivity = Date.now();
-    return existing;
+    // Si piden otro equipo, se recrea el contenedor para que Chromium arranque
+    // DIRECTO en esa IP/puerto (como página de inicio). Es la forma más
+    // confiable de "pasar la IP": nada de teclear la URL en un navegador ya
+    // abierto, que era lo que fallaba.
+    if (launchUrl && launchUrl !== existing.lastLaunchUrl) {
+      await docker(['rm', '-f', name], 30000);
+      sessions.delete(userId);
+    } else {
+      return existing;
+    }
   }
 
   // Contenedor huérfano de un despliegue anterior: se elimina y se recrea limpio.
