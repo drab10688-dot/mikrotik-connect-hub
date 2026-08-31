@@ -113,15 +113,55 @@ export default function Isps() {
     onError: (e: any) => toast.error(e.message || "No se pudo eliminar"),
   });
 
-  const uploadLogo = (isp: Isp, file: File) => {
-    if (file.size > 400_000) {
-      toast.error("El logo debe pesar menos de 400 KB");
+  /** Acepta logos grandes (hasta 8 MB) y los reescala en el navegador. */
+  const uploadLogo = async (isp: Isp, file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("El archivo debe ser una imagen");
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () =>
-      updateIsp.mutate({ id: isp.id, data: { logo_url: reader.result as string } });
-    reader.readAsDataURL(file);
+    if (file.size > 8_000_000) {
+      toast.error("El logo debe pesar menos de 8 MB");
+      return;
+    }
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      // SVG y archivos pequeños se suben tal cual (sin pérdida)
+      if (file.type === "image/svg+xml" || file.size <= 300_000) {
+        updateIsp.mutate({ id: isp.id, data: { logo_url: dataUrl } });
+        return;
+      }
+
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("Imagen inválida"));
+        el.src = dataUrl;
+      });
+
+      const MAX = 1024; // lado máximo: suficiente para pantallas retina
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("No se pudo procesar la imagen");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // PNG conserva transparencia; si pesa mucho se pasa a WebP
+      let out = canvas.toDataURL("image/png");
+      if (out.length > 400_000) out = canvas.toDataURL("image/webp", 0.9);
+      if (out.length > 400_000) out = canvas.toDataURL("image/webp", 0.75);
+
+      updateIsp.mutate({ id: isp.id, data: { logo_url: out } });
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo procesar el logo");
+    }
   };
 
   return (
