@@ -165,6 +165,8 @@ interface AcsScope {
   ids: Set<string>;
   serials: Set<string>;
   usernames: Set<string>;
+  /** ONUs que ya pertenecen a OTRO ISP: nunca se muestran aquí. */
+  foreign: Set<string>;
 }
 
 // Multi-ISP: cada ISP solo ve las ONUs que informan por SU enlace TR-069
@@ -178,12 +180,14 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     ids: new Set(),
     serials: new Set(),
     usernames: new Set(),
+    foreign: new Set(),
   };
 
   if (SINGLE_ISP) return { ...empty, unrestricted: true };
 
-  // El super_admin ve todo el ACS; los usuarios de un ISP, solo lo suyo.
-  if (req.userRole === 'super_admin') return { ...empty, unrestricted: true };
+  // El super_admin sin empresa seleccionada ve todo el ACS; si está operando
+  // dentro de una empresa, ve únicamente las ONUs de esa empresa.
+  if (req.userRole === 'super_admin' && !req.tenantId) return { ...empty, unrestricted: true };
 
   const deviceIds = (await getAccessibleDeviceIds(req)) ?? [];
 
@@ -194,6 +198,20 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
       const ids = await tenantAcsDeviceIds(req.tenantId);
       ids.forEach((id) => empty.ids.add(id));
     } catch { /* ACS no disponible: se sigue con lo registrado en la BD */ }
+
+    // ONUs reclamadas por otras empresas: se excluyen siempre, aunque el
+    // serial o el usuario PPPoE coincidan por casualidad.
+    try {
+      const { rows } = await pool.query(
+        `SELECT acs_device_id FROM acs_device_owners WHERE tenant_id <> $1`,
+        [req.tenantId]
+      );
+      rows.forEach((r: any) => {
+        const id = String(r.acs_device_id);
+        if (!empty.ids.has(id)) empty.foreign.add(id);
+      });
+    } catch { /* tabla opcional */ }
+
 
     // ONUs registradas manualmente al ISP
     try {
@@ -241,14 +259,22 @@ function acsAllows(
 ): boolean {
   if (scope.unrestricted) return true;
   const id = String(info.deviceId || '');
+  // Si la ONU ya está reclamada por otra empresa, no se muestra nunca.
+  if (id && scope.foreign.has(id)) return false;
   if (id && scope.ids.has(id)) return true;
   const upperId = id.toUpperCase();
+  const infoSerial = String(info.serial || '').toUpperCase();
   for (const serial of scope.serials) {
-    if (serial && (upperId.includes(serial) || String(info.serial || '').toUpperCase() === serial)) return true;
+    if (!serial) continue;
+    if (infoSerial && infoSerial === serial) return true;
+    // El serial forma parte del _id del ACS (OUI-Modelo-Serial); se exige un
+    // serial suficientemente largo para no cruzar equipos de otras empresas.
+    if (serial.length >= 6 && upperId.includes(serial)) return true;
   }
   const user = String(info.pppoe || '').toLowerCase();
   if (user && scope.usernames.has(user)) return true;
   return false;
+
 }
 
 async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<boolean> {
