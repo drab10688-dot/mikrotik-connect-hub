@@ -81,17 +81,33 @@ export function resolveTenantForDevice(
 
 // ─── Sincronización (con caché corta) ────────────────────
 let lastSync = 0;
-let inflight: Promise<void> | null = null;
+let inflight: Promise<AcsOwnershipSyncResult> | null = null;
 
-export async function syncAcsOwnership(force = false): Promise<void> {
+export interface AcsOwnershipSyncResult {
+  scanned: number;
+  matched: number;
+  created: number;
+  reassigned: number;
+  removed: number;
+}
+
+export async function syncAcsOwnership(force = false): Promise<AcsOwnershipSyncResult> {
+  const emptyResult: AcsOwnershipSyncResult = {
+    scanned: 0,
+    matched: 0,
+    created: 0,
+    reassigned: 0,
+    removed: 0,
+  };
   const now = Date.now();
-  if (!force && now - lastSync < 20_000) return;
+  if (!force && now - lastSync < 20_000) return emptyResult;
   if (inflight) return inflight;
 
   inflight = (async () => {
+    const result = { ...emptyResult };
     try {
       const matchers = await loadTenantMatchers();
-      if (!matchers.length) return;
+      if (!matchers.length) return result;
 
       const projection = [
         '_id',
@@ -104,7 +120,8 @@ export async function syncAcsOwnership(force = false): Promise<void> {
 
       const devices = await nbiGet(`/devices/?projection=${encodeURIComponent(projection)}`);
       const list = Array.isArray(devices) ? devices : [];
-      if (!list.length) return;
+      result.scanned = list.length;
+      if (!list.length) return result;
 
       const { rows: ownedRows } = await pool.query(
         `SELECT acs_device_id, tenant_id, source, status FROM acs_device_owners`
@@ -127,6 +144,7 @@ export async function syncAcsOwnership(force = false): Promise<void> {
         // hechos por red o por el modo "ISP único", que causaban fugas entre
         // empresas cuando la ONU ya no reportaba por un enlace con token.
         const tokenMatch = resolveTenantForDevice(device, matchers);
+        if (tokenMatch) result.matched += 1;
         const existing = owned.get(deviceId);
         if (existing) {
           if (tokenMatch && (
@@ -139,11 +157,13 @@ export async function syncAcsOwnership(force = false): Promise<void> {
                 WHERE acs_device_id = $1`,
               [deviceId, tokenMatch.tenantId]
             );
+            result.reassigned += 1;
           } else if (!tokenMatch) {
             await pool.query(
               `DELETE FROM acs_device_owners WHERE acs_device_id = $1`,
               [deviceId]
             );
+            result.removed += 1;
           }
           continue;
         }
@@ -163,10 +183,13 @@ export async function syncAcsOwnership(force = false): Promise<void> {
            ON CONFLICT (acs_device_id) DO NOTHING`,
           [deviceId, match.tenantId, device?._deviceId?._SerialNumber || null, match.source, status]
         );
+        result.created += 1;
         if (status === 'active') usage.set(match.tenantId, used + 1);
       }
+      return result;
     } catch (error: any) {
       console.warn('[ACS] sync propiedad ISP:', error.message);
+      return result;
     } finally {
       lastSync = Date.now();
       inflight = null;

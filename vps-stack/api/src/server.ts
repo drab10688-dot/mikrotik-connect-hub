@@ -23,6 +23,7 @@ import { authMiddleware, requirePermission, requireRole } from './middleware/aut
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 import { runPppoeMonitor, cleanupPppoeEvents } from './cron/pppoe-monitor';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
+import { syncAcsOwnership } from './lib/acs-tenant';
 
 // Re-export pool for backward compatibility with cron jobs
 export { pool };
@@ -110,6 +111,21 @@ cron.schedule('* * * * *', () => {
   runPppoeMonitor(pool).catch(e => console.error('[CRON] PPPoE monitor error:', e.message));
 });
 
+// Sincroniza la propiedad multi-ISP aunque ningún usuario tenga una sesión
+// abierta. Así un JWT expirado no impide reclamar las ONUs por su enlace TR-069.
+cron.schedule('* * * * *', () => {
+  syncAcsOwnership(true)
+    .then((result) => {
+      if (result.created || result.reassigned || result.removed) {
+        console.log(
+          `[ACS] propiedad: ${result.scanned} revisadas, ${result.matched} con token válido, ` +
+          `${result.created} asignadas, ${result.reassigned} reasignadas, ${result.removed} retiradas`
+        );
+      }
+    })
+    .catch((e: any) => console.error('[ACS] sincronización:', e.message));
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
 
@@ -117,7 +133,15 @@ app.listen(PORT, () => {
   prefetchBrowserImage().catch(() => undefined);
 
   // Esquema multi-ISP (tokens TR-069, permisos, peers VPN)
-  ensureIspSchema(pool).catch((e: any) => console.error('[SCHEMA] isp:', e.message));
+  ensureIspSchema(pool)
+    .then(async () => {
+      const result = await syncAcsOwnership(true);
+      console.log(
+        `[ACS] propiedad inicial: ${result.scanned} revisadas, ${result.matched} con token válido, ` +
+        `${result.created} asignadas, ${result.reassigned} reasignadas, ${result.removed} retiradas`
+      );
+    })
+    .catch((e: any) => console.error('[SCHEMA/ACS] inicio:', e.message));
   
   // Auto-configure WireGuard route after a short delay (wait for DNS)
   setTimeout(async () => {
