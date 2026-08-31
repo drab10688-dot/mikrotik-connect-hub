@@ -141,6 +141,12 @@ fi
 # Recrear ambos a la vez libera :7547 de GenieACS y lo asigna a Nginx sin
 # dejar el despliegue con el mapeo antiguo.
 docker compose up -d --force-recreate genieacs nginx
+# Reaplicar config CWMP (Connection Request inmediato, tiempos e Inform rápido)
+if [ -f "./genieacs-config.sh" ]; then
+  sleep 8
+  ACS_CR_USER="${ACS_CR_USER:-omnisync}" ACS_CR_PASS="${ACS_CR_PASS:-OmniSync2026}" \
+    bash ./genieacs-config.sh 2>&1 | tail -6 || true
+fi
 # TR-069 TCP entra por Nginx para procesar /tr069/<token>/.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 7547/tcp >/dev/null 2>&1 || true
