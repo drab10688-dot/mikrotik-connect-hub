@@ -38,6 +38,7 @@ const App = () => (
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/isp/:slug" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
 
           {/* Panel de gestión de ONUs */}
