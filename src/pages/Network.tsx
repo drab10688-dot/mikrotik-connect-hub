@@ -473,8 +473,9 @@ export default function Network() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredSecrets.map((s: any) => (
-                          <tr key={s.id || s.name} className="border-b last:border-0">
+                        {filteredSecrets.map((s: any, i: number) => (
+                          <tr key={`${s.source || "secret"}-${s.id || "n"}-${s.name}-${i}`} className="border-b last:border-0">
+
                             <td className="py-2 pr-4 font-medium">{s.name}</td>
                             <td className="py-2 pr-4">
                               <Badge variant={s.online ? "default" : "secondary"}>
