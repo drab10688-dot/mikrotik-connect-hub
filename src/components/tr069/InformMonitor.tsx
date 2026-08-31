@@ -19,11 +19,9 @@ interface InformDevice {
 
 interface MonitorData {
   acsOnline: boolean;
-  tokens: string[];
   unrestricted: boolean;
-  totals: { acs: number; visible: number; informing5m: number; otherIsp: number };
+  totals: { acs: number; visible: number; informing5m: number };
   devices: InformDevice[];
-  unclaimed: { serial: string; secondsAgo: number | null; urlToken: string | null }[];
 }
 
 const ago = (s: number | null) => {
