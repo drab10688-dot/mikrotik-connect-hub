@@ -4,6 +4,9 @@ import { authApi, setToken, setStoredUser, setApiBaseUrl } from '@/lib/api-clien
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { LogIn, ArrowLeft, Antenna, Network, ShieldCheck, Wifi, Radio } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -54,6 +57,9 @@ export default function Login() {
   const [fails, setFails] = useState(0);
   const [lockUntil, setLockUntil] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSending, setForgotSending] = useState(false);
 
   useEffect(() => {
     if (!lockUntil) return;
@@ -75,6 +81,21 @@ export default function Login() {
   useEffect(() => {
     if (isAuthenticated && !authLoading) navigate('/dashboard');
   }, [isAuthenticated, authLoading, navigate]);
+
+  /** Solicita el enlace de restablecimiento al servidor de correo del ISP. */
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotSending(true);
+    try {
+      const res = await authApi.forgotPassword(forgotEmail.trim().toLowerCase());
+      toast.success(res?.message || 'Si el correo existe, te enviamos las instrucciones.');
+      setForgotOpen(false);
+    } catch (error: any) {
+      toast.error(error?.message || 'No se pudo enviar el correo');
+    } finally {
+      setForgotSending(false);
+    }
+  };
 
   const resetChallenge = () => {
     setChallenge(newChallenge());
@@ -162,7 +183,16 @@ export default function Login() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Contraseña</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Contraseña</Label>
+            <button
+              type="button"
+              onClick={() => { setForgotEmail(formData.email); setForgotOpen(true); }}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
           <Input
             id="password"
             type="password"
@@ -218,6 +248,34 @@ export default function Login() {
           {isLocked ? `Bloqueado ${lockedSeconds}s` : loading ? 'Verificando…' : 'Entrar'}
         </Button>
       </form>
+
+      {/* Restablecer contraseña por correo */}
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Restablecer contraseña</DialogTitle>
+            <DialogDescription>
+              Te enviaremos un enlace para crear una nueva contraseña.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleForgot} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="forgot-email">Correo electrónico</Label>
+              <Input
+                id="forgot-email"
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="operador@tuisp.com"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={forgotSending || !forgotEmail}>
+              {forgotSending ? 'Enviando…' : 'Enviar enlace'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
 
   );

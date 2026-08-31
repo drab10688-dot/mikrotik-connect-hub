@@ -5,6 +5,7 @@ const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router,
   ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound, UserPlus,
+  Mail, DatabaseBackup, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useMyTenant } from "@/hooks/useTenantBranding";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useMyPermissions } from "@/hooks/usePermissions";
+import { ChangePasswordDialog } from "@/components/account/ChangePasswordDialog";
 import { useState, useEffect, useRef } from "react";
 
 type MenuEntry = {
@@ -39,6 +41,8 @@ const menuItems: MenuEntry[] = [
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
   { icon: Users, label: "Usuarios", path: "/admin/users", section: "usuarios", group: "Administración" },
   { icon: KeyRound, label: "Roles y permisos", path: "/admin/permissions", section: "roles", group: "Administración" },
+  { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", section: "correo", group: "Administración" },
+  { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", section: "respaldos", group: "Administración" },
 ];
 
 export const Sidebar = () => {
@@ -113,6 +117,8 @@ export const Sidebar = () => {
     { icon: Building2, label: "Panel de ISPs", path: "/admin/isps", group: "Administración" },
     { icon: Users, label: "Usuarios", path: "/admin/users", group: "Administración" },
     { icon: UserPlus, label: "Crear usuario", path: "/admin/register-user", group: "Administración" },
+    { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", group: "Administración" },
+    { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", group: "Administración" },
   ];
 
   const moduleMenuItems = menuItems
@@ -275,6 +281,17 @@ export const Sidebar = () => {
               {user?.email || "Sesión activa"}
             </span>
           </div>
+          <ChangePasswordDialog
+            trigger={
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+              >
+                <Lock className="w-4 h-4 mr-3" />
+                Cambiar contraseña
+              </Button>
+            }
+          />
           <Button
             variant="ghost"
             className="w-full justify-start text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"

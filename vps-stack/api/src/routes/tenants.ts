@@ -146,6 +146,17 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
             enable_onus, enable_mikrotik, onu_networks } = req.body;
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' });
 
+    // El correo y la contraseña del administrador son obligatorios: sin ellos el
+    // ISP quedaría sin acceso y sin destino para el restablecimiento por correo.
+    const adminEmail = String(admin_email || '').trim().toLowerCase();
+    const adminPassword = String(admin_password || '');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(adminEmail)) {
+      return res.status(400).json({ error: 'El correo del administrador es obligatorio y debe ser válido' });
+    }
+    if (adminPassword.length < 10) {
+      return res.status(400).json({ error: 'La contraseña del administrador debe tener al menos 10 caracteres' });
+    }
+
     const finalSlug = slugify(slug || name);
     if (!finalSlug) return res.status(400).json({ error: 'Slug inválido' });
 
@@ -193,12 +204,12 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     // Cada ISP nuevo arranca con su matriz de permisos por rol.
     await seedTenantPermissions(client, tenant.id).catch(() => undefined);
 
-    if (admin_email && admin_password) {
-      const password_hash = await bcrypt.hash(admin_password, await bcrypt.genSalt(12));
+    {
+      const password_hash = await bcrypt.hash(adminPassword, await bcrypt.genSalt(12));
       const userRes = await client.query(
         `INSERT INTO users (email, password_hash, full_name, tenant_id)
          VALUES ($1, $2, $3, $4) RETURNING id`,
-        [String(admin_email).toLowerCase(), password_hash, admin_name || name, tenant.id]
+        [adminEmail, password_hash, admin_name || name, tenant.id]
       );
       await client.query(
         `INSERT INTO user_roles (user_id, role) VALUES ($1, 'admin'::app_role)`,

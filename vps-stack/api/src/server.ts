@@ -18,6 +18,8 @@ import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { onuWebRouter } from './routes/onu-web';
+import { mailRouter } from './routes/mail';
+import { backupRouter } from './routes/backup';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -70,6 +72,9 @@ app.get('/api/browser-authz', authorizeBrowserAccess);
 app.get('/api/browser-authz-vnc', authorizeUserVnc);
 app.use('/api/browser', authMiddleware, requireSection('red'), browserRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
+// Servidor de correo (SMTP) y copias de seguridad por ISP / del sistema
+app.use('/api/mail', authMiddleware, requireSection('correo'), mailRouter);
+app.use('/api/backup', authMiddleware, requireSection('respaldos'), backupRouter);
 
 
 // Aliases for frontend compatibility
