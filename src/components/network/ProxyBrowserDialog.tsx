@@ -25,25 +25,32 @@ export function ProxyBrowserDialog({
     if (!target) return;
 
     let cancelled = false;
-    // La pestaña se abre de inmediato (evita el bloqueador de ventanas) y se
-    // queda en espera hasta que el equipo YA esté cargando en el escritorio.
-    const win = window.open("about:blank", "_blank", "noopener,noreferrer");
+    // Se abre SIN "noopener" para conservar la referencia y poder redirigir
+    // la pestaña al visor (con noopener window.open devuelve null y la
+    // pestaña se quedaba en about:blank).
+    const win = window.open("about:blank", "_blank");
+    if (win) win.opener = null;
 
     (async () => {
       try {
         await browserApi.session();
         if (cancelled) return;
-        // IMPORTANTE: primero se envía la IP:puerto al escritorio y sólo
-        // después se muestra el visor, así la pestaña abre ya con el equipo.
-        await browserApi.open(target.directUrl, target.mikrotikId);
-        if (cancelled) return;
         const url = remoteDesktopUrl('browser');
+        // El visor se muestra ya mismo; la navegación del equipo se envía
+        // en paralelo para que la pestaña nunca quede en blanco.
         if (win && !win.closed) win.location.replace(url);
-        else window.open(url, "_blank", "noopener,noreferrer");
-        toast.success(`${target.title}: abriendo ${target.directUrl}`);
+        else window.open(url, "_blank");
+
+        try {
+          await browserApi.open(target.directUrl, target.mikrotikId);
+          if (!cancelled) toast.success(`${target.title}: abriendo ${target.directUrl}`);
+        } catch (e: any) {
+          if (!cancelled)
+            toast.error(e?.message || "No hay ruta VPN hacia el equipo");
+        }
       } catch (e: any) {
         if (win && !win.closed) win.close();
-        if (!cancelled) toast.error(e?.message || "No hay ruta VPN hacia el equipo");
+        if (!cancelled) toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
       } finally {
         if (!cancelled) onOpenChange(false);
       }
