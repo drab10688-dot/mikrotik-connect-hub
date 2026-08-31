@@ -321,6 +321,13 @@ declare(root + ".ManagementServer.URL", {value: Date.now()});
 declare(root + ".ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
 declare(root + ".ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
 
+// Credenciales de Connection Request: deben coincidir con cwmp.connectionRequestAuth
+// para que el ACS pueda despertar la ONU al instante (sin esperar el Inform).
+try {
+  declare(root + ".ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "${ACS_CR_USER}"});
+  declare(root + ".ManagementServer.ConnectionRequestPassword", {value: Date.now()}, {value: "${ACS_CR_PASS}"});
+} catch (e) {}
+
 // Sin NAT dentro del túnel VPN: STUN no es necesario (y añade latencia)
 try {
   declare(root + ".ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
