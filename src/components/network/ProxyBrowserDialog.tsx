@@ -37,21 +37,28 @@ export function ProxyBrowserDialog({
         await browserApi.session();
         if (cancelled) return;
 
-        // Primero se envía la navegación al escritorio (así la pestaña remota
-        // ya trae la IP/puerto del equipo) y después se muestra el visor.
-        let navError = '';
-        try {
-          await browserApi.open(target.directUrl, target.mikrotikId);
-        } catch (e: any) {
-          navError = e?.message || "No hay ruta VPN hacia el equipo";
-        }
-        if (cancelled) return;
-
+        // El visor se muestra de inmediato y la navegación se reintenta hasta
+        // que el Chromium remoto acepta la IP/puerto (el contenedor puede estar
+        // terminando de arrancar en el primer intento).
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
 
-        if (navError) toast.error(navError);
-        else toast.success(`${target.title}: abriendo ${target.directUrl}`);
+        let navError = '';
+        let opened = false;
+        for (let attempt = 0; attempt < 5 && !cancelled; attempt++) {
+          try {
+            await browserApi.open(target.directUrl, target.mikrotikId);
+            opened = true;
+            break;
+          } catch (e: any) {
+            navError = e?.message || "No hay ruta VPN hacia el equipo";
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+        if (cancelled) return;
+
+        if (opened) toast.success(`${target.title}: abriendo ${target.directUrl}`);
+        else toast.error(navError);
       } catch (e: any) {
         if (win && !win.closed) win.close();
         if (!cancelled) toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
@@ -59,6 +66,7 @@ export function ProxyBrowserDialog({
         if (!cancelled) onOpenChange(false);
       }
     })();
+
 
 
     return () => {
