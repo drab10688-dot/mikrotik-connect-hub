@@ -118,6 +118,7 @@ export async function ensureUserBrowser(
   // La URL del equipo se pasa como PÁGINA DE INICIO de Chromium: al abrir el
   // escritorio remoto, el equipo ya está cargando (igual que antes).
   const homePage = launchUrl && !/\s/.test(launchUrl) ? launchUrl : 'about:blank';
+  const [resW, resH] = resolution ? resolution.split('x') : [];
   const chromeCli = [
     '--incognito',
     '--disable-sync',
@@ -125,6 +126,7 @@ export async function ensureUserBrowser(
     '--no-default-browser-check',
     '--password-store=basic',
     '--disable-features=Translate,AutofillServerCommunication',
+    ...(resW && resH ? [`--window-size=${resW},${resH}`, '--start-maximized'] : []),
     homePage,
   ].join(' ');
 
