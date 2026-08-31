@@ -65,7 +65,7 @@ bash "$INSTALL_DIR/configure-browser-routing.sh"
 set -a
 . "$INSTALL_DIR/.env"
 set +a
-bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets "${ONU_NETS:-10.82.0.0/21}"
+bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets "${ONU_NETS:-192.168.0.0/16}"
 
 # No confundir un contenedor L2TP encendido con una MikroTik conectada.
 if ! ip -o -4 addr show 2>/dev/null | grep -qE ' ppp[0-9]+ .* peer 192\.168\.42\.'; then

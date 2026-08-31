@@ -92,6 +92,8 @@ FRONTEND_DIR="$INSTALL_DIR/frontend/dist"
 mkdir -p "$FRONTEND_DIR"
 rm -rf "${FRONTEND_DIR:?}"/*
 cp -r dist/* "$FRONTEND_DIR"/
+git -C "$TEMP_DIR" log -1 --format='%h %ad %s' --date=short > "$INSTALL_DIR/VERSION.txt" 2>/dev/null || true
+cp -f "$INSTALL_DIR/VERSION.txt" "$FRONTEND_DIR/VERSION.txt" 2>/dev/null || true
 cd /root && rm -rf "$TEMP_DIR"
 echo -e "${GREEN}✓ Panel compilado${NC}"
 
@@ -148,6 +150,9 @@ if command -v ufw >/dev/null 2>&1; then
   for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 1701/udp 8081/tcp; do
     ufw allow "$p" >/dev/null 2>&1 || true
   done
+  # Restos de versiones anteriores (Winbox 8082 y escritorios por ISP 8100-8129)
+  ufw delete allow 8082/tcp >/dev/null 2>&1 || true
+  ufw delete allow 8100:8129/tcp >/dev/null 2>&1 || true
   echo -e "${GREEN}✓ Puertos abiertos en firewall${NC}"
 fi
 
@@ -262,4 +267,8 @@ echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (
 echo ""
 echo -e "  Logs:        ${CYAN}cd $INSTALL_DIR && docker compose logs -f${NC}"
 echo -e "  Reconstruir: ${CYAN}cd $INSTALL_DIR && docker compose up -d --build${NC}"
+echo -e "  Actualizar:  ${CYAN}cd $INSTALL_DIR && sudo bash update.sh${NC}"
+echo -e "  Probar ONU:  ${CYAN}sudo bash $INSTALL_DIR/test-browser.sh 192.168.50.1 80${NC}"
+echo -e "  HTTPS real (opcional, evita avisos de certificado):"
+echo -e "               ${CYAN}sudo bash $INSTALL_DIR/setup-ssl.sh <tu-dominio> tucorreo@dominio.com${NC}"
 echo ""
