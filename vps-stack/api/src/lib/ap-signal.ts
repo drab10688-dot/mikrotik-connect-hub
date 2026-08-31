@@ -149,38 +149,31 @@ async function readMikrotik(target: ApTarget): Promise<ApClient[]> {
 }
 
 // ── Ubiquiti airOS (login.cgi + status.cgi) ──────────────────────
-async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
-  const login = await request(target, '/login.cgi', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Cookie: 'AIROS_SESSIONID=0000000000000000000000000000000',
-      Referer: `${target.protocol}://${target.ip}/login.cgi`,
-    },
-    body: new URLSearchParams({
-      username: target.username || 'ubnt',
-      password: target.password || 'ubnt',
-      uri: '/status.cgi',
-    }).toString(),
-  }).catch((e) => { throw new Error(`No se pudo iniciar sesión en airOS: ${e.message}`); });
+function mergeCookies(prev: string, res: RawResponse): string {
+  const jar = new Map<string, string>();
+  for (const part of prev.split('; ').filter(Boolean)) {
+    const [k, ...v] = part.split('=');
+    jar.set(k, v.join('='));
+  }
+  const setCookie = ([] as string[]).concat((res.headers['set-cookie'] as any) || []);
+  for (const c of setCookie) {
+    const [k, ...v] = c.split(';')[0].split('=');
+    if (k) jar.set(k.trim(), v.join('='));
+  }
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+}
 
-  const setCookie = ([] as string[]).concat((login.headers['set-cookie'] as any) || []);
-  const cookie = setCookie.map((c) => c.split(';')[0]).join('; ') || 'AIROS_SESSIONID=0000000000000000000000000000000';
-
-  const res = await request(target, '/status.cgi', { headers: { Cookie: cookie } });
-  if (res.status >= 400) throw new Error(`airOS respondió HTTP ${res.status} (revisa usuario/contraseña)`);
-
-  let data: any;
-  try { data = JSON.parse(res.body); } catch { throw new Error('airOS no devolvió JSON (credenciales inválidas)'); }
-
-  const stations: any[] = data?.wireless?.sta || [];
-  return stations.map((s) =>
-    finalize({
+function parseUbiquitiStatus(data: any): ApClient[] {
+  const noise = num(data?.wireless?.noisef);
+  const stations: any[] = data?.wireless?.sta || data?.sta || [];
+  return stations.map((s: any) => {
+    const signal = num(s.signal);
+    return finalize({
       mac: s.mac || null,
       name: s.name || s.hostname || s.lastip || null,
-      signal: num(s.signal),
-      noise: num(s.noisefloor ?? data?.wireless?.noisef),
-      snr: num(s.signal != null && data?.wireless?.noisef != null ? s.signal - data.wireless.noisef : null),
+      signal,
+      noise: num(s.noisefloor ?? noise),
+      snr: num(s.snr ?? (signal !== null && noise !== null ? signal - noise : null)),
       ccq: num(s.airmax?.quality ?? s.ccq),
       tx_rate: s.tx ? `${s.tx} Mbps` : null,
       rx_rate: s.rx ? `${s.rx} Mbps` : null,
@@ -188,18 +181,71 @@ async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
       rx_bytes: num(s.stats?.rx_bytes),
       uptime: s.uptime ? `${s.uptime}s` : null,
       distance: s.distance ? `${s.distance} m` : null,
-    })
-  );
+    });
+  });
 }
 
-export async function readApClients(target: ApTarget): Promise<ApClient[]> {
+async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
+  const username = target.username || 'ubnt';
+  const password = target.password || '';
+  const origin = `${target.protocol}://${target.ip}`;
+
+  // 1) Sesión inicial: airOS exige una cookie AIROS_SESSIONID previa al login.
+  let cookie = '';
+  try {
+    const seed = await request(target, '/login.cgi', { headers: { Accept: 'text/html' } });
+    cookie = mergeCookies('', seed);
+  } catch { /* algunos modelos no exponen /login.cgi por GET */ }
+  if (!cookie.includes('AIROS_SESSIONID')) {
+    cookie = [cookie, 'AIROS_SESSIONID=' + '0'.repeat(32)].filter(Boolean).join('; ');
+  }
+
+  // 2) Login clásico (airOS 5/6/8)
+  const login = await request(target, '/login.cgi', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Cookie: cookie,
+      Referer: `${origin}/login.cgi`,
+      Origin: origin,
+    },
+    body: new URLSearchParams({ username, password, uri: '/index.cgi' }).toString(),
+  }).catch((e) => { throw new Error(`No se pudo iniciar sesión en airOS: ${e.message}`); });
+  cookie = mergeCookies(cookie, login);
+
+  // 3) Lectura de estado; si devuelve HTML el login no fue aceptado.
+  const paths = ['/status.cgi', '/sta.cgi', '/iflist.cgi?ifname=ath0'];
+  let lastError = 'airOS no devolvió datos';
+  for (const path of paths) {
+    try {
+      const res = await request(target, path, {
+        headers: { Cookie: cookie, Referer: `${origin}/index.cgi`, Accept: 'application/json' },
+      });
+      if (res.status === 401 || res.status === 403) { lastError = 'Credenciales rechazadas por el AP'; continue; }
+      if (res.status >= 400) { lastError = `airOS respondió HTTP ${res.status}`; continue; }
+      const body = res.body.trim();
+      if (!body.startsWith('{') && !body.startsWith('[')) {
+        lastError = 'El AP devolvió su página de login (usuario o contraseña incorrectos)';
+        continue;
+      }
+      const data = JSON.parse(body);
+      const clients = parseUbiquitiStatus(data);
+      if (clients.length || data?.wireless) return clients;
+      lastError = 'El AP no reporta clientes wireless';
+    } catch (error: any) {
+      lastError = error?.message || String(error);
+    }
+  }
+  throw new Error(lastError);
+}
+
+async function readOne(target: ApTarget): Promise<ApClient[]> {
   switch (target.brand) {
     case 'ubiquiti':
       return readUbiquiti(target);
     case 'mikrotik':
       return readMikrotik(target);
     default:
-      // Intenta ambos: muchos CPEs OEM usan una u otra API.
       try {
         return await readMikrotik(target);
       } catch {
@@ -207,3 +253,31 @@ export async function readApClients(target: ApTarget): Promise<ApClient[]> {
       }
   }
 }
+
+export async function readApClients(target: ApTarget): Promise<ApClient[]> {
+  // Prueba el transporte configurado y luego los habituales: muchos APs
+  // responden la API sólo por HTTP aunque su panel esté en HTTPS.
+  const seen = new Set<string>();
+  const transports: Array<{ port: number; protocol: 'http' | 'https' }> = [];
+  const push = (port: number, protocol: 'http' | 'https') => {
+    const key = `${protocol}:${port}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    transports.push({ port, protocol });
+  };
+  push(target.port, target.protocol);
+  push(80, 'http');
+  push(443, 'https');
+  push(8080, 'http');
+
+  let lastError = 'El AP no respondió';
+  for (const t of transports) {
+    try {
+      return await readOne({ ...target, ...t });
+    } catch (error: any) {
+      lastError = error?.message || String(error);
+    }
+  }
+  throw new Error(lastError);
+}
+
