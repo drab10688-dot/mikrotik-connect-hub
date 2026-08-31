@@ -34,6 +34,10 @@ export interface UserBrowserSession {
   readyAt?: number;
   /** Última URL con la que se lanzó Chromium (página de inicio del escritorio). */
   lastLaunchUrl?: string;
+  /** Resolución del escritorio (ej. "412x780" en celular). */
+  resolution?: string;
+  /** Indica si ya se intentó aplicar la resolución con xrandr. */
+  resolutionApplied?: boolean;
 }
 
 const sessions = new Map<string, UserBrowserSession>();
