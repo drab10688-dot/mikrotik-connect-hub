@@ -176,6 +176,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
     password,
     lastActivity: Date.now(),
     startedAt: Date.now(),
+    lastLaunchUrl: launchUrl,
   };
   sessions.set(userId, session);
   return session;
