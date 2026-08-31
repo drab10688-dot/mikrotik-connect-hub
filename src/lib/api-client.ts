@@ -100,9 +100,9 @@ export const remoteDesktopMobileUrl = (
   const host = window.location.hostname;
   const base =
     `https://${host}:${p}/?autoconnect=true&reconnect=true&reconnect_delay=1000` +
-    // resize=remote adapta el escritorio al tamaño real del celular (no queda
-    // una pantalla gigante imposible de leer).
-    `&resize=remote&quality=3&compression=9&video_quality=1` +
+    // resize=scale: el escritorio (que arranca en resolución de celular) se
+    // ajusta a la pantalla y permite pellizcar para acercar/alejar.
+    `&resize=scale&quality=3&compression=9&video_quality=1` +
     // Barra de control, puntito de gestos y teclado en pantalla siempre a mano.
     `&show_control_bar=true&show_dot=true&toolbar=true&keyboard=true` +
     // Cursor y gestos táctiles nativos de KasmVNC (arrastrar = desplazar,
@@ -415,8 +415,8 @@ export const browserApi = {
   status: async () => unwrapData<any>(await apiGet<any>('/browser/status')),
   /** Crea/reutiliza el escritorio propio y devuelve puerto y credenciales. */
   session: async () => unwrapData<any>(await apiPost<any>('/browser/session', {})),
-  open: async (url: string, mikrotikId?: string) =>
-    unwrapData<any>(await apiPost<any>('/browser/open', { url, mikrotikId })),
+  open: async (url: string, mikrotikId?: string, mobile?: boolean) =>
+    unwrapData<any>(await apiPost<any>('/browser/open', { url, mikrotikId, mobile: !!mobile })),
   /** Latido del visor: evita que se cierren las pestañas mientras se usa. */
   ping: async () => unwrapData<any>(await apiPost<any>('/browser/ping', {})),
   /** Cierra todas las pestañas y borra cookies/historial del escritorio. */

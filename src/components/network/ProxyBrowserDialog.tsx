@@ -42,14 +42,15 @@ export function ProxyBrowserDialog({
     if (win) win.opener = null;
 
     (async () => {
-      // En celular se usa la variante móvil (resolución adaptada + barra táctil);
-      // en portátil se conserva EXACTAMENTE el visor que ya funciona.
-      const url = isMobileDevice() ? remoteDesktopMobileUrl('browser') : remoteDesktopUrl('browser');
+      // En celular se usa la variante móvil (resolución de teléfono + barra
+      // táctil); en portátil se conserva EXACTAMENTE el visor que ya funciona.
+      const mobile = isMobileDevice();
+      const url = mobile ? remoteDesktopMobileUrl('browser') : remoteDesktopUrl('browser');
       try {
         // Primero se crea Chromium con la IP y el puerto como página inicial.
         // Sólo después se dirige esta misma pestaña al visor. Si el visor se
         // abre antes, auth_request crea un navegador vacío y se pierde la URL.
-        await browserApi.open(target.directUrl, target.mikrotikId);
+        await browserApi.open(target.directUrl, target.mikrotikId, mobile);
 
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
