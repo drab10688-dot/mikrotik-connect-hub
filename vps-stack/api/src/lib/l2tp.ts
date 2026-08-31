@@ -123,10 +123,30 @@ export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string):
   const target = esc(targetIp);
   if (!peer || !target || target !== targetIp) return false;
 
-  const pppIf = (await sh(
+  // 1) Interfaz PPP cuyo peer es exactamente la IP de túnel del ISP.
+  let pppIf = (await sh(
     `ip -o -4 addr show | awk '$0 ~ /peer ${peer}[/ ]/ {print $2; exit}'`
   )).trim();
+
+  // 2) Si el peer no coincide (RouterOS puede negociar otra IP de punta),
+  //    se usa la interfaz PPP que ya tenga ruta hacia el destino.
+  if (!pppIf) {
+    pppIf = (await sh(
+      `ip -o route get ${target} 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev" && $(i+1) ~ /^ppp/) {print $(i+1); exit}}'`
+    )).trim();
+  }
+
+  // 3) Último recurso: si sólo hay un túnel PPP activo, se usa ese.
+  if (!pppIf) {
+    const ifs = (await sh(`ip -o link show | awk -F': ' '$2 ~ /^ppp/ {print $2}'`))
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ifs.length === 1) pppIf = ifs[0];
+  }
+
   if (!pppIf) return false;
+
 
   const result = await sh(
     `ip route replace '${target}/32' dev '${esc(pppIf)}' 2>/dev/null || exit 1; ` +
