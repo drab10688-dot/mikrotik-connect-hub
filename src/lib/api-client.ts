@@ -252,6 +252,46 @@ export const authApi = {
     apiPost<{ token: string; user: any }>('/auth/register', { email, password, full_name: fullName }, { noAuth: true }),
 
   me: () => apiGet<{ user: any }>('/auth/me'),
+
+  /** Envía el correo con el enlace para crear una nueva contraseña. */
+  forgotPassword: (email: string) =>
+    apiPost<{ success: boolean; message?: string }>(
+      '/auth/forgot-password',
+      { email, origin: window.location.origin },
+      { noAuth: true },
+    ),
+
+  /** Guarda la nueva contraseña usando el token del correo. */
+  resetPassword: (token: string, password: string) =>
+    apiPost<{ success: boolean }>('/auth/reset-password', { token, password }, { noAuth: true }),
+
+  /** Cambio de contraseña del usuario con sesión activa. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiPost<{ success: boolean }>('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+};
+
+// ─── Correo (SMTP) por ISP o global del sistema ───────────
+export const mailApi = {
+  getSettings: async (scope: 'tenant' | 'global' = 'tenant') =>
+    unwrapData<any>(await apiGet<any>(`/mail/settings${scope === 'global' ? '?scope=global' : ''}`)),
+  saveSettings: async (payload: any, scope: 'tenant' | 'global' = 'tenant') =>
+    unwrapData<any>(await apiPut<any>(`/mail/settings${scope === 'global' ? '?scope=global' : ''}`, payload)),
+  test: (to: string, scope: 'tenant' | 'global' = 'tenant') =>
+    apiPost<any>(`/mail/test${scope === 'global' ? '?scope=global' : ''}`, { to }),
+};
+
+// ─── Copias de seguridad (ISP y sistema completo) ─────────
+export const backupApi = {
+  list: async () => unwrapArray<any>(await apiGet<any>('/backup')),
+  runTenant: async (tenantId?: string) =>
+    unwrapData<any>(await apiPost<any>('/backup/tenant', tenantId ? { tenant_id: tenantId } : {})),
+  runSystem: async () => unwrapData<any>(await apiPost<any>('/backup/system', {})),
+  remove: (filename: string) => apiDelete(`/backup/${encodeURIComponent(filename)}`),
+  downloadUrl: (filename: string) =>
+    `${getApiBaseUrl()}/backup/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(getToken() || '')}`,
 };
 
 // Helpers para normalizar respuestas del backend VPS
