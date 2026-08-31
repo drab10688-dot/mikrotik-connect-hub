@@ -358,6 +358,13 @@ export default function UsersAdmin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UserPermissionsDialog
+        userId={permUser?.id || null}
+        userLabel={permUser?.label}
+        open={!!permUser}
+        onOpenChange={(o) => !o && setPermUser(null)}
+      />
     </div>
   );
 }
