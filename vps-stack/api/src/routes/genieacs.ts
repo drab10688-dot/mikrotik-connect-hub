@@ -279,9 +279,13 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
 
 function acsAllows(
   scope: AcsScope,
-  info: { deviceId?: string | null; serial?: string | null; pppoe?: string | null }
+  info: { deviceId?: string | null; serial?: string | null; pppoe?: string | null; acsUrl?: string | null }
 ): boolean {
   if (scope.unrestricted) return true;
+  // Filtro autoritativo: si la ONU informa por un enlace /tr069/<token>/,
+  // solo la ve el ISP dueño de ese token. Token de otro ISP => nunca se muestra.
+  const urlToken = tokenFromAcsUrl(String(info.acsUrl || ''));
+  if (urlToken) return scope.tokens.has(urlToken);
   const id = String(info.deviceId || '');
   // Si la ONU ya está reclamada por otra empresa, no se muestra nunca.
   if (id && scope.foreign.has(id)) return false;
