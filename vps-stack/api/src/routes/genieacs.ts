@@ -310,12 +310,12 @@ async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<b
   if (scope.unrestricted) return true;
   if (acsAllows(scope, { deviceId })) return true;
   try {
-    const device = await fetchDevice(deviceId, 'InternetGatewayDevice.DeviceInfo.SerialNumber,InternetGatewayDevice.WANDevice,_deviceId');
+    const device = await fetchDevice(deviceId, 'InternetGatewayDevice.DeviceInfo.SerialNumber,InternetGatewayDevice.WANDevice,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_deviceId');
     const serial =
       getParam(device, 'InternetGatewayDevice.DeviceInfo.SerialNumber') ||
       device?._deviceId?._SerialNumber ||
       null;
-    return acsAllows(scope, { deviceId, serial, pppoe: firstPppoeUsername(device) });
+    return acsAllows(scope, { deviceId, serial, pppoe: firstPppoeUsername(device), acsUrl: deviceAcsUrl(device) });
   } catch {
     return false;
   }
@@ -348,7 +348,12 @@ genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
 genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
   try {
     const query = (req.query.query as string) || '';
-    const projection = (req.query.projection as string) || '_id,_deviceId,_lastInform';
+    const scope = await getAcsScope(req);
+    let projection = (req.query.projection as string) || '_id,_deviceId,_lastInform';
+    // El filtro por enlace TR-069 necesita la URL del ACS de cada ONU.
+    if (!scope.unrestricted && projection && !projection.includes('ManagementServer.URL')) {
+      projection += ',InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL';
+    }
     const params: string[] = [];
     // Una proyección vacía hace que el NBI devuelva error/lista vacía: se omite.
     if (projection) params.push(`projection=${encodeURIComponent(projection)}`);
