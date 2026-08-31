@@ -202,8 +202,19 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     usernames: new Set(),
     foreign: new Set(),
     tokens: new Set(),
+    knownTokens: new Set(),
     tokenIds: new Set(),
   };
+
+  // Tokens de todos los ISPs: sirve para distinguir un token AJENO (se oculta)
+  // de un token HUÉRFANO/antiguo que ya no pertenece a nadie (no debe ocultar
+  // la ONU, o quedaría invisible en todo el sistema).
+  try {
+    const { rows } = await pool.query(
+      `SELECT acs_token FROM tenants WHERE acs_token IS NOT NULL`
+    );
+    rows.forEach((r: any) => empty.knownTokens.add(String(r.acs_token).toLowerCase()));
+  } catch { /* columna opcional */ }
 
 
   // El super_admin/admin sin empresa seleccionada ve todo el ACS (instalación
