@@ -336,13 +336,53 @@ ispRouter.put('/permissions', requireRole('super_admin', 'admin'), async (req: A
 ispRouter.get('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
+
+  // Rol del usuario dentro del ISP (base heredada)
+  const { rows: roleRows } = await pool.query(
+    `SELECT ur.role::text AS role FROM user_roles ur WHERE ur.user_id = $1 LIMIT 1`,
+    [req.params.userId]
+  );
+  const userRole = roleRows[0]?.role || 'user';
+
+  const { rows: rolePerms } = await pool.query(
+    `SELECT section, can_view, can_edit FROM role_permissions
+      WHERE tenant_id = $1 AND role = $2`,
+    [tenant.id, userRole]
+  );
+
   const { rows } = await pool.query(
     `SELECT section, can_view, can_edit FROM user_permissions
       WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
     [req.params.userId, tenant.id]
   );
-  res.json({ data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: rows } });
+
+  res.json({
+    data: {
+      sections: SECTIONS,
+      labels: SECTION_LABELS,
+      role: userRole,
+      role_permissions: rolePerms,
+      permissions: rows,
+      has_overrides: rows.length > 0,
+    },
+  });
 });
+
+/** Quita las anulaciones individuales: el usuario vuelve a heredar su rol. */
+ispRouter.delete('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+  const tenant = await ensureTenant(req, res);
+  if (!tenant) return;
+  try {
+    await pool.query(
+      `DELETE FROM user_permissions WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
+      [req.params.userId, tenant.id]
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 ispRouter.put('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
