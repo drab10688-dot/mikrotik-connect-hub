@@ -202,6 +202,13 @@ if [ -f "$INSTALL_DIR/genieacs-config.sh" ]; then
   bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -10
 fi
 
+# Rutas automáticas hacia la LAN de las ONU (Connection Request instantáneo)
+if [ -f "$INSTALL_DIR/sync-onu-routes.sh" ]; then
+  bash "$INSTALL_DIR/sync-onu-routes.sh" --install 2>&1 | tail -8
+fi
+
+
+
 
 # Migraciones idempotentes (esquema multi-ISP / ONUs)
 if [ -d "$INSTALL_DIR/db/migrations" ]; then

@@ -152,6 +152,12 @@ fi
 if [ -x "/opt/omnisync-l2tp/l2tp-routes.sh" ]; then
   /opt/omnisync-l2tp/l2tp-routes.sh
 fi
+# Aprende las redes reales de las ONU desde GenieACS y crea rutas/NAT hacia
+# ellas: sin esto el Connection Request falla y los cambios tardan minutos.
+if [ -f "./sync-onu-routes.sh" ]; then
+  bash ./sync-onu-routes.sh --install 2>&1 | tail -12
+fi
+
 # TR-069 TCP entra por Nginx para procesar /tr069/<token>/.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 7547/tcp >/dev/null 2>&1 || true
