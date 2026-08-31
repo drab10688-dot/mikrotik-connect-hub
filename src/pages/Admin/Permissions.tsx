@@ -23,6 +23,7 @@ const FALLBACK_LABELS: Record<string, string> = {
   onus: "Gestión de ONUs",
   onu_web: "Mini-panel de equipos",
   mikrotik: "Conexión MikroTik",
+  pppoe: "Usuarios PPPoE",
   topology: "Mapa de red",
   red: "Red, APs y señal",
   vpn: "Credenciales y VPN",
@@ -33,7 +34,7 @@ const FALLBACK_LABELS: Record<string, string> = {
 };
 
 const GROUPS: { title: string; sections: string[] }[] = [
-  { title: "Operación", sections: ["dashboard", "onus", "onu_web", "mikrotik", "topology", "red"] },
+  { title: "Operación", sections: ["dashboard", "onus", "onu_web", "mikrotik", "pppoe", "topology", "red"] },
   { title: "Infraestructura", sections: ["vpn", "configuracion", "diagnostico"] },
   { title: "Administración", sections: ["usuarios", "roles"] },
 ];
