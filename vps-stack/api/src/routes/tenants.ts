@@ -146,6 +146,17 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
             enable_onus, enable_mikrotik, onu_networks } = req.body;
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' });
 
+    // El correo y la contraseña del administrador son obligatorios: sin ellos el
+    // ISP quedaría sin acceso y sin destino para el restablecimiento por correo.
+    const adminEmail = String(admin_email || '').trim().toLowerCase();
+    const adminPassword = String(admin_password || '');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(adminEmail)) {
+      return res.status(400).json({ error: 'El correo del administrador es obligatorio y debe ser válido' });
+    }
+    if (adminPassword.length < 10) {
+      return res.status(400).json({ error: 'La contraseña del administrador debe tener al menos 10 caracteres' });
+    }
+
     const finalSlug = slugify(slug || name);
     if (!finalSlug) return res.status(400).json({ error: 'Slug inválido' });
 
