@@ -187,7 +187,6 @@ put('cwmp.maxCommitIterations', '64');
 print('PERF_OK');
 EOJS2
 )
-echo "\$JS_PERF" >/dev/null 2>&1 || true
 echo "$JS_PERF" | docker exec -i "$MONGO_CONTAINER" $MONGO_BIN "$DB" --quiet >/tmp/genieacs-perf.log 2>&1 \
   && grep -q PERF_OK /tmp/genieacs-perf.log && c_ok "Connection Request y tiempos CWMP optimizados" \
   || { c_err "No se pudo escribir la config de rendimiento"; cat /tmp/genieacs-perf.log; }
