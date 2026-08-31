@@ -81,9 +81,14 @@ async function allocatePort(): Promise<number | null> {
 }
 
 /** Crea (o reutiliza) el escritorio del usuario y devuelve sus datos de acceso. */
-export async function ensureUserBrowser(userId: string, launchUrl?: string): Promise<UserBrowserSession> {
+export async function ensureUserBrowser(
+  userId: string,
+  launchUrl?: string,
+  opts?: { resolution?: string },
+): Promise<UserBrowserSession> {
   const name = containerName(userId);
   const existing = sessions.get(userId);
+  const resolution = opts?.resolution && /^\d{3,4}x\d{3,4}$/.test(opts.resolution) ? opts.resolution : undefined;
 
   if (existing && (await containerStatus(name)) === 'running') {
     existing.lastActivity = Date.now();
@@ -91,7 +96,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
     // DIRECTO en esa IP/puerto (como página de inicio). Es la forma más
     // confiable de "pasar la IP": nada de teclear la URL en un navegador ya
     // abierto, que era lo que fallaba.
-    if (launchUrl && launchUrl !== existing.lastLaunchUrl) {
+    if ((launchUrl && launchUrl !== existing.lastLaunchUrl) || resolution !== existing.resolution) {
       await docker(['rm', '-f', name], 30000);
       sessions.delete(userId);
     } else {
