@@ -235,5 +235,5 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
   // contenedor termina de arrancar. No bloqueamos la respuesta.
   waitReady(session, 30000).catch(() => undefined);
 
-  return res.json({ success: true, data: { url, method: 'launch-url', ...publicSession(session) } });
+  return res.json({ success: true, data: { url, method: 'launch-url', warning: routeWarning, ...publicSession(session) } });
 });
