@@ -137,40 +137,6 @@ async function prepareTenantRoute(req: AuthRequest, url: string, mikrotikId?: st
   return ensureL2tpTargetRoute(String(tunnelIp), targetIp);
 }
 
-/** Displays X disponibles dentro del contenedor del usuario. */
-async function detectDisplays(container: string): Promise<string[]> {
-  const found: string[] = [];
-  const ls = await docker(['exec', container, 'sh', '-c', 'ls /tmp/.X11-unix 2>/dev/null'], 8000);
-  if (ls.ok) {
-    for (const line of ls.out.split(/\s+/)) {
-      const m = /^X(\d+)$/.exec(line.trim());
-      if (m) found.push(`:${m[1]}`);
-    }
-  }
-  for (const fallback of [':1', ':0']) if (!found.includes(fallback)) found.push(fallback);
-  return found;
-}
-
-/** Abre el equipo en una PESTAÑA NUEVA (las anteriores se conservan). */
-async function openInNewTab(container: string, display: string, url: string) {
-  const script = [
-    'command -v xdotool >/dev/null 2>&1 || exit 127',
-    'WID="$(xdotool search --onlyvisible --class "chromium|firefox|Navigator" 2>/dev/null | tail -1)"',
-    '[ -n "$WID" ] || WID="$(xdotool search --onlyvisible --name "." 2>/dev/null | tail -1)"',
-    '[ -n "$WID" ] || exit 3',
-    'xdotool windowactivate --sync "$WID"',
-    'xdotool key --window "$WID" ctrl+t',
-    'sleep 0.4',
-    'xdotool key --window "$WID" ctrl+l',
-    'xdotool type --window "$WID" --delay 1 --clearmodifiers "$TARGET_URL"',
-    'xdotool key --window "$WID" Return',
-  ].join(' && ');
-  return docker(
-    ['exec', '-u', 'abc', '-e', `DISPLAY=${display}`, '-e', `TARGET_URL=${url}`, container, 'sh', '-lc', script],
-    25000
-  );
-}
-
 function publicSession(s: UserBrowserSession) {
   return {
     port: s.port,
