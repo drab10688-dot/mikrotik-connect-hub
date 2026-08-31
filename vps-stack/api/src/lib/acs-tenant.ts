@@ -145,6 +145,9 @@ export async function syncAcsOwnership(force = false): Promise<AcsOwnershipSyncR
         // empresas cuando la ONU ya no reportaba por un enlace con token.
         const tokenMatch = resolveTenantForDevice(device, matchers);
         if (tokenMatch) result.matched += 1;
+        // Si la ONU todavía no ha reportado ManagementServer.URL, NO se sabe nada:
+        // no es motivo para quitarle el dueño (antes esto borraba ONUs válidas).
+        const urlKnown = Boolean(deviceAcsUrl(device));
         const existing = owned.get(deviceId);
         if (existing) {
           if (tokenMatch && (
@@ -158,7 +161,9 @@ export async function syncAcsOwnership(force = false): Promise<AcsOwnershipSyncR
               [deviceId, tokenMatch.tenantId]
             );
             result.reassigned += 1;
-          } else if (!tokenMatch) {
+          } else if (!tokenMatch && urlKnown && existing.source === 'token') {
+            // Solo se retira la propiedad cuando la URL es conocida y ya no lleva
+            // el token del ISP (la ONU fue reapuntada a otra empresa/URL base).
             await pool.query(
               `DELETE FROM acs_device_owners WHERE acs_device_id = $1`,
               [deviceId]

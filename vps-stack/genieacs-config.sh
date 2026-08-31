@@ -288,6 +288,10 @@ PROV=$(cat <<EOF
 const igd = declare("InternetGatewayDevice.ManagementServer.PeriodicInformEnable", {value: 1});
 const root = (igd.size > 0) ? "InternetGatewayDevice" : "Device";
 
+// La URL con /tr069/<token>/ es la fuente de verdad del aislamiento multi-ISP:
+// hay que LEERLA en cada Inform (sin escribirla) o el dispositivo queda sin dueño.
+declare(root + ".ManagementServer.URL", {value: Date.now()});
+
 declare(root + ".ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
 declare(root + ".ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
 
