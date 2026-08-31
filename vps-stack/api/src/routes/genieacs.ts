@@ -1370,6 +1370,37 @@ const FAST_PROJECTION = [
 ].join(',');
 
 
+// Intervalo objetivo de Inform (segundos) para que el panel se actualice rápido.
+const FAST_INFORM_SECONDS = Number(process.env.ACS_FAST_INFORM || 60);
+const fastInformApplied = new Set<string>();
+
+async function ensureFastInform(devices: any[]): Promise<void> {
+  for (const d of devices) {
+    const id = d?.deviceId;
+    if (!id || fastInformApplied.has(id)) continue;
+    const current = Number(d?.informInterval);
+    if (Number.isFinite(current) && current > 0 && current <= FAST_INFORM_SECONDS) {
+      fastInformApplied.add(id);
+      continue;
+    }
+    fastInformApplied.add(id);
+    try {
+      await queueTasksWithSingleConnectionRequest(id, [
+        {
+          name: 'setParameterValues',
+          parameterValues: [
+            ['InternetGatewayDevice.ManagementServer.PeriodicInformEnable', true, 'xsd:boolean'],
+            ['InternetGatewayDevice.ManagementServer.PeriodicInformInterval', FAST_INFORM_SECONDS, 'xsd:unsignedInt'],
+          ],
+        },
+      ]);
+    } catch {
+      // ONU sin soporte o fuera de línea: se reintentará en el próximo reinicio del API.
+      fastInformApplied.delete(id);
+    }
+  }
+}
+
 function sanitizePower(val: any): number | null {
   let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
   if (!Number.isFinite(num)) return null;
