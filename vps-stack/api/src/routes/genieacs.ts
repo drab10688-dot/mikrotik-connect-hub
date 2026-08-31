@@ -367,7 +367,6 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
        data = await genieFetch('/devices/?projection=_id');
     }
     const list = Array.isArray(data) ? data : [];
-    const scope = await getAcsScope(req);
     const visible = scope.unrestricted
       ? list
       : list.filter((d: any) =>
@@ -375,6 +374,7 @@ genieacsRouter.get('/devices', async (req: AuthRequest, res: Response) => {
             deviceId: d?._id,
             serial: d?._deviceId?._SerialNumber,
             pppoe: firstPppoeUsername(d),
+            acsUrl: deviceAcsUrl(d),
           })
         );
     res.json({ success: true, data: visible });
