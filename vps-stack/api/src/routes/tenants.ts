@@ -204,12 +204,12 @@ tenantsRouter.post('/', requireRole('super_admin'), async (req: AuthRequest, res
     // Cada ISP nuevo arranca con su matriz de permisos por rol.
     await seedTenantPermissions(client, tenant.id).catch(() => undefined);
 
-    if (admin_email && admin_password) {
-      const password_hash = await bcrypt.hash(admin_password, await bcrypt.genSalt(12));
+    {
+      const password_hash = await bcrypt.hash(adminPassword, await bcrypt.genSalt(12));
       const userRes = await client.query(
         `INSERT INTO users (email, password_hash, full_name, tenant_id)
          VALUES ($1, $2, $3, $4) RETURNING id`,
-        [String(admin_email).toLowerCase(), password_hash, admin_name || name, tenant.id]
+        [adminEmail, password_hash, admin_name || name, tenant.id]
       );
       await client.query(
         `INSERT INTO user_roles (user_id, role) VALUES ($1, 'admin'::app_role)`,
