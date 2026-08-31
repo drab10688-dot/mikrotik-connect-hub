@@ -188,6 +188,7 @@ export async function ensureUserBrowser(
     lastActivity: Date.now(),
     startedAt: Date.now(),
     lastLaunchUrl: launchUrl,
+    resolution,
   };
   sessions.set(userId, session);
   return session;
