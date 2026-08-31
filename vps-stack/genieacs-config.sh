@@ -14,7 +14,11 @@ NBI_URL="${NBI_URL:-http://localhost:7557}"
 DB="${DB:-genieacs}"
 ACS_HOST="${ACS_HOST:-10.13.13.1}"
 ACS_PORT="${ACS_PORT:-7547}"
-ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-300}"
+ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-60}"
+# Credenciales de Connection Request (el ACS las escribe en la ONU y las usa
+# para despertarla al instante). Sin esto, cada orden espera al próximo Inform.
+ACS_CR_USER="${ACS_CR_USER:-omnisync}"
+ACS_CR_PASS="${ACS_CR_PASS:-OmniSync2026}"
 
 c_ok(){ echo -e "\033[0;32m✓\033[0m $*"; }
 c_inf(){ echo -e "\033[0;36m•\033[0m $*"; }
@@ -167,6 +171,28 @@ echo "$JS" | docker exec -i "$MONGO_CONTAINER" $MONGO_BIN "$DB" --quiet >/tmp/ge
   c_err "Error escribiendo config en Mongo"; cat /tmp/genieacs-cfg.log; exit 1; }
 grep -q CONFIG_OK /tmp/genieacs-cfg.log && c_ok "Columnas y vistas configuradas"
 
+# ---------- Rendimiento CWMP: Connection Request inmediato ----------
+# Los valores de config son EXPRESIONES: las cadenas van entre comillas.
+JS_PERF=$(cat <<EOJS2
+function put(id, value) {
+  db.config.replaceOne({_id: id}, {_id: id, value: value}, {upsert: true});
+}
+// Autenticación del Connection Request (HTTP digest hacia la ONU).
+put('cwmp.connectionRequestAuth', 'AUTH("${ACS_CR_USER}", "${ACS_CR_PASS}")');
+// Ventanas de espera cortas: por VPN la latencia es de milisegundos.
+put('cwmp.connectionRequestTimeout', '4000');
+put('cwmp.deviceOnlineThreshold', '4000');
+put('cwmp.sessionTimeout', '60');
+put('cwmp.maxCommitIterations', '64');
+print('PERF_OK');
+EOJS2
+)
+echo "$JS_PERF" | docker exec -i "$MONGO_CONTAINER" $MONGO_BIN "$DB" --quiet >/tmp/genieacs-perf.log 2>&1 \
+  && grep -q PERF_OK /tmp/genieacs-perf.log && c_ok "Connection Request y tiempos CWMP optimizados" \
+  || { c_err "No se pudo escribir la config de rendimiento"; cat /tmp/genieacs-perf.log; }
+
+
+
 # ---------------- Parámetros virtuales (vía NBI) ----------------
 vparam () {
   local name="$1"; local script="$2"
@@ -295,6 +321,13 @@ declare(root + ".ManagementServer.URL", {value: Date.now()});
 declare(root + ".ManagementServer.PeriodicInformEnable", {value: Date.now()}, {value: true});
 declare(root + ".ManagementServer.PeriodicInformInterval", {value: Date.now()}, {value: ${ACS_INFORM_INTERVAL}});
 
+// Credenciales de Connection Request: deben coincidir con cwmp.connectionRequestAuth
+// para que el ACS pueda despertar la ONU al instante (sin esperar el Inform).
+try {
+  declare(root + ".ManagementServer.ConnectionRequestUsername", {value: Date.now()}, {value: "${ACS_CR_USER}"});
+  declare(root + ".ManagementServer.ConnectionRequestPassword", {value: Date.now()}, {value: "${ACS_CR_PASS}"});
+} catch (e) {}
+
 // Sin NAT dentro del túnel VPN: STUN no es necesario (y añade latencia)
 try {
   declare(root + ".ManagementServer.STUNEnable", {value: Date.now()}, {value: false});
@@ -322,3 +355,5 @@ echo
 c_ok "Listo. Abre GenieACS, pulsa Ctrl+Shift+R y presiona 'Summon' en la ONU para poblar las columnas."
 c_ok "TR-069 escuchando por WireGuard: http://${ACS_HOST}:${ACS_PORT}/ (inform cada ${ACS_INFORM_INTERVAL}s)"
 
+c_ok "Connection Request: usuario '${ACS_CR_USER}' (las órdenes se aplican en 1-3 s)"
+c_inf "En la ONU, 'Connect Request Username/Password' deben ser ${ACS_CR_USER} / la clave configurada."
