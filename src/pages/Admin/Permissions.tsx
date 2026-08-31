@@ -14,7 +14,7 @@ type Perm = { role: string; section: string; can_view: boolean; can_edit: boolea
 const ROLES: { id: string; label: string; desc: string }[] = [
   { id: "admin", label: "Administrador", desc: "Control total del ISP" },
   { id: "user", label: "Operador", desc: "Operación diaria de red y ONUs" },
-  { id: "secretary", label: "Secretaría", desc: "Atención al cliente y soporte básico" },
+  { id: "secretary", label: "Asistente", desc: "Atención al cliente y soporte básico" },
   { id: "reseller", label: "Reseller", desc: "Solo consulta de su cartera" },
 ];
 

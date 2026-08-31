@@ -216,7 +216,7 @@ export default function UsersAdmin() {
                                   <SelectItem value="super_admin"><div className="flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Super Admin</div></SelectItem>
                                   <SelectItem value="admin"><div className="flex items-center gap-2"><Shield className="h-4 w-4 text-blue-500" />Administrador</div></SelectItem>
                                   <SelectItem value="user"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-green-500" />Operador</div></SelectItem>
-                                  <SelectItem value="secretary"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-amber-500" />Secretaría</div></SelectItem>
+                                  <SelectItem value="secretary"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-amber-500" />Asistente</div></SelectItem>
                                   <SelectItem value="reseller"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-purple-500" />Reseller</div></SelectItem>
 
                                 </SelectContent>
