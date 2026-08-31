@@ -1530,6 +1530,10 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
         )
     ).map(({ acsUrl, ...rest }: any) => rest);
 
+    // Lectura TR-069 más rápida: si una ONU reporta con un intervalo lento,
+    // se le baja a FAST_INFORM_SECONDS una sola vez (sin bloquear la respuesta).
+    void ensureFastInform(visible);
+
     res.json({ success: true, data: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
