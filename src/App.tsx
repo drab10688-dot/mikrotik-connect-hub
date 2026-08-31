@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./pages/Auth/Login";
 import RemoteDesktop from "./pages/RemoteDesktop";
+import RemoteDesktopMobile from "./pages/RemoteDesktopMobile";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Isps from "./pages/Admin/Isps";
 import Dashboard from "./pages/Dashboard";
@@ -55,6 +56,7 @@ const App = () => (
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="/vnc" element={<ProtectedRoute><RemoteDesktop /></ProtectedRoute>} />
+          <Route path="/vnc-movil" element={<ProtectedRoute><RemoteDesktopMobile /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

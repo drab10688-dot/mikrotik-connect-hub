@@ -80,6 +80,39 @@ export const remoteDesktopUrl = (
 
 };
 
+/** ¿El visor se está abriendo desde un celular/tablet táctil? */
+export const isMobileDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua) ||
+    (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches && window.innerWidth < 1024);
+};
+
+/**
+ * Variante MÓVIL del escritorio remoto (Android/iPhone). No toca la versión de
+ * escritorio: usa el mismo KasmVNC pero con la resolución adaptada al celular,
+ * gestos táctiles, barra de control siempre visible y teclado en pantalla.
+ */
+export const remoteDesktopMobileUrl = (
+  port: number | 'browser' | 'winbox' = 'browser',
+): string => {
+  const p = typeof port === 'number' ? port : port === 'winbox' ? 8082 : 8081;
+  const host = window.location.hostname;
+  const base =
+    `https://${host}:${p}/?autoconnect=true&reconnect=true&reconnect_delay=1000` +
+    // resize=remote adapta el escritorio al tamaño real del celular (no queda
+    // una pantalla gigante imposible de leer).
+    `&resize=remote&quality=3&compression=9&video_quality=1` +
+    // Barra de control, puntito de gestos y teclado en pantalla siempre a mano.
+    `&show_control_bar=true&show_dot=true&toolbar=true&keyboard=true` +
+    // Cursor y gestos táctiles nativos de KasmVNC (arrastrar = desplazar,
+    // pellizcar = zoom, doble toque = clic).
+    `&cursor_alphacrop=false&local_cursor=true&idle_disconnect=false` +
+    `&clipboard_up=true&clipboard_down=true&enable_perf_stats=false`;
+  return withAuthToken(base);
+};
+
+
 /** Visor interno con controles táctiles (zoom, teclado, pantalla completa). */
 export const remoteDesktopViewerUrl = (
   port: number | 'browser' | 'winbox',
