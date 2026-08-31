@@ -171,6 +171,8 @@ interface AcsScope {
   foreign: Set<string>;
   /** Tokens TR-069 del ISP actual (/tr069/<token>/): filtro autoritativo. */
   tokens: Set<string>;
+  /** Todos los tokens TR-069 registrados en la plataforma (cualquier ISP). */
+  knownTokens: Set<string>;
   /** ONUs ya reclamadas por token para este ISP (cuando no se conoce la URL). */
   tokenIds: Set<string>;
 }
