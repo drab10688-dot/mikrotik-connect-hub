@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api-client";
-import { RefreshCw, RadioTower, AlertTriangle } from "lucide-react";
+import { RefreshCw, RadioTower } from "lucide-react";
 
 interface InformDevice {
   deviceId: string;
@@ -13,7 +13,6 @@ interface InformDevice {
   model: string | null;
   lastInform: string | null;
   secondsAgo: number | null;
-  urlToken: string | null;
   visible: boolean;
 }
 
@@ -52,7 +51,7 @@ const InformMonitor = () => {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(() => load(false), 5000);
+    const t = window.setInterval(() => load(false), 3000);
     return () => window.clearInterval(t);
   }, [load]);
 
@@ -68,7 +67,7 @@ const InformMonitor = () => {
           <div>
             <CardTitle>Monitor TR-069 en vivo</CardTitle>
             <CardDescription>
-              Muestra si el ACS está recibiendo reportes (Inform) de las ONUs. Se actualiza cada 5 s.
+              Muestra si el ACS está recibiendo reportes (Inform) de las ONUs. Se actualiza cada 3 s.
             </CardDescription>
           </div>
         </div>
@@ -109,7 +108,6 @@ const InformMonitor = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>ONU</TableHead>
-                <TableHead>Enlace</TableHead>
                 <TableHead className="text-right">Último Inform</TableHead>
               </TableRow>
             </TableHeader>
@@ -124,7 +122,6 @@ const InformMonitor = () => {
                         {[d.manufacturer, d.model].filter(Boolean).join(" ") || "—"}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs">{d.urlToken ? `token ${d.urlToken}` : "sin token"}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant={live ? "secondary" : "destructive"}>{ago(d.secondsAgo)}</Badge>
                     </TableCell>
