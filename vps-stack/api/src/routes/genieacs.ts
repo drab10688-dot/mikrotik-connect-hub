@@ -340,10 +340,12 @@ function acsAllows(
   const id = String(info.deviceId || '');
   if (urlToken) {
     if (scope.tokens.has(urlToken)) return true;
-    // El ISP aún no tiene token propio configurado: no se puede filtrar por
-    // token, se cae al reclamo manual en vez de ocultar todo.
-    if (!scope.tokens.size) return matchesManualClaim(scope, info);
-    return false;
+    // Token de OTRO ISP registrado => nunca se muestra aquí.
+    if (scope.knownTokens.has(urlToken)) return false;
+    // Token huérfano (enlace antiguo o regenerado, ya no pertenece a ningún
+    // ISP): no puede ocultar la ONU. Se cae al reclamo manual / por token.
+    if (id && scope.tokenIds.has(id)) return true;
+    return matchesManualClaim(scope, info);
   }
   // Sin token en la URL (IP pública base o acceso independiente por VPN):
   // solo se ve si el ISP la reclamó por token antes o la registró manualmente.
