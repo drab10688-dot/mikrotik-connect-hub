@@ -171,6 +171,8 @@ interface AcsScope {
   foreign: Set<string>;
   /** Tokens TR-069 del ISP actual (/tr069/<token>/): filtro autoritativo. */
   tokens: Set<string>;
+  /** Todos los tokens TR-069 registrados en la plataforma (cualquier ISP). */
+  knownTokens: Set<string>;
   /** ONUs ya reclamadas por token para este ISP (cuando no se conoce la URL). */
   tokenIds: Set<string>;
 }
@@ -200,8 +202,19 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     usernames: new Set(),
     foreign: new Set(),
     tokens: new Set(),
+    knownTokens: new Set(),
     tokenIds: new Set(),
   };
+
+  // Tokens de todos los ISPs: sirve para distinguir un token AJENO (se oculta)
+  // de un token HUÉRFANO/antiguo que ya no pertenece a nadie (no debe ocultar
+  // la ONU, o quedaría invisible en todo el sistema).
+  try {
+    const { rows } = await pool.query(
+      `SELECT acs_token FROM tenants WHERE acs_token IS NOT NULL`
+    );
+    rows.forEach((r: any) => empty.knownTokens.add(String(r.acs_token).toLowerCase()));
+  } catch { /* columna opcional */ }
 
 
   // El super_admin/admin sin empresa seleccionada ve todo el ACS (instalación
@@ -327,10 +340,12 @@ function acsAllows(
   const id = String(info.deviceId || '');
   if (urlToken) {
     if (scope.tokens.has(urlToken)) return true;
-    // El ISP aún no tiene token propio configurado: no se puede filtrar por
-    // token, se cae al reclamo manual en vez de ocultar todo.
-    if (!scope.tokens.size) return matchesManualClaim(scope, info);
-    return false;
+    // Token de OTRO ISP registrado => nunca se muestra aquí.
+    if (scope.knownTokens.has(urlToken)) return false;
+    // Token huérfano (enlace antiguo o regenerado, ya no pertenece a ningún
+    // ISP): no puede ocultar la ONU. Se cae al reclamo manual / por token.
+    if (id && scope.tokenIds.has(id)) return true;
+    return matchesManualClaim(scope, info);
   }
   // Sin token en la URL (IP pública base o acceso independiente por VPN):
   // solo se ve si el ISP la reclamó por token antes o la registró manualmente.
