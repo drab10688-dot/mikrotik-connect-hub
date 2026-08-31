@@ -4,7 +4,7 @@ import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router,
-  ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound,
+  ImagePlus, X, Gauge, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -31,6 +31,7 @@ const menuItems: MenuEntry[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", section: "dashboard", group: "Operación" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus", section: "onus", group: "Operación" },
   { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik", group: "Operación" },
+  { icon: Gauge, label: "Consumo en vivo", path: "/queues", module: "mikrotik", section: "mikrotik", group: "Operación" },
   { icon: Globe, label: "Mini-panel de equipos", path: "/onu-web", module: "onu_web", section: "onu_web", group: "Operación" },
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
