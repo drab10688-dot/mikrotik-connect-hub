@@ -44,7 +44,9 @@ const TechBackdrop = () => (
 
 export default function Login() {
   const navigate = useNavigate();
-  const { slug } = useParams();
+  const params = useParams();
+  // Acepta /isp/:slug, /i/:slug y también /login?isp=slug
+  const slug = (params.slug || new URLSearchParams(window.location.search).get('isp') || '').trim().toLowerCase() || undefined;
   const { tenant } = usePublicTenant(slug);
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
