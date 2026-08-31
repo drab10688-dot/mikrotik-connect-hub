@@ -56,6 +56,7 @@ const App = () => (
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="/vnc" element={<ProtectedRoute><RemoteDesktop /></ProtectedRoute>} />
+          <Route path="/vnc-movil" element={<ProtectedRoute><RemoteDesktopMobile /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
