@@ -234,9 +234,40 @@ export async function waitReady(session: UserBrowserSession, timeoutMs = 30000):
   );
   if (probe.ok) {
     session.readyAt = Date.now();
+    if (session.resolution && !session.resolutionApplied) {
+      applyResolution(session).catch(() => undefined);
+    }
     return true;
   }
   return false;
+}
+
+/**
+ * Ajusta la resolución del escritorio X a la solicitada (modo celular).
+ * Es "best effort": si el servidor KasmVNC no permite modos nuevos, el visor
+ * sigue funcionando con resize=scale en el cliente.
+ */
+export async function applyResolution(session: UserBrowserSession): Promise<void> {
+  session.resolutionApplied = true;
+  const m = session.resolution?.match(/^(\d{3,4})x(\d{3,4})$/);
+  if (!m) return;
+  const w = m[1];
+  const h = m[2];
+  await docker(
+    [
+      'exec',
+      session.container,
+      'sh',
+      '-lc',
+      `OUT=$(xrandr 2>/dev/null | awk '/ connected/{print $1; exit}'); [ -n "$OUT" ] || exit 0; ` +
+        `MODELINE=$(cvt ${w} ${h} 60 2>/dev/null | sed -n 's/^Modeline //p'); [ -n "$MODELINE" ] || exit 0; ` +
+        `MODENAME=$(echo "$MODELINE" | cut -d'"' -f2); ` +
+        `xrandr --delmode "$OUT" "$MODENAME" >/dev/null 2>&1; xrandr --rmmode "$MODENAME" >/dev/null 2>&1; ` +
+        `xrandr --newmode $MODELINE >/dev/null 2>&1; xrandr --addmode "$OUT" "$MODENAME" >/dev/null 2>&1; ` +
+        `xrandr --output "$OUT" --mode "$MODENAME" >/dev/null 2>&1 || true`,
+    ],
+    20000
+  );
 }
 
 /** Descarga la imagen del navegador al arrancar el API: el primer usuario ya no espera el pull. */
