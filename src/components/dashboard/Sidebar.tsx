@@ -117,6 +117,8 @@ export const Sidebar = () => {
     { icon: Building2, label: "Panel de ISPs", path: "/admin/isps", group: "Administración" },
     { icon: Users, label: "Usuarios", path: "/admin/users", group: "Administración" },
     { icon: UserPlus, label: "Crear usuario", path: "/admin/register-user", group: "Administración" },
+    { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", group: "Administración" },
+    { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", group: "Administración" },
   ];
 
   const moduleMenuItems = menuItems
