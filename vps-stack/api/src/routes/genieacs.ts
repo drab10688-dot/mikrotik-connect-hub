@@ -191,9 +191,10 @@ function deviceAcsUrl(device: any): string {
 async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   const empty: AcsScope = {
     unrestricted: false,
-    // Todo usuario de ISP debe tener tenant + token. Una cuenta sin tenant no
-    // puede degradarse al emparejamiento por serial/PPPoE porque eso mezcla ONUs.
-    tokenRequired: req.userRole !== 'super_admin' || Boolean(req.tenantId),
+    // El modo estricto por token solo aplica a cuentas ligadas a un ISP.
+    // Una cuenta sin empresa (instalación de un solo ISP) no puede quedarse
+    // sin ninguna ONU visible por no tener token asignado.
+    tokenRequired: Boolean(req.tenantId),
     ids: new Set(),
     serials: new Set(),
     usernames: new Set(),
@@ -202,9 +203,13 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     tokenIds: new Set(),
   };
 
-  // El super_admin sin empresa seleccionada ve todo el ACS; si está operando
-  // dentro de una empresa, ve únicamente las ONUs de esa empresa.
-  if (req.userRole === 'super_admin' && !req.tenantId) return { ...empty, unrestricted: true };
+
+  // El super_admin/admin sin empresa seleccionada ve todo el ACS (instalación
+  // de un solo ISP); si opera dentro de una empresa, solo ve las suyas.
+  if ((req.userRole === 'super_admin' || req.userRole === 'admin') && !req.tenantId) {
+    return { ...empty, unrestricted: true };
+  }
+
 
   const deviceIds = (await getAccessibleDeviceIds(req)) ?? [];
 
@@ -320,14 +325,18 @@ function acsAllows(
   // solo la ve el ISP dueño de ese token. Token de otro ISP => nunca se muestra.
   const urlToken = tokenFromAcsUrl(String(info.acsUrl || ''));
   const id = String(info.deviceId || '');
-  if (urlToken) return scope.tokens.has(urlToken);
+  if (urlToken) {
+    if (scope.tokens.has(urlToken)) return true;
+    // El ISP aún no tiene token propio configurado: no se puede filtrar por
+    // token, se cae al reclamo manual en vez de ocultar todo.
+    if (!scope.tokens.size) return matchesManualClaim(scope, info);
+    return false;
+  }
   // Sin token en la URL (IP pública base o acceso independiente por VPN):
   // solo se ve si el ISP la reclamó por token antes o la registró manualmente.
-  if (scope.tokenRequired) {
-    if (id && scope.tokenIds.has(id)) return true;
-    return matchesManualClaim(scope, info);
-  }
+  if (id && scope.tokenIds.has(id)) return true;
   return matchesManualClaim(scope, info);
+
 }
 
 
@@ -363,7 +372,45 @@ async function guardAcsDevice(req: AuthRequest, res: Response, next: NextFunctio
   }
 }
 
+// ─── Diagnóstico de visibilidad de ONUs (por qué no aparecen) ─────────
+genieacsRouter.get('/scope-debug', async (req: AuthRequest, res: Response) => {
+  try {
+    const scope = await getAcsScope(req);
+    let devices: any[] = [];
+    try {
+      const projection = '_id,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL';
+      devices = await genieFetch(`/devices/?projection=${encodeURIComponent(projection)}`);
+    } catch { devices = []; }
+    const list = Array.isArray(devices) ? devices : [];
+    res.json({
+      user: { id: req.userId, role: req.userRole, tenantId: req.tenantId ?? null },
+      scope: {
+        unrestricted: scope.unrestricted,
+        tokenRequired: scope.tokenRequired,
+        tokens: [...scope.tokens],
+        claimedByToken: scope.tokenIds.size,
+        manualIds: scope.ids.size,
+        serials: scope.serials.size,
+        foreign: scope.foreign.size,
+      },
+      acsTotal: list.length,
+      devices: list.slice(0, 50).map((d: any) => {
+        const acsUrl = deviceAcsUrl(d);
+        return {
+          id: d?._id,
+          acsUrl,
+          urlToken: tokenFromAcsUrl(acsUrl),
+          visible: acsAllows(scope, { deviceId: d?._id, acsUrl }),
+        };
+      }),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Health check ─────────────────────────────────────────
+
 genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
   try {
     await genieFetch('/devices/?projection=_id&limit=1');
