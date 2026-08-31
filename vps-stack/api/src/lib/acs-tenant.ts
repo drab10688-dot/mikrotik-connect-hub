@@ -107,7 +107,7 @@ export async function syncAcsOwnership(force = false): Promise<void> {
       if (!list.length) return;
 
       const { rows: ownedRows } = await pool.query(
-        `SELECT acs_device_id, tenant_id, status FROM acs_device_owners`
+        `SELECT acs_device_id, tenant_id, source, status FROM acs_device_owners`
       );
       const owned = new Map<string, any>(ownedRows.map((r: any) => [r.acs_device_id, r]));
 
