@@ -32,22 +32,26 @@ export function ProxyBrowserDialog({
     if (win) win.opener = null;
 
     (async () => {
+      const url = remoteDesktopUrl('browser');
       try {
         await browserApi.session();
         if (cancelled) return;
-        const url = remoteDesktopUrl('browser');
-        // El visor se muestra ya mismo; la navegación del equipo se envía
-        // en paralelo para que la pestaña nunca quede en blanco.
+
+        // Primero se envía la navegación al escritorio (así la pestaña remota
+        // ya trae la IP/puerto del equipo) y después se muestra el visor.
+        let navError = '';
+        try {
+          await browserApi.open(target.directUrl, target.mikrotikId);
+        } catch (e: any) {
+          navError = e?.message || "No hay ruta VPN hacia el equipo";
+        }
+        if (cancelled) return;
+
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
 
-        try {
-          await browserApi.open(target.directUrl, target.mikrotikId);
-          if (!cancelled) toast.success(`${target.title}: abriendo ${target.directUrl}`);
-        } catch (e: any) {
-          if (!cancelled)
-            toast.error(e?.message || "No hay ruta VPN hacia el equipo");
-        }
+        if (navError) toast.error(navError);
+        else toast.success(`${target.title}: abriendo ${target.directUrl}`);
       } catch (e: any) {
         if (win && !win.closed) win.close();
         if (!cancelled) toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
@@ -55,6 +59,7 @@ export function ProxyBrowserDialog({
         if (!cancelled) onOpenChange(false);
       }
     })();
+
 
     return () => {
       cancelled = true;
