@@ -204,9 +204,12 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   };
 
 
-  // El super_admin sin empresa seleccionada ve todo el ACS; si está operando
-  // dentro de una empresa, ve únicamente las ONUs de esa empresa.
-  if (req.userRole === 'super_admin' && !req.tenantId) return { ...empty, unrestricted: true };
+  // El super_admin/admin sin empresa seleccionada ve todo el ACS (instalación
+  // de un solo ISP); si opera dentro de una empresa, solo ve las suyas.
+  if ((req.userRole === 'super_admin' || req.userRole === 'admin') && !req.tenantId) {
+    return { ...empty, unrestricted: true };
+  }
+
 
   const deviceIds = (await getAccessibleDeviceIds(req)) ?? [];
 
