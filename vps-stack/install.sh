@@ -253,6 +253,19 @@ else
   echo -e "  ${YELLOW}⚠ GenieACS CWMP HTTP ${ACS_CWMP_STATUS:-000} (revisa logs)${NC}"
 fi
 
+# Enlace TR-069 por ISP: /tr069/<token>/ debe pasar por Nginx (no directo a GenieACS)
+TR069_TOKEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+  http://127.0.0.1:7547/tr069/0000000000000000/ 2>/dev/null || true)
+if [ "$TR069_TOKEN_STATUS" = "405" ] || [ "$TR069_TOKEN_STATUS" = "200" ]; then
+  echo -e "  ${GREEN}✓ Enlace TR-069 por ISP activo: http://${VPS_PUBLIC_IP}:7547/tr069/<token>/${NC}"
+else
+  echo -e "  ${YELLOW}⚠ Ruta /tr069/<token>/ HTTP ${TR069_TOKEN_STATUS:-000} — recrea proxy: docker compose up -d --force-recreate genieacs nginx${NC}"
+fi
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 7547/tcp >/dev/null 2>&1 || true
+fi
+
+
 # Aislamiento del navegador remoto (sin salida a internet, sólo redes privadas)
 if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
