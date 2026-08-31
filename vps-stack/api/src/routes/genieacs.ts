@@ -162,6 +162,8 @@ function deepFindValue(obj: any, keyMatch: RegExp, depth = 4): string | null {
 // ─── Aislamiento multi-ISP para las ONUs del ACS ─────────
 interface AcsScope {
   unrestricted: boolean;
+  /** Toda cuenta asociada a un ISP opera siempre en modo estricto por token. */
+  tokenRequired: boolean;
   ids: Set<string>;
   serials: Set<string>;
   usernames: Set<string>;
@@ -186,14 +188,12 @@ function deviceAcsUrl(device: any): string {
   );
 }
 
-// Multi-ISP: cada ISP solo ve las ONUs que informan por SU enlace TR-069
-// (o desde las redes declaradas en su VPN). Para volver a modo ISP único
-// basta con ACS_SINGLE_ISP=true.
-const SINGLE_ISP = (process.env.ACS_SINGLE_ISP ?? 'false') === 'true';
-
 async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   const empty: AcsScope = {
     unrestricted: false,
+    // Todo usuario de ISP debe tener tenant + token. Una cuenta sin tenant no
+    // puede degradarse al emparejamiento por serial/PPPoE porque eso mezcla ONUs.
+    tokenRequired: req.userRole !== 'super_admin' || Boolean(req.tenantId),
     ids: new Set(),
     serials: new Set(),
     usernames: new Set(),
@@ -201,8 +201,6 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
     tokens: new Set(),
     tokenIds: new Set(),
   };
-
-  if (SINGLE_ISP) return { ...empty, unrestricted: true };
 
   // El super_admin sin empresa seleccionada ve todo el ACS; si está operando
   // dentro de una empresa, ve únicamente las ONUs de esa empresa.
@@ -303,7 +301,7 @@ function acsAllows(
   // Modo estricto: si el ISP tiene su enlace TR-069, SOLO se ven las ONUs que
   // informan por ese enlace. Las que apuntan a la IP pública (sin token) o al
   // enlace de otro ISP quedan ocultas.
-  if (scope.tokens.size > 0) {
+  if (scope.tokenRequired) {
     if (urlToken) return scope.tokens.has(urlToken);
     if (info.acsUrl !== undefined && info.acsUrl !== null) return false;
     return scope.tokenIds.has(id);
@@ -330,7 +328,10 @@ function acsAllows(
 async function isAcsDeviceAllowed(req: AuthRequest, deviceId: string): Promise<boolean> {
   const scope = await getAcsScope(req);
   if (scope.unrestricted) return true;
-  if (acsAllows(scope, { deviceId })) return true;
+  // En modo por token nunca autorizar solo con la propiedad cacheada: la ONU
+  // puede haber cambiado su URL desde la última sincronización. Se comprueba
+  // siempre el ManagementServer.URL actual antes de permitir leer o modificar.
+  if (!scope.tokenRequired && acsAllows(scope, { deviceId })) return true;
   try {
     const device = await fetchDevice(deviceId, 'InternetGatewayDevice.DeviceInfo.SerialNumber,InternetGatewayDevice.WANDevice,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_deviceId');
     const serial =

@@ -6,9 +6,9 @@ import { pool } from './db';
  * Cada ISP tiene su propio enlace TR-069  (http://host/tr069/<token>/).
  * Cuando una ONU informa, GenieACS guarda en ManagementServer.URL la URL que
  * el instalador configuró en la ONU: de ahí se extrae el token y se "reclama"
- * el dispositivo para ese ISP. Si la URL no trae token (instalación antigua),
- * se usa la IP de la ONU (ConnectionRequestURL) contra las redes declaradas
- * por el ISP en su VPN.
+ * el dispositivo para ese ISP. La URL con token es la única fuente de verdad:
+ * una ONU configurada con la IP pública base o sin token no pertenece a ningún
+ * ISP y no debe aparecer en los paneles multiempresa.
  *
  * El resultado se guarda en acs_device_owners; a partir de ahí cada ISP solo
  * ve sus propias ONUs y se respeta el límite comercial (tenants.onu_limit).
@@ -31,36 +31,6 @@ async function nbiGet(path: string): Promise<any> {
   return res.json();
 }
 
-// ─── Utilidades de red ───────────────────────────────────
-function ipToInt(ip: string): number | null {
-  const parts = ip.split('.');
-  if (parts.length !== 4) return null;
-  let value = 0;
-  for (const part of parts) {
-    const n = Number(part);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-    value = value * 256 + n;
-  }
-  return value >>> 0;
-}
-
-function ipInCidr(ip: string, cidr: string): boolean {
-  const [net, bitsRaw] = cidr.trim().split('/');
-  const bits = Number(bitsRaw ?? 32);
-  const ipInt = ipToInt(ip);
-  const netInt = ipToInt(net);
-  if (ipInt === null || netInt === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return false;
-  if (bits === 0) return true;
-  const mask = (0xffffffff << (32 - bits)) >>> 0;
-  return (ipInt & mask) === (netInt & mask);
-}
-
-function hostFromUrl(url: string): string | null {
-  const m = String(url).match(/^[a-z]+:\/\/([^/:\]]+|\[[^\]]+\])/i);
-  if (!m) return null;
-  return m[1].replace(/^\[|\]$/g, '');
-}
-
 function tokenFromAcsUrl(url: string): string | null {
   const m = String(url).match(/\/tr069\/([a-f0-9]{8,64})/i);
   return m ? m[1].toLowerCase() : null;
@@ -72,28 +42,19 @@ export interface TenantMatcher {
   name: string;
   acs_token: string | null;
   onu_limit: number | null;
-  networks: string[];
 }
 
 export async function loadTenantMatchers(): Promise<TenantMatcher[]> {
   const { rows } = await pool.query(
-    `SELECT t.id, t.name, t.acs_token, t.onu_limit,
-            COALESCE(t.onu_networks, '') AS tenant_networks,
-            COALESCE(string_agg(p.onu_networks, ','), '') AS peer_networks
+    `SELECT t.id, t.name, t.acs_token, t.onu_limit
        FROM tenants t
-       LEFT JOIN tenant_vpn_peers p ON p.tenant_id = t.id
-      WHERE COALESCE(t.is_active, true) = true
-      GROUP BY t.id`
+      WHERE COALESCE(t.is_active, true) = true`
   );
   return rows.map((r: any) => ({
     id: r.id,
     name: r.name,
     acs_token: r.acs_token ? String(r.acs_token).toLowerCase() : null,
     onu_limit: r.onu_limit === null ? null : Number(r.onu_limit),
-    networks: `${r.tenant_networks},${r.peer_networks}`
-      .split(',')
-      .map((s: string) => s.trim())
-      .filter(Boolean),
   }));
 }
 
@@ -101,14 +62,6 @@ function deviceAcsUrl(device: any): string {
   return (
     device?.InternetGatewayDevice?.ManagementServer?.URL?._value ||
     device?.Device?.ManagementServer?.URL?._value ||
-    ''
-  );
-}
-
-function deviceCrUrl(device: any): string {
-  return (
-    device?.InternetGatewayDevice?.ManagementServer?.ConnectionRequestURL?._value ||
-    device?.Device?.ManagementServer?.ConnectionRequestURL?._value ||
     ''
   );
 }
@@ -123,14 +76,6 @@ export function resolveTenantForDevice(
     if (byToken) return { tenantId: byToken.id, source: 'token' };
   }
 
-  const host = hostFromUrl(deviceCrUrl(device));
-  if (host && ipToInt(host) !== null) {
-    for (const m of matchers) {
-      if (m.networks.some((cidr) => ipInCidr(host, cidr))) {
-        return { tenantId: m.id, source: 'network' };
-      }
-    }
-  }
   return null;
 }
 
@@ -162,7 +107,7 @@ export async function syncAcsOwnership(force = false): Promise<void> {
       if (!list.length) return;
 
       const { rows: ownedRows } = await pool.query(
-        `SELECT acs_device_id, tenant_id, status FROM acs_device_owners`
+        `SELECT acs_device_id, tenant_id, source, status FROM acs_device_owners`
       );
       const owned = new Map<string, any>(ownedRows.map((r: any) => [r.acs_device_id, r]));
 
@@ -178,34 +123,36 @@ export async function syncAcsOwnership(force = false): Promise<void> {
         const deviceId = device?._id;
         if (!deviceId) continue;
 
-        // El token del enlace TR-069 manda: si la ONU informa por el enlace
-        // de OTRO ISP, se reasigna aunque ya estuviera reclamada (corrige
-        // reclamos antiguos por red o por "ISP único").
+        // El token del enlace TR-069 manda. También elimina reclamos antiguos
+        // hechos por red o por el modo "ISP único", que causaban fugas entre
+        // empresas cuando la ONU ya no reportaba por un enlace con token.
         const tokenMatch = resolveTenantForDevice(device, matchers);
         const existing = owned.get(deviceId);
         if (existing) {
-          if (
-            tokenMatch &&
-            tokenMatch.source === 'token' &&
-            String(existing.tenant_id) !== String(tokenMatch.tenantId)
-          ) {
+          if (tokenMatch && (
+            String(existing.tenant_id) !== String(tokenMatch.tenantId) ||
+            existing.source !== 'token'
+          )) {
             await pool.query(
               `UPDATE acs_device_owners
-                  SET tenant_id = $2, source = 'token', updated_at = now()
+                  SET tenant_id = $2, source = 'token', status = 'active', updated_at = now()
                 WHERE acs_device_id = $1`,
               [deviceId, tokenMatch.tenantId]
+            );
+          } else if (!tokenMatch) {
+            await pool.query(
+              `DELETE FROM acs_device_owners WHERE acs_device_id = $1`,
+              [deviceId]
             );
           }
           continue;
         }
 
-        // Con un solo ISP en el sistema, todas las ONUs son suyas.
-        const match =
-          tokenMatch ||
-          (matchers.length === 1 ? { tenantId: matchers[0].id, source: 'single' } : null);
+        const match = tokenMatch;
         if (!match) continue;
 
-        const matcher = matchers.find((m) => m.id === match.tenantId)!;
+        const matcher = matchers.find((m) => m.id === match.tenantId);
+        if (!matcher) continue;
         const used = usage.get(match.tenantId) || 0;
         const limit = matcher.onu_limit && matcher.onu_limit > 0 ? matcher.onu_limit : null;
         const status = limit !== null && used >= limit ? 'blocked' : 'active';
@@ -233,7 +180,7 @@ export async function syncAcsOwnership(force = false): Promise<void> {
 export async function tenantAcsDeviceIds(tenantId: string): Promise<string[]> {
   const { rows } = await pool.query(
     `SELECT acs_device_id FROM acs_device_owners
-      WHERE tenant_id = $1 AND status = 'active'`,
+      WHERE tenant_id = $1 AND status = 'active' AND source = 'token'`,
     [tenantId]
   );
   return rows.map((r: any) => String(r.acs_device_id));
