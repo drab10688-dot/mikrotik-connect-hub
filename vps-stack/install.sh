@@ -181,6 +181,10 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
 docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
+# TR-069 TCP :7547 lo publica NGINX (valida /tr069/<token>/ y añade X-Tenant-Token).
+# --force-recreate garantiza el mapeo correcto aunque exista un despliegue previo.
+docker compose up -d --force-recreate genieacs nginx 2>&1 | tail -3
+chmod 700 "$INSTALL_DIR/recover-super-admin.sh" 2>/dev/null || true
 # Imagen base de los escritorios remotos privados (Chromium + KasmVNC).
 # Se precarga para que el primer usuario no espere la descarga.
 echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
@@ -190,6 +194,13 @@ ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
 sleep 20
+
+# Vistas, columnas y parámetros virtuales de GenieACS (señal óptica, WiFi, PPPoE)
+if [ -f "$INSTALL_DIR/genieacs-config.sh" ]; then
+  ACS_HOST="$VPS_PUBLIC_IP" bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -8 \
+    || echo -e "${YELLOW}⚠ Configuración GenieACS incompleta; reintenta: bash $INSTALL_DIR/genieacs-config.sh${NC}"
+fi
+
 
 # Migraciones idempotentes (esquema multi-ISP / ONUs)
 if [ -d "$INSTALL_DIR/db/migrations" ]; then
