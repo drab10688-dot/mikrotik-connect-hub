@@ -38,6 +38,14 @@ interface RawResponse {
   headers: http.IncomingHttpHeaders;
 }
 
+function endpoint(target: Pick<ApTarget, 'ip' | 'port' | 'protocol'>): string {
+  return `${target.protocol}://${target.ip}:${target.port}`;
+}
+
+function isTransportError(message: string): boolean {
+  return /ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|tiempo de espera|socket hang up|ECONNRESET|TLS|SSL|wrong version/i.test(message);
+}
+
 function request(
   target: Pick<ApTarget, 'ip' | 'port' | 'protocol'>,
   path: string,
@@ -188,14 +196,25 @@ function parseUbiquitiStatus(data: any): ApClient[] {
 async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
   const username = target.username || 'ubnt';
   const password = target.password || '';
-  const origin = `${target.protocol}://${target.ip}`;
+  const origin = endpoint(target);
+  const commonHeaders = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+  };
 
   // 1) Sesión inicial: airOS exige una cookie AIROS_SESSIONID previa al login.
   let cookie = '';
+  let csrfToken = '';
   try {
-    const seed = await request(target, '/login.cgi', { headers: { Accept: 'text/html' } });
+    const seed = await request(target, '/login.cgi', { headers: commonHeaders });
     cookie = mergeCookies('', seed);
-  } catch { /* algunos modelos no exponen /login.cgi por GET */ }
+    csrfToken = seed.body.match(/(?:csrf_token|csrfToken)["']?\s*(?:value=|:|=)\s*["']([^"']+)/i)?.[1] || '';
+  } catch (error: any) {
+    if (isTransportError(error?.message || '')) {
+      throw new Error(`No conecta con airOS en ${endpoint(target)}: ${error.message}`);
+    }
+    // Algunos modelos no exponen /login.cgi por GET.
+  }
   if (!cookie.includes('AIROS_SESSIONID')) {
     cookie = [cookie, 'AIROS_SESSIONID=' + '0'.repeat(32)].filter(Boolean).join('; ');
   }
@@ -208,10 +227,19 @@ async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
       Cookie: cookie,
       Referer: `${origin}/login.cgi`,
       Origin: origin,
+      'User-Agent': commonHeaders['User-Agent'],
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
     },
-    body: new URLSearchParams({ username, password, uri: '/index.cgi' }).toString(),
-  }).catch((e) => { throw new Error(`No se pudo iniciar sesión en airOS: ${e.message}`); });
+    body: new URLSearchParams({ username, password, uri: '/index.cgi', ...(csrfToken ? { csrf_token: csrfToken } : {}) }).toString(),
+  }).catch((e) => { throw new Error(`No se pudo iniciar sesión en airOS en ${endpoint(target)}: ${e.message}`); });
   cookie = mergeCookies(cookie, login);
+
+  if (login.status === 401 || login.status === 403) {
+    throw new Error(`airOS rechazó las credenciales en ${endpoint(target)}`);
+  }
+  if (login.status >= 400) {
+    throw new Error(`airOS respondió HTTP ${login.status} al iniciar sesión en ${endpoint(target)}`);
+  }
 
   // 3) Lectura de estado; si devuelve HTML el login no fue aceptado.
   const paths = ['/status.cgi', '/sta.cgi', '/iflist.cgi?ifname=ath0'];
@@ -219,7 +247,14 @@ async function readUbiquiti(target: ApTarget): Promise<ApClient[]> {
   for (const path of paths) {
     try {
       const res = await request(target, path, {
-        headers: { Cookie: cookie, Referer: `${origin}/index.cgi`, Accept: 'application/json' },
+        headers: {
+          Cookie: cookie,
+          Referer: `${origin}/index.cgi`,
+          Accept: 'application/json',
+          'User-Agent': commonHeaders['User-Agent'],
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        },
       });
       if (res.status === 401 || res.status === 403) { lastError = 'Credenciales rechazadas por el AP'; continue; }
       if (res.status >= 400) { lastError = `airOS respondió HTTP ${res.status}`; continue; }
@@ -270,14 +305,25 @@ export async function readApClients(target: ApTarget): Promise<ApClient[]> {
   push(443, 'https');
   push(8080, 'http');
 
-  let lastError = 'El AP no respondió';
+  let configuredError = '';
+  const attempts: string[] = [];
   for (const t of transports) {
     try {
       return await readOne({ ...target, ...t });
     } catch (error: any) {
-      lastError = error?.message || String(error);
+      const message = error?.message || String(error);
+      attempts.push(`${t.protocol}:${t.port} — ${message}`);
+      if (t.port === target.port && t.protocol === target.protocol) configuredError = message;
+
+      // Si el puerto elegido sí respondió pero rechazó la sesión o sus datos,
+      // no ocultar ese diagnóstico probando después un 8080 que está cerrado.
+      if (!isTransportError(message)) throw new Error(message);
     }
   }
-  throw new Error(lastError);
+  throw new Error(
+    configuredError
+      ? `${configuredError}. Intentos: ${attempts.join('; ')}`
+      : `El AP no respondió. Intentos: ${attempts.join('; ')}`
+  );
 }
 
