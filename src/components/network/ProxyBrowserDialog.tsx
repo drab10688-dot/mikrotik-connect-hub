@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { browserApi, remoteDesktopUrl } from "@/lib/api-client";
 
@@ -21,10 +21,20 @@ export function ProxyBrowserDialog({
   target: ProxyBrowserTarget | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  useEffect(() => {
-    if (!target) return;
+  const startedTargetRef = useRef<string | null>(null);
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
 
-    let cancelled = false;
+  useEffect(() => {
+    if (!target) {
+      startedTargetRef.current = null;
+      return;
+    }
+
+    const targetKey = `${target.directUrl}|${target.mikrotikId || ""}`;
+    if (startedTargetRef.current === targetKey) return;
+    startedTargetRef.current = targetKey;
+
     // Se abre SIN "noopener" para conservar la referencia y poder redirigir
     // la pestaña al visor (con noopener window.open devuelve null y la
     // pestaña se quedaba en about:blank).
@@ -34,42 +44,23 @@ export function ProxyBrowserDialog({
     (async () => {
       const url = remoteDesktopUrl('browser');
       try {
-        // La IP/puerto se pasa directo al arrancar el escritorio: Chromium
-        // abre ya cargando el equipo (como antes). El visor se muestra de
-        // inmediato y KasmVNC aparece en cuanto el contenedor termina.
+        // Primero se crea Chromium con la IP y el puerto como página inicial.
+        // Sólo después se dirige esta misma pestaña al visor. Si el visor se
+        // abre antes, auth_request crea un navegador vacío y se pierde la URL.
+        await browserApi.open(target.directUrl, target.mikrotikId);
+
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
-
-        let navError = '';
-        let opened = false;
-        for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
-          try {
-            await browserApi.open(target.directUrl, target.mikrotikId);
-            opened = true;
-            break;
-          } catch (e: any) {
-            navError = e?.message || "No hay ruta VPN hacia el equipo";
-            await new Promise((r) => setTimeout(r, 2000));
-          }
-        }
-        if (cancelled) return;
-
-        if (opened) toast.success(`${target.title}: abriendo ${target.directUrl}`);
-        else toast.error(navError);
+        toast.success(`${target.title}: abriendo ${target.directUrl}`);
       } catch (e: any) {
         if (win && !win.closed) win.close();
-        if (!cancelled) toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
+        toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
       } finally {
-        if (!cancelled) onOpenChange(false);
+        onOpenChangeRef.current(false);
       }
     })();
 
-
-
-    return () => {
-      cancelled = true;
-    };
-  }, [target, onOpenChange]);
+  }, [target]);
 
 
   return null;
