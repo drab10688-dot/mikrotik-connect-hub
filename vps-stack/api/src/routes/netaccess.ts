@@ -746,10 +746,20 @@ netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response
     ]);
 
     const active = asArray(activeRaw);
-    const activeByName = new Map(active.map((a: any) => [String(a.name), a]));
+
+    // Puede haber VARIOS clientes/sesiones con el mismo nombre: se agrupan en
+    // colas por nombre para no perder ninguno al emparejar con los secretos.
+    const sessionsByName = new Map<string, any[]>();
+    for (const a of active) {
+      const key = String(a.name);
+      const list = sessionsByName.get(key) || [];
+      list.push(a);
+      sessionsByName.set(key, list);
+    }
 
     const secrets = asArray(secretsRaw).map((s: any) => {
-      const session = activeByName.get(String(s.name));
+      const queue = sessionsByName.get(String(s.name));
+      const session = queue && queue.length ? queue.shift() : undefined;
       return {
         id: s['.id'],
         name: s.name,
@@ -766,26 +776,30 @@ netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response
     });
 
     // Muchos routers autentican por RADIUS o tienen los secretos en otro
-    // servidor: en ese caso hay sesiones activas sin secreto local. Se
-    // agregan igual para que la lista muestre TODOS los clientes conectados.
-    const secretNames = new Set(secrets.map((s) => String(s.name)));
-    const sessionOnly = active
-      .filter((a: any) => !secretNames.has(String(a.name)))
-      .map((a: any) => ({
-        id: a['.id'],
-        name: a.name,
-        profile: a.profile || null,
-        service: a.service || 'pppoe',
-        comment: a.comment || '',
-        disabled: false,
-        remote_address: a.address || null,
-        caller_id: a['caller-id'] || null,
-        uptime: a.uptime || null,
-        online: true,
-        source: 'active' as const,
-      }));
+    // servidor: en ese caso quedan sesiones activas sin secreto local (o
+    // sesiones extra de un nombre repetido). Se agregan igual para que la
+    // lista muestre TODOS los clientes conectados.
+    const sessionOnly: any[] = [];
+    for (const list of sessionsByName.values()) {
+      for (const a of list) {
+        sessionOnly.push({
+          id: a['.id'],
+          name: a.name,
+          profile: a.profile || null,
+          service: a.service || 'pppoe',
+          comment: a.comment || '',
+          disabled: false,
+          remote_address: a.address || null,
+          caller_id: a['caller-id'] || null,
+          uptime: a.uptime || null,
+          online: true,
+          source: 'active' as const,
+        });
+      }
+    }
 
     const all = [...secrets, ...sessionOnly];
+
 
     res.json({
       success: true,
