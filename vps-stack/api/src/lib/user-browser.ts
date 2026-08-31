@@ -32,6 +32,8 @@ export interface UserBrowserSession {
   lastActivity: number;
   startedAt: number;
   readyAt?: number;
+  /** Última URL con la que se lanzó Chromium (página de inicio del escritorio). */
+  lastLaunchUrl?: string;
 }
 
 const sessions = new Map<string, UserBrowserSession>();
