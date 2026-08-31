@@ -171,6 +171,29 @@ echo "$JS" | docker exec -i "$MONGO_CONTAINER" $MONGO_BIN "$DB" --quiet >/tmp/ge
   c_err "Error escribiendo config en Mongo"; cat /tmp/genieacs-cfg.log; exit 1; }
 grep -q CONFIG_OK /tmp/genieacs-cfg.log && c_ok "Columnas y vistas configuradas"
 
+# ---------- Rendimiento CWMP: Connection Request inmediato ----------
+# Los valores de config son EXPRESIONES: las cadenas van entre comillas.
+JS_PERF=$(cat <<EOJS2
+function put(id, value) {
+  db.config.replaceOne({_id: id}, {_id: id, value: value}, {upsert: true});
+}
+// Autenticación del Connection Request (HTTP digest hacia la ONU).
+put('cwmp.connectionRequestAuth', 'AUTH("${ACS_CR_USER}", "${ACS_CR_PASS}")');
+// Ventanas de espera cortas: por VPN la latencia es de milisegundos.
+put('cwmp.connectionRequestTimeout', '4000');
+put('cwmp.deviceOnlineThreshold', '4000');
+put('cwmp.sessionTimeout', '60');
+put('cwmp.maxCommitIterations', '64');
+print('PERF_OK');
+EOJS2
+)
+echo "\$JS_PERF" >/dev/null 2>&1 || true
+echo "$JS_PERF" | docker exec -i "$MONGO_CONTAINER" $MONGO_BIN "$DB" --quiet >/tmp/genieacs-perf.log 2>&1 \
+  && grep -q PERF_OK /tmp/genieacs-perf.log && c_ok "Connection Request y tiempos CWMP optimizados" \
+  || { c_err "No se pudo escribir la config de rendimiento"; cat /tmp/genieacs-perf.log; }
+
+
+
 # ---------------- Parámetros virtuales (vía NBI) ----------------
 vparam () {
   local name="$1"; local script="$2"
