@@ -207,21 +207,19 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
   // Los APs encontrados por ARP/neighbors pueden estar en una red distinta a
   // la declarada para ONUs. Preparamos una ruta /32 por la VPN de ESTE ISP para
   // que el navegador privado llegue al equipo sin exponer redes de otros ISP.
+  let routeWarning: string | undefined;
   try {
     const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
     const routeReady = await prepareTenantRoute(req, url, mikrotikId);
     if (!routeReady) {
-      return res.status(503).json({
-        success: false,
-        error: 'La VPN de este ISP no está conectada; no hay ruta activa hacia la antena',
-      });
+      // No se bloquea la apertura: el destino puede ser alcanzable por rutas
+      // ya instaladas. Se abre el escritorio y se informa como advertencia.
+      routeWarning = 'No se pudo confirmar la ruta VPN hacia el equipo; si no carga, revisa la conexión L2TP del ISP.';
     }
   } catch (e: any) {
-    return res.status(503).json({
-      success: false,
-      error: e?.message || 'No se pudo preparar la ruta VPN hacia la antena',
-    });
+    routeWarning = e?.message || 'No se pudo preparar la ruta VPN hacia el equipo';
   }
+
 
   // La IP/puerto se pasa como PÁGINA DE INICIO: si el equipo cambió, el
   // contenedor se recrea y Chromium arranca ya cargando esa URL (como antes).
