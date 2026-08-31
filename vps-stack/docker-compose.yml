@@ -50,8 +50,10 @@ services:
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       BACKUP_DIR: /opt/omnisync/backups
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
-      # ISP único: todas las ONUs del ACS visibles sin token multi-ISP
-      ACS_SINGLE_ISP: ${ACS_SINGLE_ISP:-true}
+      # El aislamiento ONU es siempre por el token /tr069/<token>/ del ISP.
+      # Se conserva la variable solo para no romper .env antiguos; la API ya no
+      # permite desactivar el filtro multiempresa.
+      ACS_SINGLE_ISP: "false"
       VPS_PUBLIC_IP: ${VPS_PUBLIC_IP:-}
       L2TP_HOST: ${L2TP_HOST:-}
       L2TP_IPSEC_PSK: ${L2TP_IPSEC_PSK:-}
