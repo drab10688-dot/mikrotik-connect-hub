@@ -57,7 +57,9 @@ DECLARE
   recovery_tenant TEXT := current_setting('omnisync.recovery_tenant');
   recovery_hash TEXT := current_setting('omnisync.recovery_hash');
 BEGIN
-  SELECT count(*), min(id)
+  -- PostgreSQL no define min(uuid); convertir a texto permite seleccionar
+  -- el único UUID encontrado sin depender de una extensión adicional.
+  SELECT count(*), min(id::text)::uuid
     INTO matched_tenants, selected_tenant
     FROM tenants
    WHERE lower(name) = lower(recovery_tenant)
