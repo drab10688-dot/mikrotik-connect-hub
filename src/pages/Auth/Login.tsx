@@ -54,6 +54,9 @@ export default function Login() {
   const [fails, setFails] = useState(0);
   const [lockUntil, setLockUntil] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSending, setForgotSending] = useState(false);
 
   useEffect(() => {
     if (!lockUntil) return;
