@@ -339,7 +339,9 @@ export const permissionsApi = {
   forUser: async (userId: string) => unwrapData<any>(await apiGet<any>(`/isp/user-permissions/${userId}`)),
   saveForUser: async (userId: string, permissions: any[]) =>
     unwrapData<any>(await apiPut<any>(`/isp/user-permissions/${userId}`, { permissions })),
+  resetForUser: async (userId: string) => apiDelete<any>(`/isp/user-permissions/${userId}`),
 };
+
 
 // ─── System API ───────────────────────────────────────────
 export const systemApi = {
