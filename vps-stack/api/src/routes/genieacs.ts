@@ -228,6 +228,14 @@ async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
       });
     } catch { /* tabla opcional */ }
 
+    // Enlace TR-069 propio del ISP: el token de su URL es el filtro principal.
+    try {
+      const { rows } = await pool.query(
+        `SELECT acs_token FROM tenants WHERE id = $1 AND acs_token IS NOT NULL`,
+        [req.tenantId]
+      );
+      rows.forEach((r: any) => empty.tokens.add(String(r.acs_token).toLowerCase()));
+    } catch { /* columna opcional */ }
 
     // ONUs registradas manualmente al ISP
     try {
