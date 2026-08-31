@@ -191,7 +191,9 @@ function deviceAcsUrl(device: any): string {
 async function getAcsScope(req: AuthRequest): Promise<AcsScope> {
   const empty: AcsScope = {
     unrestricted: false,
-    tokenRequired: Boolean(req.tenantId),
+    // Todo usuario de ISP debe tener tenant + token. Una cuenta sin tenant no
+    // puede degradarse al emparejamiento por serial/PPPoE porque eso mezcla ONUs.
+    tokenRequired: req.userRole !== 'super_admin' || Boolean(req.tenantId),
     ids: new Set(),
     serials: new Set(),
     usernames: new Set(),

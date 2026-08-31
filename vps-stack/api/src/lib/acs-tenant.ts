@@ -139,7 +139,7 @@ export async function syncAcsOwnership(force = false): Promise<void> {
                 WHERE acs_device_id = $1`,
               [deviceId, tokenMatch.tenantId]
             );
-          } else if (!tokenMatch && existing.source !== 'token') {
+          } else if (!tokenMatch) {
             await pool.query(
               `DELETE FROM acs_device_owners WHERE acs_device_id = $1`,
               [deviceId]
