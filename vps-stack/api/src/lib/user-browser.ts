@@ -106,6 +106,9 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
   const password = crypto.randomBytes(9).toString('base64url');
   const user = 'omnisync';
 
+  // La URL del equipo se pasa como PÁGINA DE INICIO de Chromium: al abrir el
+  // escritorio remoto, el equipo ya está cargando (igual que antes).
+  const homePage = launchUrl && !/\s/.test(launchUrl) ? launchUrl : 'about:blank';
   const chromeCli = [
     '--incognito',
     '--disable-sync',
@@ -113,7 +116,7 @@ export async function ensureUserBrowser(userId: string, launchUrl?: string): Pro
     '--no-default-browser-check',
     '--password-store=basic',
     '--disable-features=Translate,AutofillServerCommunication',
-    'about:blank',
+    homePage,
   ].join(' ');
 
   const args = [
