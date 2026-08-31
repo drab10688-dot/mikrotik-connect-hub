@@ -849,6 +849,96 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId/password', editRed, async (req
   }
 });
 
+// ─── Consumo en vivo por cliente (Simple Queues + sesiones PPPoE) ──────
+// Se calcula el caudal real como diferencia de contadores entre dos lecturas,
+// así no se satura la MikroTik con "monitor" continuo: una lectura ligera
+// cada pocos segundos es suficiente.
+interface QueueSample { at: number; bytes: Map<string, [number, number]>; payload: any[] }
+const queueSamples = new Map<string, QueueSample>();
+const MIN_QUEUE_INTERVAL = 2500;
+
+const splitCounter = (value: any): [number, number] => {
+  const [up, down] = String(value ?? '0/0').split('/');
+  return [Number(up) || 0, Number(down) || 0];
+};
+
+const parseRate = (value: any): number => Number(String(value ?? '').split('/')[0]) || 0;
+
+netAccessRouter.get('/:mikrotikId/queues', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const prev = queueSamples.get(mikrotikId);
+    if (prev && Date.now() - prev.at < MIN_QUEUE_INTERVAL) {
+      return res.json({ success: true, data: prev.payload, cached: true });
+    }
+
+    const config = await getDeviceConfig(pool, mikrotikId);
+    const [queuesRaw, activeRaw] = await Promise.all([
+      mikrotikRequest(config, '/rest/queue/simple').catch(() => []),
+      mikrotikRequest(config, '/rest/ppp/active').catch(() => []),
+    ]);
+
+    const active = asArray(activeRaw);
+    const byName = new Map<string, any>();
+    const byAddress = new Map<string, any>();
+    for (const a of active) {
+      if (a?.name) byName.set(String(a.name).toLowerCase(), a);
+      if (a?.address) byAddress.set(String(a.address), a);
+    }
+
+    const now = Date.now();
+    const elapsed = prev ? (now - prev.at) / 1000 : 0;
+    const bytes = new Map<string, [number, number]>();
+
+    const data = asArray(queuesRaw).map((q: any) => {
+      const id = String(q['.id']);
+      const counters = splitCounter(q.bytes);
+      bytes.set(id, counters);
+
+      let uploadBps = 0;
+      let downloadBps = 0;
+      const before = prev?.bytes.get(id);
+      if (before && elapsed > 0.5) {
+        uploadBps = Math.max(0, (counters[0] - before[0]) * 8) / elapsed;
+        downloadBps = Math.max(0, (counters[1] - before[1]) * 8) / elapsed;
+      }
+
+      const target = String(q.target || '').split('/')[0];
+      const name = String(q.name || '').replace(/^<pppoe-|>$/g, '');
+      const session = byName.get(name.toLowerCase()) || byAddress.get(target);
+      const [maxUp, maxDown] = String(q['max-limit'] || '0/0').split('/').map((v) => Number(v) || 0);
+
+      return {
+        id,
+        name: q.name || name,
+        client: session?.name || name,
+        target,
+        profile: session?.profile || null,
+        uptime: session?.uptime || null,
+        online: !!session,
+        dynamic: q.dynamic === 'true' || q.dynamic === true,
+        disabled: q.disabled === 'true' || q.disabled === true,
+        max_upload_bps: maxUp,
+        max_download_bps: maxDown,
+        upload_bps: Math.round(uploadBps || parseRate(q.rate)),
+        download_bps: Math.round(downloadBps || Number(String(q.rate ?? '0/0').split('/')[1]) || 0),
+        total_upload_bytes: counters[0],
+        total_download_bytes: counters[1],
+      };
+    });
+
+    data.sort((a, b) => (b.download_bps + b.upload_bps) - (a.download_bps + a.upload_bps));
+    queueSamples.set(mikrotikId, { at: now, bytes, payload: data });
+
+    res.json({ success: true, data, warming: !prev });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // ─── Equipos detectados en la red (antenas, CPEs, routers) ──────
 netAccessRouter.get('/:mikrotikId/devices', async (req: AuthRequest, res: Response) => {
   try {
