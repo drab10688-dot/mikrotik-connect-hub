@@ -82,6 +82,21 @@ export default function Login() {
     if (isAuthenticated && !authLoading) navigate('/dashboard');
   }, [isAuthenticated, authLoading, navigate]);
 
+  /** Solicita el enlace de restablecimiento al servidor de correo del ISP. */
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotSending(true);
+    try {
+      const res = await authApi.forgotPassword(forgotEmail.trim().toLowerCase());
+      toast.success(res?.message || 'Si el correo existe, te enviamos las instrucciones.');
+      setForgotOpen(false);
+    } catch (error: any) {
+      toast.error(error?.message || 'No se pudo enviar el correo');
+    } finally {
+      setForgotSending(false);
+    }
+  };
+
   const resetChallenge = () => {
     setChallenge(newChallenge());
     setAnswer('');
