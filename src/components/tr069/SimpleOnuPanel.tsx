@@ -215,14 +215,20 @@ export default function SimpleOnuPanel() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // Auto-refresco pausado mientras hay un equipo abierto, una acción en curso
+  // o la pestaña está en segundo plano: evita que la vista "brinque".
   useEffect(() => {
-    const t = window.setInterval(() => load(false), 5000);
+    if (selected || busy) return;
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") load(false);
+    }, 30000);
     return () => window.clearInterval(t);
-  }, [load]);
+  }, [load, selected, busy]);
   useEffect(() => {
-    const t = window.setInterval(() => setTick((n) => n + 1), 10000);
+    const t = window.setInterval(() => setTick((n) => n + 1), 30000);
     return () => window.clearInterval(t);
   }, []);
+
 
   const saveAlias = async (deviceId: string) => {
     const name = aliasDraft.trim();

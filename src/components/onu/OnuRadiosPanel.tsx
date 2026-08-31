@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,42 +57,81 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
   const [forms, setForms] = useState<Record<string, { ssid: string; password: string; channel: string }>>({});
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
   const [showDisabled, setShowDisabled] = useState(false);
+  const [applying, setApplying] = useState<{ path: string; label: string } | null>(null);
+  const dirtyRef = useRef<Set<string>>(new Set());
+  const pollRef = useRef<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
-      const data: OnuStatus = res?.data ?? res;
-      if (!data || typeof data !== "object") {
-        throw new Error("El ACS no devolvió información de esta ONU");
-      }
-      const radios = Array.isArray(data.radios) ? data.radios : [];
-      setStatus({ ...data, radios, catv: data.catv || { path: null, enabled: null } });
-      const next: Record<string, { ssid: string; password: string; channel: string }> = {};
-      radios.forEach((r) => {
+  const fetchStatus = useCallback(async (): Promise<OnuStatus> => {
+    const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/onu-status`);
+    const data: OnuStatus = res?.data ?? res;
+    if (!data || typeof data !== "object") throw new Error("El ACS no devolvió información de esta ONU");
+    return { ...data, radios: Array.isArray(data.radios) ? data.radios : [], catv: data.catv || { path: null, enabled: null } };
+  }, [deviceId]);
+
+  const applyStatus = useCallback((data: OnuStatus) => {
+    setStatus(data);
+    setForms((prev) => {
+      const next = { ...prev };
+      data.radios.forEach((r) => {
+        // No sobrescribir lo que el usuario está editando
+        if (dirtyRef.current.has(r.path) && next[r.path]) return;
         next[r.path] = {
           ssid: r.ssid || "",
           password: r.password || "",
           channel: r.channel !== null && r.channel !== undefined ? String(r.channel) : "",
         };
       });
-      setForms(next);
+      return next;
+    });
+  }, []);
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      applyStatus(await fetchStatus());
     } catch (err: any) {
-      setError(err.message || "Error cargando la ONU");
+      if (!silent) setError(err.message || "Error cargando la ONU");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [deviceId]);
+  }, [fetchStatus, applyStatus]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => () => { if (pollRef.current) window.clearInterval(pollRef.current); }, []);
 
-  const confirmFromOnu = () => {
-    window.setTimeout(load, 1500);
-    window.setTimeout(load, 4000);
-  };
+  /** Espera hasta que la ONU confirme el cambio (o venza el tiempo). */
+  const waitUntilApplied = useCallback(
+    (path: string, label: string, matches: (r: Radio) => boolean) => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      setApplying({ path, label });
+      const started = Date.now();
+      pollRef.current = window.setInterval(async () => {
+        try {
+          const data = await fetchStatus();
+          applyStatus(data);
+          const radio = data.radios.find((r) => r.path === path);
+          if (radio && matches(radio)) {
+            window.clearInterval(pollRef.current!);
+            pollRef.current = null;
+            dirtyRef.current.delete(path);
+            setApplying(null);
+            toast.success(`${label}: cambio confirmado por la ONU`);
+            return;
+          }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 180000) {
+          window.clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setApplying(null);
+          toast.warning(`${label}: la ONU aún no confirma el cambio. Quedará aplicado en su próximo reporte.`);
+        }
+      }, 4000);
+    },
+    [fetchStatus, applyStatus],
+  );
 
   const passwordError = (pw: string) => {
     if (!pw) return null;
@@ -100,6 +139,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     if (!/^[\x20-\x7E]+$/.test(pw)) return "Sin tildes, ñ ni emojis (solo ASCII)";
     return null;
   };
+
 
   const saveRadio = async (radio: Radio) => {
     const form = forms[radio.path];
@@ -118,9 +158,14 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         },
       });
       toast.success(res.message || "Cambios enviados a la ONU", {
-        description: "Verificando la configuración aplicada…",
+        description: "Esperando confirmación de la ONU…",
       });
-      confirmFromOnu();
+      waitUntilApplied(radio.path, bandLabel[radio.band], (r) => {
+        const ssidOk = !form.ssid || (r.ssid || "") === form.ssid;
+        const chOk = form.channel === "" || String(r.channel ?? "") === form.channel;
+        const pwOk = !form.password || !r.password || r.password === form.password;
+        return ssidOk && chOk && pwOk;
+      });
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -135,11 +180,11 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         method: "POST",
         body: { path: radio.path, enable },
       });
-      toast.success(`${bandLabel[radio.band]} ${enable ? "activado" : "desactivado"}`);
+      toast.success(`${bandLabel[radio.band]} ${enable ? "activando" : "desactivando"}…`);
       setStatus((s) =>
         s ? { ...s, radios: s.radios.map((r) => (r.path === radio.path ? { ...r, enabled: enable } : r)) } : s,
       );
-      confirmFromOnu();
+      waitUntilApplied(radio.path, bandLabel[radio.band], (r) => r.enabled === enable);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -156,7 +201,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
       });
       toast.success(res.message);
       setStatus((s) => (s ? { ...s, catv: { ...s.catv, enabled: enable } } : s));
-      confirmFromOnu();
+      window.setTimeout(() => load(true), 5000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -169,13 +214,15 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
     try {
       const res = await api(`/genieacs/devices/${encodeURIComponent(deviceId)}/refresh-onu`, { method: "POST" });
       toast.success(res.message);
-      confirmFromOnu();
+      window.setTimeout(() => load(true), 3000);
+      window.setTimeout(() => load(true), 8000);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setBusy(null);
     }
   };
+
 
   return (
     <Card>
@@ -196,12 +243,18 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
         </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
+        {applying && (
+          <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-xs">
+            <Loader2 className="w-3 h-3 animate-spin text-primary" />
+            Aplicando cambios en {applying.label}… esperando confirmación de la ONU (sin recargar la vista).
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" /></div>
         ) : error ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-2">
             <p className="text-xs text-destructive">{error}</p>
-            <Button size="sm" variant="outline" onClick={load}>
+            <Button size="sm" variant="outline" onClick={() => load()}>
               <RotateCcw className="w-3 h-3 mr-1" /> Reintentar
             </Button>
           </div>
@@ -287,7 +340,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                       <Input
                         className="h-8 text-xs"
                         value={form.ssid}
-                        onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, ssid: e.target.value } }))}
+                        onChange={(e) => { dirtyRef.current.add(radio.path); setForms((f) => ({ ...f, [radio.path]: { ...form, ssid: e.target.value } })); }}
                       />
                     </div>
                     <div className="space-y-1">
@@ -297,7 +350,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                           className="h-8 text-xs"
                           type={showPass[radio.path] ? "text" : "password"}
                           value={form.password}
-                          onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, password: e.target.value } }))}
+                          onChange={(e) => { dirtyRef.current.add(radio.path); setForms((f) => ({ ...f, [radio.path]: { ...form, password: e.target.value } })); }}
                           aria-invalid={!!passwordError(form.password)}
                         />
                         <Button
@@ -318,7 +371,7 @@ export default function OnuRadiosPanel({ deviceId }: { deviceId: string }) {
                           className="h-8 text-xs"
                           value={form.channel}
                           placeholder="auto"
-                          onChange={(e) => setForms((f) => ({ ...f, [radio.path]: { ...form, channel: e.target.value } }))}
+                          onChange={(e) => { dirtyRef.current.add(radio.path); setForms((f) => ({ ...f, [radio.path]: { ...form, channel: e.target.value } })); }}
                         />
                       </div>
                       <Button
