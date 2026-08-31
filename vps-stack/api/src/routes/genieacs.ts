@@ -372,7 +372,45 @@ async function guardAcsDevice(req: AuthRequest, res: Response, next: NextFunctio
   }
 }
 
+// ─── Diagnóstico de visibilidad de ONUs (por qué no aparecen) ─────────
+genieacsRouter.get('/scope-debug', async (req: AuthRequest, res: Response) => {
+  try {
+    const scope = await getAcsScope(req);
+    let devices: any[] = [];
+    try {
+      const projection = '_id,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL';
+      devices = await genieFetch(`/devices/?projection=${encodeURIComponent(projection)}`);
+    } catch { devices = []; }
+    const list = Array.isArray(devices) ? devices : [];
+    res.json({
+      user: { id: req.userId, role: req.userRole, tenantId: req.tenantId ?? null },
+      scope: {
+        unrestricted: scope.unrestricted,
+        tokenRequired: scope.tokenRequired,
+        tokens: [...scope.tokens],
+        claimedByToken: scope.tokenIds.size,
+        manualIds: scope.ids.size,
+        serials: scope.serials.size,
+        foreign: scope.foreign.size,
+      },
+      acsTotal: list.length,
+      devices: list.slice(0, 50).map((d: any) => {
+        const acsUrl = deviceAcsUrl(d);
+        return {
+          id: d?._id,
+          acsUrl,
+          urlToken: tokenFromAcsUrl(acsUrl),
+          visible: acsAllows(scope, { deviceId: d?._id, acsUrl }),
+        };
+      }),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Health check ─────────────────────────────────────────
+
 genieacsRouter.get('/health', async (req: AuthRequest, res: Response) => {
   try {
     await genieFetch('/devices/?projection=_id&limit=1');
