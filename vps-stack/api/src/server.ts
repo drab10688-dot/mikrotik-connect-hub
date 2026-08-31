@@ -111,6 +111,21 @@ cron.schedule('* * * * *', () => {
   runPppoeMonitor(pool).catch(e => console.error('[CRON] PPPoE monitor error:', e.message));
 });
 
+// Sincroniza la propiedad multi-ISP aunque ningún usuario tenga una sesión
+// abierta. Así un JWT expirado no impide reclamar las ONUs por su enlace TR-069.
+cron.schedule('* * * * *', () => {
+  syncAcsOwnership(true)
+    .then((result) => {
+      if (result.created || result.reassigned || result.removed) {
+        console.log(
+          `[ACS] propiedad: ${result.scanned} revisadas, ${result.matched} con token válido, ` +
+          `${result.created} asignadas, ${result.reassigned} reasignadas, ${result.removed} retiradas`
+        );
+      }
+    })
+    .catch((e: any) => console.error('[ACS] sincronización:', e.message));
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
 
