@@ -162,7 +162,16 @@ export default function Login() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Contraseña</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Contraseña</Label>
+            <button
+              type="button"
+              onClick={() => { setForgotEmail(formData.email); setForgotOpen(true); }}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
           <Input
             id="password"
             type="password"
