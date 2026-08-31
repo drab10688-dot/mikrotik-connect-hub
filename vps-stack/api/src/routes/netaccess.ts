@@ -161,7 +161,7 @@ netAccessRouter.put('/web-ports', editRed, async (req: AuthRequest, res: Respons
 netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, ip, name, brand, username, port, protocol, sector
+      `SELECT id, ip, name, brand, username, port, protocol, access_method, ssh_port, sector
          FROM ap_credentials
         WHERE tenant_id IS NOT DISTINCT FROM $1
         ORDER BY ip`,
@@ -175,13 +175,13 @@ netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) =
 
 netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Response) => {
   try {
-    const { ip, name, brand, username, password, port, protocol, sector } = req.body || {};
+    const { ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector } = req.body || {};
     if (!ip || !IPV4.test(String(ip))) {
       return res.status(400).json({ success: false, error: 'IP del AP inválida' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, sector)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (tenant_id, ip) DO UPDATE SET
          name = EXCLUDED.name,
          sector = EXCLUDED.sector,
@@ -190,8 +190,10 @@ netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Re
          password = COALESCE(NULLIF(EXCLUDED.password, ''), ap_credentials.password),
          port = EXCLUDED.port,
          protocol = EXCLUDED.protocol,
+         access_method = EXCLUDED.access_method,
+         ssh_port = EXCLUDED.ssh_port,
          updated_at = now()
-       RETURNING id, ip, name, brand, username, port, protocol, sector`,
+       RETURNING id, ip, name, brand, username, port, protocol, access_method, ssh_port, sector`,
       [
         req.tenantId ?? null,
         String(ip),
@@ -201,6 +203,8 @@ netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Re
         password || '',
         Number(port) > 0 ? Number(port) : null,
         protocol === 'https' ? 'https' : 'http',
+        ['auto', 'web', 'ssh'].includes(access_method) ? access_method : 'auto',
+        Number(ssh_port) > 0 ? Number(ssh_port) : 22,
         sector || null,
       ]
     );
@@ -225,7 +229,7 @@ netAccessRouter.delete('/ap-credentials/:id', editRed, async (req: AuthRequest, 
 async function apTarget(tenantId: string | null | undefined, ip: string, brandHint?: string): Promise<ApTarget> {
   const ports = await tenantWebPorts(tenantId);
   const { rows } = await pool.query(
-    `SELECT ip, brand, username, password, port, protocol
+    `SELECT ip, brand, username, password, port, protocol, access_method, ssh_port
        FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1 AND ip = $2`,
     [tenantId ?? null, ip]
   );
@@ -239,6 +243,8 @@ async function apTarget(tenantId: string | null | undefined, ip: string, brandHi
     protocol: (saved?.protocol || fallback.protocol) as 'http' | 'https',
     username: saved?.username || (brand === 'ubiquiti' ? 'ubnt' : 'admin'),
     password: saved?.password || '',
+    accessMethod: saved?.access_method || 'auto',
+    sshPort: saved?.ssh_port || 22,
   };
 }
 
@@ -301,7 +307,7 @@ async function autoReadAp(
   if (mikrotikId) await ensureApRoute(mikrotikId, tenantId, ip);
   const brand = (saved?.brand && saved.brand !== 'otro' ? saved.brand : brandHint) || 'otro';
   const cfg = ports[brand] || ports.otro;
-  const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https' }> = [];
+  const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https'; accessMethod?: 'auto' | 'web' | 'ssh'; sshPort?: number }> = [];
 
   if (saved?.username) {
     candidates.push({
@@ -309,6 +315,8 @@ async function autoReadAp(
       password: saved.password || '',
       port: saved.port || cfg.port,
       protocol: (saved.protocol || cfg.protocol) as 'http' | 'https',
+      accessMethod: saved.access_method || 'auto',
+      sshPort: saved.ssh_port || 22,
     });
   }
   const logins = DEFAULT_LOGINS[brand] || DEFAULT_LOGINS.otro;
@@ -317,13 +325,13 @@ async function autoReadAp(
       ? [{ port: cfg.port, protocol: cfg.protocol }, { port: 80, protocol: 'http' }]
       : [{ port: cfg.port, protocol: cfg.protocol }, { port: 443, protocol: 'https' }];
   for (const t of transports) {
-    for (const l of logins) candidates.push({ ...l, ...t });
+    for (const l of logins) candidates.push({ ...l, ...t, accessMethod: 'web' });
   }
 
   let lastError = 'No respondió';
   for (const c of candidates) {
     try {
-      const clients = await readApClients({ ip, brand, port: c.port, protocol: c.protocol, username: c.username, password: c.password });
+      const clients = await readApClients({ ip, brand, port: c.port, protocol: c.protocol, username: c.username, password: c.password, accessMethod: c.accessMethod, sshPort: c.sshPort });
       return { ip, brand, port: c.port, protocol: c.protocol, ok: true as const, clients, error: null };
     } catch (error: any) {
       lastError = error?.message || String(error);
@@ -346,7 +354,7 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
           mtCached(mikrotikId, '/rest/ip/arp', 60000),
           pool
             .query(
-              `SELECT ip, name, brand, username, password, port, protocol, sector
+              `SELECT ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector
                  FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1`,
               [req.tenantId ?? null]
             )
