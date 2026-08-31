@@ -4,9 +4,36 @@ import https from 'https';
 import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
+import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import { pool } from '../lib/db';
 import { requireSection } from './isp';
 import { swr, keepWarm } from '../lib/cache';
+
+/**
+ * Garantiza que exista ruta por el túnel L2TP del ISP hacia la IP del AP
+ * antes de leer su señal. Sin esto la lectura falla con EHOSTUNREACH aunque
+ * la VPN esté conectada y las credenciales sean correctas.
+ */
+async function ensureApRoute(mikrotikId: string, tenantId: string | null | undefined, ip: string): Promise<void> {
+  try {
+    let tId = tenantId ?? null;
+    if (!tId) {
+      const device = await pool.query(`SELECT tenant_id FROM mikrotik_devices WHERE id = $1 LIMIT 1`, [mikrotikId]);
+      tId = device.rows[0]?.tenant_id ?? null;
+    }
+    const { rows } = await pool.query(
+      `SELECT tunnel_ip
+         FROM tenant_vpn_peers
+        WHERE ($1::uuid IS NULL OR tenant_id = $1)
+          AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC
+        LIMIT 1`,
+      [tId]
+    );
+    const tunnelIp = rows[0]?.tunnel_ip;
+    if (tunnelIp) await ensureL2tpTargetRoute(String(tunnelIp), ip);
+  } catch { /* mejor esfuerzo: la lectura igual se intenta */ }
+}
 
 /**
  * Lectura cacheada contra la MikroTik.
