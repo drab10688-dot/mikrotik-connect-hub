@@ -307,7 +307,7 @@ async function autoReadAp(
   if (mikrotikId) await ensureApRoute(mikrotikId, tenantId, ip);
   const brand = (saved?.brand && saved.brand !== 'otro' ? saved.brand : brandHint) || 'otro';
   const cfg = ports[brand] || ports.otro;
-  const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https' }> = [];
+  const candidates: Array<{ username: string; password: string; port: number; protocol: 'http' | 'https'; accessMethod?: 'auto' | 'web' | 'ssh'; sshPort?: number }> = [];
 
   if (saved?.username) {
     candidates.push({
@@ -315,6 +315,8 @@ async function autoReadAp(
       password: saved.password || '',
       port: saved.port || cfg.port,
       protocol: (saved.protocol || cfg.protocol) as 'http' | 'https',
+      accessMethod: saved.access_method || 'auto',
+      sshPort: saved.ssh_port || 22,
     });
   }
   const logins = DEFAULT_LOGINS[brand] || DEFAULT_LOGINS.otro;
@@ -323,13 +325,13 @@ async function autoReadAp(
       ? [{ port: cfg.port, protocol: cfg.protocol }, { port: 80, protocol: 'http' }]
       : [{ port: cfg.port, protocol: cfg.protocol }, { port: 443, protocol: 'https' }];
   for (const t of transports) {
-    for (const l of logins) candidates.push({ ...l, ...t });
+    for (const l of logins) candidates.push({ ...l, ...t, accessMethod: 'web' });
   }
 
   let lastError = 'No respondió';
   for (const c of candidates) {
     try {
-      const clients = await readApClients({ ip, brand, port: c.port, protocol: c.protocol, username: c.username, password: c.password });
+      const clients = await readApClients({ ip, brand, port: c.port, protocol: c.protocol, username: c.username, password: c.password, accessMethod: c.accessMethod, sshPort: c.sshPort });
       return { ip, brand, port: c.port, protocol: c.protocol, ok: true as const, clients, error: null };
     } catch (error: any) {
       lastError = error?.message || String(error);
@@ -352,7 +354,7 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
           mtCached(mikrotikId, '/rest/ip/arp', 60000),
           pool
             .query(
-              `SELECT ip, name, brand, username, password, port, protocol, sector
+              `SELECT ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector
                  FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1`,
               [req.tenantId ?? null]
             )
