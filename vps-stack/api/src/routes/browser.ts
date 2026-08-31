@@ -93,8 +93,10 @@ export async function authorizeBrowserAccess(req: Request, res: Response) {
  * así el navegador NUNCA muestra el cuadro de usuario/clave.
  */
 export async function authorizeUserVnc(req: Request, res: Response) {
-  const userId = verifyPanelToken(extractToken(req));
+  const token = extractToken(req);
+  const userId = verifyPanelToken(token);
   if (!userId) return res.status(401).end();
+  seedAuthCookie(req, res, token!);
   try {
     let s = getSession(userId);
     if (!s) s = await ensureUserBrowser(userId);
