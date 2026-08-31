@@ -5,6 +5,7 @@ const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router,
   ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound, UserPlus,
+  Mail, DatabaseBackup, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useMyTenant } from "@/hooks/useTenantBranding";
 import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useMyPermissions } from "@/hooks/usePermissions";
+import { ChangePasswordDialog } from "@/components/account/ChangePasswordDialog";
 import { useState, useEffect, useRef } from "react";
 
 type MenuEntry = {
