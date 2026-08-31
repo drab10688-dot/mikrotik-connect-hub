@@ -181,6 +181,10 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
 docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
+# TR-069 TCP :7547 lo publica NGINX (valida /tr069/<token>/ y añade X-Tenant-Token).
+# --force-recreate garantiza el mapeo correcto aunque exista un despliegue previo.
+docker compose up -d --force-recreate genieacs nginx 2>&1 | tail -3
+chmod 700 "$INSTALL_DIR/recover-super-admin.sh" 2>/dev/null || true
 # Imagen base de los escritorios remotos privados (Chromium + KasmVNC).
 # Se precarga para que el primer usuario no espere la descarga.
 echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
@@ -190,6 +194,13 @@ ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
 sleep 20
+
+# Vistas, columnas y parámetros virtuales de GenieACS (señal óptica, WiFi, PPPoE)
+if [ -f "$INSTALL_DIR/genieacs-config.sh" ]; then
+  ACS_HOST="$VPS_PUBLIC_IP" bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -8 \
+    || echo -e "${YELLOW}⚠ Configuración GenieACS incompleta; reintenta: bash $INSTALL_DIR/genieacs-config.sh${NC}"
+fi
+
 
 # Migraciones idempotentes (esquema multi-ISP / ONUs)
 if [ -d "$INSTALL_DIR/db/migrations" ]; then
@@ -242,6 +253,19 @@ else
   echo -e "  ${YELLOW}⚠ GenieACS CWMP HTTP ${ACS_CWMP_STATUS:-000} (revisa logs)${NC}"
 fi
 
+# Enlace TR-069 por ISP: /tr069/<token>/ debe pasar por Nginx (no directo a GenieACS)
+TR069_TOKEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+  http://127.0.0.1:7547/tr069/0000000000000000/ 2>/dev/null || true)
+if [ "$TR069_TOKEN_STATUS" = "405" ] || [ "$TR069_TOKEN_STATUS" = "200" ]; then
+  echo -e "  ${GREEN}✓ Enlace TR-069 por ISP activo: http://${VPS_PUBLIC_IP}:7547/tr069/<token>/${NC}"
+else
+  echo -e "  ${YELLOW}⚠ Ruta /tr069/<token>/ HTTP ${TR069_TOKEN_STATUS:-000} — recrea proxy: docker compose up -d --force-recreate genieacs nginx${NC}"
+fi
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 7547/tcp >/dev/null 2>&1 || true
+fi
+
+
 # Aislamiento del navegador remoto (sin salida a internet, sólo redes privadas)
 if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
@@ -260,10 +284,11 @@ echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
 echo -e "  Escritorio remoto: ${GREEN}https://${VPS_PUBLIC_IP}:8081${NC}  (privado por usuario, sin clave: usa tu sesión del panel)"
 echo -e "  GenieACS UI:      ${GREEN}http://${VPS_PUBLIC_IP}:3001${NC}  (admin/admin)"
-echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/${NC}"
-echo -e "  TR-069 público:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/${NC}"
+echo -e "  TR-069 por ISP:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/tr069/<token>/${NC}  (token en el panel → cada ISP ve solo sus ONUs)"
+echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/tr069/<token>/${NC}"
 echo -e "  Credenciales VPN: ${GREEN}/opt/omnisync-l2tp/vpn.conf${NC}"
 echo -e "  Script MikroTik:  ${GREEN}/opt/omnisync-l2tp/mikrotik-l2tp.rsc${NC} (o genéralo desde el panel → Credenciales y VPN)"
+echo -e "  Superadmin:       ${GREEN}sudo $INSTALL_DIR/recover-super-admin.sh${NC}"
 echo ""
 echo -e "  Logs:        ${CYAN}cd $INSTALL_DIR && docker compose logs -f${NC}"
 echo -e "  Reconstruir: ${CYAN}cd $INSTALL_DIR && docker compose up -d --build${NC}"
