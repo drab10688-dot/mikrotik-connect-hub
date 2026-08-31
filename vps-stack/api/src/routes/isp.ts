@@ -22,6 +22,8 @@ export const SECTIONS = [
   'diagnostico',
   'usuarios',
   'roles',
+  'correo',
+  'respaldos',
 ] as const;
 export type Section = (typeof SECTIONS)[number];
 
@@ -38,6 +40,8 @@ export const SECTION_LABELS: Record<string, string> = {
   diagnostico: 'Diagnostico API',
   usuarios: 'Usuarios',
   roles: 'Roles y permisos',
+  correo: 'Correo (SMTP)',
+  respaldos: 'Copias de seguridad',
 };
 
 export type RoleName = 'admin' | 'user' | 'secretary' | 'reseller';
