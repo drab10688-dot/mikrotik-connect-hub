@@ -13,6 +13,7 @@ import Diagnostics from "./pages/Diagnostics";
 import Onus from "./pages/Onus";
 import IspAcs from "./pages/IspAcs";
 import Network from "./pages/Network";
+import Queues from "./pages/Queues";
 import OnuWeb from "./pages/OnuWeb";
 import Topology from "./pages/Topology";
 import Permissions from "./pages/Admin/Permissions";
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu" module="onus" section="onus"><Onus /></ProtectedRoute>} />
           <Route path="/mikrotik" element={<ProtectedRoute permission="can_manage_pppoe" module="mikrotik" section="mikrotik"><Network /></ProtectedRoute>} />
+          <Route path="/queues" element={<ProtectedRoute permission="can_manage_pppoe" module="mikrotik" section="mikrotik"><Queues /></ProtectedRoute>} />
           <Route path="/onu-web" element={<ProtectedRoute module="onu_web" section="onu_web"><OnuWeb /></ProtectedRoute>} />
           <Route path="/topology" element={<ProtectedRoute module="mikrotik" section="topology"><Topology /></ProtectedRoute>} />
           <Route path="/acs" element={<ProtectedRoute section="vpn"><IspAcs /></ProtectedRoute>} />
