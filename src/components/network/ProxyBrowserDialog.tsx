@@ -25,22 +25,25 @@ export function ProxyBrowserDialog({
     if (!target) return;
 
     let cancelled = false;
+    // La pestaña se abre de inmediato (evita el bloqueador de ventanas) y se
+    // queda en espera hasta que el equipo YA esté cargando en el escritorio.
+    const win = window.open("about:blank", "_blank", "noopener,noreferrer");
+
     (async () => {
       try {
-        // Cada usuario tiene su propio escritorio remoto. Se abre DIRECTO el
-        // visor KasmVNC (puerto 8081, HTTPS): su propia barra táctil permite
-        // zoom, desplazamiento y teclado en celular, sin capas intermedias.
         await browserApi.session();
         if (cancelled) return;
-        window.open(remoteDesktopUrl('browser'), "_blank", "noopener,noreferrer");
-        toast.success(`${target.title}: abriendo en tu escritorio remoto`);
-
-        // 2) La navegación al equipo se lanza en paralelo.
-        browserApi.open(target.directUrl, target.mikrotikId).catch((e: any) => {
-          if (!cancelled) toast.error(e?.message || "No hay ruta VPN hacia el equipo");
-        });
+        // IMPORTANTE: primero se envía la IP:puerto al escritorio y sólo
+        // después se muestra el visor, así la pestaña abre ya con el equipo.
+        await browserApi.open(target.directUrl, target.mikrotikId);
+        if (cancelled) return;
+        const url = remoteDesktopUrl('browser');
+        if (win && !win.closed) win.location.replace(url);
+        else window.open(url, "_blank", "noopener,noreferrer");
+        toast.success(`${target.title}: abriendo ${target.directUrl}`);
       } catch (e: any) {
-        if (!cancelled) toast.error(e?.message || "No se pudo usar el navegador remoto");
+        if (win && !win.closed) win.close();
+        if (!cancelled) toast.error(e?.message || "No hay ruta VPN hacia el equipo");
       } finally {
         if (!cancelled) onOpenChange(false);
       }
@@ -50,6 +53,7 @@ export function ProxyBrowserDialog({
       cancelled = true;
     };
   }, [target, onOpenChange]);
+
 
   return null;
 }
