@@ -79,6 +79,9 @@ export default function PppoeUsers() {
     default_profile: "",
     default_service: "pppoe",
     username_prefix: "",
+    auto_assign_ip: true,
+    ip_pool_start: "",
+    ip_pool_end: "",
   });
 
   useEffect(() => {
@@ -89,6 +92,9 @@ export default function PppoeUsers() {
       default_profile: settings.default_profile || "",
       default_service: settings.default_service || "pppoe",
       username_prefix: settings.username_prefix || "",
+      auto_assign_ip: settings.auto_assign_ip !== false,
+      ip_pool_start: settings.ip_pool_start || "",
+      ip_pool_end: settings.ip_pool_end || "",
     });
   }, [settings]);
 
@@ -104,18 +110,50 @@ export default function PppoeUsers() {
   // ─── Alta individual ───
   const [form, setForm] = useState({ name: "", password: "", profile: "", remoteAddress: "", comment: "" });
   const [bulk, setBulk] = useState("");
+  const [created, setCreated] = useState<CreatedUser[]>([]);
+  const [sharePhone, setSharePhone] = useState("");
 
   const createUsers = useMutation({
     mutationFn: (users: any[]) => pppoeApi.createUsers(deviceId, users),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["pppoe-secrets", deviceId] });
-      const failed = (res?.results || []).filter((r: any) => !r.ok);
+      const results = res?.results || [];
+      const failed = results.filter((r: any) => !r.ok);
+      setCreated(results.filter((r: any) => r.ok));
       if (res?.created) toast.success(`${res.created} usuario(s) PPPoE creados`);
       failed.forEach((f: any) => toast.error(`${f.name}: ${f.error}`));
       if (!res?.created && !failed.length) toast.error("No se creó ningún usuario");
     },
     onError: (e: any) => toast.error(e.message || "Error creando usuarios"),
   });
+
+  const shareText = useMemo(() => {
+    if (!created.length) return "";
+    const lines = created.map(
+      (u) =>
+        `👤 Usuario: ${u.name}\n🔑 Contraseña: ${u.password || "-"}` +
+        (u.remoteAddress ? `\n🌐 IP: ${u.remoteAddress}` : "")
+    );
+    return `Datos de tu conexión a Internet (PPPoE):\n\n${lines.join("\n\n")}`;
+  }, [created]);
+
+  const shareWhatsApp = () => {
+    const phone = sharePhone.replace(/\D/g, "");
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
+  const shareTelegram = () => {
+    window.open(
+      `https://t.me/share/url?url=${encodeURIComponent("")}&text=${encodeURIComponent(shareText)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
 
   const removeSecret = useMutation({
     mutationFn: (id: string) => pppoeApi.deleteSecret(deviceId, id),
