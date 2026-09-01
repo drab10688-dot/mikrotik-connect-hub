@@ -536,6 +536,7 @@ export default function Network() {
                     <table className="w-full text-sm">
                       <thead className="text-left text-muted-foreground">
                         <tr className="border-b">
+                          <th className="py-2 pr-2">Editar</th>
                           <th className="py-2 pr-4">Usuario</th>
                           <th className="py-2 pr-4">Comentario</th>
                           <th className="py-2 pr-4">Estado</th>
@@ -565,6 +566,18 @@ export default function Network() {
                         {filteredSecrets.map((s: any, i: number) => (
                           <tr key={`${s.source || "secret"}-${s.id || "n"}-${s.name}-${i}`} className="border-b last:border-0">
 
+                            <td className="py-2 pr-2">
+                              {s.source === "secret" && s.id ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Editar comentario y perfil"
+                                  onClick={() => openEditSecret(s)}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                              ) : null}
+                            </td>
                             <td className="py-2 pr-4 font-medium">{s.name}</td>
                             <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[220px] truncate" title={s.comment || ""}>
                               {s.comment || "—"}
@@ -579,16 +592,6 @@ export default function Network() {
                             <td className="py-2 pr-4">{s.uptime || "—"}</td>
                             <td className="py-2">
                               <div className="flex items-center gap-1.5">
-                                {s.source === "secret" && s.id ? (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    title="Editar comentario y perfil"
-                                    onClick={() => openEditSecret(s)}
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </Button>
-                                ) : null}
                                 {s.remote_address ? (
                                   <Button
                                     size="sm"

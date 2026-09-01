@@ -88,7 +88,7 @@ chmod +x /etc/ppp/ip-up.local`
 
     // Si el túnel ya está activo, aplica las rutas ahora mismo.
     const pppIf = (await sh(
-      `ip -o -4 addr show | awk '$0 ~ /peer ${esc(tunnelIp)}[/ ]/ {print $2; exit}'`
+      `ip -o -4 addr show | grep -F "peer ${esc(tunnelIp)}/" | head -1 | awk '{print $2}'`
     )).trim();
     if (pppIf) {
       for (const net of nets.split(',').map((s) => s.trim()).filter(Boolean)) {
@@ -125,7 +125,7 @@ export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string):
 
   // 1) Interfaz PPP cuyo peer es exactamente la IP de túnel del ISP.
   let pppIf = (await sh(
-    `ip -o -4 addr show | awk '$0 ~ /peer ${peer}[/ ]/ {print $2; exit}'`
+    `ip -o -4 addr show | grep -F "peer ${peer}/" | head -1 | awk '{print $2}'`
   )).trim();
 
   // 2) Si el peer no coincide (RouterOS puede negociar otra IP de punta),
