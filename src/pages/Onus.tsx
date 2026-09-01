@@ -1,6 +1,5 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import SimpleOnuPanel from "@/components/tr069/SimpleOnuPanel";
-import InformMonitor from "@/components/tr069/InformMonitor";
 import { Antenna } from "lucide-react";
 
 
@@ -21,11 +20,8 @@ const Onus = () => {
           </div>
         </header>
 
-        <div className="mb-6">
-          <InformMonitor />
-        </div>
-
         <SimpleOnuPanel />
+
 
       </div>
     </div>
