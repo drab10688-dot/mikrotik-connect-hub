@@ -126,6 +126,7 @@ GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
 BROWSER_HOME_URL=about:blank
 VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
+ONU_NETS=${ONU_NETS}
 TZ=America/Bogota
 EOF
   echo -e "${GREEN}✓ .env generado${NC}"
@@ -133,6 +134,7 @@ else
   grep -q '^BROWSER_HOME_URL=' .env || echo "BROWSER_HOME_URL=about:blank" >> .env
   grep -q '^VPS_PUBLIC_IP=' .env && sed -i "s|^VPS_PUBLIC_IP=.*|VPS_PUBLIC_IP=${VPS_PUBLIC_IP}|" .env \
     || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
+  grep -q '^ONU_NETS=' .env || echo "ONU_NETS=${ONU_NETS}" >> .env
   echo -e "${GREEN}✓ .env existente conservado${NC}"
 fi
 
