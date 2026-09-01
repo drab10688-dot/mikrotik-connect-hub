@@ -631,7 +631,7 @@ export default function Network() {
                           </tr>
                         ))}
                         {!filteredSecrets.length && (
-                          <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
+                          <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
                         )}
                       </tbody>
                     </table>
