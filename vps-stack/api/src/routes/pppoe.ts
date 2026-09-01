@@ -234,12 +234,16 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
       default_profile = null,
       default_service = 'pppoe',
       username_prefix = null,
+      auto_assign_ip = true,
+      ip_pool_start = null,
+      ip_pool_end = null,
     } = req.body || {};
 
     await pool.query(
       `INSERT INTO pppoe_settings
-         (tenant_id, mikrotik_id, global_password, use_global_password, default_profile, default_service, username_prefix)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (tenant_id, mikrotik_id, global_password, use_global_password, default_profile, default_service, username_prefix,
+          auto_assign_ip, ip_pool_start, ip_pool_end)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (mikrotik_id) DO UPDATE SET
          tenant_id = COALESCE(EXCLUDED.tenant_id, pppoe_settings.tenant_id),
          global_password = EXCLUDED.global_password,
@@ -247,6 +251,9 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
          default_profile = EXCLUDED.default_profile,
          default_service = EXCLUDED.default_service,
          username_prefix = EXCLUDED.username_prefix,
+         auto_assign_ip = EXCLUDED.auto_assign_ip,
+         ip_pool_start = EXCLUDED.ip_pool_start,
+         ip_pool_end = EXCLUDED.ip_pool_end,
          updated_at = now()`,
       [
         req.tenantId || null,
@@ -256,8 +263,12 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
         default_profile || null,
         default_service || 'pppoe',
         username_prefix || null,
+        !!auto_assign_ip,
+        ip_pool_start || null,
+        ip_pool_end || null,
       ]
     );
+
 
     res.json({ success: true, data: await loadSettings(mikrotikId) });
   } catch (error: any) {
