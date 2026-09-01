@@ -854,20 +854,16 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId/password', editRed, async (req
     if (password.length < 4) return res.status(400).json({ success: false, error: 'La clave debe tener al menos 4 caracteres' });
 
     const config = await getDeviceConfig(pool, mikrotikId);
-    await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`, 'PATCH', { password });
+    await setPppoeSecret(config, secretId, { password });
 
     // Opcional: tumbar la sesión activa para que reconecte con la clave nueva
     let kicked = false;
     if (req.body?.kick) {
-      const active = asArray(await mikrotikRequest(config, '/rest/ppp/active').catch(() => []));
-      const secret = asArray(await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`).catch(() => null));
-      const name = (secret as any)?.name;
-      const session = active.find((a: any) => String(a.name) === String(name));
-      if (session?.['.id']) {
-        await mikrotikRequest(config, `/rest/ppp/active/${encodeURIComponent(session['.id'])}`, 'DELETE').catch(() => undefined);
-        kicked = true;
-      }
+      const secret = await findSecretById(config, secretId);
+      kicked = await kickPppoeSession(config, secret?.name);
     }
+
+
 
     res.json({ success: true, data: { secret_id: secretId, kicked } });
   } catch (error: any) {
