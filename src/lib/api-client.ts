@@ -275,11 +275,11 @@ export const authApi = {
 
 // ─── Correo (SMTP) por ISP o global del sistema ───────────
 export const mailApi = {
-  getSettings: async (scope: 'tenant' | 'global' = 'tenant') =>
+  getSettings: async () =>
     unwrapData<any>(await apiGet<any>('/mail/settings')),
-  saveSettings: async (payload: any, scope: 'tenant' | 'global' = 'tenant') =>
+  saveSettings: async (payload: any) =>
     unwrapData<any>(await apiPut<any>('/mail/settings', payload)),
-  test: (to: string, scope: 'tenant' | 'global' = 'tenant') =>
+  test: (to: string) =>
     apiPost<any>('/mail/test', { to }),
 };
 

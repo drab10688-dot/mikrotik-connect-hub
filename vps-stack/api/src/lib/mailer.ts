@@ -24,13 +24,6 @@ const GLOBAL_KEY = '00000000-0000-0000-0000-000000000000';
 /** Devuelve la configuración del ISP; si no existe, la global del sistema. */
 export async function getSmtpSettings(tenantId?: string | null): Promise<SmtpSettings | null> {
   try {
-    if (tenantId) {
-      const { rows } = await pool.query(
-        `SELECT * FROM smtp_settings WHERE tenant_id = $1 AND COALESCE(is_active, true) = true LIMIT 1`,
-        [tenantId]
-      );
-      if (rows[0]?.host) return rows[0];
-    }
     const { rows } = await pool.query(
       `SELECT * FROM smtp_settings WHERE tenant_id IS NULL AND COALESCE(is_active, true) = true LIMIT 1`
     );
