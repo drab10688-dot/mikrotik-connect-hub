@@ -300,7 +300,7 @@ export default function PppoeUsers() {
                   <Input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="YERSON PEPITO PERES"
+                    placeholder="Ej: Juan Perez"
                   />
                   <p className="text-xs text-muted-foreground">
                     En la MikroTik quedará como{" "}
