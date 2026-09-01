@@ -1268,21 +1268,35 @@ export default function Network() {
               </div>
               <div className="space-y-1.5">
                 <Label>Perfil PPPoE</Label>
-                <Select value={editProfile} onValueChange={setEditProfile}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un perfil" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {editProfile && !pppoeProfiles.some((p: any) => p.name === editProfile) && (
-                      <SelectItem value={editProfile}>{editProfile} (actual)</SelectItem>
-                    )}
-                    {(pppoeProfiles as any[]).map((p: any) => (
-                      <SelectItem key={p[".id"] || p.id || p.name} value={p.name}>
-                        {p.name}{p["rate-limit"] ? ` — ${p["rate-limit"]}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {profilesLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Cargando perfiles de la MikroTik…
+                  </div>
+                ) : (
+                  <Select value={editProfile} onValueChange={setEditProfile}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editProfile && !pppoeProfiles.some((p: any) => p.name === editProfile) && (
+                        <SelectItem value={editProfile}>{editProfile} (actual)</SelectItem>
+                      )}
+                      {(pppoeProfiles as any[]).map((p: any) => (
+                        <SelectItem key={p[".id"] || p.id || p.name} value={p.name}>
+                          {p.name}{p["rate-limit"] ? ` — ${p["rate-limit"]}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {profilesError && (
+                  <div className="flex items-center justify-between gap-2 text-xs text-amber-500">
+                    <span>No se pudieron leer los perfiles del router (se muestran los perfiles en uso).</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => refetchProfiles()}>
+                      <RefreshCw className="w-3 h-3 mr-1" /> Reintentar
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>
