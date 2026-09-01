@@ -292,7 +292,34 @@ export const backupApi = {
   remove: (filename: string) => apiDelete(`/backup/${encodeURIComponent(filename)}`),
   downloadUrl: (filename: string) =>
     `${getApiBaseUrl()}/backup/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(getToken() || '')}`,
+
+  // Restauración
+  restore: async (filename: string) =>
+    unwrapData<any>(await apiPost<any>(`/backup/restore/${encodeURIComponent(filename)}`, {})),
+  restoreUpload: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${getApiBaseUrl()}/backup/restore-upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken() || ''}` },
+      body: form,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((json as any)?.error || 'No se pudo restaurar la copia');
+    return unwrapData<any>(json);
+  },
+
+  // Dropbox
+  getSettings: async () => unwrapData<any>(await apiGet<any>('/backup/settings')),
+  saveSettings: async (settings: any) => unwrapData<any>(await apiPut<any>('/backup/settings', settings)),
+  testSettings: async () => unwrapData<any>(await apiPost<any>('/backup/settings/test', {})),
+  remoteList: async () => unwrapArray<any>(await apiGet<any>('/backup/remote')),
+  pushRemote: async (filename: string) =>
+    unwrapData<any>(await apiPost<any>(`/backup/remote/${encodeURIComponent(filename)}`, {})),
+  pullRemote: async (filename: string) =>
+    unwrapData<any>(await apiPost<any>(`/backup/remote/${encodeURIComponent(filename)}/pull`, {})),
 };
+
 
 // Helpers para normalizar respuestas del backend VPS
 const unwrapData = <T = any>(payload: any): T => {
