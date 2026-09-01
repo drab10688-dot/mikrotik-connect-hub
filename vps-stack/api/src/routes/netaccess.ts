@@ -888,20 +888,15 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId', editRed, async (req: AuthReq
     }
 
     const config = await getDeviceConfig(pool, mikrotikId);
-    await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`, 'PATCH', patch);
+    await setPppoeSecret(config, secretId, patch);
 
     // Si cambió el perfil, tumbar la sesión activa para que reconecte con el perfil nuevo
     let kicked = false;
     if (patch.profile) {
-      const active = asArray(await mikrotikRequest(config, '/rest/ppp/active').catch(() => []));
-      const secret = await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`).catch(() => null);
-      const name = (secret as any)?.name;
-      const session = active.find((a: any) => String(a.name) === String(name));
-      if (session?.['.id']) {
-        await mikrotikRequest(config, `/rest/ppp/active/${encodeURIComponent(session['.id'])}`, 'DELETE').catch(() => undefined);
-        kicked = true;
-      }
+      const secret = await findSecretById(config, secretId);
+      kicked = await kickPppoeSession(config, secret?.name);
     }
+
 
     res.json({ success: true, data: { secret_id: secretId, kicked } });
   } catch (error: any) {
