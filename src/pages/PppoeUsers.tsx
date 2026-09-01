@@ -525,6 +525,41 @@ export default function PppoeUsers() {
                     />
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">Asignar IP automáticamente</p>
+                    <p className="text-xs text-muted-foreground">
+                      Toma la siguiente IP libre del rango al crear cada usuario PPPoE.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={cfg.auto_assign_ip}
+                    disabled={!isAdmin && !isSuperAdmin}
+                    onCheckedChange={(v) => setCfg({ ...cfg, auto_assign_ip: v })}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>IP inicial del rango</Label>
+                    <Input
+                      value={cfg.ip_pool_start}
+                      disabled={!isAdmin && !isSuperAdmin}
+                      onChange={(e) => setCfg({ ...cfg, ip_pool_start: e.target.value })}
+                      placeholder="10.10.0.2"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>IP final (opcional)</Label>
+                    <Input
+                      value={cfg.ip_pool_end}
+                      disabled={!isAdmin && !isSuperAdmin}
+                      onChange={(e) => setCfg({ ...cfg, ip_pool_end: e.target.value })}
+                      placeholder="10.10.7.254"
+                    />
+                  </div>
+                </div>
+
                 <Button
                   onClick={() => saveCfg.mutate()}
                   disabled={!deviceId || saveCfg.isPending || (!isAdmin && !isSuperAdmin)}
