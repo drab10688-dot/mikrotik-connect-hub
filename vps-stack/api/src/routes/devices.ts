@@ -432,16 +432,42 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
   }
 });
 
-// ─── User Device Access (Admin) ─────────────────
+// ─── User Device Access (super_admin: todo | admin: solo su ISP) ───
+/** Verifica que un usuario y un dispositivo pertenezcan al ISP del admin. */
+async function belongsToTenant(tenantId: string | null | undefined, userId: string, mikrotikId?: string): Promise<boolean> {
+  if (!tenantId) return false;
+  const { rows: u } = await pool.query('SELECT 1 FROM users WHERE id = $1 AND tenant_id = $2', [userId, tenantId]);
+  if (!u[0]) return false;
+  if (mikrotikId) {
+    const { rows: d } = await pool.query('SELECT 1 FROM mikrotik_devices WHERE id = $1 AND tenant_id = $2', [mikrotikId, tenantId]);
+    if (!d[0]) return false;
+  }
+  return true;
+}
+
 devicesRouter.get('/accesses', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede listar accesos' });
+    const isSuper = req.userRole === 'super_admin';
+    const isAdmin = req.userRole === 'admin';
+    if (!isSuper && !isAdmin) {
+      return res.status(403).json({ error: 'Solo administradores pueden listar accesos' });
+    }
+    if (isAdmin && !req.tenantId) {
+      return res.status(403).json({ error: 'Tu cuenta no está asociada a ningún ISP' });
     }
 
-    const { rows } = await pool.query(
-      'SELECT id, user_id, mikrotik_id, granted_by, created_at FROM user_mikrotik_access ORDER BY created_at DESC'
-    );
+    const { rows } = isSuper
+      ? await pool.query(
+          'SELECT id, user_id, mikrotik_id, granted_by, created_at FROM user_mikrotik_access ORDER BY created_at DESC'
+        )
+      : await pool.query(
+          `SELECT uma.id, uma.user_id, uma.mikrotik_id, uma.granted_by, uma.created_at
+             FROM user_mikrotik_access uma
+             JOIN users u ON u.id = uma.user_id
+            WHERE u.tenant_id = $1
+            ORDER BY uma.created_at DESC`,
+          [req.tenantId]
+        );
 
     res.json({ data: rows });
   } catch (error: any) {
@@ -451,14 +477,22 @@ devicesRouter.get('/accesses', async (req: AuthRequest, res: Response) => {
 
 devicesRouter.post('/accesses', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede asignar accesos' });
+    const isSuper = req.userRole === 'super_admin';
+    const isAdmin = req.userRole === 'admin';
+    if (!isSuper && !isAdmin) {
+      return res.status(403).json({ error: 'Solo administradores pueden asignar accesos' });
     }
 
     const { user_id, mikrotik_id, granted_by } = req.body;
     if (!user_id || !mikrotik_id) {
       return res.status(400).json({ error: 'user_id y mikrotik_id son requeridos' });
     }
+
+    // Admin de ISP: solo puede asignar usuarios y equipos de su propio ISP
+    if (isAdmin && !(await belongsToTenant(req.tenantId, user_id, mikrotik_id))) {
+      return res.status(403).json({ error: 'Ese usuario o equipo no pertenece a tu ISP' });
+    }
+
 
     const { rows } = await pool.query(
       `INSERT INTO user_mikrotik_access (user_id, mikrotik_id, granted_by)
@@ -476,11 +510,25 @@ devicesRouter.post('/accesses', async (req: AuthRequest, res: Response) => {
 
 devicesRouter.delete('/accesses/:accessId', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede remover accesos' });
+    const isSuper = req.userRole === 'super_admin';
+    const isAdmin = req.userRole === 'admin';
+    if (!isSuper && !isAdmin) {
+      return res.status(403).json({ error: 'Solo administradores pueden remover accesos' });
     }
 
     const { accessId } = req.params;
+
+    // Admin de ISP: solo puede remover accesos de usuarios de su propio ISP
+    if (isAdmin) {
+      const { rows } = await pool.query(
+        `SELECT uma.user_id FROM user_mikrotik_access uma WHERE uma.id = $1`,
+        [accessId]
+      );
+      if (!rows[0] || !(await belongsToTenant(req.tenantId, rows[0].user_id))) {
+        return res.status(403).json({ error: 'Ese acceso no pertenece a tu ISP' });
+      }
+    }
+
     await pool.query('DELETE FROM user_mikrotik_access WHERE id = $1', [accessId]);
     res.json({ success: true });
   } catch (error: any) {
