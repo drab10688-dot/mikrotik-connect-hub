@@ -296,6 +296,25 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
      )`,
     `CREATE INDEX IF NOT EXISTS backup_jobs_idx ON backup_jobs(tenant_id, created_at DESC)`,
 
+    // Destino remoto de las copias (Dropbox) y rastro del archivo subido
+    `ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS remote_path TEXT`,
+    `ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS remote_provider TEXT`,
+    `CREATE TABLE IF NOT EXISTS backup_settings (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       tenant_key UUID GENERATED ALWAYS AS (COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED,
+       dropbox_enabled BOOLEAN NOT NULL DEFAULT false,
+       auto_upload BOOLEAN NOT NULL DEFAULT true,
+       dropbox_app_key TEXT,
+       dropbox_app_secret TEXT,
+       dropbox_refresh_token TEXT,
+       dropbox_folder TEXT DEFAULT '/OmniSync',
+       keep_remote INTEGER DEFAULT 10,
+       created_at TIMESTAMPTZ DEFAULT now(),
+       updated_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS backup_settings_tenant_key ON backup_settings(tenant_key)`,
+
     // Nuevas secciones de permisos: correo y respaldos (solo admin por defecto)
     `INSERT INTO role_permissions (tenant_id, role, section, can_view, can_edit)
      SELECT t.id, r.role, s.section, r.role = 'admin', r.role = 'admin'
