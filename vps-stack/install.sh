@@ -304,4 +304,7 @@ echo -e "  Actualizar:  ${CYAN}cd $INSTALL_DIR && sudo bash update.sh${NC}"
 echo -e "  Probar ONU:  ${CYAN}sudo bash $INSTALL_DIR/test-browser.sh 192.168.50.1 80${NC}"
 echo -e "  HTTPS real (opcional, evita avisos de certificado):"
 echo -e "               ${CYAN}sudo bash $INSTALL_DIR/setup-ssl.sh <tu-dominio> tucorreo@dominio.com${NC}"
+echo -e "  Restaurar:   ${CYAN}sudo bash $INSTALL_DIR/restore.sh $INSTALL_DIR/backups/sistema-....sql.gz${NC}"
+echo -e "               ${CYAN}sudo bash $INSTALL_DIR/restore.sh --dropbox sistema-....sql.gz${NC}"
 echo ""
+
