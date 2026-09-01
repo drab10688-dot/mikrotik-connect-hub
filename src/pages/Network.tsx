@@ -253,12 +253,32 @@ export default function Network() {
   const [editComment, setEditComment] = useState("");
   const [editProfile, setEditProfile] = useState("");
 
-  const { data: pppoeProfiles = [] } = useQuery({
+  const {
+    data: pppoeProfilesRaw = [],
+    isLoading: profilesLoading,
+    isError: profilesError,
+    refetch: refetchProfiles,
+  } = useQuery({
     queryKey: ["net-pppoe-profiles", deviceId],
     queryFn: () => pppoeApi.profiles(deviceId),
     enabled: !!deviceId && !!editSecret,
     staleTime: 120_000,
+    retry: 1,
   });
+
+  // Fallback: si la consulta de perfiles falla o viene vacía, ofrece los
+  // perfiles que ya usan los secretos cargados en la tabla.
+  const pppoeProfiles = useMemo(() => {
+    const list = Array.isArray(pppoeProfilesRaw) ? [...pppoeProfilesRaw] : [];
+    const known = new Set(list.map((p: any) => p?.name).filter(Boolean));
+    for (const s of pppoeSearch.filtered as any[]) {
+      if (s?.profile && !known.has(s.profile)) {
+        known.add(s.profile);
+        list.push({ name: s.profile });
+      }
+    }
+    return list;
+  }, [pppoeProfilesRaw, pppoeSearch.filtered]);
 
   const updateSecretMut = useMutation({
     mutationFn: () =>
