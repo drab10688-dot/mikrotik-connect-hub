@@ -511,6 +511,9 @@ export default function Network() {
                           <tr key={`${s.source || "secret"}-${s.id || "n"}-${s.name}-${i}`} className="border-b last:border-0">
 
                             <td className="py-2 pr-4 font-medium">{s.name}</td>
+                            <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[220px] truncate" title={s.comment || ""}>
+                              {s.comment || "—"}
+                            </td>
                             <td className="py-2 pr-4">
                               <Badge variant={s.online ? "default" : "secondary"}>
                                 {s.online ? "En línea" : s.disabled ? "Deshabilitado" : "Offline"}
@@ -542,7 +545,7 @@ export default function Network() {
                           </tr>
                         ))}
                         {!filteredSecrets.length && (
-                          <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
+                          <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
                         )}
                       </tbody>
                     </table>
