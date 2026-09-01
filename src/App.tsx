@@ -6,6 +6,7 @@ import LoginPage from "./pages/Auth/Login";
 import ResetPassword from "./pages/Auth/ResetPassword";
 import MailSettings from "./pages/Admin/MailSettings";
 import Backups from "./pages/Admin/Backups";
+import SslSettings from "./pages/Admin/Ssl";
 import RemoteDesktop from "./pages/RemoteDesktop";
 import RemoteDesktopMobile from "./pages/RemoteDesktopMobile";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
@@ -62,6 +63,7 @@ const App = () => (
           <Route path="/admin/users" element={<ProtectedRoute requireAdmin section="usuarios"><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/register-user" element={<ProtectedRoute requireAdmin section="usuarios"><RegisterUser /></ProtectedRoute>} />
           <Route path="/admin/correo" element={<ProtectedRoute requireAdmin section="correo"><MailSettings /></ProtectedRoute>} />
+          <Route path="/admin/dominio" element={<ProtectedRoute requireSuperAdmin><SslSettings /></ProtectedRoute>} />
           <Route path="/admin/respaldos" element={<ProtectedRoute requireAdmin section="respaldos"><Backups /></ProtectedRoute>} />
           
 

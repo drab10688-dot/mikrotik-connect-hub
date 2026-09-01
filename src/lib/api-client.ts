@@ -283,6 +283,14 @@ export const mailApi = {
     apiPost<any>(`/mail/test${scope === 'global' ? '?scope=global' : ''}`, { to }),
 };
 
+// ─── Dominio propio y certificado HTTPS (solo super admin) ─
+export const sslApi = {
+  get: async () => unwrapData<any>(await apiGet<any>('/ssl')),
+  check: async (domain: string) => unwrapData<any>(await apiPost<any>('/ssl/check', { domain })),
+  issue: async (domain: string, email?: string) =>
+    unwrapData<any>(await apiPost<any>('/ssl/issue', { domain, email })),
+};
+
 // ─── Copias de seguridad (ISP y sistema completo) ─────────
 export const backupApi = {
   list: async () => unwrapArray<any>(await apiGet<any>('/backup')),

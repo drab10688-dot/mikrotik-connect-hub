@@ -20,6 +20,7 @@ import { ispRouter, ispPublicRouter, requireSection, requireModule } from './rou
 import { onuWebRouter } from './routes/onu-web';
 import { mailRouter } from './routes/mail';
 import { backupRouter } from './routes/backup';
+import { sslRouter, renewSslIfNeeded } from './routes/ssl';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -74,6 +75,7 @@ app.use('/api/browser', authMiddleware, requireSection('red'), browserRouter);
 app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
 // Servidor de correo (SMTP) y copias de seguridad por ISP / del sistema
 app.use('/api/mail', authMiddleware, requireSection('correo'), mailRouter);
+app.use('/api/ssl', authMiddleware, requireRole('super_admin'), sslRouter);
 app.use('/api/backup', authMiddleware, requireSection('respaldos'), backupRouter);
 
 
@@ -109,6 +111,11 @@ cron.schedule('0 3 * * *', () => {
   cleanupPppoeEvents(pool)
     .then(n => console.log(`[CRON] PPPoE events cleanup: ${n} registros`))
     .catch(e => console.error('[CRON] PPPoE cleanup error:', e.message));
+});
+
+// Cron: renovación del certificado HTTPS del panel (diaria, 4:15 AM)
+cron.schedule('15 4 * * *', () => {
+  renewSslIfNeeded().catch(e => console.error('[SSL] cron error:', e.message));
 });
 
 // Cron: monitor de sesiones PPPoE (detecta desconexiones) cada minuto

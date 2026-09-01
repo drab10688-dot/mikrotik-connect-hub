@@ -322,6 +322,19 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        CROSS JOIN (VALUES ('admin'), ('user'), ('secretary'), ('reseller')) AS r(role)
        CROSS JOIN (VALUES ('correo'),('respaldos')) AS s(section)
      ON CONFLICT (tenant_id, role, section) DO NOTHING`,
+
+    // Dominio + certificado HTTPS del panel (una sola fila, global del sistema)
+    `CREATE TABLE IF NOT EXISTS ssl_settings (
+       id INTEGER PRIMARY KEY DEFAULT 1,
+       domain TEXT,
+       email TEXT,
+       status TEXT DEFAULT 'none',
+       last_message TEXT,
+       last_issued_at TIMESTAMPTZ,
+       expires_at TIMESTAMPTZ,
+       updated_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `INSERT INTO ssl_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
   ];
 
 
