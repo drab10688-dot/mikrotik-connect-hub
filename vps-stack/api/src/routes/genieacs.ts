@@ -1401,6 +1401,38 @@ async function ensureFastInform(devices: any[]): Promise<void> {
   }
 }
 
+// ─── Lectura inicial automática (bootstrap TR-069) ───────
+// Las ONUs nuevas informan solo un subconjunto de parámetros: sin WiFi ni
+// potencia óptica hasta que alguien pulsa "Leer parámetros TR-069". Aquí se
+// hace solo, en cuanto la ONU aparece en el listado.
+const autoReadAt = new Map<string, number>();
+const AUTO_READ_RETRY_MS = 3 * 60_000;
+
+async function ensureInitialRead(devices: any[]): Promise<void> {
+  const now = Date.now();
+  for (const d of devices) {
+    const id = d?.deviceId;
+    if (!id) continue;
+    const hasData = (Array.isArray(d.radios) && d.radios.length > 0)
+      || d.rxPower != null || d.txPower != null;
+    if (hasData) { autoReadAt.set(id, Number.POSITIVE_INFINITY); continue; }
+    const last = autoReadAt.get(id) || 0;
+    if (now - last < AUTO_READ_RETRY_MS) continue;
+    autoReadAt.set(id, now);
+    try {
+      await queueTasksWithSingleConnectionRequest(id, [
+        { name: 'refreshObject', objectName: 'InternetGatewayDevice.DeviceInfo' },
+        { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
+        { name: 'refreshObject', objectName: 'InternetGatewayDevice.WANDevice.1' },
+      ]);
+    } catch {
+      // Se reintenta en el próximo listado tras el backoff.
+    }
+  }
+}
+
+
+
 function sanitizePower(val: any): number | null {
   let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
   if (!Number.isFinite(num)) return null;
