@@ -393,6 +393,11 @@ export default function PppoeUsers() {
                 />
                 <div className="flex items-center justify-between">
                   <Badge variant="secondary">{bulkList.length} usuario(s)</Badge>
+                  {duplicatesInBulk.length > 0 && (
+                    <Badge variant="destructive" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" /> {duplicatesInBulk.length} ya existen
+                    </Badge>
+                  )}
                   <Button onClick={submitBulk} disabled={!deviceId || !canManage || createUsers.isPending}>
                     Crear todos
                   </Button>
