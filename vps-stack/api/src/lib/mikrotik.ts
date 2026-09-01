@@ -373,10 +373,11 @@ export async function nativeApiCommand(
   authMode: NativeAuthMode = 'plain',
   timeoutMs = 15000
 ): Promise<unknown> {
-  const command = restPathToNativeCommand(path, method);
-  const attrWords = bodyToApiWords(body);
-  
+  const { command, idWords } = restPathToNativeCommand(path, method);
+  const attrWords = [...idWords, ...bodyToApiWords(body)];
+
   const sentences = await nativeApiExecute(config, command, attrWords, timeoutMs, authMode);
+
   
   // Parse response sentences into objects
   const results: Record<string, string>[] = [];
