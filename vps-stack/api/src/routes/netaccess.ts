@@ -816,7 +816,33 @@ netAccessRouter.get('/:mikrotikId/pppoe', async (req: AuthRequest, res: Response
   }
 });
 
+/**
+ * Aplica cambios a un secreto PPPoE usando el mismo estilo de comando que la
+ * creación (que sí funciona): POST a /set con el `.id` dentro del cuerpo.
+ * Evita rutas con el ID en la URL, que fallan en la API nativa de RouterOS v6.
+ */
+async function setPppoeSecret(config: any, secretId: string, patch: Record<string, string>) {
+  return mikrotikRequest(config, '/rest/ppp/secret/set', 'POST', { '.id': secretId, ...patch });
+}
+
+/** Busca un secreto por su `.id` leyendo la lista completa (compatible v6/v7). */
+async function findSecretById(config: any, secretId: string): Promise<any | null> {
+  const list = asArray(await mikrotikRequest(config, '/rest/ppp/secret').catch(() => []));
+  return list.find((s: any) => String(s['.id']) === String(secretId)) || null;
+}
+
+/** Tumba la sesión activa de un usuario para forzar reconexión. */
+async function kickPppoeSession(config: any, name?: string | null) {
+  if (!name) return false;
+  const active = asArray(await mikrotikRequest(config, '/rest/ppp/active').catch(() => []));
+  const session = active.find((a: any) => String(a.name) === String(name));
+  if (!session?.['.id']) return false;
+  await mikrotikRequest(config, '/rest/ppp/active/remove', 'POST', { '.id': session['.id'] }).catch(() => undefined);
+  return true;
+}
+
 /** Cambia la clave PPPoE de un cliente directo en el MikroTik (vía VPN/REST). */
+
 netAccessRouter.put('/:mikrotikId/pppoe/:secretId/password', editRed, async (req: AuthRequest, res: Response) => {
   try {
     const mikrotikId = await guard(req, res);
@@ -828,20 +854,16 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId/password', editRed, async (req
     if (password.length < 4) return res.status(400).json({ success: false, error: 'La clave debe tener al menos 4 caracteres' });
 
     const config = await getDeviceConfig(pool, mikrotikId);
-    await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`, 'PATCH', { password });
+    await setPppoeSecret(config, secretId, { password });
 
     // Opcional: tumbar la sesión activa para que reconecte con la clave nueva
     let kicked = false;
     if (req.body?.kick) {
-      const active = asArray(await mikrotikRequest(config, '/rest/ppp/active').catch(() => []));
-      const secret = asArray(await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`).catch(() => null));
-      const name = (secret as any)?.name;
-      const session = active.find((a: any) => String(a.name) === String(name));
-      if (session?.['.id']) {
-        await mikrotikRequest(config, `/rest/ppp/active/${encodeURIComponent(session['.id'])}`, 'DELETE').catch(() => undefined);
-        kicked = true;
-      }
+      const secret = await findSecretById(config, secretId);
+      kicked = await kickPppoeSession(config, secret?.name);
     }
+
+
 
     res.json({ success: true, data: { secret_id: secretId, kicked } });
   } catch (error: any) {
@@ -866,20 +888,15 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId', editRed, async (req: AuthReq
     }
 
     const config = await getDeviceConfig(pool, mikrotikId);
-    await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`, 'PATCH', patch);
+    await setPppoeSecret(config, secretId, patch);
 
     // Si cambió el perfil, tumbar la sesión activa para que reconecte con el perfil nuevo
     let kicked = false;
     if (patch.profile) {
-      const active = asArray(await mikrotikRequest(config, '/rest/ppp/active').catch(() => []));
-      const secret = await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`).catch(() => null);
-      const name = (secret as any)?.name;
-      const session = active.find((a: any) => String(a.name) === String(name));
-      if (session?.['.id']) {
-        await mikrotikRequest(config, `/rest/ppp/active/${encodeURIComponent(session['.id'])}`, 'DELETE').catch(() => undefined);
-        kicked = true;
-      }
+      const secret = await findSecretById(config, secretId);
+      kicked = await kickPppoeSession(config, secret?.name);
     }
+
 
     res.json({ success: true, data: { secret_id: secretId, kicked } });
   } catch (error: any) {
