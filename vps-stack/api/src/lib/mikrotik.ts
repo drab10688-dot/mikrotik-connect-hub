@@ -25,8 +25,10 @@ function normalizePort(port: number | string): number {
 type NativeAuthMode = 'plain' | 'challenge-first';
 
 const authCooldowns = new Map<string, number>();
+const authFailureCounts = new Map<string, number>();
 const AUTH_COOLDOWN_MS = 60_000;
 const nativeApiQueues = new Map<string, Promise<void>>();
+
 
 function isAuthenticationError(error: Error): boolean {
   return /login failed|invalid user|invalid password|authentication failed|not logged in|cannot log in/i.test(error.message);
