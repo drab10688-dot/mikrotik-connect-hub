@@ -256,16 +256,20 @@ export default function PppoeUsers() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label>Usuario</Label>
+                  <Label>Nombre del cliente</Label>
                   <Input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="cliente001"
+                    placeholder="YERSON PEPITO PERES"
                   />
-                  {cfg.username_prefix && (
-                    <p className="text-xs text-muted-foreground">Se creará como {cfg.username_prefix}{form.name || "…"}</p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    En la MikroTik quedará como{" "}
+                    <span className="font-mono text-primary">
+                      {(cfg.username_prefix || "") + (sanitizeUsername(form.name) || "…")}
+                    </span>
+                  </p>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label>Contraseña (opcional)</Label>
                   <Input
