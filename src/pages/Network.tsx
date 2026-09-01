@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
   Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
-  AlertTriangle, PlugZap, Activity, Globe,
+  AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
@@ -227,7 +227,24 @@ export default function Network() {
   );
 
   // Sin paginación en PPPoE: se muestran todos los resultados filtrados.
-  const filteredSecrets = pppoeSearch.filtered;
+  const [ipSort, setIpSort] = useState<"asc" | "desc" | null>(null);
+
+  const ipToNumber = (ip?: string | null) => {
+    if (!ip) return -1;
+    const parts = String(ip).split(".").map((p) => parseInt(p, 10));
+    if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return -1;
+    return ((parts[0] * 256 + parts[1]) * 256 + parts[2]) * 256 + parts[3];
+  };
+
+  const filteredSecrets = useMemo(() => {
+    const list = [...pppoeSearch.filtered];
+    if (!ipSort) return list;
+    return list.sort((a, b) => {
+      const diff = ipToNumber(a.remote_address) - ipToNumber(b.remote_address);
+      return ipSort === "asc" ? diff : -diff;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pppoeSearch.filtered, ipSort]);
   const filteredEquipos = equipoSearch.paged;
 
   const openWebFig = async () => {
@@ -465,8 +482,25 @@ export default function Network() {
                       <thead className="text-left text-muted-foreground">
                         <tr className="border-b">
                           <th className="py-2 pr-4">Usuario</th>
+                          <th className="py-2 pr-4">Comentario</th>
                           <th className="py-2 pr-4">Estado</th>
-                          <th className="py-2 pr-4">IP</th>
+                          <th className="py-2 pr-4">
+                            <button
+                              type="button"
+                              onClick={() => setIpSort(ipSort === "asc" ? "desc" : ipSort === "desc" ? null : "asc")}
+                              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                              title="Ordenar por IP (clic para cambiar)"
+                            >
+                              IP
+                              {ipSort === "asc" ? (
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              ) : ipSort === "desc" ? (
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                              )}
+                            </button>
+                          </th>
                           <th className="py-2 pr-4">Perfil</th>
                           <th className="py-2 pr-4">Uptime</th>
                           <th className="py-2">Acceso web</th>
@@ -477,6 +511,9 @@ export default function Network() {
                           <tr key={`${s.source || "secret"}-${s.id || "n"}-${s.name}-${i}`} className="border-b last:border-0">
 
                             <td className="py-2 pr-4 font-medium">{s.name}</td>
+                            <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[220px] truncate" title={s.comment || ""}>
+                              {s.comment || "—"}
+                            </td>
                             <td className="py-2 pr-4">
                               <Badge variant={s.online ? "default" : "secondary"}>
                                 {s.online ? "En línea" : s.disabled ? "Deshabilitado" : "Offline"}
@@ -508,7 +545,7 @@ export default function Network() {
                           </tr>
                         ))}
                         {!filteredSecrets.length && (
-                          <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
+                          <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
                         )}
                       </tbody>
                     </table>

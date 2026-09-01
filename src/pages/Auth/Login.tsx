@@ -352,6 +352,11 @@ export default function Login() {
 
           </div>
         </div>
+
+        <footer className="pointer-events-none absolute bottom-4 left-0 right-0 z-10 flex items-center justify-center gap-2 text-[11px] text-muted-foreground/80">
+          <img src={omnisyncSphereUrl} alt="OmniSync" className="h-4 w-4 rounded-full ring-1 ring-primary/30" />
+          <span>Powered by <span className="font-semibold text-primary/90">OmniSync</span> · Plataforma de gestión ISP</span>
+        </footer>
       </div>
     );
   }
@@ -374,6 +379,11 @@ export default function Login() {
         <Brand size="sm" />
         {LoginForm}
       </div>
+
+      <footer className="pointer-events-none absolute bottom-4 left-0 right-0 z-10 flex items-center justify-center gap-2 text-[11px] text-muted-foreground/80">
+        <img src={omnisyncSphereUrl} alt="OmniSync" className="h-4 w-4 rounded-full ring-1 ring-primary/30" />
+        <span>Powered by <span className="font-semibold text-primary/90">OmniSync</span> · Plataforma de gestión ISP</span>
+      </footer>
     </div>
   );
 }
