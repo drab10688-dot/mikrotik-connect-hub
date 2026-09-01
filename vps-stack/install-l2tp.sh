@@ -17,7 +17,9 @@ ok(){ echo -e "${G}[OK]${N} $*"; }
 warn(){ echo -e "${Y}[!]${N} $*"; }
 err(){ echo -e "${R}[X]${N} $*"; }
 
-ONU_NETS="${ONU_NETS:-10.82.0.0/21}"
+# Por defecto todos los rangos privados: las ONUs siempre usan IP privada
+# detrás de la MikroTik, así queda auto-configurado sin pasar --onu-nets.
+ONU_NETS="${ONU_NETS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --onu-nets) ONU_NETS="${2:-}"; shift 2;;

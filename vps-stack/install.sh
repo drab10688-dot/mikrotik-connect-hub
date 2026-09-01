@@ -16,8 +16,10 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC
 
 REPO_URL="https://github.com/drab10688-dot/mikrotik-connect-hub.git"
 INSTALL_DIR="/opt/omnisync"
-# Redes de ONUs/antenas detrás de la MikroTik (PPPoE 192.168.x.x cubierto por /16)
-ONU_NETS="${ONU_NETS:-192.168.0.0/16}"
+# Redes de ONUs/antenas detrás de la MikroTik.
+# Por defecto se cubren TODOS los rangos privados (RFC1918), así no hay
+# que configurar nada: cualquier red de ONU queda alcanzable por el túnel.
+ONU_NETS="${ONU_NETS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
 
 is_public_ipv4() {
   local ip="$1"
