@@ -174,6 +174,8 @@ for cname in omnisync-mariadb omnisync-freeradius omnisync-phpnuxbill omnisync-m
              omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   docker rm -f "$cname" 2>/dev/null || true
 done
+# Winbox remoto quedó retirado del sistema: borra también su imagen.
+docker rmi omnisync/winbox:latest >/dev/null 2>&1 || true
 
 if [ -f /opt/genieacs/docker-compose.yml ]; then
   echo -e "${YELLOW}Deteniendo GenieACS standalone en /opt/genieacs...${NC}"
