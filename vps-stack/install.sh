@@ -16,8 +16,10 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC
 
 REPO_URL="https://github.com/drab10688-dot/mikrotik-connect-hub.git"
 INSTALL_DIR="/opt/omnisync"
-# Redes de ONUs/antenas detrás de la MikroTik (PPPoE 192.168.x.x cubierto por /16)
-ONU_NETS="${ONU_NETS:-192.168.0.0/16}"
+# Redes de ONUs/antenas detrás de la MikroTik.
+# Por defecto se cubren TODOS los rangos privados (RFC1918), así no hay
+# que configurar nada: cualquier red de ONU queda alcanzable por el túnel.
+ONU_NETS="${ONU_NETS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
 
 is_public_ipv4() {
   local ip="$1"
@@ -124,6 +126,7 @@ GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
 BROWSER_HOME_URL=about:blank
 VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
+ONU_NETS=${ONU_NETS}
 TZ=America/Bogota
 EOF
   echo -e "${GREEN}✓ .env generado${NC}"
@@ -131,6 +134,7 @@ else
   grep -q '^BROWSER_HOME_URL=' .env || echo "BROWSER_HOME_URL=about:blank" >> .env
   grep -q '^VPS_PUBLIC_IP=' .env && sed -i "s|^VPS_PUBLIC_IP=.*|VPS_PUBLIC_IP=${VPS_PUBLIC_IP}|" .env \
     || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
+  grep -q '^ONU_NETS=' .env || echo "ONU_NETS=${ONU_NETS}" >> .env
   echo -e "${GREEN}✓ .env existente conservado${NC}"
 fi
 

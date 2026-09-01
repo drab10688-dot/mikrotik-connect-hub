@@ -49,7 +49,7 @@ if echo "$ROUTE" | grep -Eq 'dev ppp[0-9]+'; then
 else
   warn "La ruta no usa ppp; intentando restaurarla"
   [ -x /opt/omnisync-l2tp/l2tp-routes.sh ] && /opt/omnisync-l2tp/l2tp-routes.sh >/dev/null 2>&1 || true
-  ONU_NETS="${ONU_NETS:-10.82.0.0/21}" bash "$INSTALL_DIR/configure-browser-routing.sh" >/dev/null 2>&1 || true
+  ONU_NETS="${ONU_NETS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}" bash "$INSTALL_DIR/configure-browser-routing.sh" >/dev/null 2>&1 || true
   ROUTE=$(ip route get "$TARGET_IP" 2>&1 | head -1 || true)
   echo "  $ROUTE"
   echo "$ROUTE" | grep -Eq 'dev ppp[0-9]+' && ok "Ruta restaurada" || fail "No hay ruta L2TP hacia la ONU"
