@@ -291,15 +291,17 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
     if (!incoming.length) return res.status(400).json({ error: 'Sin usuarios que crear' });
 
     const config = await getDeviceConfig(pool, mikrotikId);
+    const nextIp = await makeIpAllocator(config, settings);
     const results: any[] = [];
 
     for (const item of incoming) {
       const rawName = String(item?.name || '').trim();
-      if (!rawName) {
-        results.push({ name: rawName, ok: false, error: 'Nombre vacío' });
+      const clean = sanitizeUsername(rawName);
+      if (!clean) {
+        results.push({ name: rawName, ok: false, error: 'Nombre vacío o inválido' });
         continue;
       }
-      const name = settings.username_prefix ? `${settings.username_prefix}${rawName}` : rawName;
+      const name = settings.username_prefix ? `${settings.username_prefix}${clean}` : clean;
       const password =
         (item?.password && String(item.password)) ||
         (settings.use_global_password ? settings.global_password : null);
@@ -309,6 +311,8 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
         continue;
       }
 
+      const remoteAddress = String(item?.remoteAddress || '').trim() || nextIp();
+
       try {
         await mikrotikRequest(config, '/rest/ppp/secret/add', 'POST', {
           name,
@@ -316,14 +320,15 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
           service: item?.service || settings.default_service || 'pppoe',
           profile: item?.profile || settings.default_profile || 'default',
           'local-address': item?.localAddress || undefined,
-          'remote-address': item?.remoteAddress || undefined,
+          'remote-address': remoteAddress || undefined,
           comment: item?.comment || '',
         });
-        results.push({ name, ok: true });
+        results.push({ name, originalName: rawName, ok: true, password, remoteAddress: remoteAddress || null });
       } catch (err: any) {
         results.push({ name, ok: false, error: err?.message || 'Error en la MikroTik' });
       }
     }
+
 
     invalidate(`pppoe:${mikrotikId}:`);
     const created = results.filter((r) => r.ok).length;
