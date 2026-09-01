@@ -108,7 +108,13 @@ pppoeRouter.delete('/:mikrotikId/secrets/:secretId', async (req: AuthRequest, re
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
     const config = await getDeviceConfig(pool, mikrotikId);
+    let deletedName = secretId;
+    try {
+      const found: any = await mikrotikRequest(config, `/rest/ppp/secret/${secretId}`);
+      if (found?.name) deletedName = found.name;
+    } catch {}
     await mikrotikRequest(config, `/rest/ppp/secret/${secretId}`, 'DELETE');
+    await logAudit(req, mikrotikId, deletedName, 'eliminado');
     invalidate(`pppoe:${mikrotikId}:`);
     res.json({ success: true });
   } catch (error: any) {

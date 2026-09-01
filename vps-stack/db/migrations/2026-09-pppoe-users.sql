@@ -38,3 +38,17 @@ UPDATE role_permissions
 ALTER TABLE pppoe_settings ADD COLUMN IF NOT EXISTS auto_assign_ip BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE pppoe_settings ADD COLUMN IF NOT EXISTS ip_pool_start TEXT;
 ALTER TABLE pppoe_settings ADD COLUMN IF NOT EXISTS ip_pool_end TEXT;
+
+-- ─── Auditoría de usuarios PPPoE (quién creó / compartió / eliminó) ─────
+CREATE TABLE IF NOT EXISTS pppoe_audit (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id UUID,
+  mikrotik_id UUID,
+  username TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT,
+  actor_id UUID,
+  actor_email TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS pppoe_audit_device_idx ON pppoe_audit(mikrotik_id, created_at DESC);
