@@ -310,12 +310,17 @@ function restPathToNativeCommand(path: string, method: string): { command: strin
     try { return decodeURIComponent(s); } catch { return s; }
   });
   const knownActions = new Set(['print', 'add', 'set', 'remove', 'enable', 'disable', 'getall']);
+  const isId = (s?: string) => !!s && /^\*[0-9A-Fa-f]+$/.test(s);
   const last = segments[segments.length - 1];
-  if (last && !knownActions.has(last) && /^\*[0-9A-Fa-f]+$/.test(last)) {
-    segments.pop();
-    idWords.push(`=.id=${last}`);
+  if (isId(last)) {
+    idWords.push(`=.id=${segments.pop()}`);
+  } else if (last && knownActions.has(last) && isId(segments[segments.length - 2])) {
+    const action = segments.pop() as string;
+    idWords.push(`=.id=${segments.pop()}`);
+    segments.push(action);
   }
   cmd = '/' + segments.join('/');
+
 
   // Map HTTP methods to API actions
   if (method === 'GET' || method === 'get') {
