@@ -16,7 +16,23 @@ import { UserPermissionsDialog } from "@/components/admin/UserPermissionsDialog"
 import { useAuth } from "@/hooks/useAuth";
 import { useMyPermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
-import { KeyRound, UserPlus, Users, Trash2, RefreshCw, Save, ShieldCheck, Layers } from "lucide-react";
+import { KeyRound, UserPlus, Users, Trash2, RefreshCw, Save, ShieldCheck, Layers, Share2, Send, MessageCircle, Copy } from "lucide-react";
+
+/** "YERSON  PEPITO PERES" -> "yerson.pepito.peres" (igual que en la MikroTik) */
+export const sanitizeUsername = (raw: string) =>
+  String(raw || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ñ/g, "n")
+    .replace(/Ñ/g, "N")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, ".")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[.\-_]+|[.\-_]+$/g, "")
+    .slice(0, 60);
+
+type CreatedUser = { name: string; password?: string; remoteAddress?: string | null };
+
 
 export default function PppoeUsers() {
   const qc = useQueryClient();
@@ -63,6 +79,9 @@ export default function PppoeUsers() {
     default_profile: "",
     default_service: "pppoe",
     username_prefix: "",
+    auto_assign_ip: true,
+    ip_pool_start: "",
+    ip_pool_end: "",
   });
 
   useEffect(() => {
@@ -73,6 +92,9 @@ export default function PppoeUsers() {
       default_profile: settings.default_profile || "",
       default_service: settings.default_service || "pppoe",
       username_prefix: settings.username_prefix || "",
+      auto_assign_ip: settings.auto_assign_ip !== false,
+      ip_pool_start: settings.ip_pool_start || "",
+      ip_pool_end: settings.ip_pool_end || "",
     });
   }, [settings]);
 
@@ -88,18 +110,50 @@ export default function PppoeUsers() {
   // ─── Alta individual ───
   const [form, setForm] = useState({ name: "", password: "", profile: "", remoteAddress: "", comment: "" });
   const [bulk, setBulk] = useState("");
+  const [created, setCreated] = useState<CreatedUser[]>([]);
+  const [sharePhone, setSharePhone] = useState("");
 
   const createUsers = useMutation({
     mutationFn: (users: any[]) => pppoeApi.createUsers(deviceId, users),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["pppoe-secrets", deviceId] });
-      const failed = (res?.results || []).filter((r: any) => !r.ok);
+      const results = res?.results || [];
+      const failed = results.filter((r: any) => !r.ok);
+      setCreated(results.filter((r: any) => r.ok));
       if (res?.created) toast.success(`${res.created} usuario(s) PPPoE creados`);
       failed.forEach((f: any) => toast.error(`${f.name}: ${f.error}`));
       if (!res?.created && !failed.length) toast.error("No se creó ningún usuario");
     },
     onError: (e: any) => toast.error(e.message || "Error creando usuarios"),
   });
+
+  const shareText = useMemo(() => {
+    if (!created.length) return "";
+    const lines = created.map(
+      (u) =>
+        `👤 Usuario: ${u.name}\n🔑 Contraseña: ${u.password || "-"}` +
+        (u.remoteAddress ? `\n🌐 IP: ${u.remoteAddress}` : "")
+    );
+    return `Datos de tu conexión a Internet (PPPoE):\n\n${lines.join("\n\n")}`;
+  }, [created]);
+
+  const shareWhatsApp = () => {
+    const phone = sharePhone.replace(/\D/g, "");
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
+  const shareTelegram = () => {
+    window.open(
+      `https://t.me/share/url?url=${encodeURIComponent("")}&text=${encodeURIComponent(shareText)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
 
   const removeSecret = useMutation({
     mutationFn: (id: string) => pppoeApi.deleteSecret(deviceId, id),
@@ -202,16 +256,20 @@ export default function PppoeUsers() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label>Usuario</Label>
+                  <Label>Nombre del cliente</Label>
                   <Input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="cliente001"
+                    placeholder="YERSON PEPITO PERES"
                   />
-                  {cfg.username_prefix && (
-                    <p className="text-xs text-muted-foreground">Se creará como {cfg.username_prefix}{form.name || "…"}</p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    En la MikroTik quedará como{" "}
+                    <span className="font-mono text-primary">
+                      {(cfg.username_prefix || "") + (sanitizeUsername(form.name) || "…")}
+                    </span>
+                  </p>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label>Contraseña (opcional)</Label>
                   <Input
@@ -240,9 +298,16 @@ export default function PppoeUsers() {
                   <Input
                     value={form.remoteAddress}
                     onChange={(e) => setForm({ ...form, remoteAddress: e.target.value })}
-                    placeholder="10.10.0.25"
+                    placeholder={cfg.auto_assign_ip ? "Automática (siguiente libre del rango)" : "10.10.0.25"}
                   />
+                  {cfg.auto_assign_ip && (
+                    <p className="text-xs text-muted-foreground">
+                      Si lo dejas vacío se asigna sola la siguiente IP libre
+                      {cfg.ip_pool_start ? ` desde ${cfg.ip_pool_start}` : " (configura el rango en Contraseña global)"}.
+                    </p>
+                  )}
                 </div>
+
                 <div className="space-y-1.5">
                   <Label>Comentario</Label>
                   <Input
@@ -289,7 +354,63 @@ export default function PppoeUsers() {
                 </div>
               </CardContent>
             </Card>
+
+            {created.length > 0 && (
+              <Card className="lg:col-span-2 border-primary/30">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Share2 className="h-4 w-4" /> Compartir credenciales
+                  </CardTitle>
+                  <CardDescription>
+                    {created.length} usuario(s) creados. Envíaselos al cliente por WhatsApp o Telegram.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    {created.map((u) => (
+                      <div
+                        key={u.name}
+                        className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border/60 px-3 py-2 text-sm"
+                      >
+                        <span className="font-mono font-medium">{u.name}</span>
+                        <span className="text-muted-foreground">Clave: {u.password || "-"}</span>
+                        {u.remoteAddress && <Badge variant="secondary">IP {u.remoteAddress}</Badge>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[200px] flex-1 space-y-1.5">
+                      <Label>WhatsApp del cliente (con indicativo)</Label>
+                      <Input
+                        value={sharePhone}
+                        onChange={(e) => setSharePhone(e.target.value)}
+                        placeholder="573001234567"
+                      />
+                    </div>
+                    <Button onClick={shareWhatsApp} disabled={sharePhone.replace(/\D/g, "").length < 8}>
+                      <MessageCircle className="mr-2 h-4 w-4" /> WhatsApp
+                    </Button>
+                    <Button variant="outline" onClick={shareTelegram}>
+                      <Send className="mr-2 h-4 w-4" /> Telegram
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(shareText);
+                        toast.success("Credenciales copiadas");
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" /> Copiar
+                    </Button>
+                    <Button variant="ghost" onClick={() => setCreated([])}>
+                      Ocultar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
+
 
           {/* Lista */}
           <TabsContent value="lista">
@@ -404,6 +525,41 @@ export default function PppoeUsers() {
                     />
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">Asignar IP automáticamente</p>
+                    <p className="text-xs text-muted-foreground">
+                      Toma la siguiente IP libre del rango al crear cada usuario PPPoE.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={cfg.auto_assign_ip}
+                    disabled={!isAdmin && !isSuperAdmin}
+                    onCheckedChange={(v) => setCfg({ ...cfg, auto_assign_ip: v })}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>IP inicial del rango</Label>
+                    <Input
+                      value={cfg.ip_pool_start}
+                      disabled={!isAdmin && !isSuperAdmin}
+                      onChange={(e) => setCfg({ ...cfg, ip_pool_start: e.target.value })}
+                      placeholder="10.10.0.2"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>IP final (opcional)</Label>
+                    <Input
+                      value={cfg.ip_pool_end}
+                      disabled={!isAdmin && !isSuperAdmin}
+                      onChange={(e) => setCfg({ ...cfg, ip_pool_end: e.target.value })}
+                      placeholder="10.10.7.254"
+                    />
+                  </div>
+                </div>
+
                 <Button
                   onClick={() => saveCfg.mutate()}
                   disabled={!deviceId || saveCfg.isPending || (!isAdmin && !isSuperAdmin)}

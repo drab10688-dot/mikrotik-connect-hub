@@ -135,7 +135,8 @@ pppoeRouter.post('/:mikrotikId/disconnect/:sessionId', async (req: AuthRequest, 
 // ─── Configuración PPPoE del ISP (contraseña global, perfil por defecto) ───
 async function loadSettings(mikrotikId: string) {
   const { rows } = await pool.query(
-    `SELECT global_password, use_global_password, default_profile, default_service, username_prefix
+    `SELECT global_password, use_global_password, default_profile, default_service, username_prefix,
+            auto_assign_ip, ip_pool_start, ip_pool_end
        FROM pppoe_settings WHERE mikrotik_id = $1`,
     [mikrotikId]
   );
@@ -146,9 +147,66 @@ async function loadSettings(mikrotikId: string) {
       default_profile: null,
       default_service: 'pppoe',
       username_prefix: null,
+      auto_assign_ip: true,
+      ip_pool_start: null,
+      ip_pool_end: null,
     }
   );
 }
+
+/**
+ * Normaliza un nombre para MikroTik: "YERSON  PEPITO PERES" -> "yerson.pepito.peres".
+ * Quita tildes, ñ -> n y cualquier símbolo que RouterOS suele rechazar.
+ */
+export function sanitizeUsername(raw: string): string {
+  return String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // tildes
+    .replace(/ñ/g, 'n')
+    .replace(/Ñ/g, 'N')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '.') // espacios y símbolos -> punto
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[.\-_]+|[.\-_]+$/g, '')
+    .slice(0, 60);
+}
+
+const ipToInt = (ip: string) =>
+  ip.split('.').reduce((acc, o) => acc * 256 + (parseInt(o, 10) || 0), 0);
+const intToIp = (n: number) =>
+  [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+
+/** Asignador secuencial de IPs remotas, evitando las ya usadas en la MikroTik. */
+async function makeIpAllocator(config: any, settings: any) {
+  if (!settings.auto_assign_ip || !settings.ip_pool_start) return () => undefined;
+
+  const used = new Set<number>();
+  try {
+    const secrets: any[] = (await mikrotikRequest(config, '/rest/ppp/secret')) || [];
+    for (const s of secrets) {
+      const ip = String(s?.['remote-address'] || '').trim();
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) used.add(ipToInt(ip));
+    }
+  } catch {
+    /* si no se puede leer, se asigna igual desde el inicio del rango */
+  }
+
+  let cursor = ipToInt(String(settings.ip_pool_start));
+  const end = settings.ip_pool_end ? ipToInt(String(settings.ip_pool_end)) : cursor + 5000;
+
+  return () => {
+    while (cursor <= end) {
+      const candidate = cursor++;
+      const lastOctet = candidate & 255;
+      if (lastOctet === 0 || lastOctet === 255) continue; // red / broadcast
+      if (used.has(candidate)) continue;
+      used.add(candidate);
+      return intToIp(candidate);
+    }
+    return undefined;
+  };
+}
+
 
 pppoeRouter.get('/:mikrotikId/settings', async (req: AuthRequest, res: Response) => {
   try {
@@ -176,12 +234,16 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
       default_profile = null,
       default_service = 'pppoe',
       username_prefix = null,
+      auto_assign_ip = true,
+      ip_pool_start = null,
+      ip_pool_end = null,
     } = req.body || {};
 
     await pool.query(
       `INSERT INTO pppoe_settings
-         (tenant_id, mikrotik_id, global_password, use_global_password, default_profile, default_service, username_prefix)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (tenant_id, mikrotik_id, global_password, use_global_password, default_profile, default_service, username_prefix,
+          auto_assign_ip, ip_pool_start, ip_pool_end)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (mikrotik_id) DO UPDATE SET
          tenant_id = COALESCE(EXCLUDED.tenant_id, pppoe_settings.tenant_id),
          global_password = EXCLUDED.global_password,
@@ -189,6 +251,9 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
          default_profile = EXCLUDED.default_profile,
          default_service = EXCLUDED.default_service,
          username_prefix = EXCLUDED.username_prefix,
+         auto_assign_ip = EXCLUDED.auto_assign_ip,
+         ip_pool_start = EXCLUDED.ip_pool_start,
+         ip_pool_end = EXCLUDED.ip_pool_end,
          updated_at = now()`,
       [
         req.tenantId || null,
@@ -198,8 +263,12 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
         default_profile || null,
         default_service || 'pppoe',
         username_prefix || null,
+        !!auto_assign_ip,
+        ip_pool_start || null,
+        ip_pool_end || null,
       ]
     );
+
 
     res.json({ success: true, data: await loadSettings(mikrotikId) });
   } catch (error: any) {
@@ -222,15 +291,17 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
     if (!incoming.length) return res.status(400).json({ error: 'Sin usuarios que crear' });
 
     const config = await getDeviceConfig(pool, mikrotikId);
+    const nextIp = await makeIpAllocator(config, settings);
     const results: any[] = [];
 
     for (const item of incoming) {
       const rawName = String(item?.name || '').trim();
-      if (!rawName) {
-        results.push({ name: rawName, ok: false, error: 'Nombre vacío' });
+      const clean = sanitizeUsername(rawName);
+      if (!clean) {
+        results.push({ name: rawName, ok: false, error: 'Nombre vacío o inválido' });
         continue;
       }
-      const name = settings.username_prefix ? `${settings.username_prefix}${rawName}` : rawName;
+      const name = settings.username_prefix ? `${settings.username_prefix}${clean}` : clean;
       const password =
         (item?.password && String(item.password)) ||
         (settings.use_global_password ? settings.global_password : null);
@@ -240,6 +311,8 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
         continue;
       }
 
+      const remoteAddress = String(item?.remoteAddress || '').trim() || nextIp();
+
       try {
         await mikrotikRequest(config, '/rest/ppp/secret/add', 'POST', {
           name,
@@ -247,14 +320,15 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
           service: item?.service || settings.default_service || 'pppoe',
           profile: item?.profile || settings.default_profile || 'default',
           'local-address': item?.localAddress || undefined,
-          'remote-address': item?.remoteAddress || undefined,
+          'remote-address': remoteAddress || undefined,
           comment: item?.comment || '',
         });
-        results.push({ name, ok: true });
+        results.push({ name, originalName: rawName, ok: true, password, remoteAddress: remoteAddress || null });
       } catch (err: any) {
         results.push({ name, ok: false, error: err?.message || 'Error en la MikroTik' });
       }
     }
+
 
     invalidate(`pppoe:${mikrotikId}:`);
     const created = results.filter((r) => r.ok).length;
