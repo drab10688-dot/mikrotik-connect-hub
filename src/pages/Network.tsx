@@ -482,8 +482,25 @@ export default function Network() {
                       <thead className="text-left text-muted-foreground">
                         <tr className="border-b">
                           <th className="py-2 pr-4">Usuario</th>
+                          <th className="py-2 pr-4">Comentario</th>
                           <th className="py-2 pr-4">Estado</th>
-                          <th className="py-2 pr-4">IP</th>
+                          <th className="py-2 pr-4">
+                            <button
+                              type="button"
+                              onClick={() => setIpSort(ipSort === "asc" ? "desc" : ipSort === "desc" ? null : "asc")}
+                              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                              title="Ordenar por IP (clic para cambiar)"
+                            >
+                              IP
+                              {ipSort === "asc" ? (
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              ) : ipSort === "desc" ? (
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ArrowUpDown className="w-3.5 h-3.5 opacity-50" />
+                              )}
+                            </button>
+                          </th>
                           <th className="py-2 pr-4">Perfil</th>
                           <th className="py-2 pr-4">Uptime</th>
                           <th className="py-2">Acceso web</th>
