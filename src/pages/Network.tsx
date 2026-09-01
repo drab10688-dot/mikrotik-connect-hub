@@ -571,14 +571,36 @@ export default function Network() {
                           </th>
                           <th className="py-2 pr-4">Perfil</th>
                           <th className="py-2 pr-4">Uptime</th>
-                          <th className="py-2">Acceso web</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredSecrets.map((s: any, i: number) => (
                           <tr key={`${s.source || "secret"}-${s.id || "n"}-${s.name}-${i}`} className="border-b last:border-0">
 
-                            <td className="py-2 pr-4 font-medium">{s.name}</td>
+                            <td className="py-2 pr-4 font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <span>{s.name}</span>
+                                {s.remote_address ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    title={`Abrir interfaz web de ${s.name}`}
+                                    onClick={() =>
+                                      setBrowserTarget({
+                                        title: `${s.name} — ${s.remote_address}`,
+                                        directUrl: `http://${s.remote_address}:${portDraft.otro?.port || 80}/`,
+                                        proxyUrl: proxyUrl(
+                                          `/api/netaccess/${deviceId}/web/${s.remote_address}/${portDraft.otro?.port || 80}/`
+                                        ),
+                                        mikrotikId: deviceId,
+                                      })
+                                    }
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5 mr-1" /> Abrir
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </td>
                             <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[220px] truncate" title={s.comment || ""}>
                               <div className="flex items-center gap-1">
                                 <span className="truncate">{s.comment || "—"}</span>
@@ -606,32 +628,10 @@ export default function Network() {
                               </div>
                             </td>
                             <td className="py-2 pr-4">{s.uptime || "—"}</td>
-                            <td className="py-2">
-                              <div className="flex items-center gap-1.5">
-                                {s.remote_address ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      setBrowserTarget({
-                                        title: `${s.name} — ${s.remote_address}`,
-                                        directUrl: `http://${s.remote_address}:${portDraft.otro?.port || 80}/`,
-                                        proxyUrl: proxyUrl(
-                                          `/api/netaccess/${deviceId}/web/${s.remote_address}/${portDraft.otro?.port || 80}/`
-                                        ),
-                                        mikrotikId: deviceId,
-                                      })
-                                    }
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5 mr-1" /> Abrir
-                                  </Button>
-                                ) : !s.id ? "—" : null}
-                              </div>
-                            </td>
                           </tr>
                         ))}
                         {!filteredSecrets.length && (
-                          <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
+                          <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
                         )}
                       </tbody>
                     </table>
