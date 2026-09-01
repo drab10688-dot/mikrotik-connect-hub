@@ -49,6 +49,8 @@ services:
       MIKROTIK_USER: ${MIKROTIK_USER:-admin}
       MIKROTIK_PASS: ${MIKROTIK_PASS:-}
       BACKUP_DIR: /opt/omnisync/backups
+      # Ruta del stack EN EL HOST (necesaria para montar volúmenes en contenedores efímeros: certbot)
+      HOST_INSTALL_DIR: ${INSTALL_DIR:-/opt/omnisync}
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
       # El aislamiento ONU es siempre por el token /tr069/<token>/ del ISP.
       # Se conserva la variable solo para no romper .env antiguos; la API ya no
@@ -74,6 +76,8 @@ services:
     volumes:
       - backup_data:/opt/omnisync/backups
       - ./nginx-dyn:/opt/omnisync/nginx-dyn
+      - ./nginx/certs:/opt/omnisync/nginx/certs
+      - ./frontend/dist:/opt/omnisync/frontend/dist
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
