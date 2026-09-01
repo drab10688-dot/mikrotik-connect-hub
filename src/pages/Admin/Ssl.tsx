@@ -58,7 +58,7 @@ export default function SslSettings() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 p-6 space-y-6 overflow-x-hidden">
+      <main className="flex-1 p-4 md:p-8 md:ml-64 space-y-6 overflow-x-hidden">
         <header className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
             <ShieldCheck className="h-6 w-6 text-primary" />
