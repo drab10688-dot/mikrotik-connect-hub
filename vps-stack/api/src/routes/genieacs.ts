@@ -1596,6 +1596,9 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
     // Lectura TR-069 más rápida: si una ONU reporta con un intervalo lento,
     // se le baja a FAST_INFORM_SECONDS una sola vez (sin bloquear la respuesta).
     void ensureFastInform(visible);
+    // ONUs recién conectadas: pedir la lectura completa automáticamente.
+    void ensureInitialRead(visible);
+
 
     res.json({ success: true, data: visible });
   } catch (err: any) {
