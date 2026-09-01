@@ -618,6 +618,7 @@ export default function Network() {
                               </Badge>
                             </td>
                             <td className="py-2 pr-4 font-mono text-xs">{s.remote_address || "—"}</td>
+                            <td className="py-2 pr-4 font-mono text-xs">{s.caller_id || "—"}</td>
                             <td className="py-2 pr-4">
                               <div className="flex items-center gap-1">
                                 <span>{s.profile || "—"}</span>
