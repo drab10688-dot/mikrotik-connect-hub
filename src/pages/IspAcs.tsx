@@ -430,6 +430,37 @@ const IspAcs = () => {
           </CardContent>
         </Card>
       </main>
+
+      <Dialog open={!!regenPeer} onOpenChange={(open) => !open && setRegenPeer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Regenerar script — {regenPeer?.name}</DialogTitle>
+            <DialogDescription>
+              Las credenciales del túnel (usuario, clave e IP {regenPeer?.tunnel_ip}) se mantienen.
+              Solo ajusta las redes si cambiaron las IP locales de las ONUs.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>Red de administración de ONUs</Label>
+            <Input
+              value={regenNetworks}
+              onChange={(e) => setRegenNetworks(e.target.value)}
+              placeholder="10.82.0.0/21, 192.168.20.0/24"
+            />
+            <p className="text-xs text-muted-foreground">
+              Varias redes separadas por coma. El script nuevo reemplaza rutas y NAT en la MikroTik.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRegenPeer(null)} disabled={regenerate.isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={() => regenerate.mutate()} disabled={regenerate.isPending}>
+              {regenerate.isPending ? "Generando…" : "Regenerar script"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
