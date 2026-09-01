@@ -283,22 +283,27 @@ export default function Network() {
 
   const updateCommentMut = useMutation({
     mutationFn: () => netAccessApi.updatePppoeComment(deviceId, String(editSecret.id), editComment),
-    onSuccess: (data: any) => {
+    onSuccess: async () => {
       toast.success("Comentario guardado y verificado en la MikroTik");
       setEditSecret(null);
-      qc.invalidateQueries({ queryKey: ["net-pppoe", deviceId] });
+      await Promise.all([refetchPppoe(), refetchNet()]);
     },
     onError: (e: any) => toast.error("No se pudo guardar el comentario", { description: e?.message }),
   });
 
   const updateProfileMut = useMutation({
     mutationFn: () => netAccessApi.updatePppoeProfile(deviceId, String(editSecret.id), editProfile),
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       toast.success("Perfil guardado y verificado", {
         description: data?.kicked ? "La sesión se reconectó para aplicar el perfil." : undefined,
       });
       setEditSecret(null);
-      qc.invalidateQueries({ queryKey: ["net-pppoe", deviceId] });
+      // Si la sesión fue reconectada, deja que RouterOS la registre antes de
+      // volver a leer la tabla para mostrar el perfil y estado nuevos.
+      if (data?.kicked) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_200));
+      }
+      await Promise.all([refetchPppoe(), refetchNet(), refetchEvents()]);
     },
     onError: (e: any) => toast.error("No se pudo cambiar el perfil", { description: e?.message }),
   });
