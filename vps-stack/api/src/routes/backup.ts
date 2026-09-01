@@ -62,16 +62,69 @@ async function registerJob(
   size: number,
   userId?: string,
   status = 'ok',
-  error?: string
+  error?: string,
+  remotePath?: string | null
 ) {
   await pool
     .query(
-      `INSERT INTO backup_jobs (tenant_id, scope, filename, size_bytes, status, error, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [tenantId, scope, filename, size, status, error || null, userId || null]
+      `INSERT INTO backup_jobs (tenant_id, scope, filename, size_bytes, status, error, created_by, remote_path, remote_provider)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [tenantId, scope, filename, size, status, error || null, userId || null,
+       remotePath || null, remotePath ? 'dropbox' : null]
     )
-    .catch(() => undefined);
+    .catch(() =>
+      pool
+        .query(
+          `INSERT INTO backup_jobs (tenant_id, scope, filename, size_bytes, status, error, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [tenantId, scope, filename, size, status, error || null, userId || null]
+        )
+        .catch(() => undefined)
+    );
 }
+
+// ─── Configuración de destino remoto (Dropbox) ────────────────────────────
+/** Devuelve la configuración de Dropbox del ISP; si no tiene, usa la global. */
+async function loadDropboxConfig(tenantId: string | null): Promise<any | null> {
+  const { rows } = await pool.query(
+    `SELECT * FROM backup_settings
+      WHERE tenant_id IS NOT DISTINCT FROM $1 OR tenant_id IS NULL
+      ORDER BY (tenant_id IS NOT NULL) DESC LIMIT 1`,
+    [tenantId]
+  );
+  const cfg = rows[0];
+  if (!cfg || !cfg.dropbox_enabled || !cfg.dropbox_refresh_token) return null;
+  return cfg;
+}
+
+function toDropbox(cfg: any): dropbox.DropboxConfig {
+  return {
+    app_key: cfg.dropbox_app_key,
+    app_secret: cfg.dropbox_app_secret,
+    refresh_token: cfg.dropbox_refresh_token,
+    folder: cfg.dropbox_folder,
+  };
+}
+
+/** Sube la copia recién creada a Dropbox si el ISP lo tiene activado. */
+async function maybeUploadRemote(
+  tenantId: string | null,
+  filename: string,
+  filePath: string
+): Promise<string | null> {
+  try {
+    const cfg = await loadDropboxConfig(tenantId);
+    if (!cfg || !cfg.auto_upload) return null;
+    const remote = await dropbox.uploadFile(toDropbox(cfg), filePath, filename);
+    if (cfg.keep_remote) await dropbox.pruneRemote(toDropbox(cfg), Number(cfg.keep_remote));
+    return remote;
+  } catch (e: any) {
+    console.warn('[BACKUP] Dropbox:', e.message);
+    return null;
+  }
+}
+
+
 
 /** Copia de seguridad de un ISP: exporta sus tablas a un JSON comprimido. */
 backupRouter.post('/tenant', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
