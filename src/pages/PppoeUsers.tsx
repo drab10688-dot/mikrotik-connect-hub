@@ -321,6 +321,10 @@ export default function PppoeUsers() {
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     placeholder="Usar contraseña global"
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -546,7 +550,14 @@ export default function PppoeUsers() {
                     disabled={!isAdmin && !isSuperAdmin}
                     onChange={(e) => setCfg({ ...cfg, global_password: e.target.value })}
                     placeholder="Contraseña compartida"
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Sin restricciones: se acepta cualquier carácter válido para MikroTik (puntos, mayúsculas, números, símbolos).
+                  </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
@@ -575,6 +586,8 @@ export default function PppoeUsers() {
                       disabled={!isAdmin && !isSuperAdmin}
                       onChange={(e) => setCfg({ ...cfg, username_prefix: e.target.value })}
                       placeholder="isp-"
+                      spellCheck={false}
+                      autoComplete="off"
                     />
                   </div>
                 </div>
