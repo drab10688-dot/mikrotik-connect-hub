@@ -298,9 +298,16 @@ export default function PppoeUsers() {
                   <Input
                     value={form.remoteAddress}
                     onChange={(e) => setForm({ ...form, remoteAddress: e.target.value })}
-                    placeholder="10.10.0.25"
+                    placeholder={cfg.auto_assign_ip ? "Automática (siguiente libre del rango)" : "10.10.0.25"}
                   />
+                  {cfg.auto_assign_ip && (
+                    <p className="text-xs text-muted-foreground">
+                      Si lo dejas vacío se asigna sola la siguiente IP libre
+                      {cfg.ip_pool_start ? ` desde ${cfg.ip_pool_start}` : " (configura el rango en Contraseña global)"}.
+                    </p>
+                  )}
                 </div>
+
                 <div className="space-y-1.5">
                   <Label>Comentario</Label>
                   <Input
