@@ -248,8 +248,9 @@ export default function Network() {
   }, [pppoeSearch.filtered, ipSort]);
   const filteredEquipos = equipoSearch.paged;
 
-  // ─── Edición de secreto PPPoE (comentario / perfil) ───
+  // ─── Edición separada del secret PPPoE ───
   const [editSecret, setEditSecret] = useState<any | null>(null);
+  const [editMode, setEditMode] = useState<"comment" | "profile">("comment");
   const [editComment, setEditComment] = useState("");
   const [editProfile, setEditProfile] = useState("");
 
@@ -261,7 +262,7 @@ export default function Network() {
   } = useQuery({
     queryKey: ["net-pppoe-profiles", deviceId],
     queryFn: () => pppoeApi.profiles(deviceId),
-    enabled: !!deviceId && !!editSecret,
+    enabled: !!deviceId && !!editSecret && editMode === "profile",
     staleTime: 120_000,
     retry: 1,
   });
@@ -280,24 +281,31 @@ export default function Network() {
     return list;
   }, [pppoeProfilesRaw, pppoeSearch.filtered]);
 
-  const updateSecretMut = useMutation({
-    mutationFn: () =>
-      netAccessApi.updatePppoeSecret(deviceId, String(editSecret.id), {
-        comment: editComment,
-        profile: editProfile || undefined,
-      }),
+  const updateCommentMut = useMutation({
+    mutationFn: () => netAccessApi.updatePppoeComment(deviceId, String(editSecret.id), editComment),
     onSuccess: (data: any) => {
-      toast.success("Secreto actualizado", {
-        description: data?.kicked ? "Se aplicó el perfil y la sesión reconectó." : undefined,
+      toast.success("Comentario guardado y verificado en la MikroTik");
+      setEditSecret(null);
+      qc.invalidateQueries({ queryKey: ["net-pppoe", deviceId] });
+    },
+    onError: (e: any) => toast.error("No se pudo guardar el comentario", { description: e?.message }),
+  });
+
+  const updateProfileMut = useMutation({
+    mutationFn: () => netAccessApi.updatePppoeProfile(deviceId, String(editSecret.id), editProfile),
+    onSuccess: (data: any) => {
+      toast.success("Perfil guardado y verificado", {
+        description: data?.kicked ? "La sesión se reconectó para aplicar el perfil." : undefined,
       });
       setEditSecret(null);
       qc.invalidateQueries({ queryKey: ["net-pppoe", deviceId] });
     },
-    onError: (e: any) => toast.error("No se pudo actualizar", { description: e?.message }),
+    onError: (e: any) => toast.error("No se pudo cambiar el perfil", { description: e?.message }),
   });
 
-  const openEditSecret = (s: any) => {
+  const openEditSecret = (s: any, mode: "comment" | "profile") => {
     setEditSecret(s);
+    setEditMode(mode);
     setEditComment(s.comment || "");
     setEditProfile(s.profile || "");
   };
@@ -536,7 +544,6 @@ export default function Network() {
                     <table className="w-full text-sm">
                       <thead className="text-left text-muted-foreground">
                         <tr className="border-b">
-                          <th className="py-2 pr-2">Editar</th>
                           <th className="py-2 pr-4">Usuario</th>
                           <th className="py-2 pr-4">Comentario</th>
                           <th className="py-2 pr-4">Estado</th>
@@ -566,21 +573,16 @@ export default function Network() {
                         {filteredSecrets.map((s: any, i: number) => (
                           <tr key={`${s.source || "secret"}-${s.id || "n"}-${s.name}-${i}`} className="border-b last:border-0">
 
-                            <td className="py-2 pr-2">
-                              {s.source === "secret" && s.id ? (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  title="Editar comentario y perfil"
-                                  onClick={() => openEditSecret(s)}
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </Button>
-                              ) : null}
-                            </td>
                             <td className="py-2 pr-4 font-medium">{s.name}</td>
                             <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[220px] truncate" title={s.comment || ""}>
-                              {s.comment || "—"}
+                              <div className="flex items-center gap-1">
+                                <span className="truncate">{s.comment || "—"}</span>
+                                {s.source === "secret" && s.id && (
+                                  <Button size="sm" variant="ghost" title="Editar comentario" onClick={() => openEditSecret(s, "comment")}>
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                              </div>
                             </td>
                             <td className="py-2 pr-4">
                               <Badge variant={s.online ? "default" : "secondary"}>
@@ -588,7 +590,16 @@ export default function Network() {
                               </Badge>
                             </td>
                             <td className="py-2 pr-4 font-mono text-xs">{s.remote_address || "—"}</td>
-                            <td className="py-2 pr-4">{s.profile || "—"}</td>
+                            <td className="py-2 pr-4">
+                              <div className="flex items-center gap-1">
+                                <span>{s.profile || "—"}</span>
+                                {s.source === "secret" && s.id && (
+                                  <Button size="sm" variant="ghost" title="Cambiar perfil" onClick={() => openEditSecret(s, "profile")}>
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
                             <td className="py-2 pr-4">{s.uptime || "—"}</td>
                             <td className="py-2">
                               <div className="flex items-center gap-1.5">
@@ -1252,13 +1263,15 @@ export default function Network() {
         <Dialog open={!!editSecret} onOpenChange={(open) => !open && setEditSecret(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Editar {editSecret?.name}</DialogTitle>
+               <DialogTitle>{editMode === "comment" ? "Editar comentario" : "Cambiar perfil"} — {editSecret?.name}</DialogTitle>
               <DialogDescription>
-                Cambia el comentario o el perfil PPPoE directamente en la MikroTik. Si cambias el perfil, la sesión activa reconecta para aplicarlo.
+                 {editMode === "comment"
+                   ? "Guarda únicamente el comentario directamente en el secret de la MikroTik."
+                   : "Cambia únicamente el perfil del secret. La sesión activa reconecta para aplicarlo."}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
-              <div className="space-y-1.5">
+              {editMode === "comment" ? <div className="space-y-1.5">
                 <Label htmlFor="edit-pppoe-comment">Comentario</Label>
                 <Input
                   id="edit-pppoe-comment"
@@ -1268,8 +1281,7 @@ export default function Network() {
                   autoComplete="off"
                   spellCheck={false}
                 />
-              </div>
-              <div className="space-y-1.5">
+              </div> : <div className="space-y-1.5">
                 <Label>Perfil PPPoE</Label>
                 {profilesLoading ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
@@ -1300,13 +1312,16 @@ export default function Network() {
                     </Button>
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditSecret(null)}>Cancelar</Button>
-              <Button onClick={() => updateSecretMut.mutate()} disabled={updateSecretMut.isPending}>
-                {updateSecretMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Guardar cambios
+              <Button
+                onClick={() => editMode === "comment" ? updateCommentMut.mutate() : updateProfileMut.mutate()}
+                disabled={updateCommentMut.isPending || updateProfileMut.isPending || (editMode === "profile" && !editProfile)}
+              >
+                {updateCommentMut.isPending || updateProfileMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                {editMode === "comment" ? "Guardar comentario" : "Aplicar perfil"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -825,6 +825,21 @@ async function setPppoeSecret(config: any, secretId: string, patch: Record<strin
   return mikrotikRequest(config, '/rest/ppp/secret/set', 'POST', { '.id': secretId, ...patch });
 }
 
+async function setAndVerifyPppoeSecret(
+  config: any,
+  secretId: string,
+  field: 'comment' | 'profile',
+  value: string
+) {
+  await setPppoeSecret(config, secretId, { [field]: value });
+  const updated = await findSecretById(config, secretId);
+  if (!updated) throw new Error('El secret ya no existe en la MikroTik');
+  if (String(updated[field] || '') !== value) {
+    throw new Error(`La MikroTik recibió la orden, pero no guardó el ${field === 'comment' ? 'comentario' : 'perfil'}`);
+  }
+  return updated;
+}
+
 /** Busca un secreto por su `.id` leyendo la lista completa (compatible v6/v7). */
 async function findSecretById(config: any, secretId: string): Promise<any | null> {
   const list = asArray(await mikrotikRequest(config, '/rest/ppp/secret').catch(() => []));
@@ -866,6 +881,43 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId/password', editRed, async (req
 
 
     res.json({ success: true, data: { secret_id: secretId, kicked } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** Edita únicamente el comentario y comprueba el valor directamente en el secret. */
+netAccessRouter.put('/:mikrotikId/pppoe/:secretId/comment', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    const { secretId } = req.params as { secretId: string };
+    const comment = typeof req.body?.comment === 'string' ? req.body.comment : null;
+    if (!secretId || comment === null) {
+      return res.status(400).json({ success: false, error: 'Falta el ID o el comentario del secret' });
+    }
+    const config = await getDeviceConfig(pool, mikrotikId);
+    await setAndVerifyPppoeSecret(config, secretId, 'comment', comment);
+    res.json({ success: true, data: { secret_id: secretId, comment } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** Cambia únicamente el perfil y reconecta la sesión para aplicarlo. */
+netAccessRouter.put('/:mikrotikId/pppoe/:secretId/profile', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    const { secretId } = req.params as { secretId: string };
+    const profile = String(req.body?.profile || '').trim();
+    if (!secretId || !profile) {
+      return res.status(400).json({ success: false, error: 'Selecciona un perfil válido' });
+    }
+    const config = await getDeviceConfig(pool, mikrotikId);
+    const updated = await setAndVerifyPppoeSecret(config, secretId, 'profile', profile);
+    const kicked = await kickPppoeSession(config, updated?.name);
+    res.json({ success: true, data: { secret_id: secretId, profile, kicked } });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

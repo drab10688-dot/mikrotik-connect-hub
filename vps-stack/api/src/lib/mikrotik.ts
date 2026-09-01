@@ -113,6 +113,13 @@ async function tryNativeApiWithFallbackUnlocked(
           authFailures++;
           break;
         }
+
+        // La sesión ya autenticó y MikroTik respondió al comando. No pruebes
+        // nuevamente con TLS u otro modo de login: eso genera falsos
+        // "login failure" en el log y termina ocultando el error real de set.
+        if (/MikroTik API error:|Fatal:/i.test(lastError.message)) {
+          throw lastError;
+        }
       }
     }
   }
