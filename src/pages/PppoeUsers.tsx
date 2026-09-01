@@ -127,15 +127,17 @@ export default function PppoeUsers() {
     onError: (e: any) => toast.error(e.message || "Error creando usuarios"),
   });
 
+  // Solo se comparte el nombre de usuario: nunca la clave ni la IP.
   const shareText = useMemo(() => {
     if (!created.length) return "";
-    const lines = created.map(
-      (u) =>
-        `👤 Usuario: ${u.name}\n🔑 Contraseña: ${u.password || "-"}` +
-        (u.remoteAddress ? `\n🌐 IP: ${u.remoteAddress}` : "")
+    const lines = created.map((u) => `👤 Usuario: ${u.name}`);
+    return (
+      `Datos de tu conexión a Internet (PPPoE):\n\n${lines.join("\n")}\n\n` +
+      `🔒 La contraseña y la IP son internas y no se envían por este medio.\n` +
+      `— Creado por OmniSync`
     );
-    return `Datos de tu conexión a Internet (PPPoE):\n\n${lines.join("\n\n")}`;
   }, [created]);
+
 
   const shareWhatsApp = () => {
     const phone = sharePhone.replace(/\D/g, "");
