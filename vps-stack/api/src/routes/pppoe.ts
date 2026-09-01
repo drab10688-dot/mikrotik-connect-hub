@@ -188,7 +188,7 @@ async function makeIpAllocator(config: any, settings: any) {
 
   const used = new Set<number>();
   try {
-    const secrets: any[] = (await mikrotikRequest(config, '/rest/ppp/secret')) || [];
+    const secrets: any[] = ((await mikrotikRequest(config, '/rest/ppp/secret')) as any[]) || [];
     for (const s of secrets) {
       const ip = String(s?.['remote-address'] || '').trim();
       if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) used.add(ipToInt(ip));
@@ -371,7 +371,7 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
     // Nombres ya existentes en la MikroTik (validación de duplicados)
     const existing = new Set<string>();
     try {
-      const secrets: any[] = (await mikrotikRequest(config, '/rest/ppp/secret')) || [];
+      const secrets: any[] = ((await mikrotikRequest(config, '/rest/ppp/secret')) as any[]) || [];
       for (const s of secrets) if (s?.name) existing.add(String(s.name).toLowerCase());
     } catch {
       /* si no se puede leer, la MikroTik rechazará el duplicado igualmente */
