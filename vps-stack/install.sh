@@ -141,8 +141,11 @@ fi
 # shellcheck disable=SC1091
 set -a; . "$INSTALL_DIR/.env"; set +a
 
-mkdir -p nginx/certs frontend/dist scripts
-if [ ! -f nginx/certs/remote.crt ]; then
+mkdir -p nginx/certs frontend/dist scripts nginx-dyn
+# Bloques dinámicos de despliegues previos: si apuntan a un contenedor/puerto
+# que ya no existe dejan Nginx caído al arrancar.
+rm -f nginx-dyn/browser-*.conf 2>/dev/null || true
+if [ ! -s nginx/certs/remote.crt ] || [ ! -s nginx/certs/remote.key ]; then
   openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
     -keyout nginx/certs/remote.key -out nginx/certs/remote.crt \
     -subj "/CN=omnisync-remote" >/dev/null 2>&1
@@ -171,6 +174,8 @@ for cname in omnisync-mariadb omnisync-freeradius omnisync-phpnuxbill omnisync-m
              omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   docker rm -f "$cname" 2>/dev/null || true
 done
+# Winbox remoto quedó retirado del sistema: borra también su imagen.
+docker rmi omnisync/winbox:latest >/dev/null 2>&1 || true
 
 if [ -f /opt/genieacs/docker-compose.yml ]; then
   echo -e "${YELLOW}Deteniendo GenieACS standalone en /opt/genieacs...${NC}"
@@ -206,15 +211,9 @@ if [ -f "$INSTALL_DIR/genieacs-config.sh" ]; then
   bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -10
 fi
 
-# Rutas automáticas hacia la LAN de las ONU (Connection Request instantáneo)
-if [ -f "$INSTALL_DIR/sync-onu-routes.sh" ]; then
-  bash "$INSTALL_DIR/sync-onu-routes.sh" --install 2>&1 | tail -8
-fi
-
-
-
-
-# Migraciones idempotentes (esquema multi-ISP / ONUs)
+# Migraciones idempotentes (esquema multi-ISP / ONUs / PPPoE)
+# El resto del esquema (SMTP global, backups/Dropbox, SSL, permisos por usuario,
+# ONU web, sesiones PPPoE) lo aplica la API al arrancar: ensure-isp-schema.ts
 if [ -d "$INSTALL_DIR/db/migrations" ]; then
   for f in "$INSTALL_DIR"/db/migrations/*.sql; do
     [ -f "$f" ] || continue
@@ -232,6 +231,16 @@ if VPS_PUBLIC_IP="$VPS_PUBLIC_IP" bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets
 else
   echo -e "${YELLOW}⚠ L2TP no se levantó; reintenta: bash $INSTALL_DIR/install-l2tp.sh${NC}"
 fi
+
+# Rutas/NAT del túnel y hacia las LAN de las ONU (Connection Request instantáneo).
+# Va DESPUÉS de L2TP: necesita las interfaces ppp ya creadas.
+if [ -x "/opt/omnisync-l2tp/l2tp-routes.sh" ]; then
+  /opt/omnisync-l2tp/l2tp-routes.sh || true
+fi
+if [ -f "$INSTALL_DIR/sync-onu-routes.sh" ]; then
+  bash "$INSTALL_DIR/sync-onu-routes.sh" --install 2>&1 | tail -8
+fi
+
 
 # ═══ FASE 5: Verificación ═══
 echo ""
@@ -282,6 +291,16 @@ fi
 if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
+
+# Escritorio remoto: comprobación real por HTTPS (certificado autofirmado)
+DESK_CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:8081/ || echo 000)
+if [ "$DESK_CODE" = "000" ]; then
+  echo -e "  ${YELLOW}⚠ Escritorio remoto (8081) no responde. Mapeo publicado:${NC}"
+  docker port omnisync-nginx 2>/dev/null | sed 's/^/    /' || true
+else
+  echo -e "  ${GREEN}✓ Escritorio remoto responde en :8081 (HTTP ${DESK_CODE})${NC}"
+fi
+
 
 echo ""
 if [ "$TOTAL_FAIL" -eq 0 ]; then
