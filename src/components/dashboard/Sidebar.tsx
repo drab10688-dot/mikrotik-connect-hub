@@ -118,6 +118,7 @@ export const Sidebar = () => {
     { icon: Users, label: "Usuarios", path: "/admin/users", group: "Administración" },
     { icon: UserPlus, label: "Crear usuario", path: "/admin/register-user", group: "Administración" },
     { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", group: "Administración" },
+    { icon: ShieldCheck, label: "Dominio y HTTPS", path: "/admin/dominio", group: "Administración" },
     { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", group: "Administración" },
   ];
 
