@@ -299,27 +299,45 @@ export async function mikrotikRequest(
  * e.g. /rest/interface -> /interface/print
  * e.g. /rest/ip/hotspot/active -> /ip/hotspot/active/print
  */
-function restPathToNativeCommand(path: string, method: string): string {
+function restPathToNativeCommand(path: string, method: string): { command: string; idWords: string[] } {
   // Strip /rest prefix
   let cmd = path.replace(/^\/rest/, '');
-  
+  const idWords: string[] = [];
+
+  // Extraer el ID interno (.id, ej. *1A) que en REST viaja en la URL pero
+  // en la API nativa debe enviarse como atributo =.id=
+  const segments = cmd.split('/').filter(Boolean).map((s) => {
+    try { return decodeURIComponent(s); } catch { return s; }
+  });
+  const knownActions = new Set(['print', 'add', 'set', 'remove', 'enable', 'disable', 'getall']);
+  const last = segments[segments.length - 1];
+  if (last && !knownActions.has(last) && /^\*[0-9A-Fa-f]+$/.test(last)) {
+    segments.pop();
+    idWords.push(`=.id=${last}`);
+  }
+  cmd = '/' + segments.join('/');
+
   // Map HTTP methods to API actions
   if (method === 'GET' || method === 'get') {
     // GET = print
     if (!cmd.endsWith('/print')) cmd += '/print';
+    if (idWords.length) {
+      idWords[0] = `?.id=${idWords[0].split('=.id=')[1]}`;
+    }
   } else if (method === 'POST' || method === 'post') {
     // POST with body usually = add
     if (!cmd.endsWith('/add') && !cmd.endsWith('/set') && !cmd.endsWith('/remove')) {
-      cmd += '/add';
+      cmd += idWords.length ? '/set' : '/add';
     }
   } else if (method === 'PUT' || method === 'put' || method === 'PATCH') {
     if (!cmd.endsWith('/set')) cmd += '/set';
   } else if (method === 'DELETE' || method === 'delete') {
     if (!cmd.endsWith('/remove')) cmd += '/remove';
   }
-  
-  return cmd;
+
+  return { command: cmd, idWords };
 }
+
 
 /**
  * Convert REST API body to native API attribute words
