@@ -5,23 +5,16 @@ import { getSmtpScope, saveSmtpScope, maskSmtp, sendTestMail } from '../lib/mail
 export const mailRouter = Router();
 
 /**
- * Ámbito de la configuración:
- *  - super_admin con ?scope=global  → configuración del sistema (tenant_id NULL)
- *  - admin del ISP                  → configuración de su propio ISP
+ * El correo SMTP es único y global del sistema (tenant_id NULL).
+ * Solo el super administrador puede verlo o modificarlo; se usa
+ * únicamente para los enlaces de restablecimiento de contraseña.
  */
-function resolveScope(req: AuthRequest): { tenantId: string | null } | { error: string } {
-  const wantsGlobal = String(req.query.scope || '') === 'global';
-  if (req.userRole === 'super_admin') {
-    return { tenantId: wantsGlobal ? null : (req.tenantId || null) };
-  }
-  if (wantsGlobal) return { error: 'Solo el super administrador gestiona el correo del sistema' };
-  if (!req.tenantId) return { error: 'Tu usuario no pertenece a ningún ISP' };
-  return { tenantId: req.tenantId };
+function resolveScope(_req: AuthRequest): { tenantId: string | null } {
+  return { tenantId: null };
 }
 
-mailRouter.get('/settings', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+mailRouter.get('/settings', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const scope = resolveScope(req);
-  if ('error' in scope) return res.status(403).json({ error: scope.error });
   try {
     const data = await getSmtpScope(scope.tenantId);
     res.json({ data: maskSmtp(data), scope: scope.tenantId ? 'tenant' : 'global' });
@@ -30,9 +23,8 @@ mailRouter.get('/settings', requireRole('super_admin', 'admin'), async (req: Aut
   }
 });
 
-mailRouter.put('/settings', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+mailRouter.put('/settings', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const scope = resolveScope(req);
-  if ('error' in scope) return res.status(403).json({ error: scope.error });
   const { host, port, secure, username, password, from_email, from_name, domain, is_active } = req.body || {};
 
   if (!host || !String(host).trim()) return res.status(400).json({ error: 'El servidor SMTP es obligatorio' });
@@ -58,9 +50,8 @@ mailRouter.put('/settings', requireRole('super_admin', 'admin'), async (req: Aut
   }
 });
 
-mailRouter.post('/test', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+mailRouter.post('/test', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   const scope = resolveScope(req);
-  if ('error' in scope) return res.status(403).json({ error: scope.error });
   const to = String(req.body?.to || '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
     return res.status(400).json({ error: 'Indica un correo de destino válido' });

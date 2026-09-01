@@ -76,7 +76,7 @@ export default function Login() {
     if (slug) setStoredTenantSlug(slug);
   }, [slug]);
 
-  const brandName = tenant?.name || 'OmniACS';
+  const brandName = tenant?.name || 'OmniSync';
   const landing = mergeLanding((tenant as any)?.landing);
   const brandLogo = tenant?.logo_url || null;
 

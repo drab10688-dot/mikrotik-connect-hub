@@ -122,7 +122,7 @@ const Dashboard = () => {
       <div className="p-4 md:p-8 md:ml-64">
         <header className="mb-6 md:mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Panel OmniACS</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Panel OmniSync</h1>
             <p className="text-muted-foreground">Monitoreo y gestión de ONUs por TR-069</p>
           </div>
           <div className="flex items-center gap-3">
