@@ -300,6 +300,10 @@ export const Sidebar = () => {
             <LogOut className="w-4 h-4 mr-3" />
             Cerrar sesión
           </Button>
+
+          <p className="pt-1 text-center text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/40">
+            Creado por <span className="font-semibold text-sidebar-primary/80">OmniSync</span>
+          </p>
         </div>
       </aside>
     </>
