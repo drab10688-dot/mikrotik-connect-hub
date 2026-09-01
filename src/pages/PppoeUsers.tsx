@@ -308,6 +308,11 @@ export default function PppoeUsers() {
                       {(cfg.username_prefix || "") + (sanitizeUsername(form.name) || "…")}
                     </span>
                   </p>
+                  {duplicateName && (
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5" /> Ese usuario ya existe en la MikroTik
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
