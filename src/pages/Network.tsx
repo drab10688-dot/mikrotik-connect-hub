@@ -8,12 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { devicesApi, netAccessApi, getApiBaseUrl, withAuthToken, remoteDesktopUrl, browserApi } from "@/lib/api-client";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { devicesApi, netAccessApi, pppoeApi, getApiBaseUrl, withAuthToken, remoteDesktopUrl, browserApi } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
   Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
-  AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown,
+  AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown, Pencil,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
@@ -246,6 +247,40 @@ export default function Network() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pppoeSearch.filtered, ipSort]);
   const filteredEquipos = equipoSearch.paged;
+
+  // ─── Edición de secreto PPPoE (comentario / perfil) ───
+  const [editSecret, setEditSecret] = useState<any | null>(null);
+  const [editComment, setEditComment] = useState("");
+  const [editProfile, setEditProfile] = useState("");
+
+  const { data: pppoeProfiles = [] } = useQuery({
+    queryKey: ["net-pppoe-profiles", deviceId],
+    queryFn: () => pppoeApi.profiles(deviceId),
+    enabled: !!deviceId && !!editSecret,
+    staleTime: 120_000,
+  });
+
+  const updateSecretMut = useMutation({
+    mutationFn: () =>
+      netAccessApi.updatePppoeSecret(deviceId, String(editSecret.id), {
+        comment: editComment,
+        profile: editProfile || undefined,
+      }),
+    onSuccess: (data: any) => {
+      toast.success("Secreto actualizado", {
+        description: data?.kicked ? "Se aplicó el perfil y la sesión reconectó." : undefined,
+      });
+      setEditSecret(null);
+      qc.invalidateQueries({ queryKey: ["net-pppoe", deviceId] });
+    },
+    onError: (e: any) => toast.error("No se pudo actualizar", { description: e?.message }),
+  });
+
+  const openEditSecret = (s: any) => {
+    setEditSecret(s);
+    setEditComment(s.comment || "");
+    setEditProfile(s.profile || "");
+  };
 
   const openWebFig = async () => {
     try {
@@ -523,24 +558,36 @@ export default function Network() {
                             <td className="py-2 pr-4">{s.profile || "—"}</td>
                             <td className="py-2 pr-4">{s.uptime || "—"}</td>
                             <td className="py-2">
-                              {s.remote_address ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    setBrowserTarget({
-                                      title: `${s.name} — ${s.remote_address}`,
-                                      directUrl: `http://${s.remote_address}:${portDraft.otro?.port || 80}/`,
-                                      proxyUrl: proxyUrl(
-                                        `/api/netaccess/${deviceId}/web/${s.remote_address}/${portDraft.otro?.port || 80}/`
-                                      ),
-                                      mikrotikId: deviceId,
-                                    })
-                                  }
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5 mr-1" /> Abrir
-                                </Button>
-                              ) : "—"}
+                              <div className="flex items-center gap-1.5">
+                                {s.source === "secret" && s.id ? (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    title="Editar comentario y perfil"
+                                    onClick={() => openEditSecret(s)}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                ) : null}
+                                {s.remote_address ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                      setBrowserTarget({
+                                        title: `${s.name} — ${s.remote_address}`,
+                                        directUrl: `http://${s.remote_address}:${portDraft.otro?.port || 80}/`,
+                                        proxyUrl: proxyUrl(
+                                          `/api/netaccess/${deviceId}/web/${s.remote_address}/${portDraft.otro?.port || 80}/`
+                                        ),
+                                        mikrotikId: deviceId,
+                                      })
+                                    }
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5 mr-1" /> Abrir
+                                  </Button>
+                                ) : !s.id ? "—" : null}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1178,6 +1225,55 @@ export default function Network() {
           target={signalAp}
           onOpenChange={(open) => !open && setSignalAp(null)}
         />
+
+        <Dialog open={!!editSecret} onOpenChange={(open) => !open && setEditSecret(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar {editSecret?.name}</DialogTitle>
+              <DialogDescription>
+                Cambia el comentario o el perfil PPPoE directamente en la MikroTik. Si cambias el perfil, la sesión activa reconecta para aplicarlo.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-pppoe-comment">Comentario</Label>
+                <Input
+                  id="edit-pppoe-comment"
+                  value={editComment}
+                  onChange={(e) => setEditComment(e.target.value)}
+                  placeholder="Ej: Cliente Juan Pérez — Casa verde"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Perfil PPPoE</Label>
+                <Select value={editProfile} onValueChange={setEditProfile}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un perfil" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {editProfile && !pppoeProfiles.some((p: any) => p.name === editProfile) && (
+                      <SelectItem value={editProfile}>{editProfile} (actual)</SelectItem>
+                    )}
+                    {(pppoeProfiles as any[]).map((p: any) => (
+                      <SelectItem key={p[".id"] || p.id || p.name} value={p.name}>
+                        {p.name}{p["rate-limit"] ? ` — ${p["rate-limit"]}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditSecret(null)}>Cancelar</Button>
+              <Button onClick={() => updateSecretMut.mutate()} disabled={updateSecretMut.isPending}>
+                {updateSecretMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Guardar cambios
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

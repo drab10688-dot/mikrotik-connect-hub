@@ -442,6 +442,10 @@ export const netAccessApi = {
     unwrapData<any>(
       await apiPut<any>(`/netaccess/${mikrotikId}/pppoe/${encodeURIComponent(secretId)}/password`, { password, kick })
     ),
+  updatePppoeSecret: async (mikrotikId: string, secretId: string, data: { comment?: string; profile?: string }) =>
+    unwrapData<any>(
+      await apiPut<any>(`/netaccess/${mikrotikId}/pppoe/${encodeURIComponent(secretId)}`, data)
+    ),
   devices: async (mikrotikId: string) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/devices`)),
   webfig: async (mikrotikId: string, port?: number) =>

@@ -849,6 +849,44 @@ netAccessRouter.put('/:mikrotikId/pppoe/:secretId/password', editRed, async (req
   }
 });
 
+/** Edita comentario y/o perfil de un secreto PPPoE directo en el MikroTik. */
+netAccessRouter.put('/:mikrotikId/pppoe/:secretId', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+
+    const { secretId } = req.params as { secretId: string };
+    if (!secretId) return res.status(400).json({ success: false, error: 'Falta el ID del secreto' });
+
+    const patch: Record<string, string> = {};
+    if (typeof req.body?.comment === 'string') patch.comment = req.body.comment;
+    if (typeof req.body?.profile === 'string' && req.body.profile.trim()) patch.profile = req.body.profile.trim();
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ success: false, error: 'Nada que actualizar (envía comment y/o profile)' });
+    }
+
+    const config = await getDeviceConfig(pool, mikrotikId);
+    await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`, 'PATCH', patch);
+
+    // Si cambió el perfil, tumbar la sesión activa para que reconecte con el perfil nuevo
+    let kicked = false;
+    if (patch.profile) {
+      const active = asArray(await mikrotikRequest(config, '/rest/ppp/active').catch(() => []));
+      const secret = await mikrotikRequest(config, `/rest/ppp/secret/${encodeURIComponent(secretId)}`).catch(() => null);
+      const name = (secret as any)?.name;
+      const session = active.find((a: any) => String(a.name) === String(name));
+      if (session?.['.id']) {
+        await mikrotikRequest(config, `/rest/ppp/active/${encodeURIComponent(session['.id'])}`, 'DELETE').catch(() => undefined);
+        kicked = true;
+      }
+    }
+
+    res.json({ success: true, data: { secret_id: secretId, kicked } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ─── Equipos detectados en la red (antenas, CPEs, routers) ──────
 netAccessRouter.get('/:mikrotikId/devices', async (req: AuthRequest, res: Response) => {
   try {
