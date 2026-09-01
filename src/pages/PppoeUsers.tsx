@@ -361,10 +361,11 @@ export default function PppoeUsers() {
               <Card className="lg:col-span-2 border-primary/30">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Share2 className="h-4 w-4" /> Compartir credenciales
+                    <Share2 className="h-4 w-4" /> Compartir usuario
                   </CardTitle>
                   <CardDescription>
-                    {created.length} usuario(s) creados. Envíaselos al cliente por WhatsApp o Telegram.
+                    {created.length} usuario(s) creados. Al compartir solo se envía el nombre de usuario
+                    (la clave y la IP nunca salen del panel), firmado como “Creado por OmniSync”.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -375,11 +376,12 @@ export default function PppoeUsers() {
                         className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border/60 px-3 py-2 text-sm"
                       >
                         <span className="font-mono font-medium">{u.name}</span>
-                        <span className="text-muted-foreground">Clave: {u.password || "-"}</span>
-                        {u.remoteAddress && <Badge variant="secondary">IP {u.remoteAddress}</Badge>}
+                        <span className="text-muted-foreground">Clave: •••••••• (no se comparte)</span>
+                        {u.remoteAddress && <Badge variant="secondary">IP {u.remoteAddress} (interna)</Badge>}
                       </div>
                     ))}
                   </div>
+
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="min-w-[200px] flex-1 space-y-1.5">
                       <Label>WhatsApp del cliente (con indicativo)</Label>
