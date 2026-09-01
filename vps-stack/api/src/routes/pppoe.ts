@@ -108,7 +108,13 @@ pppoeRouter.delete('/:mikrotikId/secrets/:secretId', async (req: AuthRequest, re
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
     const config = await getDeviceConfig(pool, mikrotikId);
+    let deletedName = secretId;
+    try {
+      const found: any = await mikrotikRequest(config, `/rest/ppp/secret/${secretId}`);
+      if (found?.name) deletedName = found.name;
+    } catch {}
     await mikrotikRequest(config, `/rest/ppp/secret/${secretId}`, 'DELETE');
+    await logAudit(req, mikrotikId, deletedName, 'eliminado');
     invalidate(`pppoe:${mikrotikId}:`);
     res.json({ success: true });
   } catch (error: any) {
@@ -276,6 +282,75 @@ pppoeRouter.put('/:mikrotikId/settings', async (req: AuthRequest, res: Response)
   }
 });
 
+// ─── Auditoría PPPoE ───
+async function ensureAuditTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pppoe_audit (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id UUID,
+      mikrotik_id UUID,
+      username TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT,
+      actor_id UUID,
+      actor_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS pppoe_audit_device_idx ON pppoe_audit(mikrotik_id, created_at DESC);
+  `);
+}
+
+async function logAudit(req: AuthRequest, mikrotikId: string, username: string, action: string, detail?: string) {
+  try {
+    await ensureAuditTable();
+    let email: string | null = null;
+    try {
+      const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [req.userId]);
+      email = rows[0]?.email || null;
+    } catch {}
+    await pool.query(
+      `INSERT INTO pppoe_audit (tenant_id, mikrotik_id, username, action, detail, actor_id, actor_email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [req.tenantId || null, mikrotikId, username, action, detail || null, req.userId || null, email]
+    );
+  } catch {
+    /* la auditoría nunca debe romper la operación */
+  }
+}
+
+pppoeRouter.get('/:mikrotikId/audit', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+    await ensureAuditTable();
+    const { rows } = await pool.query(
+      `SELECT id, username, action, detail, actor_email, created_at
+         FROM pppoe_audit WHERE mikrotik_id = $1
+        ORDER BY created_at DESC LIMIT 200`,
+      [mikrotikId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** Registra que se compartió un usuario (WhatsApp / Telegram / copiar). */
+pppoeRouter.post('/:mikrotikId/audit/share', async (req: AuthRequest, res: Response) => {
+  try {
+    const { mikrotikId } = req.params;
+    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
+    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
+    const names: string[] = Array.isArray(req.body?.usernames) ? req.body.usernames : [];
+    const via = String(req.body?.via || 'desconocido');
+    for (const n of names) await logAudit(req, mikrotikId, String(n), 'compartido', `vía ${via}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 /**
  * Alta de usuarios PPPoE (uno o varios) usando la contraseña global del ISP
  * cuando no se envía una contraseña individual.
@@ -292,6 +367,16 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
 
     const config = await getDeviceConfig(pool, mikrotikId);
     const nextIp = await makeIpAllocator(config, settings);
+
+    // Nombres ya existentes en la MikroTik (validación de duplicados)
+    const existing = new Set<string>();
+    try {
+      const secrets: any[] = (await mikrotikRequest(config, '/rest/ppp/secret')) || [];
+      for (const s of secrets) if (s?.name) existing.add(String(s.name).toLowerCase());
+    } catch {
+      /* si no se puede leer, la MikroTik rechazará el duplicado igualmente */
+    }
+
     const results: any[] = [];
 
     for (const item of incoming) {
@@ -302,6 +387,12 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
         continue;
       }
       const name = settings.username_prefix ? `${settings.username_prefix}${clean}` : clean;
+
+      if (existing.has(name.toLowerCase())) {
+        results.push({ name, originalName: rawName, ok: false, duplicate: true, error: 'Ya existe un usuario con ese nombre en la MikroTik' });
+        continue;
+      }
+
       const password =
         (item?.password && String(item.password)) ||
         (settings.use_global_password ? settings.global_password : null);
@@ -323,6 +414,8 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
           'remote-address': remoteAddress || undefined,
           comment: item?.comment || '',
         });
+        existing.add(name.toLowerCase());
+        await logAudit(req, mikrotikId, name, 'creado', remoteAddress ? `IP ${remoteAddress}` : undefined);
         results.push({ name, originalName: rawName, ok: true, password, remoteAddress: remoteAddress || null });
       } catch (err: any) {
         results.push({ name, ok: false, error: err?.message || 'Error en la MikroTik' });
@@ -337,3 +430,4 @@ pppoeRouter.post('/:mikrotikId/users', async (req: AuthRequest, res: Response) =
     res.status(500).json({ success: false, error: error.message });
   }
 });
+

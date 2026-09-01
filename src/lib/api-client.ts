@@ -332,7 +332,11 @@ export const pppoeApi = {
     unwrapData<any>(await apiPost<any>(`/pppoe/${mikrotikId}/users`, { users })),
   deleteSecret: (mikrotikId: string, secretId: string) =>
     apiDelete(`/pppoe/${mikrotikId}/secrets/${encodeURIComponent(secretId)}`),
+  audit: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/pppoe/${mikrotikId}/audit`)),
+  logShare: (mikrotikId: string, usernames: string[], via: string) =>
+    apiPost<any>(`/pppoe/${mikrotikId}/audit/share`, { usernames, via }).catch(() => null),
 };
+
 
 // ─── Permisos por usuario dentro del ISP ──────────────────
 export const permissionsApi = {

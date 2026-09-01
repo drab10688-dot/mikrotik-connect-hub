@@ -16,7 +16,7 @@ import { UserPermissionsDialog } from "@/components/admin/UserPermissionsDialog"
 import { useAuth } from "@/hooks/useAuth";
 import { useMyPermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
-import { KeyRound, UserPlus, Users, Trash2, RefreshCw, Save, ShieldCheck, Layers, Share2, Send, MessageCircle, Copy } from "lucide-react";
+import { KeyRound, UserPlus, Users, Trash2, RefreshCw, Save, ShieldCheck, Layers, Share2, Send, MessageCircle, Copy, History, AlertTriangle } from "lucide-react";
 
 /** "YERSON  PEPITO PERES" -> "yerson.pepito.peres" (igual que en la MikroTik) */
 export const sanitizeUsername = (raw: string) =>
@@ -120,8 +120,13 @@ export default function PppoeUsers() {
       const results = res?.results || [];
       const failed = results.filter((r: any) => !r.ok);
       setCreated(results.filter((r: any) => r.ok));
+      qc.invalidateQueries({ queryKey: ["pppoe-audit", deviceId] });
       if (res?.created) toast.success(`${res.created} usuario(s) PPPoE creados`);
-      failed.forEach((f: any) => toast.error(`${f.name}: ${f.error}`));
+      failed.forEach((f: any) =>
+        f.duplicate
+          ? toast.warning(`${f.name}: ya existe en la MikroTik, no se creó`)
+          : toast.error(`${f.name}: ${f.error}`)
+      );
       if (!res?.created && !failed.length) toast.error("No se creó ningún usuario");
     },
     onError: (e: any) => toast.error(e.message || "Error creando usuarios"),
@@ -139,8 +144,14 @@ export default function PppoeUsers() {
   }, [created]);
 
 
+  const logShare = (via: string) =>
+    pppoeApi.logShare(deviceId, created.map((u) => u.name), via).then(() =>
+      qc.invalidateQueries({ queryKey: ["pppoe-audit", deviceId] })
+    );
+
   const shareWhatsApp = () => {
     const phone = sharePhone.replace(/\D/g, "");
+    logShare("WhatsApp");
     window.open(
       `https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`,
       "_blank",
@@ -149,6 +160,7 @@ export default function PppoeUsers() {
   };
 
   const shareTelegram = () => {
+    logShare("Telegram");
     window.open(
       `https://t.me/share/url?url=${encodeURIComponent("")}&text=${encodeURIComponent(shareText)}`,
       "_blank",
@@ -168,6 +180,7 @@ export default function PppoeUsers() {
 
   const submitSingle = () => {
     if (!form.name.trim()) return toast.error("Escribe el nombre de usuario");
+    if (duplicateName) return toast.error("Ese usuario ya existe en la MikroTik");
     createUsers.mutate([
       {
         name: form.name.trim(),
@@ -194,6 +207,30 @@ export default function PppoeUsers() {
     createUsers.mutate(bulkList.map((name) => ({ name })));
     setBulk("");
   };
+
+  // ─── Auditoría ───
+  const { data: audit = [] } = useQuery({
+    queryKey: ["pppoe-audit", deviceId],
+    queryFn: () => pppoeApi.audit(deviceId),
+    enabled: !!deviceId,
+  });
+
+  const existingNames = useMemo(
+    () => new Set(secrets.map((s: any) => String(s?.name || "").toLowerCase())),
+    [secrets]
+  );
+  const duplicateName = useMemo(() => {
+    const n = (cfg.username_prefix || "") + sanitizeUsername(form.name);
+    return !!sanitizeUsername(form.name) && existingNames.has(n.toLowerCase());
+  }, [form.name, cfg.username_prefix, existingNames]);
+
+  const duplicatesInBulk = useMemo(
+    () =>
+      bulkList.filter((n) =>
+        existingNames.has(((cfg.username_prefix || "") + sanitizeUsername(n)).toLowerCase())
+      ),
+    [bulkList, cfg.username_prefix, existingNames]
+  );
 
   // ─── Permisos por usuario del panel ───
   const { data: panelUsers = [] } = useQuery({
@@ -242,6 +279,7 @@ export default function PppoeUsers() {
             <TabsTrigger value="crear"><UserPlus className="mr-2 h-4 w-4" />Crear usuarios</TabsTrigger>
             <TabsTrigger value="lista"><Users className="mr-2 h-4 w-4" />Usuarios PPPoE</TabsTrigger>
             <TabsTrigger value="config"><KeyRound className="mr-2 h-4 w-4" />Contraseña global</TabsTrigger>
+            <TabsTrigger value="auditoria"><History className="mr-2 h-4 w-4" />Auditoría</TabsTrigger>
             <TabsTrigger value="permisos"><ShieldCheck className="mr-2 h-4 w-4" />Permisos por usuario</TabsTrigger>
           </TabsList>
 
@@ -270,6 +308,11 @@ export default function PppoeUsers() {
                       {(cfg.username_prefix || "") + (sanitizeUsername(form.name) || "…")}
                     </span>
                   </p>
+                  {duplicateName && (
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5" /> Ese usuario ya existe en la MikroTik
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -350,6 +393,11 @@ export default function PppoeUsers() {
                 />
                 <div className="flex items-center justify-between">
                   <Badge variant="secondary">{bulkList.length} usuario(s)</Badge>
+                  {duplicatesInBulk.length > 0 && (
+                    <Badge variant="destructive" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" /> {duplicatesInBulk.length} ya existen
+                    </Badge>
+                  )}
                   <Button onClick={submitBulk} disabled={!deviceId || !canManage || createUsers.isPending}>
                     Crear todos
                   </Button>
@@ -401,7 +449,8 @@ export default function PppoeUsers() {
                       variant="ghost"
                       onClick={() => {
                         navigator.clipboard?.writeText(shareText);
-                        toast.success("Credenciales copiadas");
+                        logShare("copiado");
+                        toast.success("Usuario copiado");
                       }}
                     >
                       <Copy className="mr-2 h-4 w-4" /> Copiar
@@ -582,6 +631,54 @@ export default function PppoeUsers() {
           </TabsContent>
 
           {/* Permisos por usuario del panel */}
+          <TabsContent value="auditoria">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <History className="h-4 w-4" /> Registro de auditoría
+                </CardTitle>
+                <CardDescription>
+                  Quién creó, compartió o eliminó cada usuario PPPoE y cuándo (últimos 200 eventos).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Usuario PPPoE</TableHead>
+                      <TableHead>Acción</TableHead>
+                      <TableHead>Detalle</TableHead>
+                      <TableHead>Responsable</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {audit.map((a: any) => (
+                      <TableRow key={a.id}>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {new Date(a.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="font-mono">{a.username}</TableCell>
+                        <TableCell>
+                          <Badge variant={a.action === "eliminado" ? "destructive" : "secondary"}>{a.action}</Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{a.detail || "—"}</TableCell>
+                        <TableCell>{a.actor_email || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!audit.length && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                          Aún no hay eventos registrados.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="permisos">
             <Card>
               <CardHeader>
