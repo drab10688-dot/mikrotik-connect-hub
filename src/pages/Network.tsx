@@ -569,6 +569,7 @@ export default function Network() {
                               )}
                             </button>
                           </th>
+                          <th className="py-2 pr-4">MAC</th>
                           <th className="py-2 pr-4">Perfil</th>
                           <th className="py-2 pr-4">Uptime</th>
                         </tr>
