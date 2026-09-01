@@ -25,8 +25,10 @@ function normalizePort(port: number | string): number {
 type NativeAuthMode = 'plain' | 'challenge-first';
 
 const authCooldowns = new Map<string, number>();
+const authFailureCounts = new Map<string, number>();
 const AUTH_COOLDOWN_MS = 60_000;
 const nativeApiQueues = new Map<string, Promise<void>>();
+
 
 function isAuthenticationError(error: Error): boolean {
   return /login failed|invalid user|invalid password|authentication failed|not logged in|cannot log in/i.test(error.message);
@@ -93,26 +95,39 @@ async function tryNativeApiWithFallbackUnlocked(
   const authModes: NativeAuthMode[] = ['plain', 'challenge-first'];
 
   let lastError: Error | null = null;
+  let authFailures = 0;
 
   for (const authMode of authModes) {
     for (const useTls of tlsCandidates) {
       try {
         const result = await nativeApiCommand({ ...config, port, useTls }, path, method, body, authMode, 7000);
         authCooldowns.delete(cooldownKey);
+        authFailureCounts.delete(cooldownKey);
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        // Una credencial rechazada no se arregla probando TLS u otro modo de login.
-        // Detener aquí evita ráfagas que activan la protección de RouterOS.
+        // Una credencial rechazada no se arregla probando otro TLS, pero sí
+        // puede resolverse con el otro modo de login (RouterOS v6 antiguo usa
+        // challenge MD5). Por eso pasamos al siguiente modo en lugar de abortar.
         if (isAuthenticationError(lastError)) {
-          authCooldowns.set(cooldownKey, Date.now() + AUTH_COOLDOWN_MS);
-          throw lastError;
+          authFailures++;
+          break;
         }
       }
     }
   }
 
+  if (lastError && isAuthenticationError(lastError) && authFailures >= authModes.length) {
+    const streak = (authFailureCounts.get(cooldownKey) || 0) + 1;
+    authFailureCounts.set(cooldownKey, streak);
+    // Solo enfriamos tras varios rechazos seguidos, para no bloquear la UI por
+    // un rechazo transitorio de RouterOS ante conexiones simultáneas.
+    if (streak >= 3) authCooldowns.set(cooldownKey, Date.now() + AUTH_COOLDOWN_MS);
+    throw lastError;
+  }
+
   throw lastError || new Error('No fue posible conectar por API nativa MikroTik');
+
 }
 
 // ─── REST API Client ─────────────────────────────────────
@@ -299,27 +314,50 @@ export async function mikrotikRequest(
  * e.g. /rest/interface -> /interface/print
  * e.g. /rest/ip/hotspot/active -> /ip/hotspot/active/print
  */
-function restPathToNativeCommand(path: string, method: string): string {
+function restPathToNativeCommand(path: string, method: string): { command: string; idWords: string[] } {
   // Strip /rest prefix
   let cmd = path.replace(/^\/rest/, '');
-  
+  const idWords: string[] = [];
+
+  // Extraer el ID interno (.id, ej. *1A) que en REST viaja en la URL pero
+  // en la API nativa debe enviarse como atributo =.id=
+  const segments = cmd.split('/').filter(Boolean).map((s) => {
+    try { return decodeURIComponent(s); } catch { return s; }
+  });
+  const knownActions = new Set(['print', 'add', 'set', 'remove', 'enable', 'disable', 'getall']);
+  const isId = (s?: string) => !!s && /^\*[0-9A-Fa-f]+$/.test(s);
+  const last = segments[segments.length - 1];
+  if (isId(last)) {
+    idWords.push(`=.id=${segments.pop()}`);
+  } else if (last && knownActions.has(last) && isId(segments[segments.length - 2])) {
+    const action = segments.pop() as string;
+    idWords.push(`=.id=${segments.pop()}`);
+    segments.push(action);
+  }
+  cmd = '/' + segments.join('/');
+
+
   // Map HTTP methods to API actions
   if (method === 'GET' || method === 'get') {
     // GET = print
     if (!cmd.endsWith('/print')) cmd += '/print';
+    if (idWords.length) {
+      idWords[0] = `?.id=${idWords[0].split('=.id=')[1]}`;
+    }
   } else if (method === 'POST' || method === 'post') {
     // POST with body usually = add
     if (!cmd.endsWith('/add') && !cmd.endsWith('/set') && !cmd.endsWith('/remove')) {
-      cmd += '/add';
+      cmd += idWords.length ? '/set' : '/add';
     }
   } else if (method === 'PUT' || method === 'put' || method === 'PATCH') {
     if (!cmd.endsWith('/set')) cmd += '/set';
   } else if (method === 'DELETE' || method === 'delete') {
     if (!cmd.endsWith('/remove')) cmd += '/remove';
   }
-  
-  return cmd;
+
+  return { command: cmd, idWords };
 }
+
 
 /**
  * Convert REST API body to native API attribute words
@@ -350,10 +388,11 @@ export async function nativeApiCommand(
   authMode: NativeAuthMode = 'plain',
   timeoutMs = 15000
 ): Promise<unknown> {
-  const command = restPathToNativeCommand(path, method);
-  const attrWords = bodyToApiWords(body);
-  
+  const { command, idWords } = restPathToNativeCommand(path, method);
+  const attrWords = [...idWords, ...bodyToApiWords(body)];
+
   const sentences = await nativeApiExecute(config, command, attrWords, timeoutMs, authMode);
+
   
   // Parse response sentences into objects
   const results: Record<string, string>[] = [];
