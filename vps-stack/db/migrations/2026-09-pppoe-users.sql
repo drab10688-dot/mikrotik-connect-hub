@@ -33,3 +33,8 @@ UPDATE role_permissions
    SET can_view = true, can_edit = true
  WHERE role = 'admin'
    AND section IN ('dashboard', 'usuarios', 'roles');
+
+-- ─── Asignación automática de IP remota (rango del ISP) ─────
+ALTER TABLE pppoe_settings ADD COLUMN IF NOT EXISTS auto_assign_ip BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE pppoe_settings ADD COLUMN IF NOT EXISTS ip_pool_start TEXT;
+ALTER TABLE pppoe_settings ADD COLUMN IF NOT EXISTS ip_pool_end TEXT;
