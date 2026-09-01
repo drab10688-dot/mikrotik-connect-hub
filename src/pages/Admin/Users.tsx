@@ -189,13 +189,9 @@ export default function UsersAdmin() {
 
                       const isExpanded = expandedUsers.has(userId);
                       const userRole = user.user_roles?.[0]?.role || user.role;
-                      const isAdminRole = userRole === 'admin' || userRole === 'super_admin';
-                      const userDevices = accesses?.filter((a: any) => a.user_id === userId) || [];
-                      const createdDevices = devices?.filter((d: any) => d.created_by === userId) || [];
-                      const hasAssignedDevices = userDevices.length > 0;
-                      const hasCreatedDevices = createdDevices.length > 0;
-                      const hasActiveCreatedDevices = createdDevices.filter((d: any) => d.status === 'active').length > 0;
-                      const shouldShowDevices = isAdminRole ? (hasAssignedDevices || hasCreatedDevices) : hasActiveCreatedDevices;
+                      const allDevices = devices || [];
+                      const shouldShowDevices = allDevices.length > 0;
+
 
                       return (
                         <Fragment key={userId}>
