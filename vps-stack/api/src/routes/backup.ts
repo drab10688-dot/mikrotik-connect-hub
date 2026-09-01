@@ -1,14 +1,18 @@
 import { Router, Response } from 'express';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import zlib from 'zlib';
+import multer from 'multer';
 import { spawn } from 'child_process';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
+import * as dropbox from '../lib/dropbox';
 
 export const backupRouter = Router();
 
 const BACKUP_DIR = process.env.BACKUP_DIR || '/opt/omnisync/backups';
+
 
 function ensureDir(): string {
   try {
