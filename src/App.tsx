@@ -6,6 +6,7 @@ import LoginPage from "./pages/Auth/Login";
 import ResetPassword from "./pages/Auth/ResetPassword";
 import MailSettings from "./pages/Admin/MailSettings";
 import Backups from "./pages/Admin/Backups";
+import SslSettings from "./pages/Admin/Ssl";
 import RemoteDesktop from "./pages/RemoteDesktop";
 import RemoteDesktopMobile from "./pages/RemoteDesktopMobile";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
