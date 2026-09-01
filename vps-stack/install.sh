@@ -141,8 +141,11 @@ fi
 # shellcheck disable=SC1091
 set -a; . "$INSTALL_DIR/.env"; set +a
 
-mkdir -p nginx/certs frontend/dist scripts
-if [ ! -f nginx/certs/remote.crt ]; then
+mkdir -p nginx/certs frontend/dist scripts nginx-dyn
+# Bloques dinámicos de despliegues previos: si apuntan a un contenedor/puerto
+# que ya no existe dejan Nginx caído al arrancar.
+rm -f nginx-dyn/browser-*.conf 2>/dev/null || true
+if [ ! -s nginx/certs/remote.crt ] || [ ! -s nginx/certs/remote.key ]; then
   openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
     -keyout nginx/certs/remote.key -out nginx/certs/remote.crt \
     -subj "/CN=omnisync-remote" >/dev/null 2>&1
