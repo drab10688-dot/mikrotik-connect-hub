@@ -276,11 +276,11 @@ export const authApi = {
 // ─── Correo (SMTP) por ISP o global del sistema ───────────
 export const mailApi = {
   getSettings: async (scope: 'tenant' | 'global' = 'tenant') =>
-    unwrapData<any>(await apiGet<any>(`/mail/settings${scope === 'global' ? '?scope=global' : ''}`)),
+    unwrapData<any>(await apiGet<any>('/mail/settings')),
   saveSettings: async (payload: any, scope: 'tenant' | 'global' = 'tenant') =>
-    unwrapData<any>(await apiPut<any>(`/mail/settings${scope === 'global' ? '?scope=global' : ''}`, payload)),
+    unwrapData<any>(await apiPut<any>('/mail/settings', payload)),
   test: (to: string, scope: 'tenant' | 'global' = 'tenant') =>
-    apiPost<any>(`/mail/test${scope === 'global' ? '?scope=global' : ''}`, { to }),
+    apiPost<any>('/mail/test', { to }),
 };
 
 // ─── Dominio propio y certificado HTTPS (solo super admin) ─

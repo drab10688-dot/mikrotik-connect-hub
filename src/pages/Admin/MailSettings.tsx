@@ -8,12 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Mail, Send, Loader2, Globe } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-
-type Scope = "tenant" | "global";
 
 const emptyForm = {
   host: "",
@@ -29,15 +26,14 @@ const emptyForm = {
 
 /** Servidor de correo (SMTP) usado para restablecer contraseñas y avisos. */
 export default function MailSettings() {
-  const { isSuperAdmin, user } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [scope, setScope] = useState<Scope>(isSuperAdmin ? "global" : "tenant");
   const [form, setForm] = useState(emptyForm);
   const [testTo, setTestTo] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["mail-settings", scope],
-    queryFn: () => mailApi.getSettings(scope),
+    queryKey: ["mail-settings"],
+    queryFn: () => mailApi.getSettings(),
   });
 
   useEffect(() => {
@@ -70,17 +66,16 @@ export default function MailSettings() {
           domain: form.domain || null,
           is_active: form.is_active,
         },
-        scope,
       ),
     onSuccess: () => {
       toast.success("Configuración de correo guardada");
-      queryClient.invalidateQueries({ queryKey: ["mail-settings", scope] });
+      queryClient.invalidateQueries({ queryKey: ["mail-settings"] });
     },
     onError: (e: any) => toast.error(e?.message || "No se pudo guardar"),
   });
 
   const test = useMutation({
-    mutationFn: () => mailApi.test(testTo, scope),
+    mutationFn: () => mailApi.test(testTo),
     onSuccess: () => toast.success(`Correo de prueba enviado a ${testTo}`),
     onError: (e: any) => toast.error(e?.message || "No se pudo enviar el correo"),
   });
@@ -94,20 +89,12 @@ export default function MailSettings() {
             <div>
               <h1 className="text-3xl font-bold">Correo (SMTP)</h1>
               <p className="text-muted-foreground">
-                Necesario para enviar los enlaces de restablecimiento de contraseña
+                Configuración global del sistema para enviar los enlaces de restablecimiento de contraseña
               </p>
             </div>
             {data?.has_password && <Badge variant="secondary">Credenciales guardadas</Badge>}
           </div>
 
-          {isSuperAdmin && (
-            <Tabs value={scope} onValueChange={(v) => setScope(v as Scope)}>
-              <TabsList>
-                <TabsTrigger value="global">Sistema (global)</TabsTrigger>
-                <TabsTrigger value="tenant">Mi ISP</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
 
           <Card>
             <CardHeader>
@@ -116,9 +103,7 @@ export default function MailSettings() {
                 <div>
                   <CardTitle>Servidor de salida</CardTitle>
                   <CardDescription>
-                    {scope === "global"
-                      ? "Se usa cuando un ISP no tiene su propio servidor configurado"
-                      : "Correos enviados con el dominio de este ISP"}
+                    Configuración única del sistema, usada por todos los ISPs
                   </CardDescription>
                 </div>
               </div>

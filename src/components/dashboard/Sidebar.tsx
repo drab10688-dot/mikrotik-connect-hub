@@ -41,7 +41,6 @@ const menuItems: MenuEntry[] = [
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
   { icon: Users, label: "Usuarios", path: "/admin/users", section: "usuarios", group: "Administración" },
   { icon: KeyRound, label: "Roles y permisos", path: "/admin/permissions", section: "roles", group: "Administración" },
-  { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", section: "correo", group: "Administración" },
   { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", section: "respaldos", group: "Administración" },
 ];
 
