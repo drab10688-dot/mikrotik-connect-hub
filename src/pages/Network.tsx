@@ -569,6 +569,7 @@ export default function Network() {
                               )}
                             </button>
                           </th>
+                          <th className="py-2 pr-4">MAC</th>
                           <th className="py-2 pr-4">Perfil</th>
                           <th className="py-2 pr-4">Uptime</th>
                         </tr>
@@ -617,6 +618,7 @@ export default function Network() {
                               </Badge>
                             </td>
                             <td className="py-2 pr-4 font-mono text-xs">{s.remote_address || "—"}</td>
+                            <td className="py-2 pr-4 font-mono text-xs">{s.caller_id || "—"}</td>
                             <td className="py-2 pr-4">
                               <div className="flex items-center gap-1">
                                 <span>{s.profile || "—"}</span>
@@ -631,7 +633,7 @@ export default function Network() {
                           </tr>
                         ))}
                         {!filteredSecrets.length && (
-                          <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
+                          <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Sin usuarios PPPoE</td></tr>
                         )}
                       </tbody>
                     </table>
