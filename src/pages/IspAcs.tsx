@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Copy, Download, Pencil, RefreshCw, Router as RouterIcon, Satellite, Save, ShieldCheck, Trash2 } from "lucide-react";
@@ -162,6 +165,26 @@ const IspAcs = () => {
       setScript(res.data.script);
       queryClient.invalidateQueries({ queryKey: ["isp-vpn"] });
       toast.success(mode === "vpn" ? "VPN generada" : "Configuración sin VPN generada");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Regenerar script de una VPN existente (reutiliza las mismas credenciales
+  // L2TP; solo permite ajustar las redes de ONUs si cambiaron las IP locales).
+  const [regenPeer, setRegenPeer] = useState<any | null>(null);
+  const [regenNetworks, setRegenNetworks] = useState("");
+
+  const regenerate = useMutation({
+    mutationFn: () =>
+      api<{ data: { script: string } }>("/isp/vpn/script", {
+        method: "POST",
+        body: { name: regenPeer?.name, onu_networks: regenNetworks, mode: "vpn" },
+      }),
+    onSuccess: (res) => {
+      setScript(res.data.script);
+      setRegenPeer(null);
+      queryClient.invalidateQueries({ queryKey: ["isp-vpn"] });
+      toast.success("Script regenerado — las credenciales del túnel se mantienen");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -375,6 +398,19 @@ const IspAcs = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={p.is_active ? "default" : "secondary"}>{p.is_active ? "activo" : "inactivo"}</Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            setRegenPeer(p);
+                            setRegenNetworks(p.onu_networks || "");
+                          }}
+                          aria-label={`Regenerar script de ${p.name}`}
+                          title="Regenerar script / cambiar redes"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
