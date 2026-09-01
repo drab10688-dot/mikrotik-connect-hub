@@ -546,7 +546,14 @@ export default function PppoeUsers() {
                     disabled={!isAdmin && !isSuperAdmin}
                     onChange={(e) => setCfg({ ...cfg, global_password: e.target.value })}
                     placeholder="Contraseña compartida"
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Sin restricciones: se acepta cualquier carácter válido para MikroTik (puntos, mayúsculas, números, símbolos).
+                  </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
