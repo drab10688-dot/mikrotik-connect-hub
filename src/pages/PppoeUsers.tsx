@@ -321,6 +321,10 @@ export default function PppoeUsers() {
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     placeholder="Usar contraseña global"
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -582,6 +586,8 @@ export default function PppoeUsers() {
                       disabled={!isAdmin && !isSuperAdmin}
                       onChange={(e) => setCfg({ ...cfg, username_prefix: e.target.value })}
                       placeholder="isp-"
+                      spellCheck={false}
+                      autoComplete="off"
                     />
                   </div>
                 </div>
