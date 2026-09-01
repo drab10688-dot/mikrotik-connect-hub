@@ -93,26 +93,39 @@ async function tryNativeApiWithFallbackUnlocked(
   const authModes: NativeAuthMode[] = ['plain', 'challenge-first'];
 
   let lastError: Error | null = null;
+  let authFailures = 0;
 
   for (const authMode of authModes) {
     for (const useTls of tlsCandidates) {
       try {
         const result = await nativeApiCommand({ ...config, port, useTls }, path, method, body, authMode, 7000);
         authCooldowns.delete(cooldownKey);
+        authFailureCounts.delete(cooldownKey);
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        // Una credencial rechazada no se arregla probando TLS u otro modo de login.
-        // Detener aquí evita ráfagas que activan la protección de RouterOS.
+        // Una credencial rechazada no se arregla probando otro TLS, pero sí
+        // puede resolverse con el otro modo de login (RouterOS v6 antiguo usa
+        // challenge MD5). Por eso pasamos al siguiente modo en lugar de abortar.
         if (isAuthenticationError(lastError)) {
-          authCooldowns.set(cooldownKey, Date.now() + AUTH_COOLDOWN_MS);
-          throw lastError;
+          authFailures++;
+          break;
         }
       }
     }
   }
 
+  if (lastError && isAuthenticationError(lastError) && authFailures >= authModes.length) {
+    const streak = (authFailureCounts.get(cooldownKey) || 0) + 1;
+    authFailureCounts.set(cooldownKey, streak);
+    // Solo enfriamos tras varios rechazos seguidos, para no bloquear la UI por
+    // un rechazo transitorio de RouterOS ante conexiones simultáneas.
+    if (streak >= 3) authCooldowns.set(cooldownKey, Date.now() + AUTH_COOLDOWN_MS);
+    throw lastError;
+  }
+
   throw lastError || new Error('No fue posible conectar por API nativa MikroTik');
+
 }
 
 // ─── REST API Client ─────────────────────────────────────
