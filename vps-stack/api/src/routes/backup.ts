@@ -203,8 +203,10 @@ backupRouter.post('/system', requireRole('super_admin'), async (req: AuthRequest
     });
 
     const size = fs.statSync(filePath).size;
-    await registerJob(null, 'system', filename, size, req.userId);
-    res.json({ data: { filename, size_bytes: size } });
+    const remote = await maybeUploadRemote(null, filename, filePath);
+    await registerJob(null, 'system', filename, size, req.userId, 'ok', undefined, remote);
+    res.json({ data: { filename, size_bytes: size, remote_path: remote } });
+
   } catch (error: any) {
     fs.rmSync(filePath, { force: true });
     await registerJob(null, 'system', filename, 0, req.userId, 'error', error.message);
