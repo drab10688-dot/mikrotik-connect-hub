@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import zlib from 'zlib';
+import { PassThrough } from 'stream';
 import multer from 'multer';
 import { spawn } from 'child_process';
 import { pool } from '../lib/db';
@@ -400,7 +401,7 @@ function restoreSystemDump(filePath: string): Promise<void> {
     psql.on('close', (code) => (code === 0 ? resolve() : reject(new Error(stderr || `psql terminó con código ${code}`))));
 
     fs.createReadStream(filePath)
-      .pipe(filePath.endsWith('.gz') ? zlib.createGunzip() : new (require('stream').PassThrough)())
+      .pipe(filePath.endsWith('.gz') ? zlib.createGunzip() : new PassThrough())
       .pipe(psql.stdin);
   });
 }
