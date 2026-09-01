@@ -292,6 +292,16 @@ if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
 
+# Escritorio remoto: comprobación real por HTTPS (certificado autofirmado)
+DESK_CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:8081/ || echo 000)
+if [ "$DESK_CODE" = "000" ]; then
+  echo -e "  ${YELLOW}⚠ Escritorio remoto (8081) no responde. Mapeo publicado:${NC}"
+  docker port omnisync-nginx 2>/dev/null | sed 's/^/    /' || true
+else
+  echo -e "  ${GREEN}✓ Escritorio remoto responde en :8081 (HTTP ${DESK_CODE})${NC}"
+fi
+
+
 echo ""
 if [ "$TOTAL_FAIL" -eq 0 ]; then
   echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
