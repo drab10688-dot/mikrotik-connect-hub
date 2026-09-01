@@ -16,7 +16,23 @@ import { UserPermissionsDialog } from "@/components/admin/UserPermissionsDialog"
 import { useAuth } from "@/hooks/useAuth";
 import { useMyPermissions } from "@/hooks/usePermissions";
 import { toast } from "sonner";
-import { KeyRound, UserPlus, Users, Trash2, RefreshCw, Save, ShieldCheck, Layers } from "lucide-react";
+import { KeyRound, UserPlus, Users, Trash2, RefreshCw, Save, ShieldCheck, Layers, Share2, Send, MessageCircle, Copy } from "lucide-react";
+
+/** "YERSON  PEPITO PERES" -> "yerson.pepito.peres" (igual que en la MikroTik) */
+export const sanitizeUsername = (raw: string) =>
+  String(raw || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ñ/g, "n")
+    .replace(/Ñ/g, "N")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, ".")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[.\-_]+|[.\-_]+$/g, "")
+    .slice(0, 60);
+
+type CreatedUser = { name: string; password?: string; remoteAddress?: string | null };
+
 
 export default function PppoeUsers() {
   const qc = useQueryClient();
