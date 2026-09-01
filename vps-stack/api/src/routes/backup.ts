@@ -160,8 +160,10 @@ backupRouter.post('/tenant', requireRole('super_admin', 'admin'), async (req: Au
     const gz = zlib.gzipSync(Buffer.from(JSON.stringify(payload, null, 2)));
     fs.writeFileSync(filePath, gz);
 
-    await registerJob(tenantId, 'tenant', filename, gz.length, req.userId);
-    res.json({ data: { filename, size_bytes: gz.length } });
+    const remote = await maybeUploadRemote(tenantId, filename, filePath);
+    await registerJob(tenantId, 'tenant', filename, gz.length, req.userId, 'ok', undefined, remote);
+    res.json({ data: { filename, size_bytes: gz.length, remote_path: remote } });
+
   } catch (error: any) {
     await registerJob(tenantId, 'tenant', 'error', 0, req.userId, 'error', error.message);
     res.status(500).json({ error: error.message });
