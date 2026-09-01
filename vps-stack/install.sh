@@ -209,15 +209,9 @@ if [ -f "$INSTALL_DIR/genieacs-config.sh" ]; then
   bash "$INSTALL_DIR/genieacs-config.sh" 2>&1 | tail -10
 fi
 
-# Rutas automáticas hacia la LAN de las ONU (Connection Request instantáneo)
-if [ -f "$INSTALL_DIR/sync-onu-routes.sh" ]; then
-  bash "$INSTALL_DIR/sync-onu-routes.sh" --install 2>&1 | tail -8
-fi
-
-
-
-
-# Migraciones idempotentes (esquema multi-ISP / ONUs)
+# Migraciones idempotentes (esquema multi-ISP / ONUs / PPPoE)
+# El resto del esquema (SMTP global, backups/Dropbox, SSL, permisos por usuario,
+# ONU web, sesiones PPPoE) lo aplica la API al arrancar: ensure-isp-schema.ts
 if [ -d "$INSTALL_DIR/db/migrations" ]; then
   for f in "$INSTALL_DIR"/db/migrations/*.sql; do
     [ -f "$f" ] || continue
@@ -235,6 +229,16 @@ if VPS_PUBLIC_IP="$VPS_PUBLIC_IP" bash "$INSTALL_DIR/install-l2tp.sh" --onu-nets
 else
   echo -e "${YELLOW}⚠ L2TP no se levantó; reintenta: bash $INSTALL_DIR/install-l2tp.sh${NC}"
 fi
+
+# Rutas/NAT del túnel y hacia las LAN de las ONU (Connection Request instantáneo).
+# Va DESPUÉS de L2TP: necesita las interfaces ppp ya creadas.
+if [ -x "/opt/omnisync-l2tp/l2tp-routes.sh" ]; then
+  /opt/omnisync-l2tp/l2tp-routes.sh || true
+fi
+if [ -f "$INSTALL_DIR/sync-onu-routes.sh" ]; then
+  bash "$INSTALL_DIR/sync-onu-routes.sh" --install 2>&1 | tail -8
+fi
+
 
 # ═══ FASE 5: Verificación ═══
 echo ""
