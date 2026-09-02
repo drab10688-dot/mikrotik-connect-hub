@@ -103,27 +103,23 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
     let params: string[];
 
     if (req.userRole === 'super_admin') {
-      query = 'SELECT * FROM mikrotik_devices ORDER BY name';
+      query = `
+        SELECT md.*, vp.id AS vpn_peer_id, vp.name AS vpn_peer_name, vp.peer_address AS vpn_peer_address
+        FROM mikrotik_devices md
+        LEFT JOIN vpn_peers vp ON vp.mikrotik_id = md.id AND vp.is_active = true
+        ORDER BY md.name`;
       params = [];
     } else {
       query = `
-        SELECT md.* FROM mikrotik_devices md
-        INNER JOIN user_mikrotik_access uma ON uma.mikrotik_id = md.id
-        WHERE uma.user_id = $1 AND md.status = 'active'::device_status
-        UNION
-        SELECT md.* FROM mikrotik_devices md
-        INNER JOIN secretary_assignments sa ON sa.mikrotik_id = md.id
-        WHERE sa.secretary_id = $1 AND md.status = 'active'::device_status
-        UNION
-        SELECT md.* FROM mikrotik_devices md
-        INNER JOIN secretary_assignments sa ON sa.assigned_by = md.created_by
-        WHERE sa.secretary_id = $1 AND sa.mikrotik_id IS NULL
-          AND md.status = 'active'::device_status
-        UNION
-        SELECT md.* FROM mikrotik_devices md
-        INNER JOIN reseller_assignments ra ON ra.mikrotik_id = md.id
-        WHERE ra.reseller_id = $1 AND md.status = 'active'::device_status
-        ORDER BY name`;
+        SELECT DISTINCT md.*, vp.id AS vpn_peer_id, vp.name AS vpn_peer_name, vp.peer_address AS vpn_peer_address
+        FROM mikrotik_devices md
+        LEFT JOIN vpn_peers vp ON vp.mikrotik_id = md.id AND vp.is_active = true
+        WHERE md.status = 'active'::device_status AND (
+          EXISTS (SELECT 1 FROM user_mikrotik_access uma WHERE uma.mikrotik_id = md.id AND uma.user_id = $1)
+          OR EXISTS (SELECT 1 FROM secretary_assignments sa WHERE sa.secretary_id = $1 AND (sa.mikrotik_id = md.id OR (sa.mikrotik_id IS NULL AND sa.assigned_by = md.created_by)))
+          OR EXISTS (SELECT 1 FROM reseller_assignments ra WHERE ra.mikrotik_id = md.id AND ra.reseller_id = $1)
+        )
+        ORDER BY md.name`;
       params = [req.userId!];
     }
 
@@ -154,7 +150,11 @@ devicesRouter.post('/:id/connect', async (req: AuthRequest, res: Response) => {
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
 
-    const { rows } = await pool.query('SELECT host, port, username, password FROM mikrotik_devices WHERE id = $1', [id]);
+    const { rows } = await pool.query(
+      `SELECT md.host, md.port, md.username, md.password
+       FROM mikrotik_devices md WHERE md.id = $1`,
+      [id]
+    );
     if (!rows[0]) return res.status(404).json({ error: 'Dispositivo no encontrado' });
 
     const config = rows[0];
@@ -184,7 +184,8 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
 
     const { rows } = await pool.query(
-      'SELECT id, name, host, port, username, password, version FROM mikrotik_devices WHERE id = $1',
+      `SELECT id, name, host, port, username, password, version
+       FROM mikrotik_devices WHERE id = $1`,
       [id]
     );
 
@@ -400,10 +401,10 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
 // Add device (asistentes y resellers no pueden registrar dispositivos)
 devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
   try {
-    const { name, host, port, username, password, version, latitude, longitude, hotspot_url } = req.body;
+    const { name, host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id } = req.body;
     const { rows } = await pool.query(
-      `INSERT INTO mikrotik_devices (name, host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
+      `INSERT INTO mikrotik_devices (name, host, direct_host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url)
+       VALUES ($1, $2, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
       [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
     );
 
@@ -418,6 +419,21 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
     }
 
 
+
+    if (vpn_peer_id) {
+      const peerResult = await pool.query(
+        `SELECT id, peer_address FROM vpn_peers
+         WHERE id = $1 AND is_active = true AND (created_by = $2 OR $3 = 'super_admin')`,
+        [vpn_peer_id, req.userId, req.userRole]
+      );
+      if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible para tu cuenta' });
+      const vpnIp = peerResult.rows[0].peer_address.split('/')[0];
+      await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1', [rows[0].id]);
+      await pool.query('UPDATE vpn_peers SET mikrotik_id = $1 WHERE id = $2', [rows[0].id, vpn_peer_id]);
+      await pool.query('UPDATE mikrotik_devices SET host = $1 WHERE id = $2', [vpnIp, rows[0].id]);
+      rows[0].host = vpnIp;
+      rows[0].vpn_peer_id = vpn_peer_id;
+    }
 
     // Auto-assign access
     await pool.query(
@@ -544,10 +560,20 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
     const fields = req.body || {};
+    const { vpn_peer_id } = fields;
     const allowedFields = ['name', 'host', 'port', 'username', 'password', 'version', 'status', 'hotspot_url'];
     const setClauses: string[] = [];
+
+    if (fields.host !== undefined && fields.vpn_peer_id === undefined) {
+      setClauses.push(`direct_host = $1`);
+    }
     const values: any[] = [];
     let i = 1;
+
+    if (fields.host !== undefined && fields.vpn_peer_id === undefined) {
+      values.push(fields.host);
+      i++;
+    }
 
     for (const field of allowedFields) {
       if (fields[field] === undefined) continue;
@@ -566,7 +592,7 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
       i++;
     }
 
-    if (setClauses.length === 0) {
+    if (setClauses.length === 0 && vpn_peer_id === undefined) {
       return res.status(400).json({ error: 'No hay campos para actualizar' });
     }
 
@@ -582,6 +608,32 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Dispositivo no encontrado' });
     }
 
+    if (vpn_peer_id !== undefined) {
+      const currentPeer = await pool.query(
+        'SELECT id, peer_address FROM vpn_peers WHERE mikrotik_id = $1 AND is_active = true LIMIT 1',
+        [id]
+      );
+      if (vpn_peer_id === null) {
+        await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1', [id]);
+        const fallbackHost = fields.host || rows[0].direct_host || rows[0].host;
+        await pool.query('UPDATE mikrotik_devices SET host = $1, updated_at = NOW() WHERE id = $2', [fallbackHost, id]);
+        rows[0].host = fallbackHost;
+      } else {
+        const peerResult = await pool.query(
+          `SELECT id, peer_address FROM vpn_peers
+           WHERE id = $1 AND is_active = true AND (created_by = $2 OR $3 = 'super_admin')`,
+          [vpn_peer_id, req.userId, req.userRole]
+        );
+        if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible para tu cuenta' });
+        const vpnIp = peerResult.rows[0].peer_address.split('/')[0];
+        await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1 OR id = $2', [id, vpn_peer_id]);
+        await pool.query('UPDATE vpn_peers SET mikrotik_id = $1 WHERE id = $2', [id, vpn_peer_id]);
+        await pool.query('UPDATE mikrotik_devices SET host = $1, updated_at = NOW() WHERE id = $2', [vpnIp, id]);
+        rows[0].host = vpnIp;
+        rows[0].vpn_peer_id = vpn_peer_id;
+      }
+    }
+
     res.json({ data: rows[0] });
   } catch (error) {
     console.error('Error updating device:', error);
@@ -589,12 +641,20 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Delete device
+// Delete device: super_admin global o admin dentro de su propio ISP.
 devicesRouter.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    if (req.userRole !== 'super_admin') {
-      return res.status(403).json({ error: 'Solo super_admin puede eliminar dispositivos' });
+    if (req.userRole !== 'super_admin' && req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Solo administradores pueden eliminar dispositivos' });
+    }
+    if (req.userRole === 'admin') {
+      if (!req.tenantId) return res.status(403).json({ error: 'Tu cuenta no está asociada a ningún ISP' });
+      const access = await pool.query(
+        'SELECT 1 FROM mikrotik_devices WHERE id = $1 AND tenant_id = $2',
+        [id, req.tenantId]
+      );
+      if (!access.rows[0]) return res.status(403).json({ error: 'Ese dispositivo no pertenece a tu ISP' });
     }
 
     await pool.query('DELETE FROM mikrotik_devices WHERE id = $1', [id]);

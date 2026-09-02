@@ -479,14 +479,14 @@ vpnRouter.post('/peers', async (req: Request, res: Response) => {
     // Sync WireGuard config
     await syncWireguardConfig();
 
-    // Auto-update MikroTik host with VPN IP if associated
+    // Auto-update MikroTik host with VPN IP while preserving its direct host.
     const peer = result.rows[0];
     if (mikrotik_id) {
-      const vpnIp = peerAddress.split('/')[0]; // e.g. 10.13.13.2
-      const prevDevice = await pool.query(`SELECT host FROM mikrotik_devices WHERE id = $1`, [mikrotik_id]);
+      const vpnIp = peerAddress.split('/')[0];
+      const prevDevice = await pool.query(`SELECT host, direct_host FROM mikrotik_devices WHERE id = $1`, [mikrotik_id]);
       const previousHost = prevDevice.rows[0]?.host;
       await pool.query(
-        `UPDATE mikrotik_devices SET host = $1, updated_at = now() WHERE id = $2`,
+        `UPDATE mikrotik_devices SET direct_host = COALESCE(direct_host, host), host = $1, updated_at = now() WHERE id = $2`,
         [vpnIp, mikrotik_id]
       );
       console.log(`[VPN] Auto-updated MikroTik ${mikrotik_id} host: ${previousHost} → ${vpnIp}`);
@@ -619,7 +619,7 @@ vpnRouter.put('/peers/:id', async (req: AuthRequest, res: Response) => {
       const vpnIp = (updatedPeer.peer_address || '').split('/')[0];
       if (vpnIp) {
         await pool.query(
-          `UPDATE mikrotik_devices SET host = $1, updated_at = now() WHERE id = $2`,
+          `UPDATE mikrotik_devices SET direct_host = COALESCE(direct_host, host), host = $1, updated_at = now() WHERE id = $2`,
           [vpnIp, updatedPeer.mikrotik_id]
         );
         console.log(`[VPN] Updated MikroTik ${updatedPeer.mikrotik_id} host to VPN IP ${vpnIp}`);
@@ -651,18 +651,18 @@ vpnRouter.delete('/peers/:id', async (req: Request, res: Response) => {
 
     await pool.query(`DELETE FROM vpn_peers WHERE id = $1`, [id]);
 
-    // Warn if MikroTik host was using this VPN IP
-    let hostWarning: string | null = null;
+    // Al borrar la VPN, restaura automáticamente la IP directa del MikroTik.
     if (peer.mikrotik_id) {
-      const vpnIp = peer.peer_address.split('/')[0];
-      const device = await pool.query(`SELECT host, name FROM mikrotik_devices WHERE id = $1`, [peer.mikrotik_id]);
-      if (device.rows[0]?.host === vpnIp) {
-        hostWarning = `El dispositivo "${device.rows[0].name}" aún usa la IP VPN ${vpnIp} como host. Actualízalo manualmente.`;
-      }
+      await pool.query(
+        `UPDATE mikrotik_devices
+         SET host = COALESCE(direct_host, host), updated_at = now()
+         WHERE id = $1 AND host = $2`,
+        [peer.mikrotik_id, peer.peer_address.split('/')[0]]
+      );
     }
 
     await syncWireguardConfig();
-    res.json({ success: true, warning: hostWarning });
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
