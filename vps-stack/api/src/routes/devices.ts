@@ -104,16 +104,20 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
 
     if (req.userRole === 'super_admin') {
       query = `
-        SELECT md.*, vp.id AS vpn_peer_id, vp.name AS vpn_peer_name, vp.peer_address AS vpn_peer_address
+        SELECT md.*, vp.id AS vpn_peer_id, vp.name AS vpn_peer_name, vp.peer_address AS vpn_peer_address,
+               lp.name AS l2tp_peer_name, lp.tunnel_ip AS l2tp_tunnel_ip
         FROM mikrotik_devices md
         LEFT JOIN vpn_peers vp ON vp.mikrotik_id = md.id AND vp.is_active = true
+        LEFT JOIN tenant_vpn_peers lp ON lp.id = md.l2tp_peer_id AND lp.is_active = true
         ORDER BY md.name`;
       params = [];
     } else {
       query = `
-        SELECT DISTINCT md.*, vp.id AS vpn_peer_id, vp.name AS vpn_peer_name, vp.peer_address AS vpn_peer_address
+        SELECT DISTINCT md.*, vp.id AS vpn_peer_id, vp.name AS vpn_peer_name, vp.peer_address AS vpn_peer_address,
+               lp.name AS l2tp_peer_name, lp.tunnel_ip AS l2tp_tunnel_ip
         FROM mikrotik_devices md
         LEFT JOIN vpn_peers vp ON vp.mikrotik_id = md.id AND vp.is_active = true
+        LEFT JOIN tenant_vpn_peers lp ON lp.id = md.l2tp_peer_id AND lp.is_active = true
         WHERE md.status = 'active'::device_status AND (
           EXISTS (SELECT 1 FROM user_mikrotik_access uma WHERE uma.mikrotik_id = md.id AND uma.user_id = $1)
           OR EXISTS (SELECT 1 FROM secretary_assignments sa WHERE sa.secretary_id = $1 AND (sa.mikrotik_id = md.id OR (sa.mikrotik_id IS NULL AND sa.assigned_by = md.created_by)))
@@ -401,7 +405,7 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
 // Add device (asistentes y resellers no pueden registrar dispositivos)
 devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
   try {
-    const { name, host, direct_host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id } = req.body;
+    const { name, host, direct_host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id, l2tp_peer_id } = req.body;
     let selectedVpnPeer: { id: string; peer_address: string } | null = null;
 
     if (vpn_peer_id) {
@@ -414,6 +418,16 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
       );
       if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible, está inactivo o ya está asignado' });
       selectedVpnPeer = peerResult.rows[0];
+    }
+
+    if (l2tp_peer_id) {
+      const l2tpResult = await pool.query(
+        `SELECT id FROM tenant_vpn_peers
+          WHERE id = $1 AND COALESCE(is_active, true) = true
+            AND ($2 = 'super_admin' OR tenant_id = $3)`,
+        [l2tp_peer_id, req.userRole, req.tenantId || null],
+      );
+      if (!l2tpResult.rows[0]) return res.status(400).json({ error: 'El túnel L2TP no está disponible para tu ISP' });
     }
 
     const { rows } = await pool.query(
@@ -430,6 +444,10 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
       } catch {
         /* instalación sin columna tenant_id: se ignora */
       }
+    }
+    if (l2tp_peer_id) {
+      await pool.query('UPDATE mikrotik_devices SET l2tp_peer_id = $1 WHERE id = $2', [l2tp_peer_id, rows[0].id]);
+      rows[0].l2tp_peer_id = l2tp_peer_id;
     }
 
     if (selectedVpnPeer) {
@@ -565,7 +583,7 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
     if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
 
     const fields = req.body || {};
-    const { vpn_peer_id } = fields;
+    const { vpn_peer_id, l2tp_peer_id } = fields;
     const allowedFields = ['name', 'host', 'port', 'username', 'password', 'version', 'status', 'hotspot_url'];
     const setClauses: string[] = [];
 
@@ -597,7 +615,7 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
       i++;
     }
 
-    if (setClauses.length === 0 && vpn_peer_id === undefined) {
+    if (setClauses.length === 0 && vpn_peer_id === undefined && l2tp_peer_id === undefined) {
       return res.status(400).json({ error: 'No hay campos para actualizar' });
     }
 
@@ -643,6 +661,26 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
         await pool.query('UPDATE mikrotik_devices SET host = $1, updated_at = NOW() WHERE id = $2', [vpnIp, id]);
         rows[0].host = vpnIp;
         rows[0].vpn_peer_id = vpn_peer_id;
+      }
+    }
+
+
+    if (l2tp_peer_id !== undefined) {
+      if (l2tp_peer_id === null) {
+        await pool.query('UPDATE mikrotik_devices SET l2tp_peer_id = NULL, updated_at = NOW() WHERE id = $1', [id]);
+        rows[0].l2tp_peer_id = null;
+      } else {
+        const l2tpResult = await pool.query(
+          `SELECT p.id
+             FROM tenant_vpn_peers p
+             JOIN mikrotik_devices d ON d.id = $2
+            WHERE p.id = $1 AND COALESCE(p.is_active, true) = true
+              AND ($3 = 'super_admin' OR p.tenant_id = d.tenant_id)`,
+          [l2tp_peer_id, id, req.userRole],
+        );
+        if (!l2tpResult.rows[0]) return res.status(400).json({ error: 'El túnel L2TP no pertenece al ISP de este MikroTik' });
+        await pool.query('UPDATE mikrotik_devices SET l2tp_peer_id = $1, updated_at = NOW() WHERE id = $2', [l2tp_peer_id, id]);
+        rows[0].l2tp_peer_id = l2tp_peer_id;
       }
     }
 

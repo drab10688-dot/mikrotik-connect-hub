@@ -73,6 +73,9 @@ CREATE TABLE mikrotik_devices (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Se agregan después de crear tenant_vpn_peers mediante las migraciones/ensureIspSchema,
+-- porque esa tabla VPN se define en la sección multi-ISP extendida.
+
 CREATE TABLE user_mikrotik_access (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

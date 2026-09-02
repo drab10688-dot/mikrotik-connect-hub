@@ -36,6 +36,8 @@ export interface UserBrowserSession {
   lastLaunchUrl?: string;
   /** Resolución del escritorio (ej. "412x780" en celular). */
   resolution?: string;
+  /** Dispositivo que determina la tabla VPN, aunque dos equipos compartan URL. */
+  routeKey?: string;
   /** Indica si ya se intentó aplicar la resolución con xrandr. */
   resolutionApplied?: boolean;
 }
@@ -84,7 +86,7 @@ async function allocatePort(): Promise<number | null> {
 export async function ensureUserBrowser(
   userId: string,
   launchUrl?: string,
-  opts?: { resolution?: string },
+  opts?: { resolution?: string; routeKey?: string },
 ): Promise<UserBrowserSession> {
   const name = containerName(userId);
   const existing = sessions.get(userId);
@@ -96,7 +98,11 @@ export async function ensureUserBrowser(
     // DIRECTO en esa IP/puerto (como página de inicio). Es la forma más
     // confiable de "pasar la IP": nada de teclear la URL en un navegador ya
     // abierto, que era lo que fallaba.
-    if ((launchUrl && launchUrl !== existing.lastLaunchUrl) || resolution !== existing.resolution) {
+    if (
+      (launchUrl && launchUrl !== existing.lastLaunchUrl)
+      || resolution !== existing.resolution
+      || opts?.routeKey !== existing.routeKey
+    ) {
       await docker(['rm', '-f', name], 30000);
       sessions.delete(userId);
     } else {
@@ -189,6 +195,7 @@ export async function ensureUserBrowser(
     startedAt: Date.now(),
     lastLaunchUrl: launchUrl,
     resolution,
+    routeKey: opts?.routeKey,
   };
   sessions.set(userId, session);
   return session;
@@ -196,6 +203,16 @@ export async function ensureUserBrowser(
 
 export function getSession(userId: string): UserBrowserSession | undefined {
   return sessions.get(userId);
+}
+
+/** IP privada del escritorio dentro de la red Docker, usada para policy routing. */
+export async function getUserBrowserIp(session: UserBrowserSession): Promise<string | null> {
+  const result = await docker(
+    ['inspect', '--format', `{{with index .NetworkSettings.Networks "${NETWORK}"}}{{.IPAddress}}{{end}}`, session.container],
+    8000,
+  );
+  const ip = result.out.trim();
+  return result.ok && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) ? ip : null;
 }
 
 export function touchSession(userId: string) {

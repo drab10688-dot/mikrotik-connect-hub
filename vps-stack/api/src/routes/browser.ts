@@ -5,6 +5,7 @@ import { pool } from '../lib/db';
 import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import {
   ensureUserBrowser,
+  getUserBrowserIp,
   destroyUserBrowser,
   getSession,
   touchSession,
@@ -133,7 +134,7 @@ function sanitizeUrl(raw: unknown): string | null {
   return parsed.toString();
 }
 
-async function prepareTenantRoute(req: AuthRequest, url: string, mikrotikId?: string): Promise<boolean> {
+async function prepareTenantRoute(req: AuthRequest, url: string, sourceIp: string | null, mikrotikId?: string): Promise<boolean> {
   const targetIp = new URL(url).hostname;
   let tenantId = req.tenantId || null;
 
@@ -148,18 +149,27 @@ async function prepareTenantRoute(req: AuthRequest, url: string, mikrotikId?: st
     tenantId = deviceTenantId || tenantId;
   }
 
-  const { rows } = await pool.query(
-    `SELECT tunnel_ip
-       FROM tenant_vpn_peers
-      WHERE ($1::uuid IS NULL OR tenant_id = $1)
-        AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
-      ORDER BY updated_at DESC NULLS LAST, created_at DESC
-      LIMIT 1`,
-    [tenantId]
-  );
+  const { rows } = mikrotikId
+    ? await pool.query(
+        `SELECT p.tunnel_ip
+           FROM mikrotik_devices d
+           JOIN tenant_vpn_peers p ON p.id = d.l2tp_peer_id
+          WHERE d.id = $1 AND COALESCE(p.is_active, true) = true AND p.tunnel_ip IS NOT NULL
+          LIMIT 1`,
+        [mikrotikId],
+      )
+    : await pool.query(
+        `SELECT tunnel_ip
+           FROM tenant_vpn_peers
+          WHERE ($1::uuid IS NULL OR tenant_id = $1)
+            AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC
+          LIMIT 1`,
+        [tenantId],
+      );
   const tunnelIp = rows[0]?.tunnel_ip;
   if (!tunnelIp) return false;
-  return ensureL2tpTargetRoute(String(tunnelIp), targetIp);
+  return ensureL2tpTargetRoute(String(tunnelIp), targetIp, sourceIp || undefined);
 }
 
 function publicSession(s: UserBrowserSession) {
@@ -230,35 +240,30 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
   const url = sanitizeUrl((req as any).body?.url);
   if (!url) return res.status(400).json({ success: false, error: 'URL no permitida (solo IPs privadas http/https)' });
 
-  // Los APs encontrados por ARP/neighbors pueden estar en una red distinta a
-  // la declarada para ONUs. Preparamos una ruta /32 por la VPN de ESTE ISP para
-  // que el navegador privado llegue al equipo sin exponer redes de otros ISP.
-  let routeWarning: string | undefined;
-  try {
-    const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
-    const routeReady = await prepareTenantRoute(req, url, mikrotikId);
-    if (!routeReady) {
-      // No se bloquea la apertura: el destino puede ser alcanzable por rutas
-      // ya instaladas. Se abre el escritorio y se informa como advertencia.
-      routeWarning = 'No se pudo confirmar la ruta VPN hacia el equipo; si no carga, revisa la conexión L2TP del ISP.';
-    }
-  } catch (e: any) {
-    routeWarning = e?.message || 'No se pudo preparar la ruta VPN hacia el equipo';
-  }
-
-
   // La IP/puerto se pasa como PÁGINA DE INICIO: si el equipo cambió, el
   // contenedor se recrea y Chromium arranca ya cargando esa URL (como antes).
   // Desde celular se arranca el escritorio en resolución de teléfono (vertical):
   // así la pantalla cabe completa y se puede leer, hacer zoom y escribir.
   const mobile = (req as any).body?.mobile === true;
   const resolution = mobile ? '412x780' : undefined;
+  const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
 
   let session: UserBrowserSession;
   try {
-    session = await ensureUserBrowser(userId, url, { resolution });
+    session = await ensureUserBrowser(userId, url, { resolution, routeKey: mikrotikId });
   } catch (e: any) {
     return res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
+  }
+
+  // La regla se instala DESPUÉS de crear el contenedor para poder aislarla por
+  // su IP origen. Esto evita que dos sesiones con el mismo destino LAN se pisen.
+  let routeWarning: string | undefined;
+  try {
+    const sourceIp = await getUserBrowserIp(session);
+    const routeReady = await prepareTenantRoute(req, url, sourceIp, mikrotikId);
+    if (!routeReady) routeWarning = 'No se pudo confirmar la ruta VPN seleccionada; revisa que el túnel L2TP esté conectado.';
+  } catch (e: any) {
+    routeWarning = e?.message || 'No se pudo preparar la ruta VPN hacia el equipo';
   }
 
   touchSession(userId);

@@ -171,7 +171,7 @@ export default function Settings() {
                     <SelectTrigger><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
                     <SelectContent>{devices.map((device: any) => (
                       <SelectItem key={device.id} value={device.id} disabled={device.status !== 'active'}>
-                         {device.name} ({device.host}){device.vpn_peer_name ? ' · VPN' : ''}{device.status === 'pending' && ' - 🕐 Pendiente'}
+                         {device.name} ({device.host}){device.vpn_peer_name || device.l2tp_peer_name ? ' · VPN' : ''}{device.status === 'pending' && ' - 🕐 Pendiente'}
                       </SelectItem>
                     ))}</SelectContent>
                   </Select>
@@ -182,6 +182,7 @@ export default function Settings() {
                          <div className="flex items-center justify-between mb-3 pb-2 border-b"><span className="text-sm font-medium">Información del Dispositivo</span><EditDeviceDialog device={device} canDelete={isSuperAdmin || isAdmin} onDeleted={() => { setSelectedDevice(""); clearSelectedDevice(); }} /></div>
                          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Host de conexión:</span><span className="font-medium">{device.host}</span></div>
                          {device.vpn_peer_name && <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5 text-primary" />Ruta:</span><span className="font-medium text-primary">{device.vpn_peer_name} · {device.vpn_peer_address?.split('/')[0]}</span></div>}
+                         {device.l2tp_peer_name && <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5 text-primary" />Ruta:</span><span className="font-medium text-primary">L2TP · {device.l2tp_peer_name} ({device.l2tp_tunnel_ip})</span></div>}
                          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Puerto:</span><span className="font-medium">{device.port}</span></div>
                          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Versión:</span><span className="font-medium">{device.version}</span></div>
                        </div>
