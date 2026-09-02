@@ -172,24 +172,35 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
 
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Ruta VPN del MikroTik</Label>
-                <Select value={formData.vpn_peer_id || 'none'} onValueChange={handleVpnPeerSelect}>
+                <Select value={formData.vpn_peer_id || (l2tpRouteId ? `l2tp:${l2tpRouteId}` : 'none')} onValueChange={handleVpnPeerSelect}>
                   <SelectTrigger><SelectValue placeholder="Sin VPN — IP directa" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sin VPN — IP directa</SelectItem>
-                    {vpnPeers.map((peer) => <SelectItem key={peer.id} value={peer.id}>{peer.name} ({peer.peer_address.split('/')[0]})</SelectItem>)}
+                    {l2tpPeers.map((peer) => (
+                      <SelectItem key={peer.id} value={`l2tp:${peer.id}`}>L2TP · {peer.name} (túnel {peer.tunnel_ip})</SelectItem>
+                    ))}
+                    {vpnPeers.map((peer) => (
+                      <SelectItem key={peer.id} value={peer.id}>WireGuard · {peer.name} ({peer.peer_address.split('/')[0]})</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {selectedVpn || device.vpn_peer_name
-                    ? `El panel dirigirá las solicitudes por ${selectedVpn?.name || device.vpn_peer_name} para evitar conflictos de IP local.`
-                    : 'Asocia un peer WireGuard para usar su IP única y evitar conflictos entre sedes.'}
+                  {selectedL2tp
+                    ? `Se accederá por el túnel L2TP ${selectedL2tp.name}. Escribe abajo la IP del MikroTik (la que ves aquí no se sobrescribe).`
+                    : selectedVpn || device.vpn_peer_name
+                      ? `El panel dirigirá las solicitudes por ${selectedVpn?.name || device.vpn_peer_name} para evitar conflictos de IP local.`
+                      : l2tpPeers.length || vpnPeers.length
+                        ? 'Elige el túnel por el que se debe alcanzar este equipo.'
+                        : 'No hay túneles VPN creados todavía; se usará la IP directa.'}
                 </p>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor={`host-${device.id}`}>Host/IP de conexión</Label>
                 <Input id={`host-${device.id}`} placeholder="192.168.1.1" value={formData.host} onChange={(e) => setFormData({ ...formData, host: e.target.value })} required />
+                {selectedL2tp && <p className="text-xs text-muted-foreground">Con L2TP se usa esta IP tal cual, enrutada por el túnel {selectedL2tp.tunnel_ip}.</p>}
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor={`username-${device.id}`}>Usuario</Label>
