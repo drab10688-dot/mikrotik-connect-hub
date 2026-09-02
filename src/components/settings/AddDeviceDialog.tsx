@@ -143,7 +143,7 @@ export const AddDeviceDialog = () => {
                   <Shield className="h-4 w-4 text-primary" />
                   Conectar vía VPN (opcional)
                 </Label>
-                <Select onValueChange={handleVpnPeerSelect}>
+                <Select value={formData.vpn_peer_id || 'none'} onValueChange={handleVpnPeerSelect}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar peer VPN..." />
                   </SelectTrigger>

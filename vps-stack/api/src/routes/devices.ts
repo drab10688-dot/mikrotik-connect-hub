@@ -564,13 +564,13 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
     const allowedFields = ['name', 'host', 'port', 'username', 'password', 'version', 'status', 'hotspot_url'];
     const setClauses: string[] = [];
 
-    if (fields.host !== undefined && fields.vpn_peer_id === undefined) {
+    if (fields.host !== undefined && (fields.vpn_peer_id === undefined || fields.vpn_peer_id === null)) {
       setClauses.push(`direct_host = $1`);
     }
     const values: any[] = [];
     let i = 1;
 
-    if (fields.host !== undefined && fields.vpn_peer_id === undefined) {
+    if (fields.host !== undefined && (fields.vpn_peer_id === undefined || fields.vpn_peer_id === null)) {
       values.push(fields.host);
       i++;
     }
@@ -616,16 +616,25 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
       if (vpn_peer_id === null) {
         await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1', [id]);
         const fallbackHost = fields.host || rows[0].direct_host || rows[0].host;
-        await pool.query('UPDATE mikrotik_devices SET host = $1, updated_at = NOW() WHERE id = $2', [fallbackHost, id]);
+        await pool.query('UPDATE mikrotik_devices SET direct_host = $1, host = $1, updated_at = NOW() WHERE id = $2', [fallbackHost, id]);
         rows[0].host = fallbackHost;
+        rows[0].vpn_peer_id = null;
       } else {
         const peerResult = await pool.query(
-          `SELECT id, peer_address FROM vpn_peers
+          `SELECT id, peer_address, mikrotik_id FROM vpn_peers
            WHERE id = $1 AND is_active = true AND (created_by = $2 OR $3 = 'super_admin')`,
           [vpn_peer_id, req.userId, req.userRole]
         );
         if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible para tu cuenta' });
         const vpnIp = peerResult.rows[0].peer_address.split('/')[0];
+        if (peerResult.rows[0].mikrotik_id && peerResult.rows[0].mikrotik_id !== id) {
+          await pool.query(
+            `UPDATE mikrotik_devices old_device
+             SET host = COALESCE(old_device.direct_host, old_device.host), updated_at = NOW()
+             WHERE old_device.id = $1 AND old_device.host = $2`,
+            [peerResult.rows[0].mikrotik_id, vpnIp]
+          );
+        }
         await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1 OR id = $2', [id, vpn_peer_id]);
         await pool.query('UPDATE vpn_peers SET mikrotik_id = $1 WHERE id = $2', [id, vpn_peer_id]);
         await pool.query('UPDATE mikrotik_devices SET host = $1, updated_at = NOW() WHERE id = $2', [vpnIp, id]);
