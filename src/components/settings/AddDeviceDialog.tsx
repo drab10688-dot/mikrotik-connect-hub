@@ -19,11 +19,20 @@ interface VpnPeer {
   is_active: boolean;
 }
 
+interface L2tpPeer {
+  id: string;
+  name: string;
+  tunnel_ip: string | null;
+  is_active: boolean;
+}
+
 export const AddDeviceDialog = () => {
   const queryClient = useQueryClient();
   const { user, isSuperAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const [vpnPeers, setVpnPeers] = useState<VpnPeer[]>([]);
+  const [l2tpPeers, setL2tpPeers] = useState<L2tpPeer[]>([]);
+  const [l2tpRouteId, setL2tpRouteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     host: '',
@@ -42,14 +51,30 @@ export const AddDeviceDialog = () => {
           setVpnPeers(peers.filter((p: VpnPeer) => p.is_active && !p.mikrotik_id));
         })
         .catch(() => setVpnPeers([]));
+      apiGet<any>('/isp/vpn')
+        .then((res) => {
+          const peers: L2tpPeer[] = res?.data?.peers || res?.peers || [];
+          setL2tpPeers(peers.filter((peer) => peer.is_active !== false && peer.tunnel_ip));
+        })
+        .catch(() => setL2tpPeers([]));
     }
   }, [open]);
 
   const handleVpnPeerSelect = (peerId: string) => {
     if (peerId === 'none') {
+      setL2tpRouteId(null);
       setFormData({ ...formData, vpn_peer_id: null, host: formData.direct_host });
       return;
     }
+    if (peerId.startsWith('l2tp:')) {
+      const l2tp = l2tpPeers.find((p) => p.id === peerId.slice(5));
+      if (!l2tp) return;
+      setL2tpRouteId(l2tp.id);
+      setFormData({ ...formData, vpn_peer_id: null });
+      toast.info(`Ruta L2TP ${l2tp.name} (túnel ${l2tp.tunnel_ip}). Escribe la IP del MikroTik.`);
+      return;
+    }
+    setL2tpRouteId(null);
     const peer = vpnPeers.find((p) => p.id === peerId);
     if (peer) {
       const vpnIp = peer.peer_address.split('/')[0];
@@ -139,27 +164,34 @@ export const AddDeviceDialog = () => {
               />
             </div>
 
-            {vpnPeers.length > 0 && (
+            {(vpnPeers.length > 0 || l2tpPeers.length > 0) && (
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Shield className="h-4 w-4 text-primary" />
                   Conectar vía VPN (opcional)
                 </Label>
-                <Select value={formData.vpn_peer_id || 'none'} onValueChange={handleVpnPeerSelect}>
+                <Select value={formData.vpn_peer_id || (l2tpRouteId ? `l2tp:${l2tpRouteId}` : 'none')} onValueChange={handleVpnPeerSelect}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar peer VPN..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sin VPN — IP directa</SelectItem>
+                    {l2tpPeers.map((peer) => (
+                      <SelectItem key={peer.id} value={`l2tp:${peer.id}`}>
+                        L2TP · {peer.name} (túnel {peer.tunnel_ip})
+                      </SelectItem>
+                    ))}
                     {vpnPeers.map((peer) => (
                       <SelectItem key={peer.id} value={peer.id}>
-                        {peer.name} ({peer.peer_address.split('/')[0]})
+                        WireGuard · {peer.name} ({peer.peer_address.split('/')[0]})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Usa un túnel WireGuard existente para acceder a MikroTiks sin IP pública
+                  {l2tpRouteId
+                    ? 'Con L2TP se conecta a la IP que escribas abajo, enrutada por el túnel.'
+                    : 'Usa un túnel L2TP o WireGuard existente para acceder a MikroTiks sin IP pública'}
                 </p>
               </div>
             )}

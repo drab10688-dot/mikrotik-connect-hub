@@ -18,6 +18,14 @@ interface VpnPeer {
   is_active: boolean;
 }
 
+interface L2tpPeer {
+  id: string;
+  name: string;
+  tunnel_ip: string | null;
+  is_active: boolean;
+}
+
+
 interface EditDeviceDialogProps {
   device: {
     id: string;
@@ -40,6 +48,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
   const [open, setOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [vpnPeers, setVpnPeers] = useState<VpnPeer[]>([]);
+  const [l2tpPeers, setL2tpPeers] = useState<L2tpPeer[]>([]);
   const [formData, setFormData] = useState({
     name: device.name,
     host: device.host,
@@ -64,8 +73,15 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
       apiGet<VpnPeer[]>('/vpn/peers')
         .then((peers) => setVpnPeers(peers.filter((peer) => peer.is_active && (!peer.mikrotik_id || peer.mikrotik_id === device.id))))
         .catch(() => setVpnPeers([]));
+      apiGet<any>('/isp/vpn')
+        .then((res) => {
+          const peers: L2tpPeer[] = res?.data?.peers || res?.peers || [];
+          setL2tpPeers(peers.filter((peer) => peer.is_active !== false && peer.tunnel_ip));
+        })
+        .catch(() => setL2tpPeers([]));
     }
   }, [open, device]);
+
 
   const updateDeviceMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -100,17 +116,31 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
     onError: (error: any) => toast.error(error.message || 'Error al eliminar dispositivo'),
   });
 
-  const handleVpnPeerSelect = (peerId: string) => {
-    if (peerId === 'none') {
+  const [l2tpRouteId, setL2tpRouteId] = useState<string | null>(null);
+
+  const handleVpnPeerSelect = (value: string) => {
+    if (value === 'none') {
+      setL2tpRouteId(null);
       setFormData({ ...formData, vpn_peer_id: null, host: device.direct_host || formData.host });
       return;
     }
-    const peer = vpnPeers.find((item) => item.id === peerId);
+    if (value.startsWith('l2tp:')) {
+      const peer = l2tpPeers.find((item) => item.id === value.slice(5));
+      if (!peer) return;
+      setL2tpRouteId(peer.id);
+      // L2TP: el host lo define el usuario (IP del MikroTik alcanzable por el túnel)
+      setFormData({ ...formData, vpn_peer_id: null });
+      toast.info(`Ruta L2TP ${peer.name} (túnel ${peer.tunnel_ip}). Escribe abajo la IP del MikroTik.`);
+      return;
+    }
+    const peer = vpnPeers.find((item) => item.id === value);
     if (!peer) return;
     const vpnIp = peer.peer_address.split('/')[0];
+    setL2tpRouteId(null);
     setFormData({ ...formData, vpn_peer_id: peer.id, host: vpnIp });
     toast.info(`Este MikroTik usará la VPN ${peer.name} (${vpnIp})`);
   };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +148,8 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
   };
 
   const selectedVpn = vpnPeers.find((peer) => peer.id === formData.vpn_peer_id);
+  const selectedL2tp = l2tpPeers.find((peer) => peer.id === l2tpRouteId);
+
 
   return (
     <>
@@ -142,24 +174,35 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
 
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Ruta VPN del MikroTik</Label>
-                <Select value={formData.vpn_peer_id || 'none'} onValueChange={handleVpnPeerSelect}>
+                <Select value={formData.vpn_peer_id || (l2tpRouteId ? `l2tp:${l2tpRouteId}` : 'none')} onValueChange={handleVpnPeerSelect}>
                   <SelectTrigger><SelectValue placeholder="Sin VPN — IP directa" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sin VPN — IP directa</SelectItem>
-                    {vpnPeers.map((peer) => <SelectItem key={peer.id} value={peer.id}>{peer.name} ({peer.peer_address.split('/')[0]})</SelectItem>)}
+                    {l2tpPeers.map((peer) => (
+                      <SelectItem key={peer.id} value={`l2tp:${peer.id}`}>L2TP · {peer.name} (túnel {peer.tunnel_ip})</SelectItem>
+                    ))}
+                    {vpnPeers.map((peer) => (
+                      <SelectItem key={peer.id} value={peer.id}>WireGuard · {peer.name} ({peer.peer_address.split('/')[0]})</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {selectedVpn || device.vpn_peer_name
-                    ? `El panel dirigirá las solicitudes por ${selectedVpn?.name || device.vpn_peer_name} para evitar conflictos de IP local.`
-                    : 'Asocia un peer WireGuard para usar su IP única y evitar conflictos entre sedes.'}
+                  {selectedL2tp
+                    ? `Se accederá por el túnel L2TP ${selectedL2tp.name}. Escribe abajo la IP del MikroTik (la que ves aquí no se sobrescribe).`
+                    : selectedVpn || device.vpn_peer_name
+                      ? `El panel dirigirá las solicitudes por ${selectedVpn?.name || device.vpn_peer_name} para evitar conflictos de IP local.`
+                      : l2tpPeers.length || vpnPeers.length
+                        ? 'Elige el túnel por el que se debe alcanzar este equipo.'
+                        : 'No hay túneles VPN creados todavía; se usará la IP directa.'}
                 </p>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor={`host-${device.id}`}>Host/IP de conexión</Label>
                 <Input id={`host-${device.id}`} placeholder="192.168.1.1" value={formData.host} onChange={(e) => setFormData({ ...formData, host: e.target.value })} required />
+                {selectedL2tp && <p className="text-xs text-muted-foreground">Con L2TP se usa esta IP tal cual, enrutada por el túnel {selectedL2tp.tunnel_ip}.</p>}
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor={`username-${device.id}`}>Usuario</Label>
