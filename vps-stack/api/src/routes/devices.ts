@@ -401,7 +401,7 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
 // Add device (asistentes y resellers no pueden registrar dispositivos)
 devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
   try {
-    const { name, host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id } = req.body;
+    const { name, host, direct_host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id } = req.body;
     let selectedVpnPeer: { id: string; peer_address: string } | null = null;
 
     if (vpn_peer_id) {
@@ -419,7 +419,7 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
     const { rows } = await pool.query(
       `INSERT INTO mikrotik_devices (name, host, direct_host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url)
        VALUES ($1, $2, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
-      [name, host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
+      [name, host, direct_host || host, port || 443, username, password, version || 'v7', req.userId, latitude || null, longitude || null, hotspot_url || null]
     );
 
     // Multi-ISP: hereda el ISP del usuario que lo crea (si aplica).
