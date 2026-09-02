@@ -22,7 +22,15 @@ fi
 
 TEMP_DIR=$(mktemp -d)
 echo -e "${YELLOW}1/5 Descargando código (${BRANCH})...${NC}"
-git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TEMP_DIR"
+# Repo público: forzamos clon anónimo sin pedir credenciales.
+# Sin esto, un credential.helper mal configurado en el VPS cuelga el script
+# pidiendo usuario/contraseña de GitHub.
+GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.askpass= -c http.askpass= \
+  clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TEMP_DIR" || {
+    echo -e "${RED}✗ No se pudo descargar el código del repositorio público.${NC}"
+    echo -e "${RED}  Verifica conexión a internet o que el repo sea accesible.${NC}"
+    exit 1
+  }
 cd "$TEMP_DIR"
 COMMIT=$(git log -1 --format='%h %ad %s' --date=short)
 echo -e "${GREEN}Commit descargado: ${COMMIT}${NC}"
