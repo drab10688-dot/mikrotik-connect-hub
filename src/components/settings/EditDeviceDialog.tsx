@@ -116,17 +116,31 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
     onError: (error: any) => toast.error(error.message || 'Error al eliminar dispositivo'),
   });
 
-  const handleVpnPeerSelect = (peerId: string) => {
-    if (peerId === 'none') {
+  const [l2tpRouteId, setL2tpRouteId] = useState<string | null>(null);
+
+  const handleVpnPeerSelect = (value: string) => {
+    if (value === 'none') {
+      setL2tpRouteId(null);
       setFormData({ ...formData, vpn_peer_id: null, host: device.direct_host || formData.host });
       return;
     }
-    const peer = vpnPeers.find((item) => item.id === peerId);
+    if (value.startsWith('l2tp:')) {
+      const peer = l2tpPeers.find((item) => item.id === value.slice(5));
+      if (!peer) return;
+      setL2tpRouteId(peer.id);
+      // L2TP: el host lo define el usuario (IP del MikroTik alcanzable por el túnel)
+      setFormData({ ...formData, vpn_peer_id: null });
+      toast.info(`Ruta L2TP ${peer.name} (túnel ${peer.tunnel_ip}). Escribe abajo la IP del MikroTik.`);
+      return;
+    }
+    const peer = vpnPeers.find((item) => item.id === value);
     if (!peer) return;
     const vpnIp = peer.peer_address.split('/')[0];
+    setL2tpRouteId(null);
     setFormData({ ...formData, vpn_peer_id: peer.id, host: vpnIp });
     toast.info(`Este MikroTik usará la VPN ${peer.name} (${vpnIp})`);
   };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
