@@ -76,12 +76,17 @@ echo ""
 echo -e "${CYAN}═══ FASE 2/5: Descargando y compilando el panel ═══${NC}"
 
 TEMP_DIR=$(mktemp -d)
-# Repo público: clon anónimo sin colgar pidiendo credenciales de GitHub.
-GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.askpass= -c http.askpass= \
-  clone --depth 1 "$REPO_URL" "$TEMP_DIR" || {
-    echo -e "${RED}✗ No se pudo clonar el repositorio público. Verifica internet.${NC}"
-    exit 1
-  }
+# Codeload evita proxies o configuraciones Git que solicitan credenciales
+# aunque el repositorio sea público.
+ARCHIVE_URL="https://codeload.github.com/drab10688-dot/mikrotik-connect-hub/tar.gz/refs/heads/main"
+ARCHIVE_FILE=$(mktemp)
+if ! curl -fL --retry 3 --connect-timeout 15 "$ARCHIVE_URL" -o "$ARCHIVE_FILE" || \
+   ! tar -xzf "$ARCHIVE_FILE" --strip-components=1 -C "$TEMP_DIR"; then
+  rm -f "$ARCHIVE_FILE"
+  echo -e "${RED}✗ No se pudo descargar el repositorio público. Verifica internet.${NC}"
+  exit 1
+fi
+rm -f "$ARCHIVE_FILE"
 
 mkdir -p "$INSTALL_DIR"
 [ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" /tmp/omniacs-env-backup
