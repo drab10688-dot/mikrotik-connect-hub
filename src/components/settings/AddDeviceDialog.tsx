@@ -27,10 +27,12 @@ export const AddDeviceDialog = () => {
   const [formData, setFormData] = useState({
     name: '',
     host: '',
+    direct_host: '',
     username: '',
     password: '',
     port: 443,
     version: 'v7',
+    vpn_peer_id: null as string | null,
   });
 
   useEffect(() => {
@@ -45,14 +47,14 @@ export const AddDeviceDialog = () => {
 
   const handleVpnPeerSelect = (peerId: string) => {
     if (peerId === 'none') {
-      setFormData({ ...formData, host: '' });
+      setFormData({ ...formData, vpn_peer_id: null, host: formData.direct_host });
       return;
     }
     const peer = vpnPeers.find((p) => p.id === peerId);
     if (peer) {
       const vpnIp = peer.peer_address.split('/')[0];
-      setFormData({ ...formData, host: vpnIp });
-      toast.info(`Host configurado con IP VPN: ${vpnIp}`);
+      setFormData({ ...formData, vpn_peer_id: peer.id, direct_host: formData.direct_host || formData.host, host: vpnIp });
+      toast.info(`Este MikroTik usará la VPN ${peer.name} (${vpnIp})`);
     }
   };
 
@@ -81,10 +83,12 @@ export const AddDeviceDialog = () => {
       setFormData({
         name: '',
         host: '',
+        direct_host: '',
         username: '',
         password: '',
         port: 443,
         version: 'v7',
+        vpn_peer_id: null,
       });
     },
     onError: (error: any) => {
@@ -141,7 +145,7 @@ export const AddDeviceDialog = () => {
                   <Shield className="h-4 w-4 text-primary" />
                   Conectar vía VPN (opcional)
                 </Label>
-                <Select onValueChange={handleVpnPeerSelect}>
+                <Select value={formData.vpn_peer_id || 'none'} onValueChange={handleVpnPeerSelect}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar peer VPN..." />
                   </SelectTrigger>
@@ -166,7 +170,7 @@ export const AddDeviceDialog = () => {
                 id="host"
                 placeholder="192.168.1.1"
                 value={formData.host}
-                onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, host: e.target.value, direct_host: formData.vpn_peer_id ? formData.direct_host : e.target.value })}
                 required
               />
             </div>

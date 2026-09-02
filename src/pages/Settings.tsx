@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { toast } from "sonner";
 import { saveSelectedDevice, cleanupLegacyStorage, clearSelectedDevice } from "@/lib/mikrotik";
-import { Router, Wifi, Loader2, CircleCheck, CircleX, AlertCircle, Copy } from "lucide-react";
+import { Router, Wifi, Loader2, CircleCheck, CircleX, AlertCircle, Copy, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AddDeviceDialog } from "@/components/settings/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/settings/EditDeviceDialog";
@@ -171,19 +171,20 @@ export default function Settings() {
                     <SelectTrigger><SelectValue placeholder="Selecciona un dispositivo" /></SelectTrigger>
                     <SelectContent>{devices.map((device: any) => (
                       <SelectItem key={device.id} value={device.id} disabled={device.status !== 'active'}>
-                        {device.name} ({device.host}){device.status === 'pending' && ' - 🕐 Pendiente'}
+                         {device.name} ({device.host}){device.vpn_peer_name ? ' · VPN' : ''}{device.status === 'pending' && ' - 🕐 Pendiente'}
                       </SelectItem>
                     ))}</SelectContent>
                   </Select>
                   {selectedDevice && (() => {
                     const device = devices.find((d: any) => d.id === selectedDevice);
                     return device ? (
-                      <div className="p-4 bg-muted rounded-lg space-y-2">
-                        <div className="flex items-center justify-between mb-3 pb-2 border-b"><span className="text-sm font-medium">Información del Dispositivo</span><EditDeviceDialog device={device} /></div>
-                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Host:</span><span className="font-medium">{device.host}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Puerto:</span><span className="font-medium">{device.port}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Versión:</span><span className="font-medium">{device.version}</span></div>
-                      </div>
+                       <div className="p-4 bg-muted rounded-lg space-y-2">
+                         <div className="flex items-center justify-between mb-3 pb-2 border-b"><span className="text-sm font-medium">Información del Dispositivo</span><EditDeviceDialog device={device} canDelete={isSuperAdmin || isAdmin} onDeleted={() => { setSelectedDevice(""); clearSelectedDevice(); }} /></div>
+                         <div className="flex justify-between text-sm"><span className="text-muted-foreground">Host de conexión:</span><span className="font-medium">{device.host}</span></div>
+                         {device.vpn_peer_name && <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5 text-primary" />Ruta:</span><span className="font-medium text-primary">{device.vpn_peer_name} · {device.vpn_peer_address?.split('/')[0]}</span></div>}
+                         <div className="flex justify-between text-sm"><span className="text-muted-foreground">Puerto:</span><span className="font-medium">{device.port}</span></div>
+                         <div className="flex justify-between text-sm"><span className="text-muted-foreground">Versión:</span><span className="font-medium">{device.version}</span></div>
+                       </div>
                     ) : null;
                   })()}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
