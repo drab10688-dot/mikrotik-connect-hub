@@ -422,9 +422,11 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
 
     if (vpn_peer_id) {
       const peerResult = await pool.query(
-        `SELECT id, peer_address FROM vpn_peers
-         WHERE id = $1 AND is_active = true AND (created_by = $2 OR $3 = 'super_admin')`,
-        [vpn_peer_id, req.userId, req.userRole]
+        `SELECT vp.id, vp.peer_address FROM vpn_peers vp
+         LEFT JOIN users peer_owner ON peer_owner.id = vp.created_by
+         WHERE vp.id = $1 AND vp.is_active = true
+           AND (vp.created_by = $2 OR $3 = 'super_admin' OR peer_owner.tenant_id = $4)`,
+        [vpn_peer_id, req.userId, req.userRole, req.tenantId || null]
       );
       if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible para tu cuenta' });
       const vpnIp = peerResult.rows[0].peer_address.split('/')[0];
@@ -609,10 +611,6 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
     }
 
     if (vpn_peer_id !== undefined) {
-      const currentPeer = await pool.query(
-        'SELECT id, peer_address FROM vpn_peers WHERE mikrotik_id = $1 AND is_active = true LIMIT 1',
-        [id]
-      );
       if (vpn_peer_id === null) {
         await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1', [id]);
         const fallbackHost = fields.host || rows[0].direct_host || rows[0].host;
@@ -621,9 +619,11 @@ devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
         rows[0].vpn_peer_id = null;
       } else {
         const peerResult = await pool.query(
-          `SELECT id, peer_address, mikrotik_id FROM vpn_peers
-           WHERE id = $1 AND is_active = true AND (created_by = $2 OR $3 = 'super_admin')`,
-          [vpn_peer_id, req.userId, req.userRole]
+          `SELECT vp.id, vp.peer_address, vp.mikrotik_id FROM vpn_peers vp
+           LEFT JOIN users peer_owner ON peer_owner.id = vp.created_by
+           WHERE vp.id = $1 AND vp.is_active = true
+             AND (vp.created_by = $2 OR $3 = 'super_admin' OR peer_owner.tenant_id = $4)`,
+          [vpn_peer_id, req.userId, req.userRole, req.tenantId || null]
         );
         if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible para tu cuenta' });
         const vpnIp = peerResult.rows[0].peer_address.split('/')[0];
