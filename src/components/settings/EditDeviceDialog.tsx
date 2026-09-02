@@ -18,6 +18,14 @@ interface VpnPeer {
   is_active: boolean;
 }
 
+interface L2tpPeer {
+  id: string;
+  name: string;
+  tunnel_ip: string | null;
+  is_active: boolean;
+}
+
+
 interface EditDeviceDialogProps {
   device: {
     id: string;
