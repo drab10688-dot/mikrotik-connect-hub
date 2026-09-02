@@ -48,6 +48,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
   const [open, setOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [vpnPeers, setVpnPeers] = useState<VpnPeer[]>([]);
+  const [l2tpPeers, setL2tpPeers] = useState<L2tpPeer[]>([]);
   const [formData, setFormData] = useState({
     name: device.name,
     host: device.host,
@@ -72,8 +73,15 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
       apiGet<VpnPeer[]>('/vpn/peers')
         .then((peers) => setVpnPeers(peers.filter((peer) => peer.is_active && (!peer.mikrotik_id || peer.mikrotik_id === device.id))))
         .catch(() => setVpnPeers([]));
+      apiGet<any>('/isp/vpn')
+        .then((res) => {
+          const peers: L2tpPeer[] = res?.data?.peers || res?.peers || [];
+          setL2tpPeers(peers.filter((peer) => peer.is_active !== false && peer.tunnel_ip));
+        })
+        .catch(() => setL2tpPeers([]));
     }
   }, [open, device]);
+
 
   const updateDeviceMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
