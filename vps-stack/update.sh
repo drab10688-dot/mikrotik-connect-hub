@@ -22,17 +22,20 @@ fi
 
 TEMP_DIR=$(mktemp -d)
 echo -e "${YELLOW}1/5 Descargando código (${BRANCH})...${NC}"
-# Repo público: forzamos clon anónimo sin pedir credenciales.
-# Sin esto, un credential.helper mal configurado en el VPS cuelga el script
-# pidiendo usuario/contraseña de GitHub.
-GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.askpass= -c http.askpass= \
-  clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TEMP_DIR" || {
-    echo -e "${RED}✗ No se pudo descargar el código del repositorio público.${NC}"
-    echo -e "${RED}  Verifica conexión a internet o que el repo sea accesible.${NC}"
-    exit 1
-  }
+# Descarga por codeload para evitar proxies o configuraciones Git que intentan
+# autenticar incluso cuando el repositorio es público.
+ARCHIVE_URL="https://codeload.github.com/drab10688-dot/mikrotik-connect-hub/tar.gz/refs/heads/${BRANCH}"
+ARCHIVE_FILE=$(mktemp)
+if ! curl -fL --retry 3 --connect-timeout 15 "$ARCHIVE_URL" -o "$ARCHIVE_FILE" || \
+   ! tar -xzf "$ARCHIVE_FILE" --strip-components=1 -C "$TEMP_DIR"; then
+  rm -f "$ARCHIVE_FILE"
+  echo -e "${RED}✗ No se pudo descargar el código del repositorio público.${NC}"
+  echo -e "${RED}  Verifica conexión a internet y acceso a codeload.github.com.${NC}"
+  exit 1
+fi
+rm -f "$ARCHIVE_FILE"
 cd "$TEMP_DIR"
-COMMIT=$(git log -1 --format='%h %ad %s' --date=short)
+COMMIT="${BRANCH} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo -e "${GREEN}Commit descargado: ${COMMIT}${NC}"
 
 echo -e "${YELLOW}2/5 Sincronizando stack (preservando .env y datos)...${NC}"
