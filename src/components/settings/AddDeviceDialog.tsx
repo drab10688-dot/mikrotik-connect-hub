@@ -31,6 +31,7 @@ export const AddDeviceDialog = () => {
     password: '',
     port: 443,
     version: 'v7',
+    vpn_peer_id: null as string | null,
   });
 
   useEffect(() => {
@@ -45,14 +46,14 @@ export const AddDeviceDialog = () => {
 
   const handleVpnPeerSelect = (peerId: string) => {
     if (peerId === 'none') {
-      setFormData({ ...formData, host: '' });
+      setFormData({ ...formData, vpn_peer_id: null, host: '' });
       return;
     }
     const peer = vpnPeers.find((p) => p.id === peerId);
     if (peer) {
       const vpnIp = peer.peer_address.split('/')[0];
-      setFormData({ ...formData, host: vpnIp });
-      toast.info(`Host configurado con IP VPN: ${vpnIp}`);
+      setFormData({ ...formData, vpn_peer_id: peer.id, host: vpnIp });
+      toast.info(`Este MikroTik usará la VPN ${peer.name} (${vpnIp})`);
     }
   };
 
@@ -85,6 +86,7 @@ export const AddDeviceDialog = () => {
         password: '',
         port: 443,
         version: 'v7',
+        vpn_peer_id: null,
       });
     },
     onError: (error: any) => {
