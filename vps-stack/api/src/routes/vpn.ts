@@ -615,6 +615,15 @@ vpnRouter.put('/peers/:id', async (req: AuthRequest, res: Response) => {
 
     const updatedPeer = result.rows[0];
 
+    if (mikrotik_id !== undefined && existingPeer.mikrotik_id && existingPeer.mikrotik_id !== updatedPeer.mikrotik_id) {
+      await pool.query(
+        `UPDATE mikrotik_devices
+         SET host = COALESCE(direct_host, host), updated_at = now()
+         WHERE id = $1 AND host = $2`,
+        [existingPeer.mikrotik_id, (existingPeer.peer_address || '').split('/')[0]]
+      );
+    }
+
     if (mikrotik_id !== undefined && updatedPeer.mikrotik_id) {
       const vpnIp = (updatedPeer.peer_address || '').split('/')[0];
       if (vpnIp) {
