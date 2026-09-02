@@ -76,7 +76,12 @@ echo ""
 echo -e "${CYAN}═══ FASE 2/5: Descargando y compilando el panel ═══${NC}"
 
 TEMP_DIR=$(mktemp -d)
-git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
+# Repo público: clon anónimo sin colgar pidiendo credenciales de GitHub.
+GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.askpass= -c http.askpass= \
+  clone --depth 1 "$REPO_URL" "$TEMP_DIR" || {
+    echo -e "${RED}✗ No se pudo clonar el repositorio público. Verifica internet.${NC}"
+    exit 1
+  }
 
 mkdir -p "$INSTALL_DIR"
 [ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" /tmp/omniacs-env-backup
