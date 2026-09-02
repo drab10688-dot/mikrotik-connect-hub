@@ -148,6 +148,8 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
   };
 
   const selectedVpn = vpnPeers.find((peer) => peer.id === formData.vpn_peer_id);
+  const selectedL2tp = l2tpPeers.find((peer) => peer.id === l2tpRouteId);
+
 
   return (
     <>
