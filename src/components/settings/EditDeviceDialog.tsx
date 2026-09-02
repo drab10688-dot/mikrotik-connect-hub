@@ -59,6 +59,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
     port: device.port,
     version: device.version,
     vpn_peer_id: device.vpn_peer_id || null as string | null,
+    l2tp_peer_id: device.l2tp_peer_id || null as string | null,
   });
 
   useEffect(() => {
@@ -71,7 +72,9 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
         port: device.port,
         version: device.version,
         vpn_peer_id: device.vpn_peer_id || null,
+        l2tp_peer_id: device.l2tp_peer_id || null,
       });
+      setL2tpRouteId(device.l2tp_peer_id || null);
       apiGet<VpnPeer[]>('/vpn/peers')
         .then((peers) => setVpnPeers(peers.filter((peer) => peer.is_active && (!peer.mikrotik_id || peer.mikrotik_id === device.id))))
         .catch(() => setVpnPeers([]));
@@ -123,7 +126,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
   const handleVpnPeerSelect = (value: string) => {
     if (value === 'none') {
       setL2tpRouteId(null);
-      setFormData({ ...formData, vpn_peer_id: null, host: device.direct_host || formData.host });
+      setFormData({ ...formData, vpn_peer_id: null, l2tp_peer_id: null, host: device.direct_host || formData.host });
       return;
     }
     if (value.startsWith('l2tp:')) {
@@ -131,7 +134,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
       if (!peer) return;
       setL2tpRouteId(peer.id);
       // L2TP: el host lo define el usuario (IP del MikroTik alcanzable por el túnel)
-      setFormData({ ...formData, vpn_peer_id: null });
+      setFormData({ ...formData, vpn_peer_id: null, l2tp_peer_id: peer.id });
       toast.info(`Ruta L2TP ${peer.name} (túnel ${peer.tunnel_ip}). Escribe abajo la IP del MikroTik.`);
       return;
     }
@@ -139,7 +142,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
     if (!peer) return;
     const vpnIp = peer.peer_address.split('/')[0];
     setL2tpRouteId(null);
-    setFormData({ ...formData, vpn_peer_id: peer.id, host: vpnIp });
+    setFormData({ ...formData, vpn_peer_id: peer.id, l2tp_peer_id: null, host: vpnIp });
     toast.info(`Este MikroTik usará la VPN ${peer.name} (${vpnIp})`);
   };
 
@@ -176,7 +179,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
 
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Ruta VPN del MikroTik</Label>
-                <Select value={formData.vpn_peer_id || (l2tpRouteId ? `l2tp:${l2tpRouteId}` : 'none')} onValueChange={handleVpnPeerSelect}>
+                <Select value={formData.vpn_peer_id || (formData.l2tp_peer_id ? `l2tp:${formData.l2tp_peer_id}` : 'none')} onValueChange={handleVpnPeerSelect}>
                   <SelectTrigger><SelectValue placeholder="Sin VPN — IP directa" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sin VPN — IP directa</SelectItem>
