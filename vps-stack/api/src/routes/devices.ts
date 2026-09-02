@@ -402,6 +402,20 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
 devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id } = req.body;
+    let selectedVpnPeer: { id: string; peer_address: string } | null = null;
+
+    if (vpn_peer_id) {
+      const peerResult = await pool.query(
+        `SELECT vp.id, vp.peer_address FROM vpn_peers vp
+         LEFT JOIN users peer_owner ON peer_owner.id = vp.created_by
+         WHERE vp.id = $1 AND vp.is_active = true AND vp.mikrotik_id IS NULL
+           AND (vp.created_by = $2 OR $3 = 'super_admin' OR peer_owner.tenant_id = $4)`,
+        [vpn_peer_id, req.userId, req.userRole, req.tenantId || null]
+      );
+      if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible, está inactivo o ya está asignado' });
+      selectedVpnPeer = peerResult.rows[0];
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO mikrotik_devices (name, host, direct_host, port, username, password, version, created_by, status, latitude, longitude, hotspot_url)
        VALUES ($1, $2, $2, $3, $4, $5, $6, $7, 'active'::device_status, $8, $9, $10) RETURNING *`,
@@ -418,23 +432,12 @@ devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req:
       }
     }
 
-
-
-    if (vpn_peer_id) {
-      const peerResult = await pool.query(
-        `SELECT vp.id, vp.peer_address FROM vpn_peers vp
-         LEFT JOIN users peer_owner ON peer_owner.id = vp.created_by
-         WHERE vp.id = $1 AND vp.is_active = true
-           AND (vp.created_by = $2 OR $3 = 'super_admin' OR peer_owner.tenant_id = $4)`,
-        [vpn_peer_id, req.userId, req.userRole, req.tenantId || null]
-      );
-      if (!peerResult.rows[0]) return res.status(400).json({ error: 'El peer VPN no está disponible para tu cuenta' });
-      const vpnIp = peerResult.rows[0].peer_address.split('/')[0];
-      await pool.query('UPDATE vpn_peers SET mikrotik_id = NULL WHERE mikrotik_id = $1', [rows[0].id]);
-      await pool.query('UPDATE vpn_peers SET mikrotik_id = $1 WHERE id = $2', [rows[0].id, vpn_peer_id]);
+    if (selectedVpnPeer) {
+      const vpnIp = selectedVpnPeer.peer_address.split('/')[0];
+      await pool.query('UPDATE vpn_peers SET mikrotik_id = $1 WHERE id = $2', [rows[0].id, selectedVpnPeer.id]);
       await pool.query('UPDATE mikrotik_devices SET host = $1 WHERE id = $2', [vpnIp, rows[0].id]);
       rows[0].host = vpnIp;
-      rows[0].vpn_peer_id = vpn_peer_id;
+      rows[0].vpn_peer_id = selectedVpnPeer.id;
     }
 
     // Auto-assign access
