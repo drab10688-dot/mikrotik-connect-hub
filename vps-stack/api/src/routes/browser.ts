@@ -246,10 +246,11 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
   // así la pantalla cabe completa y se puede leer, hacer zoom y escribir.
   const mobile = (req as any).body?.mobile === true;
   const resolution = mobile ? '412x780' : undefined;
+  const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
 
   let session: UserBrowserSession;
   try {
-    session = await ensureUserBrowser(userId, url, { resolution });
+    session = await ensureUserBrowser(userId, url, { resolution, routeKey: mikrotikId });
   } catch (e: any) {
     return res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
   }
@@ -258,7 +259,6 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
   // su IP origen. Esto evita que dos sesiones con el mismo destino LAN se pisen.
   let routeWarning: string | undefined;
   try {
-    const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
     const sourceIp = await getUserBrowserIp(session);
     const routeReady = await prepareTenantRoute(req, url, sourceIp, mikrotikId);
     if (!routeReady) routeWarning = 'No se pudo confirmar la ruta VPN seleccionada; revisa que el túnel L2TP esté conectado.';
