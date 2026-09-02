@@ -42,6 +42,7 @@ export const AddDeviceDialog = () => {
     port: 443,
     version: 'v7',
     vpn_peer_id: null as string | null,
+    l2tp_peer_id: null as string | null,
   });
 
   useEffect(() => {
@@ -63,14 +64,14 @@ export const AddDeviceDialog = () => {
   const handleVpnPeerSelect = (peerId: string) => {
     if (peerId === 'none') {
       setL2tpRouteId(null);
-      setFormData({ ...formData, vpn_peer_id: null, host: formData.direct_host });
+      setFormData({ ...formData, vpn_peer_id: null, l2tp_peer_id: null, host: formData.direct_host });
       return;
     }
     if (peerId.startsWith('l2tp:')) {
       const l2tp = l2tpPeers.find((p) => p.id === peerId.slice(5));
       if (!l2tp) return;
       setL2tpRouteId(l2tp.id);
-      setFormData({ ...formData, vpn_peer_id: null });
+      setFormData({ ...formData, vpn_peer_id: null, l2tp_peer_id: l2tp.id });
       toast.info(`Ruta L2TP ${l2tp.name} (túnel ${l2tp.tunnel_ip}). Escribe la IP del MikroTik.`);
       return;
     }
@@ -78,7 +79,7 @@ export const AddDeviceDialog = () => {
     const peer = vpnPeers.find((p) => p.id === peerId);
     if (peer) {
       const vpnIp = peer.peer_address.split('/')[0];
-      setFormData({ ...formData, vpn_peer_id: peer.id, direct_host: formData.direct_host || formData.host, host: vpnIp });
+      setFormData({ ...formData, vpn_peer_id: peer.id, l2tp_peer_id: null, direct_host: formData.direct_host || formData.host, host: vpnIp });
       toast.info(`Este MikroTik usará la VPN ${peer.name} (${vpnIp})`);
     }
   };
@@ -114,6 +115,7 @@ export const AddDeviceDialog = () => {
         port: 443,
         version: 'v7',
         vpn_peer_id: null,
+        l2tp_peer_id: null,
       });
     },
     onError: (error: any) => {

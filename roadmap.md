@@ -5,3 +5,5 @@
 - [x] Asociar cada MikroTik a un peer VPN y enrutar por su IP única.
 - [x] Preservar/restaurar la IP directa al cambiar o quitar la VPN.
 - [x] Añadir migración y validar el preview.
+- [ ] Persistir el túnel L2TP seleccionado por cada MikroTik.
+- [ ] Aislar las rutas VNC por escritorio para permitir LAN/IP repetidas.

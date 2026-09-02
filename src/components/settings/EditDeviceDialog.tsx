@@ -38,6 +38,8 @@ interface EditDeviceDialogProps {
     version: string;
     vpn_peer_id?: string | null;
     vpn_peer_name?: string | null;
+    l2tp_peer_id?: string | null;
+    l2tp_peer_name?: string | null;
   };
   canDelete?: boolean;
   onDeleted?: () => void;
@@ -116,7 +118,7 @@ export const EditDeviceDialog = ({ device, canDelete = false, onDeleted }: EditD
     onError: (error: any) => toast.error(error.message || 'Error al eliminar dispositivo'),
   });
 
-  const [l2tpRouteId, setL2tpRouteId] = useState<string | null>(null);
+  const [l2tpRouteId, setL2tpRouteId] = useState<string | null>(device.l2tp_peer_id || null);
 
   const handleVpnPeerSelect = (value: string) => {
     if (value === 'none') {

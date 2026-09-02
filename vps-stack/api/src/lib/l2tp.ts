@@ -118,10 +118,11 @@ export async function removeL2tpUser(username: string, tunnelIp?: string) {
  * host enruta esa IP por el PPP correcto. Se usa /32 para no apropiarse de
  * redes completas de otro ISP y se aplica NAT al tráfico de los navegadores.
  */
-export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string): Promise<boolean> {
+export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string, sourceIp?: string): Promise<boolean> {
   const peer = esc(tunnelIp);
   const target = esc(targetIp);
-  if (!peer || !target || target !== targetIp) return false;
+  const source = sourceIp ? esc(sourceIp) : '';
+  if (!peer || !target || target !== targetIp || (sourceIp && source !== sourceIp)) return false;
 
   // 1) Interfaz PPP cuyo peer es exactamente la IP de túnel del ISP.
   let pppIf = (await sh(
@@ -148,8 +149,18 @@ export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string):
   if (!pppIf) return false;
 
 
+  // Cada escritorio recibe su propia tabla de rutas. Así dos MikroTik pueden
+  // exponer 192.168.1.1 (o cualquier LAN repetida) por túneles diferentes sin
+  // que la última ruta global reemplace a la anterior.
+  const sourceRouting = source
+    ? `IFINDEX=$(cat /sys/class/net/'${esc(pppIf)}'/ifindex 2>/dev/null) || exit 1; TABLE=$((20000 + IFINDEX)); ` +
+      `ip route replace '${target}/32' dev '${esc(pppIf)}' table "$TABLE" 2>/dev/null || exit 1; ` +
+      `while ip rule del from '${source}/32' to '${target}/32' 2>/dev/null; do :; done; ` +
+      `ip rule add pref "$TABLE" from '${source}/32' to '${target}/32' table "$TABLE" 2>/dev/null || exit 1; `
+    : `ip route replace '${target}/32' dev '${esc(pppIf)}' 2>/dev/null || exit 1; `;
+
   const result = await sh(
-    `ip route replace '${target}/32' dev '${esc(pppIf)}' 2>/dev/null || exit 1; ` +
+    sourceRouting +
       `iptables -C FORWARD -s 172.16.0.0/12 -d '${target}/32' -j ACCEPT 2>/dev/null || iptables -I FORWARD -s 172.16.0.0/12 -d '${target}/32' -j ACCEPT; ` +
       `iptables -C FORWARD -d 172.16.0.0/12 -s '${target}/32' -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -I FORWARD -d 172.16.0.0/12 -s '${target}/32' -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT; ` +
       `iptables -t nat -C POSTROUTING -s 172.16.0.0/12 -d '${target}/32' -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -d '${target}/32' -j MASQUERADE; ` +

@@ -198,6 +198,16 @@ export function getSession(userId: string): UserBrowserSession | undefined {
   return sessions.get(userId);
 }
 
+/** IP privada del escritorio dentro de la red Docker, usada para policy routing. */
+export async function getUserBrowserIp(session: UserBrowserSession): Promise<string | null> {
+  const result = await docker(
+    ['inspect', '--format', `{{with index .NetworkSettings.Networks "${NETWORK}"}}{{.IPAddress}}{{end}}`, session.container],
+    8000,
+  );
+  const ip = result.out.trim();
+  return result.ok && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) ? ip : null;
+}
+
 export function touchSession(userId: string) {
   const s = sessions.get(userId);
   if (s) s.lastActivity = Date.now();
