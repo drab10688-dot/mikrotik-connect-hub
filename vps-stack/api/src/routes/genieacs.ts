@@ -596,6 +596,12 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
       ?? null;
 
+    // Normalización multi-fabricante + búsqueda profunda (V-SOL, Realtek, etc.)
+    const rxPower = sanitizePower(rxPowerRaw) ?? deepFindPower(device, RX_KEY) ?? null;
+    const txPower = sanitizePower(txPowerRaw) ?? deepFindPower(device, TX_KEY) ?? null;
+
+
+
     // CPU and memory
     const cpuUsage = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_CPU_Usage')
       ?? getParam(device, 'Device.DeviceInfo.ProcessStatus.CPUUsage')
