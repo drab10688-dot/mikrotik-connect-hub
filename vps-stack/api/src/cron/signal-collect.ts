@@ -64,11 +64,6 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
     return current?._value ?? current ?? null;
   };
 
-  const normalizePower = (val: number | null): number | null => {
-    if (val === null) return null;
-    if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
-    return val;
-  };
 
   const quality = (rx: number | null): string => {
     if (rx === null) return 'unknown';
