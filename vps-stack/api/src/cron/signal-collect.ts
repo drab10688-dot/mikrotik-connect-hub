@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { extractRx, extractTx } from '../lib/acs-signal';
 
 /**
  * Cron job: Recolecta señal óptica de todas las ONUs vinculadas al ACS
