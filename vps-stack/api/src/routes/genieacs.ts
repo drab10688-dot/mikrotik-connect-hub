@@ -1646,7 +1646,7 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
   try {
-    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_lastInform');
+    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,InternetGatewayDevice.X_GponInterfaceConfig,InternetGatewayDevice.X_CT-COM_GponInterfaceConfig,InternetGatewayDevice.X_CMCC_GponInterfaceConfig,InternetGatewayDevice.X_VSOL_GponInterfaceConfig,InternetGatewayDevice.X_VSOL_PONInfo,InternetGatewayDevice.X_PON,InternetGatewayDevice.X_PONInfo,Device.Optical,Device.XPON,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_lastInform');
 
     const overview = (devices || []).map((device: any) => {
       const igd = device?.InternetGatewayDevice || device?.Device || {};
