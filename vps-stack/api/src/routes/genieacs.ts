@@ -562,7 +562,7 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
 
     // Extract optical power from common TR-069 paths (multi-vendor)
     // Latic / Generic GPON
-    const rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower') 
+    const rxPowerRaw = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower') 
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
       // ZTE
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
@@ -579,7 +579,7 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
       ?? null;
 
-    const txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
+    const txPowerRaw = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
       // ZTE
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
