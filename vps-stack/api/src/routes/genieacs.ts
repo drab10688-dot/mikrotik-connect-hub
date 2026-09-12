@@ -1363,9 +1363,17 @@ const FAST_PROJECTION = [
   'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
   'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
   'InternetGatewayDevice.X_HW_PONInfo',
+  'InternetGatewayDevice.X_GponInterfaceConfig',
+  'InternetGatewayDevice.X_CT-COM_GponInterfaceConfig',
+  'InternetGatewayDevice.X_CMCC_GponInterfaceConfig',
+  'InternetGatewayDevice.X_VSOL_GponInterfaceConfig',
+  'InternetGatewayDevice.X_VSOL_PONInfo',
+  'InternetGatewayDevice.X_PON',
+  'InternetGatewayDevice.X_PONInfo',
   'Device.DeviceInfo',
   'Device.ManagementServer.PeriodicInformInterval',
   'Device.Optical',
+  'Device.XPON',
   'Device.WiFi',
 ].join(',');
 
