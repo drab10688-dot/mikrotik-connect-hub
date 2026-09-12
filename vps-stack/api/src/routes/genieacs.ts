@@ -1470,7 +1470,7 @@ function sanitizePower(val: any): number | null {
   };
 
   let num = scaled(raw);
-  const valid = (n: number) => Number.isFinite(n) && n > -60 && n <= 15;
+  const valid = (n: number) => Number.isFinite(n) && n > -60 && n <= 10;
 
   if (!valid(num) && raw > 0) {
     // Potencia lineal (0.0001 mW) → dBm

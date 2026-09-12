@@ -125,7 +125,7 @@ function normalizePower(val: any): number | null {
   };
 
   let num = scaled(raw);
-  const valid = (n: number) => Number.isFinite(n) && n > -60 && n <= 15;
+  const valid = (n: number) => Number.isFinite(n) && n > -60 && n <= 10;
   if (!valid(num) && raw > 0) num = 10 * Math.log10(raw / 10000);
   if (!valid(num)) return null;
   return Math.round(num * 10) / 10;
