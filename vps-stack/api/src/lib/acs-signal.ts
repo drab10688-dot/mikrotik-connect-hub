@@ -259,7 +259,7 @@ export async function collectAcsSignals(pool: Pool): Promise<CollectResult> {
 
       const meta = deviceMeta(device);
       const igd = device?.InternetGatewayDevice || device?.Device || {};
-      const temperature = normalizePower(
+      const temperature = plainNumber(
         getParam(device, 'InternetGatewayDevice.DeviceInfo.X_Temperature')
         ?? getParam(device, 'Device.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value')
         ?? null
