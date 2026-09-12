@@ -1488,7 +1488,7 @@ function firstPppoeUsername(device: any): string | null {
 function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): any {
   if (!obj || typeof obj !== 'object' || depth < 0) return undefined;
   for (const [k, v] of Object.entries<any>(obj)) {
-    if (k.startsWith('_')) continue;
+    if (k.startsWith('_') || IGNORE_POWER_KEY.test(k)) continue;
     if (keyMatch.test(k)) {
       const val = v?._value ?? (typeof v === 'number' || typeof v === 'string' ? v : undefined);
       if (val !== undefined && val !== null && String(val) !== '') {
@@ -1505,8 +1505,11 @@ function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): any {
   return undefined;
 }
 
-const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
-const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+// Coincidencia por contenido: cubre prefijos de fabricante (X_VSOL_RXPower,
+// X_CMCC_RxPowerLevel, OpticalSignalLevel, etc.) sin depender del modelo.
+const IGNORE_POWER_KEY = /(threshold|alarm|warn|max|min|offset|limit|notif|config)/i;
+const RX_KEY = /(rx|receiv|downstream).{0,4}(power|level)|opticalsignallevel|signalstrength/i;
+const TX_KEY = /(tx|transmit|upstream).{0,4}(power|level)/i;
 
 export interface RadioInfo {
   index: string;
