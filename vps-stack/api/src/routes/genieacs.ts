@@ -2222,8 +2222,8 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
         // Normalizar a dBm entero (maneja 0.01 dBm, mW, centinelas)
         const normalizePower = (val: number | null): number | null => sanitizePower(val);
 
-        rxPower = normalizePower(rxPower);
-        txPower = normalizePower(txPower);
+        rxPower = normalizePower(rxPower) ?? deepFindPower(device, RX_KEY) ?? null;
+        txPower = normalizePower(txPower) ?? deepFindPower(device, TX_KEY) ?? null;
 
         const quality = (rx: number | null): string => {
           if (rx === null) return 'unknown';
