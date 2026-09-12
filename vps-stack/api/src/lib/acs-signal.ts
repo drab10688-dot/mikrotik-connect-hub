@@ -16,7 +16,15 @@ const PROJECTION = [
   'InternetGatewayDevice.DeviceInfo',
   'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
   'InternetGatewayDevice.X_HW_PONInfo',
+  'InternetGatewayDevice.X_GponInterfaceConfig',
+  'InternetGatewayDevice.X_CT-COM_GponInterfaceConfig',
+  'InternetGatewayDevice.X_CMCC_GponInterfaceConfig',
+  'InternetGatewayDevice.X_VSOL_GponInterfaceConfig',
+  'InternetGatewayDevice.X_VSOL_PONInfo',
+  'InternetGatewayDevice.X_PON',
+  'InternetGatewayDevice.X_PONInfo',
   'Device.Optical',
+  'Device.XPON',
   'Device.DeviceInfo',
 ].join(',');
 
@@ -95,17 +103,39 @@ function getParam(device: any, path: string): any {
   return current?._value ?? (typeof current === 'object' ? undefined : current);
 }
 
+// Normaliza potencia óptica de cualquier fabricante a dBm:
+// dBm directo, décimas (-235), centésimas (-2345), milésimas o unidades
+// lineales (0.0001 mW) como las que reportan V-SOL / Realtek.
 function normalizePower(val: any): number | null {
-  let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
-  if (!Number.isFinite(num)) return null;
-  // Descartar valores basura comunes
-  if (num >= 65535 || num === -2147483648) return null;
-  // Muchos vendors reportan en unidades de 0.01 dBm (ej: -2245 = -22.45 dBm)
-  if (num < -100 && num > -100000) num = num / 100;
-  // Unidades de 0.0001 mW → convertir a dBm
-  if (num > 100) num = 10 * Math.log10(num / 10000);
-  if (num <= -90 || num > 20) return null;
-  return Math.round(num);
+  if (val === null || val === undefined) return null;
+  const raw = typeof val === 'number'
+    ? val
+    : parseFloat(String(val).replace(',', '.').replace(/[^0-9eE+.-]/g, ''));
+  if (!Number.isFinite(raw) || raw === 0) return null;
+  const absRaw = Math.abs(raw);
+  if (absRaw === 65535 || absRaw === 65536 || absRaw === 2147483648 || absRaw === 2147483647) return null;
+
+  const scaled = (v: number): number => {
+    const a = Math.abs(v);
+    if (a > 40000) return v / 10000;
+    if (a > 4000) return v / 1000;
+    if (a > 400) return v / 100;
+    if (a > 40) return v / 10;
+    return v;
+  };
+
+  let num = scaled(raw);
+  const valid = (n: number) => Number.isFinite(n) && n > -60 && n <= 10;
+  if (!valid(num) && raw > 0) num = 10 * Math.log10(raw / 10000);
+  if (!valid(num)) return null;
+  return Math.round(num * 10) / 10;
+}
+
+// Números simples (temperatura, CPU): sin escalado óptico.
+function plainNumber(val: any): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return Number.isFinite(num) ? num : null;
 }
 
 export function signalQuality(rx: number | null): string {
@@ -122,7 +152,7 @@ export function signalQuality(rx: number | null): string {
 function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): number | null {
   if (!obj || typeof obj !== 'object' || depth < 0) return null;
   for (const [k, v] of Object.entries<any>(obj)) {
-    if (k.startsWith('_')) continue;
+    if (k.startsWith('_') || IGNORE_POWER_KEY.test(k)) continue;
     if (keyMatch.test(k)) {
       const num = normalizePower(v?._value ?? (typeof v === 'object' ? undefined : v));
       if (num !== null) return num;
@@ -136,8 +166,11 @@ function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): number | null {
   return null;
 }
 
-const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
-const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+// Coincidencia por contenido para soportar prefijos de fabricante
+// (X_VSOL_RXPower, X_CMCC_RxPowerLevel, OpticalSignalLevel, …).
+const IGNORE_POWER_KEY = /(threshold|alarm|warn|max|min|offset|limit|notif|config)/i;
+const RX_KEY = /(rx|receiv|downstream).{0,4}(power|level)|opticalsignallevel|signalstrength/i;
+const TX_KEY = /(tx|transmit|upstream).{0,4}(power|level)/i;
 
 export function extractRx(device: any): number | null {
   return normalizePower(
@@ -234,7 +267,7 @@ export async function collectAcsSignals(pool: Pool): Promise<CollectResult> {
 
       const meta = deviceMeta(device);
       const igd = device?.InternetGatewayDevice || device?.Device || {};
-      const temperature = normalizePower(
+      const temperature = plainNumber(
         getParam(device, 'InternetGatewayDevice.DeviceInfo.X_Temperature')
         ?? getParam(device, 'Device.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value')
         ?? null

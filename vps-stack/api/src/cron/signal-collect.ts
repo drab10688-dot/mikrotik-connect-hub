@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { extractRx, extractTx } from '../lib/acs-signal';
 
 /**
  * Cron job: Recolecta señal óptica de todas las ONUs vinculadas al ACS
@@ -63,11 +64,6 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
     return current?._value ?? current ?? null;
   };
 
-  const normalizePower = (val: number | null): number | null => {
-    if (val === null) return null;
-    if (val > 100) return parseFloat((10 * Math.log10(val / 10000)).toFixed(2));
-    return val;
-  };
 
   const quality = (rx: number | null): string => {
     if (rx === null) return 'unknown';
@@ -99,26 +95,9 @@ async function collectSignalsDirect(pool: Pool, mikrotikId: string) {
       const device = await genieFetch(`/devices/${encodeURIComponent(onu.acs_device_id)}`);
       const igd = device?.InternetGatewayDevice || device?.Device || {};
 
-      let rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_HW_GponInterfaceConfig.RXPower')
-        ?? getParam(device, 'InternetGatewayDevice.X_HW_PONInfo.RXPower')
-        ?? getParam(device, 'Device.Optical.Interface.1.Stats.SignalStrength')
-        ?? getParam(device, 'Device.Optical.Interface.1.RxPower')
-        ?? null;
-
-      let txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
-        ?? getParam(device, 'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig.TXPower')
-        ?? getParam(device, 'Device.Optical.Interface.1.Stats.TransmitPower')
-        ?? getParam(device, 'Device.Optical.Interface.1.TxPower')
-        ?? null;
-
-      rxPower = normalizePower(rxPower);
-      txPower = normalizePower(txPower);
+      // Lectura multi-fabricante compartida (incluye V-SOL / Realtek)
+      const rxPower = extractRx(device);
+      const txPower = extractTx(device);
 
       const temperature = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_Temperature')
         ?? getParam(device, 'Device.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value')

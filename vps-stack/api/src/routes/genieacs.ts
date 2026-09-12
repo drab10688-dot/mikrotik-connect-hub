@@ -562,7 +562,7 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
 
     // Extract optical power from common TR-069 paths (multi-vendor)
     // Latic / Generic GPON
-    const rxPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower') 
+    const rxPowerRaw = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower') 
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.RXPower')
       // ZTE
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.RXPower')
@@ -579,7 +579,7 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.RXPower')
       ?? null;
 
-    const txPower = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
+    const txPowerRaw = getParam(device, 'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.TXPower')
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.GponInterfaceConfig.TXPower')
       // ZTE
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_GponInterfaceConfig.TXPower')
@@ -595,6 +595,12 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
       // Zyxel
       ?? getParam(device, 'InternetGatewayDevice.WANDevice.1.X_ZYXEL_GponInterfaceConfig.TXPower')
       ?? null;
+
+    // Normalización multi-fabricante + búsqueda profunda (V-SOL, Realtek, etc.)
+    const rxPower = sanitizePower(rxPowerRaw) ?? deepFindPower(device, RX_KEY) ?? null;
+    const txPower = sanitizePower(txPowerRaw) ?? deepFindPower(device, TX_KEY) ?? null;
+
+
 
     // CPU and memory
     const cpuUsage = getParam(device, 'InternetGatewayDevice.DeviceInfo.X_CPU_Usage')
@@ -1363,9 +1369,17 @@ const FAST_PROJECTION = [
   'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
   'InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig',
   'InternetGatewayDevice.X_HW_PONInfo',
+  'InternetGatewayDevice.X_GponInterfaceConfig',
+  'InternetGatewayDevice.X_CT-COM_GponInterfaceConfig',
+  'InternetGatewayDevice.X_CMCC_GponInterfaceConfig',
+  'InternetGatewayDevice.X_VSOL_GponInterfaceConfig',
+  'InternetGatewayDevice.X_VSOL_PONInfo',
+  'InternetGatewayDevice.X_PON',
+  'InternetGatewayDevice.X_PONInfo',
   'Device.DeviceInfo',
   'Device.ManagementServer.PeriodicInformInterval',
   'Device.Optical',
+  'Device.XPON',
   'Device.WiFi',
 ].join(',');
 
@@ -1433,17 +1447,37 @@ async function ensureInitialRead(devices: any[]): Promise<void> {
 
 
 
+// Normaliza la potencia óptica de cualquier fabricante a dBm.
+// Soporta dBm directo, décimas (-235), centésimas (-2345), milésimas y
+// unidades lineales (0.1 µW / 0.0001 mW) como las de V-SOL / Realtek.
 function sanitizePower(val: any): number | null {
-  let num = typeof val === 'number' ? val : (val != null && val !== '' ? parseFloat(String(val)) : NaN);
-  if (!Number.isFinite(num)) return null;
-  // Valores centinela de ONUs sin lectura óptica (p.ej. -2147483648, 65535)
-  if (num >= 65535 || num === -2147483648) return null;
-  // Muchos vendors reportan en unidades de 0.01 dBm (ej: -2245 = -22.45 dBm)
-  if (num < -100 && num > -100000) num = num / 100;
-  // Unidades de 0.0001 mW → convertir a dBm
-  if (num > 100) num = 10 * Math.log10(num / 10000);
-  if (num <= -90 || num > 20) return null;
-  return Math.round(num);
+  if (val === null || val === undefined) return null;
+  const raw = typeof val === 'number'
+    ? val
+    : parseFloat(String(val).replace(',', '.').replace(/[^0-9eE+.-]/g, ''));
+  if (!Number.isFinite(raw) || raw === 0) return null;
+  // Valores centinela de ONUs sin lectura óptica
+  const absRaw = Math.abs(raw);
+  if (absRaw === 65535 || absRaw === 65536 || absRaw === 2147483648 || absRaw === 2147483647) return null;
+
+  const scaled = (v: number): number => {
+    const a = Math.abs(v);
+    if (a > 40000) return v / 10000;   // 0.0001 dBm
+    if (a > 4000) return v / 1000;     // 0.001 dBm
+    if (a > 400) return v / 100;       // 0.01 dBm  (-2345 → -23.45)
+    if (a > 40) return v / 10;         // 0.1 dBm   (-235  → -23.5)
+    return v;                          // dBm directo
+  };
+
+  let num = scaled(raw);
+  const valid = (n: number) => Number.isFinite(n) && n > -60 && n <= 10;
+
+  if (!valid(num) && raw > 0) {
+    // Potencia lineal (0.0001 mW) → dBm
+    num = 10 * Math.log10(raw / 10000);
+  }
+  if (!valid(num)) return null;
+  return Math.round(num * 10) / 10;
 }
 
 function firstPppoeUsername(device: any): string | null {
@@ -1468,7 +1502,7 @@ function firstPppoeUsername(device: any): string | null {
 function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): any {
   if (!obj || typeof obj !== 'object' || depth < 0) return undefined;
   for (const [k, v] of Object.entries<any>(obj)) {
-    if (k.startsWith('_')) continue;
+    if (k.startsWith('_') || IGNORE_POWER_KEY.test(k)) continue;
     if (keyMatch.test(k)) {
       const val = v?._value ?? (typeof v === 'number' || typeof v === 'string' ? v : undefined);
       if (val !== undefined && val !== null && String(val) !== '') {
@@ -1485,8 +1519,11 @@ function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): any {
   return undefined;
 }
 
-const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
-const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+// Coincidencia por contenido: cubre prefijos de fabricante (X_VSOL_RXPower,
+// X_CMCC_RxPowerLevel, OpticalSignalLevel, etc.) sin depender del modelo.
+const IGNORE_POWER_KEY = /(threshold|alarm|warn|max|min|offset|limit|notif|config)/i;
+const RX_KEY = /(rx|receiv|downstream).{0,4}(power|level)|opticalsignallevel|signalstrength/i;
+const TX_KEY = /(tx|transmit|upstream).{0,4}(power|level)/i;
 
 export interface RadioInfo {
   index: string;
@@ -1609,7 +1646,7 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
 // ─── Bulk signal overview for all devices ───────────────
 genieacsRouter.get('/signal-overview', async (req: AuthRequest, res: Response) => {
   try {
-    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,Device.Optical,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_lastInform');
+    const devices = await genieFetch('/devices/?projection=_id,_deviceId,InternetGatewayDevice.WANDevice,InternetGatewayDevice.DeviceInfo,InternetGatewayDevice.X_ZTE-COM_WANPONInterfaceConfig,InternetGatewayDevice.X_HW_PONInfo,InternetGatewayDevice.X_GponInterfaceConfig,InternetGatewayDevice.X_CT-COM_GponInterfaceConfig,InternetGatewayDevice.X_CMCC_GponInterfaceConfig,InternetGatewayDevice.X_VSOL_GponInterfaceConfig,InternetGatewayDevice.X_VSOL_PONInfo,InternetGatewayDevice.X_PON,InternetGatewayDevice.X_PONInfo,Device.Optical,Device.XPON,Device.DeviceInfo,InternetGatewayDevice.ManagementServer.PeriodicInformInterval,Device.ManagementServer.PeriodicInformInterval,InternetGatewayDevice.ManagementServer.URL,Device.ManagementServer.URL,_lastInform');
 
     const overview = (devices || []).map((device: any) => {
       const igd = device?.InternetGatewayDevice || device?.Device || {};
@@ -2185,8 +2222,8 @@ genieacsRouter.post('/signal-collect/:mikrotikId([0-9a-fA-F-]{36})', async (req:
         // Normalizar a dBm entero (maneja 0.01 dBm, mW, centinelas)
         const normalizePower = (val: number | null): number | null => sanitizePower(val);
 
-        rxPower = normalizePower(rxPower);
-        txPower = normalizePower(txPower);
+        rxPower = normalizePower(rxPower) ?? deepFindPower(device, RX_KEY) ?? null;
+        txPower = normalizePower(txPower) ?? deepFindPower(device, TX_KEY) ?? null;
 
         const quality = (rx: number | null): string => {
           if (rx === null) return 'unknown';
