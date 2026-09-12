@@ -144,7 +144,7 @@ export function signalQuality(rx: number | null): string {
 function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): number | null {
   if (!obj || typeof obj !== 'object' || depth < 0) return null;
   for (const [k, v] of Object.entries<any>(obj)) {
-    if (k.startsWith('_')) continue;
+    if (k.startsWith('_') || IGNORE_POWER_KEY.test(k)) continue;
     if (keyMatch.test(k)) {
       const num = normalizePower(v?._value ?? (typeof v === 'object' ? undefined : v));
       if (num !== null) return num;
@@ -158,8 +158,11 @@ function deepFindPower(obj: any, keyMatch: RegExp, depth = 8): number | null {
   return null;
 }
 
-const RX_KEY = /^(rx_?power|rxpower|rxopticalpower|receivepower|opticalrxpower|signalstrength|rxlevel)$/i;
-const TX_KEY = /^(tx_?power|txpower|txopticalpower|transmitpower|opticaltxpower|txlevel)$/i;
+// Coincidencia por contenido para soportar prefijos de fabricante
+// (X_VSOL_RXPower, X_CMCC_RxPowerLevel, OpticalSignalLevel, …).
+const IGNORE_POWER_KEY = /(threshold|alarm|warn|max|min|offset|limit|notif|config)/i;
+const RX_KEY = /(rx|receiv|downstream).{0,4}(power|level)|opticalsignallevel|signalstrength/i;
+const TX_KEY = /(tx|transmit|upstream).{0,4}(power|level)/i;
 
 export function extractRx(device: any): number | null {
   return normalizePower(
