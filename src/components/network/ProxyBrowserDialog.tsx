@@ -50,11 +50,17 @@ export function ProxyBrowserDialog({
         // Primero se crea Chromium con la IP y el puerto como página inicial.
         // Sólo después se dirige esta misma pestaña al visor. Si el visor se
         // abre antes, auth_request crea un navegador vacío y se pierde la URL.
-        await browserApi.open(target.directUrl, target.mikrotikId, mobile);
+        const res = await browserApi.open(target.directUrl, target.mikrotikId, mobile);
 
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
-        toast.success(`${target.title}: abriendo ${target.directUrl}`);
+        if (res?.warning) {
+          // El equipo no contesta por el túnel: se explica el motivo en vez de
+          // dejar la pestaña en blanco sin ninguna pista.
+          toast.warning(`${target.title}: ${res.warning}`, { duration: 12000 });
+        } else {
+          toast.success(`${target.title}: abriendo ${target.directUrl}`);
+        }
       } catch (e: any) {
         if (win && !win.closed) win.close();
         toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");

@@ -168,3 +168,46 @@ export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string, 
   );
   return result.includes('routed');
 }
+
+/**
+ * Comprueba si el equipo responde realmente por el túnel.
+ * Sirve para distinguir "no hay ruta" (la IP nunca contesta) de
+ * "la página tarda": sin esto el escritorio sólo muestra pantalla en blanco.
+ */
+export async function probeL2tpTarget(
+  targetIp: string,
+  port: number,
+): Promise<{ ok: boolean; detail: string }> {
+  const target = esc(targetIp);
+  const p = Number.isFinite(port) && port > 0 && port < 65536 ? Math.trunc(port) : 80;
+  if (!target || target !== targetIp) return { ok: false, detail: 'IP no válida' };
+
+  const out = (await sh(
+    `ROUTE=$(ip route get ${target} 2>/dev/null | head -1); ` +
+      `if command -v nc >/dev/null 2>&1; then nc -z -w 4 ${target} ${p} >/dev/null 2>&1 && echo "TCP_OK" || echo "TCP_FAIL"; ` +
+      `else (echo > /dev/tcp/${target}/${p}) >/dev/null 2>&1 && echo "TCP_OK" || echo "TCP_FAIL"; fi; ` +
+      `ping -c 2 -W 2 ${target} >/dev/null 2>&1 && echo "PING_OK" || echo "PING_FAIL"; ` +
+      `echo "ROUTE:$ROUTE"`,
+  )).trim();
+
+  const ok = out.includes('TCP_OK');
+  const ping = out.includes('PING_OK');
+  const route = (out.split('ROUTE:')[1] || '').trim();
+  const viaPpp = /dev ppp\d+/.test(route);
+
+  if (ok) return { ok: true, detail: route };
+  if (!viaPpp)
+    return {
+      ok: false,
+      detail: `El VPS no está enviando ${target} por el túnel del MikroTik seleccionado (ruta actual: ${route || 'ninguna'}).`,
+    };
+  if (ping)
+    return {
+      ok: false,
+      detail: `${target} responde por el túnel, pero el puerto ${p} está cerrado o filtrado en ese equipo.`,
+    };
+  return {
+    ok: false,
+    detail: `${target} no responde por el túnel. Revisa en el MikroTik que esa red esté permitida hacia la VPN y que el equipo tenga ruta de regreso.`,
+  };
+}
