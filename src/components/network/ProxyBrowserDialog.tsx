@@ -54,13 +54,7 @@ export function ProxyBrowserDialog({
 
         if (win && !win.closed) win.location.replace(url);
         else window.open(url, "_blank");
-        if (res?.warning) {
-          // El equipo no contesta por el túnel: se explica el motivo en vez de
-          // dejar la pestaña en blanco sin ninguna pista.
-          toast.warning(`${target.title}: ${res.warning}`, { duration: 12000 });
-        } else {
-          toast.success(`${target.title}: abriendo ${target.directUrl}`);
-        }
+        toast.success(`${target.title}: abriendo ${target.directUrl}`);
       } catch (e: any) {
         if (win && !win.closed) win.close();
         toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
