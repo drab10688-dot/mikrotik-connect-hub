@@ -262,6 +262,14 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
     const sourceIp = await getUserBrowserIp(session);
     const routeReady = await prepareTenantRoute(req, url, sourceIp, mikrotikId);
     if (!routeReady) routeWarning = 'No se pudo confirmar la ruta VPN seleccionada; revisa que el túnel L2TP esté conectado.';
+
+    // Comprobación real: algunas IPs abren y otras no. Si el equipo no
+    // responde por el túnel se avisa con el motivo en vez de dejar el
+    // escritorio con la pestaña en blanco.
+    const parsed = new URL(url);
+    const port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+    const probe = await probeL2tpTarget(parsed.hostname, port);
+    if (!probe.ok) routeWarning = probe.detail;
   } catch (e: any) {
     routeWarning = e?.message || 'No se pudo preparar la ruta VPN hacia el equipo';
   }
