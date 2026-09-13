@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
-import { ensureL2tpTargetRoute } from '../lib/l2tp';
+import { ensureL2tpTargetRoute, probeL2tpTarget } from '../lib/l2tp';
 import {
   ensureUserBrowser,
   getUserBrowserIp,
