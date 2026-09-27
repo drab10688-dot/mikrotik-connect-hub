@@ -208,6 +208,95 @@ export default function Network() {
     onError: (e: any) => toast.error(e.message || "No se pudo eliminar"),
   });
 
+  // ─── Antena ↔ cliente PPPoE ───
+  const [apClientFilter, setApClientFilter] = useState("");
+  const [apWeakOnly, setApWeakOnly] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<{ mac: string; antenna: string; ap: string; current?: string } | null>(null);
+  const [linkSearch, setLinkSearch] = useState("");
+
+  const isWeakSignal = (cl: any) => cl.quality === "mala" || (cl.signal != null && cl.signal < -75);
+
+  const apClientVisible = (ap: any, cl: any) => {
+    if (apWeakOnly && !isWeakSignal(cl)) return false;
+    const term = apClientFilter.trim().toLowerCase();
+    if (!term) return true;
+    return [ap.ip, ap.name, cl.name, cl.mac, cl.pppoe?.user, cl.pppoe?.comment]
+      .filter(Boolean)
+      .some((v: string) => String(v).toLowerCase().includes(term));
+  };
+
+  const linkMut = useMutation({
+    mutationFn: ({ mac, user }: { mac: string; user: string }) => netAccessApi.saveApLink(deviceId, mac, user),
+    onSuccess: () => {
+      toast.success("Cliente asignado a la antena");
+      setLinkTarget(null);
+      qc.invalidateQueries({ queryKey: ["aps-auto", deviceId] });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudo asignar"),
+  });
+
+  const unlinkMut = useMutation({
+    mutationFn: (mac: string) => netAccessApi.deleteApLink(deviceId, mac),
+    onSuccess: () => {
+      toast.success("Asignación eliminada");
+      qc.invalidateQueries({ queryKey: ["aps-auto", deviceId] });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudo quitar"),
+  });
+
+  const MATCH_LABEL: Record<string, string> = {
+    manual: "Asignado",
+    mac: "Por MAC",
+    "mac-cercana": "MAC aprox.",
+    ip: "Por IP",
+    sugerido: "Sugerido",
+  };
+
+  const renderPppoeLink = (ap: any, cl: any) => {
+    const p = cl.pppoe;
+    const openAssign = () => {
+      setLinkSearch("");
+      setLinkTarget({ mac: cl.mac, antenna: cl.name || cl.mac, ap: ap.name || ap.ip, current: p?.user });
+    };
+    if (!cl.mac) return <span className="text-muted-foreground">—</span>;
+    if (!p) {
+      return (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openAssign}>
+          <Plus className="w-3 h-3 mr-1" /> Asignar
+        </Button>
+      );
+    }
+    return (
+      <div className="flex items-start gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full ${p.online ? "bg-emerald-500" : "bg-muted-foreground/40"}`} title={p.online ? "PPPoE conectado" : "PPPoE desconectado"} />
+            <span className="font-medium">{p.user}</span>
+            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${p.match === "sugerido" ? "border-amber-500/40 text-amber-500" : ""}`}>
+              {MATCH_LABEL[p.match] || p.match}{p.match === "sugerido" && p.delta_s != null ? ` · ${p.delta_s}s` : ""}
+            </Badge>
+          </div>
+          {p.comment && <p className="text-xs text-muted-foreground truncate max-w-[220px]">{p.comment}</p>}
+        </div>
+        <div className="flex gap-0.5">
+          {p.match === "sugerido" && (
+            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" title="Confirmar sugerencia" onClick={() => linkMut.mutate({ mac: cl.mac, user: p.user })}>
+              ✓
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-6 px-1.5" title="Cambiar cliente" onClick={openAssign}>
+            <Pencil className="w-3 h-3" />
+          </Button>
+          {p.match === "manual" && (
+            <Button size="sm" variant="ghost" className="h-6 px-1.5" title="Quitar asignación" onClick={() => unlinkMut.mutate(cl.mac)}>
+              <Trash2 className="w-3 h-3 text-destructive" />
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Conserva la última lista no vacía: si un refresco llega vacío por un
   // corte momentáneo de la VPN, la tabla no se queda en blanco.
   const lastSecretsRef = useRef<any[]>([]);
@@ -937,9 +1026,24 @@ export default function Network() {
 
             {/* Todos los clientes wireless consolidados */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2"><SignalHigh className="w-4 h-4" /> Clientes wireless de todos los APs</CardTitle>
-                <CardDescription>Señal consolidada de todas las antenas leídas automáticamente.</CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2"><SignalHigh className="w-4 h-4" /> Clientes wireless de todos los APs</CardTitle>
+                  <CardDescription>
+                    Cada antena con su cliente PPPoE. Si la antena está en puente, asígnalo una vez (o confirma la sugerencia por hora de conexión) y queda guardado.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Input
+                    className="h-8 w-48"
+                    placeholder="Buscar cliente, MAC, AP…"
+                    value={apClientFilter}
+                    onChange={(e) => setApClientFilter(e.target.value)}
+                  />
+                  <Button size="sm" variant={apWeakOnly ? "default" : "outline"} onClick={() => setApWeakOnly((v) => !v)}>
+                    <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Señal mala
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -947,7 +1051,8 @@ export default function Network() {
                     <thead className="text-left text-muted-foreground">
                       <tr className="border-b">
                         <th className="py-2 pr-4">AP</th>
-                        <th className="py-2 pr-4">Cliente</th>
+                        <th className="py-2 pr-4">Cliente PPPoE</th>
+                        <th className="py-2 pr-4">Antena</th>
                         <th className="py-2 pr-4">MAC</th>
                         <th className="py-2 pr-4">Señal</th>
                         <th className="py-2 pr-4">SNR</th>
@@ -959,12 +1064,14 @@ export default function Network() {
                     </thead>
                     <tbody>
                       {autoAps.flatMap((ap: any) =>
-                        (ap.clients ?? []).map((cl: any, i: number) => {
+                        (ap.clients ?? []).filter((cl: any) => apClientVisible(ap, cl)).map((cl: any, i: number) => {
                           const q = AP_QUALITY[cl.quality] || AP_QUALITY.desconocida;
+                          const weak = isWeakSignal(cl);
                           return (
-                            <tr key={`${ap.ip}-${cl.mac || i}`} className="border-b last:border-0">
-                              <td className="py-2 pr-4 font-mono text-xs">{ap.ip}</td>
-                              <td className="py-2 pr-4 font-medium">{cl.name || "—"}</td>
+                            <tr key={`${ap.ip}-${cl.mac || i}`} className={`border-b last:border-0 ${weak ? "bg-destructive/5" : ""}`}>
+                              <td className="py-2 pr-4 font-mono text-xs">{ap.name && ap.name !== ap.ip ? <span title={ap.ip}>{ap.name}</span> : ap.ip}</td>
+                              <td className="py-2 pr-4">{renderPppoeLink(ap, cl)}</td>
+                              <td className="py-2 pr-4 text-xs">{cl.name || "—"}</td>
                               <td className="py-2 pr-4 font-mono text-xs">{cl.mac || "—"}</td>
                               <td className="py-2 pr-4 font-mono">{cl.signal != null ? `${cl.signal} dBm` : "—"}</td>
                               <td className="py-2 pr-4">{cl.snr != null ? `${cl.snr} dB` : "—"}</td>
@@ -977,7 +1084,7 @@ export default function Network() {
                         })
                       )}
                       {!autoAps.some((ap: any) => (ap.clients ?? []).length) && !apsAutoFetching && (
-                        <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">Ningún AP reporta clientes wireless todavía.</td></tr>
+                        <tr><td colSpan={10} className="py-6 text-center text-muted-foreground">Ningún AP reporta clientes wireless todavía.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1331,6 +1438,43 @@ export default function Network() {
                 {editMode === "comment" ? "Guardar comentario" : "Aplicar perfil"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Asignar cliente PPPoE a una antena */}
+        <Dialog open={!!linkTarget} onOpenChange={(open) => !open && setLinkTarget(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Asignar cliente PPPoE</DialogTitle>
+              <DialogDescription>
+                Antena <span className="font-medium">{linkTarget?.antenna}</span> ({linkTarget?.mac}) en {linkTarget?.ap}. Queda guardado para esta MAC.
+              </DialogDescription>
+            </DialogHeader>
+            <Input autoFocus placeholder="Buscar por usuario o comentario…" value={linkSearch} onChange={(e) => setLinkSearch(e.target.value)} />
+            <div className="max-h-80 overflow-y-auto divide-y rounded-md border">
+              {(secrets || [])
+                .filter((s: any) => {
+                  const t = linkSearch.trim().toLowerCase();
+                  return !t || `${s.name} ${s.comment || ""}`.toLowerCase().includes(t);
+                })
+                .slice(0, 100)
+                .map((s: any) => (
+                  <button
+                    key={`${s.source}-${s.id}-${s.name}`}
+                    type="button"
+                    disabled={linkMut.isPending}
+                    className={`w-full text-left px-3 py-2 hover:bg-muted/60 flex items-center gap-2 ${linkTarget?.current === s.name ? "bg-muted" : ""}`}
+                    onClick={() => linkTarget && linkMut.mutate({ mac: linkTarget.mac, user: s.name })}
+                  >
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${s.online ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+                    <span className="font-medium">{s.name}</span>
+                    {s.comment && <span className="text-xs text-muted-foreground truncate">{s.comment}</span>}
+                  </button>
+                ))}
+              {!(secrets || []).length && (
+                <p className="px-3 py-4 text-sm text-muted-foreground">Cargando clientes PPPoE…</p>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </main>

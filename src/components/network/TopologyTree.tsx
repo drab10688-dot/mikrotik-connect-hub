@@ -32,7 +32,7 @@ function SignalBar({ signal, snr, quality }: { signal: number | null; snr: numbe
 
 interface Props {
   mikrotikId: string;
-  onManage: (ip: string) => void;
+  onManage?: (ip: string) => void;
   onAdvanced: (device: { ip: string; name: string; proxy_path: string }) => void;
 }
 
@@ -137,7 +137,7 @@ export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
                           onChange={(e) => setSectorEdit({ ...sectorEdit, [ap.ip]: e.target.value })}
                         />
                         <Button size="sm" variant="ghost" onClick={() => saveSector.mutate(ap)}>Guardar</Button>
-                        <Button size="sm" variant="ghost" onClick={() => onManage(ap.ip)}>Mini-panel</Button>
+                        {onManage && <Button size="sm" variant="ghost" onClick={() => onManage(ap.ip)}>Mini-panel</Button>}
                         <Button
                           size="sm"
                           variant="ghost"

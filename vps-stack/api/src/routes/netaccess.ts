@@ -8,6 +8,7 @@ import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import { pool } from '../lib/db';
 import { requireSection } from './isp';
 import { swr, keepWarm } from '../lib/cache';
+import { linkApClients, pppoeSessions, saveApLink, deleteApLink, normMac } from '../lib/ap-pppoe-link';
 
 /**
  * Garantiza que exista ruta por el túnel L2TP del ISP hacia la IP del AP
@@ -411,17 +412,58 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
           online: aps.filter((a) => a.ok).length,
           total_clients: aps.reduce((n, a) => n + a.clients.length, 0),
           aps,
+          read_at: Date.now(),
         };
       },
       { ttlMs: 60000 }
     );
 
-    res.json({ success: true, data });
+    // Cliente PPPoE de cada estación wireless (sobre una copia: `data` es caché).
+    const out = JSON.parse(JSON.stringify(data));
+    try {
+      const [activeRaw, secretsRaw] = await Promise.all([
+        mtCached(mikrotikId, '/rest/ppp/active', 10000),
+        mtCached(mikrotikId, '/rest/ppp/secret'),
+      ]);
+      const { active, comments } = pppoeSessions(asArray(activeRaw), asArray(secretsRaw));
+      await linkApClients(mikrotikId, out.aps || [], active, comments, Number(out.read_at) || Date.now());
+    } catch (e: any) {
+      out.pppoe_error = e?.message || 'No se pudo leer PPPoE';
+    }
+
+    res.json({ success: true, data: out });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
+// Vínculo manual antena (MAC) -> cliente PPPoE. Necesario cuando la antena
+// está en puente y el PPPoE lo hace el router de atrás (MAC distinta).
+netAccessRouter.put('/:mikrotikId/ap-links', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    const mac = normMac(req.body?.mac);
+    const user = String(req.body?.pppoe_user || '').trim();
+    if (mac.length !== 12) return res.status(400).json({ success: false, error: 'MAC inválida' });
+    if (!user || user.length > 128) return res.status(400).json({ success: false, error: 'Indica el cliente PPPoE' });
+    await saveApLink(mikrotikId, mac, user, req.userId);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+netAccessRouter.delete('/:mikrotikId/ap-links/:mac', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    await deleteApLink(mikrotikId, String(req.params.mac));
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Señal wireless del propio router MikroTik (si tiene clientes asociados)
 netAccessRouter.get('/:mikrotikId/wireless', async (req: AuthRequest, res: Response) => {

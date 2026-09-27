@@ -482,13 +482,6 @@ function IspCard({
               onCheckedChange={(v) => onSave({ enable_tr069: v })}
             />
           </div>
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-normal">Acceso web directo a ONUs (sin TR-069)</Label>
-            <Switch
-              checked={isp.enable_onu_web !== false}
-              onCheckedChange={(v) => onSave({ enable_onu_web: v })}
-            />
-          </div>
         </div>
 
         <div className="rounded-lg border p-3 space-y-2">

@@ -34,7 +34,7 @@ const FALLBACK_LABELS: Record<string, string> = {
 };
 
 const GROUPS: { title: string; sections: string[] }[] = [
-  { title: "Operación", sections: ["dashboard", "onus", "onu_web", "mikrotik", "pppoe", "topology", "red"] },
+  { title: "Operación", sections: ["dashboard", "onus", "mikrotik", "pppoe", "topology", "red"] },
   { title: "Infraestructura", sections: ["vpn", "configuracion", "diagnostico"] },
   { title: "Administración", sections: ["usuarios", "roles"] },
 ];

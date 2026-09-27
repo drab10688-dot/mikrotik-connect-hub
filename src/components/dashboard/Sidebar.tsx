@@ -34,7 +34,6 @@ const menuItems: MenuEntry[] = [
   { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik", group: "Operación" },
   { icon: UserPlus, label: "Usuarios PPPoE", path: "/pppoe", module: "mikrotik", section: "pppoe", group: "Operación" },
   
-  { icon: Globe, label: "Mini-panel de equipos", path: "/onu-web", module: "onu_web", section: "onu_web", group: "Operación" },
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
   { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
@@ -94,7 +93,6 @@ export const Sidebar = () => {
   const secretaryPermMap: Record<string, string> = {
     '/onus': 'can_manage_onu',
     '/acs': 'can_manage_onu',
-    '/onu-web': 'can_manage_onu',
     '/topology': 'can_manage_pppoe',
     '/mikrotik': 'can_manage_pppoe',
     '/pppoe': 'can_manage_pppoe',

@@ -516,6 +516,12 @@ export const netAccessApi = {
   apsAuto: async (mikrotikId: string) =>
     unwrapData<any>(await apiGet<any>(`/netaccess/${mikrotikId}/aps-auto`)),
 
+  /** Vincula la antena (MAC de la estación) con su cliente PPPoE. */
+  saveApLink: async (mikrotikId: string, mac: string, pppoeUser: string) =>
+    unwrapData<any>(await apiPut<any>(`/netaccess/${mikrotikId}/ap-links`, { mac, pppoe_user: pppoeUser })),
+  deleteApLink: async (mikrotikId: string, mac: string) =>
+    unwrapData<any>(await apiDelete<any>(`/netaccess/${mikrotikId}/ap-links/${encodeURIComponent(mac)}`)),
+
   listApCredentials: async () => unwrapData<any>(await apiGet<any>('/netaccess/ap-credentials')),
   saveApCredentials: async (payload: any) =>
     unwrapData<any>(await apiPut<any>('/netaccess/ap-credentials', payload)),
@@ -535,24 +541,5 @@ export const browserApi = {
   ping: async () => unwrapData<any>(await apiPost<any>('/browser/ping', {})),
   /** Cierra todas las pestañas y borra cookies/historial del escritorio. */
   close: async () => unwrapData<any>(await apiPost<any>('/browser/close', {})),
-};
-
-// ─── Acceso web directo a la ONU (sin TR-069) con perfiles aprendidos ───
-export const onuWebApi = {
-  listCredentials: async () => unwrapData<any>(await apiGet<any>('/onu-web/credentials')),
-  saveCredentials: async (payload: any) =>
-    unwrapData<any>(await apiPut<any>('/onu-web/credentials', payload)),
-  deleteCredentials: async (id: string) =>
-    unwrapData<any>(await apiDelete<any>(`/onu-web/credentials/${id}`)),
-  listProfiles: async () => unwrapData<any>(await apiGet<any>('/onu-web/profiles')),
-  createProfile: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/profiles', payload)),
-  updateProfile: async (id: string, payload: any) =>
-    unwrapData<any>(await apiPut<any>(`/onu-web/profiles/${id}`, payload)),
-  deleteProfile: async (id: string) => unwrapData<any>(await apiDelete<any>(`/onu-web/profiles/${id}`)),
-  probe: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/probe', payload)),
-  browse: async (ip: string, path = '/') =>
-    unwrapData<any>(await apiGet<any>(`/onu-web/browse?ip=${encodeURIComponent(ip)}&path=${encodeURIComponent(path)}`)),
-  apply: async (payload: any) => unwrapData<any>(await apiPost<any>('/onu-web/apply', payload)),
-  events: async () => unwrapData<any>(await apiGet<any>('/onu-web/events')),
 };
 

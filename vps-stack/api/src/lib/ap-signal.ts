@@ -31,6 +31,10 @@ export interface ApClient {
   tx_bytes: number | null;
   rx_bytes: number | null;
   uptime: string | null;
+  /** Segundos conectado (para cruzar con la hora de conexión del PPPoE). */
+  uptime_s: number | null;
+  /** IP que reporta la estación (last-ip / lastip). */
+  ip: string | null;
   distance: string | null;
   quality: 'excelente' | 'buena' | 'regular' | 'mala' | 'desconocida';
 }
@@ -97,6 +101,35 @@ export function signalQuality(signal: number | null, snr: number | null): ApClie
   return 'mala';
 }
 
+/**
+ * Convierte el tiempo conectado a segundos. Formatos: "3600s", "1w2d03:04:05",
+ * "3d22h1m3s" (RouterOS v7), "00:05:03", "5m3s500ms" o un número.
+ */
+export function parseUptime(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v) : null;
+  const s = String(v).trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  let total = 0;
+  let hit = false;
+  const unit = (re: RegExp, mult: number) => {
+    const m = s.match(re);
+    if (m) { total += Number(m[1]) * mult; hit = true; }
+  };
+  unit(/(\d+)w/, 604800);
+  unit(/(\d+)d/, 86400);
+  const clock = s.match(/(\d+):(\d+):(\d+)/);
+  if (clock) {
+    total += Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3]);
+    hit = true;
+  } else {
+    unit(/(\d+)h/, 3600);
+    unit(/(\d+)m(?!s)/, 60);
+    unit(/(\d+)s/, 1);
+  }
+  return hit ? total : null;
+}
+
 function finalize(partial: Partial<ApClient>): ApClient {
   const signal = partial.signal ?? null;
   const snr = partial.snr ?? (signal !== null && partial.noise != null ? Math.round(signal - partial.noise) : null);
@@ -112,6 +145,8 @@ function finalize(partial: Partial<ApClient>): ApClient {
     tx_bytes: partial.tx_bytes ?? null,
     rx_bytes: partial.rx_bytes ?? null,
     uptime: partial.uptime ?? null,
+    uptime_s: parseUptime(partial.uptime),
+    ip: partial.ip ?? null,
     distance: partial.distance ?? null,
     quality: signalQuality(signal, snr),
   };
@@ -170,7 +205,8 @@ function parseUbiquitiSsh(output: string): ApClient[] {
     const noise = num(station.noise ?? station.noisefloor);
     return finalize({
       mac: station.mac || null,
-      name: station.name || station.hostname || station.lastip || null,
+      name: station.name || station.hostname || station.remote?.hostname || station.lastip || null,
+      ip: station.lastip || null,
       signal,
       noise,
       snr: num(station.snr ?? (signal !== null && noise !== null ? signal - noise : null)),
@@ -193,7 +229,8 @@ function parseMikrotikTerse(output: string): ApClient[] {
     const signal = num(fields['signal-strength'] ?? fields.signal);
     return finalize({
       mac: fields['mac-address'] || null,
-      name: fields.comment || fields['last-ip'] || fields.interface || null,
+      name: fields.comment || fields['radio-name'] || fields['last-ip'] || fields.interface || null,
+      ip: fields['last-ip'] || null,
       signal,
       noise: num(fields['noise-floor']),
       snr: num(fields['signal-to-noise']),
@@ -247,7 +284,8 @@ async function readMikrotik(target: ApTarget): Promise<ApClient[]> {
         const [txRate, rxRate] = String(r['tx-rate'] ? `${r['tx-rate']},${r['rx-rate'] || ''}` : r.rate || ',').split(',');
         return finalize({
           mac: r['mac-address'] || null,
-          name: r.comment || r['last-ip'] || r.interface || null,
+          name: r.comment || r['radio-name'] || r['last-ip'] || r.interface || null,
+          ip: r['last-ip'] || null,
           signal: num(r['signal-strength'] ?? r.signal),
           noise: num(r['noise-floor']),
           snr: num(r['signal-to-noise']),
@@ -289,7 +327,8 @@ function parseUbiquitiStatus(data: any): ApClient[] {
     const signal = num(s.signal);
     return finalize({
       mac: s.mac || null,
-      name: s.name || s.hostname || s.lastip || null,
+      name: s.name || s.hostname || s.remote?.hostname || s.lastip || null,
+      ip: s.lastip || null,
       signal,
       noise: num(s.noisefloor ?? noise),
       snr: num(s.snr ?? (signal !== null && noise !== null ? signal - noise : null)),

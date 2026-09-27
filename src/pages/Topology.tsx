@@ -52,7 +52,6 @@ export default function Topology() {
           <TabsContent value="mapa" className="mt-4">
             <NetworkMap
               mikrotikId={mikrotikId}
-              onManage={(ip) => navigate(`/onu-web?ip=${encodeURIComponent(ip)}`)}
               onAdvanced={handleAdvanced}
             />
           </TabsContent>
@@ -60,7 +59,6 @@ export default function Topology() {
           <TabsContent value="arbol" className="mt-4">
             <TopologyTree
               mikrotikId={mikrotikId}
-              onManage={(ip) => navigate(`/onu-web?ip=${encodeURIComponent(ip)}`)}
               onAdvanced={handleAdvanced}
             />
           </TabsContent>
