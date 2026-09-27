@@ -164,7 +164,10 @@ export async function networkScopeFor(role: string | undefined, tenantId: string
       (row.tenant_id === tenantId ? allow : others).push(c);
     }
   }
-  const deny = others.filter((o) => allow.some((a) => overlaps(a, o)));
+  // Solo las redes de otro ISP que caen DENTRO de una propia más amplia. Una
+  // red ajena más amplia que la propia (p. ej. otro ISP con 192.168.0.0/16)
+  // no se bloquea: taparía las redes del propio ISP.
+  const deny = others.filter((o) => allow.some((a) => o.prefix > a.prefix && overlaps(a, o)));
   return { allow, deny };
 }
 

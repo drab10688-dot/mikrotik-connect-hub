@@ -50,11 +50,17 @@ const BASE = [
   `iptables -t mangle -C "$C" -m comment --comment omnisync-ub-base -j DROP 2>/dev/null || iptables -t mangle -A "$C" -m comment --comment omnisync-ub-base -j DROP`,
 ].join('; ');
 
-/** Borra las reglas de un escritorio (por nombre y por IP origen). */
+/**
+ * Borra las reglas de un escritorio (por nombre y por IP origen).
+ * `iptables -S` muestra el comentario entre comillas ("omnisync-ub:..."); al
+ * reinyectar la línea sin shell las comillas quedarían literales y el -D no
+ * encontraría la regla, así que se quitan (el comentario no lleva espacios).
+ */
 function flushScript(name: string, ip: string): string {
-  const pattern = ip ? `${TAG_PREFIX}${name}( |$)|-s ${ip}/32 ` : `${TAG_PREFIX}${name}( |$)`;
+  const tag = `${TAG_PREFIX}${name}("| |$)`;
+  const pattern = ip ? `${tag}|-s ${ip}/32 ` : tag;
   return (
-    `iptables -t mangle -S '${CHAIN}' 2>/dev/null | grep -E -- '${pattern}' | sed 's/^-A /-D /' | ` +
+    `iptables -t mangle -S '${CHAIN}' 2>/dev/null | grep -E -- '${pattern}' | sed -e 's/^-A /-D /' -e 's/"//g' | ` +
     `while read -r rule; do iptables -t mangle $rule 2>/dev/null; done`
   );
 }
