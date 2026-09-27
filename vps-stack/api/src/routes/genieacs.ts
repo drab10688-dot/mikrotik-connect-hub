@@ -684,17 +684,13 @@ genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Res
       if (pwErr) return res.status(400).json({ error: pwErr });
     }
 
-    const wlanIndex = band === '5g' ? '2' : '1';
-    const basePath = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanIndex}`;
+    let device: any = null;
+    try { device = await fetchDevice(deviceId); } catch { /* sin árbol: rutas estándar */ }
+    const basePath = radioPath(device, band === '5g' ? '5g' : '2.4g');
     const parameterValues: [string, string, string][] = [];
 
     if (ssid) parameterValues.push([`${basePath}.SSID`, ssid, 'xsd:string']);
-    if (password) {
-      parameterValues.push(
-        [`${basePath}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'],
-        [`${basePath}.KeyPassphrase`, password, 'xsd:string'],
-      );
-    }
+    if (password) parameterValues.push([wifiKeyParam(device, basePath), password, 'xsd:string']);
 
     const task = { name: 'setParameterValues', parameterValues };
     const result = await genieFetch(
@@ -714,11 +710,13 @@ genieacsRouter.post('/devices/:deviceId/wifi-toggle', async (req: AuthRequest, r
     const { deviceId } = req.params;
     const { band, enable } = req.body;
 
-    const wlanIndex = band === '5g' ? '2' : '1';
+    let device: any = null;
+    try { device = await fetchDevice(deviceId); } catch { /* sin árbol: rutas estándar */ }
+    const basePath = radioPath(device, band === '5g' ? '5g' : '2.4g');
     const task = {
       name: 'setParameterValues',
       parameterValues: [
-        [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanIndex}.Enable`, enable, 'xsd:boolean'],
+        [`${basePath}.Enable`, enable, 'xsd:boolean'],
       ],
     };
 
@@ -739,8 +737,9 @@ genieacsRouter.post('/devices/:deviceId/wifi-channel', async (req: AuthRequest, 
     const { deviceId } = req.params;
     const { band, channel, bandwidth } = req.body;
 
-    const wlanIndex = band === '5g' ? '2' : '1';
-    const basePath = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanIndex}`;
+    let device: any = null;
+    try { device = await fetchDevice(deviceId); } catch { /* sin árbol: rutas estándar */ }
+    const basePath = radioPath(device, band === '5g' ? '5g' : '2.4g');
     const parameterValues: [string, string, string][] = [];
 
     if (channel !== undefined) parameterValues.push([`${basePath}.Channel`, String(channel), 'xsd:unsignedInt']);
@@ -1889,17 +1888,17 @@ genieacsRouter.post('/auto-provision', async (req: AuthRequest, res: Response) =
     const deviceId = devices[0]._id;
     const parameterValues: [string, string, string][] = [];
 
-    // WiFi configuration
+    // WiFi configuration (radio 2.4G real y una sola variante de clave)
+    let wifiDevice: any = null;
+    if (wifiSsid || wifiPassword) {
+      try { wifiDevice = await fetchDevice(deviceId); } catch { /* rutas estándar */ }
+    }
+    const wifiPath = radioPath(wifiDevice, '2.4g');
     if (wifiSsid) {
-      parameterValues.push(
-        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', wifiSsid, 'xsd:string']
-      );
+      parameterValues.push([`${wifiPath}.SSID`, wifiSsid, 'xsd:string']);
     }
     if (wifiPassword) {
-      parameterValues.push(
-        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', wifiPassword, 'xsd:string'],
-        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase', wifiPassword, 'xsd:string'],
-      );
+      parameterValues.push([wifiKeyParam(wifiDevice, wifiPath), wifiPassword, 'xsd:string']);
     }
 
     // PPPoE configuration
@@ -2654,6 +2653,35 @@ genieacsRouter.get('/devices/:deviceId/onu-status', async (req: AuthRequest, res
   }
 });
 
+/**
+ * UNA sola ruta para la clave WiFi. Cada marca rechaza alguna variante con
+ * fault 9003 ("Invalid arguments") y esa orden se reintenta sin fin en cada
+ * Inform: VSOL/Realtek rechazan PreSharedKey.1.PreSharedKey y Huawei rechaza
+ * KeyPassphrase. PreSharedKey.1.KeyPassphrase la aceptan ambas.
+ */
+function wifiKeyParam(device: any, path: string): string {
+  const order = [
+    `${path}.PreSharedKey.1.KeyPassphrase`,
+    `${path}.KeyPassphrase`,
+    `${path}.PreSharedKey.1.PreSharedKey`,
+    `${path}.X_HW_WPAKey`,
+    `${path}.WPAKey`,
+  ];
+  return (device && order.find((p) => paramExists(device, p))) || order[0];
+}
+
+/**
+ * Radio principal de una banda, detectada por estándar/canal (no por índice
+ * fijo): en VSOL/Realtek 2.4G=WLAN.5 y 5G=WLAN.1; en Huawei 5G=WLAN.5.
+ */
+function radioPath(device: any, band: '2.4g' | '5g'): string {
+  const radios = device
+    ? collectWlans(device).filter((r) => r.root.startsWith('InternetGatewayDevice') && r.band === band)
+    : [];
+  radios.sort((a, b) => Number(a.index) - Number(b.index));
+  return radios[0]?.path || `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${band === '5g' ? '2' : '1'}`;
+}
+
 // Devuelve el nodo de un path dentro del árbol del dispositivo (o undefined)
 function getNodeAt(device: any, path: string): any {
   return path.split('.').reduce((acc: any, key: string) => (acc == null ? acc : acc[key]), device);
@@ -2687,19 +2715,7 @@ genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Res
     const parameterValues: [string, any, string][] = [];
     if (ssid && exists(`${path}.SSID`)) parameterValues.push([`${path}.SSID`, ssid, 'xsd:string']);
 
-    if (password) {
-      const pwCandidates = [
-        `${path}.PreSharedKey.1.KeyPassphrase`,
-        `${path}.PreSharedKey.1.PreSharedKey`,
-        `${path}.KeyPassphrase`,
-        `${path}.X_HW_WPAKey`,
-        `${path}.WPAKey`,
-      ];
-      const found = pwCandidates.filter(exists);
-      // Si no detectamos ninguno (árbol incompleto), probamos los estándar
-      const chosen = found.length ? found : [`${path}.PreSharedKey.1.KeyPassphrase`, `${path}.KeyPassphrase`];
-      for (const p of chosen) parameterValues.push([p, password, 'xsd:string']);
-    }
+    if (password) parameterValues.push([wifiKeyParam(device, path), password, 'xsd:string']);
 
     if (enable !== undefined && exists(`${path}.Enable`)) {
       parameterValues.push([`${path}.Enable`, !!enable, 'xsd:boolean']);
