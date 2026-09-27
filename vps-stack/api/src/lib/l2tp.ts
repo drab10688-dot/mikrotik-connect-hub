@@ -91,8 +91,17 @@ chmod +x /etc/ppp/ip-up.local`
       `ip -o -4 addr show | grep -F "peer ${esc(tunnelIp)}/" | head -1 | awk '{print $2}'`
     )).trim();
     if (pppIf) {
-      for (const net of nets.split(',').map((s) => s.trim()).filter(Boolean)) {
+      const wanted = nets.split(',').map((s) => s.trim()).filter(Boolean);
+      for (const net of wanted) {
         await sh(`ip route replace '${escNet(net)}' dev '${esc(pppIf)}' 2>/dev/null || true`);
+      }
+      // Quita las redes que este router ya no declara (p. ej. un 192.168.0.0/16
+      // antiguo), para que no sigan capturando tráfico de otros routers/ISP.
+      // Las rutas /32 puntuales y la del peer no llevan "/" y se conservan.
+      const current = (await sh(`ip route show dev '${esc(pppIf)}' 2>/dev/null | awk '$1 ~ /\\// {print $1}'`))
+        .split('\n').map((s) => s.trim()).filter(Boolean);
+      for (const net of current) {
+        if (!wanted.includes(net)) await sh(`ip route del '${escNet(net)}' dev '${esc(pppIf)}' 2>/dev/null || true`);
       }
     }
   }
@@ -128,6 +137,10 @@ export async function ensureL2tpTargetRoute(tunnelIp: string, targetIp: string, 
   let pppIf = (await sh(
     `ip -o -4 addr show | grep -F "peer ${peer}/" | head -1 | awk '{print $2}'`
   )).trim();
+
+  // Escritorio remoto (sourceIp): sólo el túnel exacto del ISP. Los respaldos
+  // de abajo podrían elegir el túnel de OTRO ISP que tenga ruta a esa IP.
+  if (!pppIf && source) return false;
 
   // 2) Si el peer no coincide (RouterOS puede negociar otra IP de punta),
   //    se usa la interfaz PPP que ya tenga ruta hacia el destino.

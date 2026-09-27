@@ -1,67 +1,65 @@
 #!/bin/bash
 # ============================================================
-# Aisla el escritorio remoto (Chromium/Winbox) del internet.
-# Sólo puede alcanzar redes privadas (VPN L2TP/WireGuard, LANs
-# de clientes, ONUs y MikroTik). Todo lo demás se descarta.
-# Idempotente: se puede ejecutar en cada actualización.
+# Aisla los escritorios remotos (Chromium/KasmVNC) — multi-ISP.
+#
+# Por defecto un escritorio NO puede salir a ninguna parte (ni internet ni
+# redes privadas). El API abre, por cada escritorio, SOLO las redes VPN del
+# ISP de ese usuario (lib/browser-fw.ts) y las borra al cerrarlo. Así un ISP
+# nunca alcanza las ONUs/MikroTik de otro, tampoco escribiendo la IP a mano.
+#
+# Las reglas van en la tabla mangle (cadena OMNISYNC-UB al inicio de FORWARD):
+# la tabla filter recibe cientos de ACCEPT insertados al inicio por el hook
+# L2TP, que se evaluaban antes que DOCKER-USER y anulaban el aislamiento.
+#
+# Idempotente: se puede ejecutar en cada actualización. Conserva las reglas
+# por escritorio que ya haya creado el API.
 # ============================================================
 set -e
 
 BROWSER_SUBNET="${BROWSER_SUBNET:-172.31.42.0/24}"
-PRIVATE_NETS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16"
-TAG="omnisync-browser-isolation"
+CHAIN="OMNISYNC-UB"
+BASE_TAG="omnisync-ub-base"
+OLD_TAG="omnisync-browser-isolation"
 
 if ! command -v iptables >/dev/null 2>&1; then
   echo "iptables no disponible; se omite el aislamiento del navegador"
   exit 0
 fi
 
-clean_chain() {
-  local CHAIN="$1" LINE GUARD=0
-  # Borra por número de línea (más fiable que reconstruir la regla).
+# Borra reglas por comentario (por número de línea: más fiable).
+clean_tag() {
+  local TABLE="$1" CH="$2" TAG="$3" LINE GUARD=0
   while :; do
-    LINE=$(iptables -L "$CHAIN" --line-numbers -n 2>/dev/null | grep -- "$TAG" | head -1 | awk '{print $1}')
+    LINE=$(iptables -t "$TABLE" -L "$CH" --line-numbers -n 2>/dev/null | grep -- "$TAG" | head -1 | awk '{print $1}')
     [ -n "$LINE" ] || break
-    iptables -D "$CHAIN" "$LINE" 2>/dev/null || break
+    iptables -t "$TABLE" -D "$CH" "$LINE" 2>/dev/null || break
     GUARD=$((GUARD + 1))
     [ "$GUARD" -gt 500 ] && break
   done
 }
 
-apply_chain() {
-  local CHAIN="$1" ALLOW_ACTION="RETURN"
-  [ "$CHAIN" = "FORWARD" ] && ALLOW_ACTION="ACCEPT"
-  iptables -N "$CHAIN" 2>/dev/null || true
-  clean_chain "$CHAIN"
-  add() { iptables -I "$CHAIN" 1 -m comment --comment "$TAG" "$@"; }
+# Esquema anterior (DOCKER-USER/FORWARD con todas las redes privadas abiertas).
+clean_tag filter DOCKER-USER "$OLD_TAG"
+clean_tag filter FORWARD "$OLD_TAG"
 
-  # Se insertan al principio en orden inverso al de evaluación:
-  # 1) DROP por defecto (queda al final)
-  add -s "$BROWSER_SUBNET" -j DROP
-  # 2) Permite redes privadas (VPN, LANs, ONUs, MikroTik)
-  for NET in $PRIVATE_NETS; do
-    add -s "$BROWSER_SUBNET" -d "$NET" -j "$ALLOW_ACTION"
-  done
-  # 3) Bloquea DNS hacia internet (evita fugas/resolución pública)
-  add -s "$BROWSER_SUBNET" -p udp --dport 53 ! -d 172.31.42.0/24 -j DROP 2>/dev/null || true
-  # 4) Permite respuestas de conexiones ya establecidas
-  add -s "$BROWSER_SUBNET" -m conntrack --ctstate ESTABLISHED,RELATED -j "$ALLOW_ACTION"
-  unset -f add
-}
-
-# --flush: sólo limpia las reglas y sale (útil para diagnóstico)
 if [ "${1:-}" = "--flush" ]; then
-  clean_chain DOCKER-USER
-  clean_chain FORWARD
-  echo "✓ Reglas de aislamiento eliminadas"
+  iptables -t mangle -D FORWARD -s "$BROWSER_SUBNET" -j "$CHAIN" 2>/dev/null || true
+  iptables -t mangle -F "$CHAIN" 2>/dev/null || true
+  iptables -t mangle -X "$CHAIN" 2>/dev/null || true
+  echo "✓ Aislamiento de escritorios eliminado (diagnóstico)"
   exit 0
 fi
 
-# DOCKER-USER cubre el tráfico reenviado por Docker; FORWARD como respaldo
-# en hosts donde DOCKER-USER no se evalúa.
-apply_chain DOCKER-USER
-apply_chain FORWARD
+iptables -t mangle -N "$CHAIN" 2>/dev/null || true
+iptables -t mangle -C FORWARD -s "$BROWSER_SUBNET" -j "$CHAIN" 2>/dev/null || \
+  iptables -t mangle -I FORWARD 1 -s "$BROWSER_SUBNET" -j "$CHAIN"
 
-echo "✓ Navegador remoto aislado: sólo redes privadas desde $BROWSER_SUBNET"
-echo "  Reglas activas:"
-iptables -S DOCKER-USER 2>/dev/null | grep -- "$TAG" | sed 's/^/    /' || true
+# Cola fija (al final): tráfico dentro de la propia subred (Nginx <-> escritorio)
+# permitido; todo lo demás descartado. Las reglas por escritorio del API se
+# insertan al inicio y quedan por encima.
+clean_tag mangle "$CHAIN" "$BASE_TAG"
+iptables -t mangle -A "$CHAIN" -d "$BROWSER_SUBNET" -m comment --comment "$BASE_TAG" -j RETURN
+iptables -t mangle -A "$CHAIN" -m comment --comment "$BASE_TAG" -j DROP
+
+echo "✓ Escritorios remotos aislados por ISP ($BROWSER_SUBNET)"
+iptables -t mangle -S "$CHAIN" | sed 's/^/    /'

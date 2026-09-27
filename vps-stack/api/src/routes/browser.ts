@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { ensureL2tpTargetRoute } from '../lib/l2tp';
+import { isolateBrowser } from '../lib/browser-fw';
+import { NetworkScope, networkScopeFor, ipAllowed, ipInCidr, parseCidr, splitNetworks } from '../lib/networks';
 import {
   ensureUserBrowser,
   getUserBrowserIp,
@@ -100,7 +102,10 @@ export async function authorizeUserVnc(req: Request, res: Response) {
   seedAuthCookie(req, res, token!);
   try {
     let s = getSession(userId);
-    if (!s) s = await ensureUserBrowser(userId);
+    if (!s) {
+      s = await ensureUserBrowser(userId);
+      await isolate(s, await userScope(userId)).catch(() => false);
+    }
     touchSession(userId);
     if (!s.readyAt) await waitReady(s, 20000);
     res.set('X-VNC-Target', `http://${s.container}:3000`);
@@ -134,12 +139,13 @@ function sanitizeUrl(raw: unknown): string | null {
   return parsed.toString();
 }
 
-async function prepareTenantRoute(req: AuthRequest, url: string, sourceIp: string | null, mikrotikId?: string): Promise<boolean> {
-  const targetIp = new URL(url).hostname;
+/**
+ * ISP efectivo de la apertura. El superadministrador no tiene tenant_id en su
+ * sesión: en ese caso se resuelve desde el MikroTik que originó la apertura.
+ * Devuelve `false` si el usuario no puede usar ese MikroTik.
+ */
+async function resolveTenant(req: AuthRequest, mikrotikId?: string): Promise<string | null | false> {
   let tenantId = req.tenantId || null;
-
-  // El superadministrador no tiene tenant_id en su sesión. En ese caso se
-  // resuelve el ISP desde el MikroTik que originó la apertura de la antena.
   if (mikrotikId) {
     const allowed = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
     if (!allowed) return false;
@@ -148,28 +154,67 @@ async function prepareTenantRoute(req: AuthRequest, url: string, sourceIp: strin
     if (tenantId && deviceTenantId && tenantId !== deviceTenantId) return false;
     tenantId = deviceTenantId || tenantId;
   }
+  return tenantId;
+}
 
-  const { rows } = mikrotikId
-    ? await pool.query(
-        `SELECT p.tunnel_ip
-           FROM mikrotik_devices d
-           JOIN tenant_vpn_peers p ON p.id = d.l2tp_peer_id
-          WHERE d.id = $1 AND COALESCE(p.is_active, true) = true AND p.tunnel_ip IS NOT NULL
-          LIMIT 1`,
-        [mikrotikId],
-      )
-    : await pool.query(
-        `SELECT tunnel_ip
-           FROM tenant_vpn_peers
-          WHERE ($1::uuid IS NULL OR tenant_id = $1)
-            AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
-          ORDER BY updated_at DESC NULLS LAST, created_at DESC
-          LIMIT 1`,
-        [tenantId],
-      );
-  const tunnelIp = rows[0]?.tunnel_ip;
+async function prepareTenantRoute(tenantId: string | null, targetIp: string, sourceIp: string | null, mikrotikId?: string): Promise<boolean> {
+  let tunnelIp: string | undefined;
+  if (mikrotikId) {
+    const { rows } = await pool.query(
+      `SELECT p.tunnel_ip
+         FROM mikrotik_devices d
+         JOIN tenant_vpn_peers p ON p.id = d.l2tp_peer_id
+        WHERE d.id = $1 AND COALESCE(p.is_active, true) = true AND p.tunnel_ip IS NOT NULL
+        LIMIT 1`,
+      [mikrotikId],
+    );
+    tunnelIp = rows[0]?.tunnel_ip;
+  } else {
+    // Sin MikroTik: el túnel es el del router que declaró la red de la IP.
+    const { rows } = await pool.query(
+      `SELECT tunnel_ip, onu_networks
+         FROM tenant_vpn_peers
+        WHERE ($1::uuid IS NULL OR tenant_id = $1)
+          AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC`,
+      [tenantId],
+    );
+    const owner = rows.find((r: any) =>
+      splitNetworks(r.onu_networks).some((n) => {
+        const c = parseCidr(n);
+        return !!c && ipInCidr(targetIp, c);
+      }),
+    );
+    tunnelIp = (owner || rows[0])?.tunnel_ip;
+  }
   if (!tunnelIp) return false;
   return ensureL2tpTargetRoute(String(tunnelIp), targetIp, sourceIp || undefined);
+}
+
+/** Rol e ISP de un usuario (para escritorios creados desde Nginx, sin req.tenantId). */
+async function userScope(userId: string) {
+  let role: string | undefined;
+  let tenantId: string | null = null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.tenant_id,
+              EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.role::text = 'super_admin') AS is_super
+         FROM users u WHERE u.id = $1 LIMIT 1`,
+      [userId],
+    );
+    tenantId = rows[0]?.tenant_id || null;
+    if (rows[0]?.is_super) role = 'super_admin';
+  } catch {
+    /* sin ISP ni rol: sólo su subred */
+  }
+  return networkScopeFor(role, tenantId);
+}
+
+/** Aplica el firewall del escritorio: sólo las redes del ISP (+ IP puntual). */
+async function isolate(session: UserBrowserSession, scope: NetworkScope, extra: string[] = []): Promise<boolean> {
+  const ip = await getUserBrowserIp(session);
+  if (!ip) return false;
+  return isolateBrowser(session.container, ip, scope.allow, scope.deny, extra);
 }
 
 function publicSession(s: UserBrowserSession) {
@@ -209,6 +254,7 @@ browserRouter.post('/session', async (req: AuthRequest, res) => {
   if (!userId) return;
   try {
     const s = await ensureUserBrowser(userId);
+    await isolate(s, await networkScopeFor(req.userRole, req.tenantId || null)).catch(() => false);
     // No bloqueamos la respuesta: el visor abre de inmediato y KasmVNC termina
     // de levantar mientras carga la pestaña.
     waitReady(s).catch(() => undefined);
@@ -247,6 +293,22 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
   const mobile = (req as any).body?.mobile === true;
   const resolution = mobile ? '412x780' : undefined;
   const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : undefined;
+  const targetIp = new URL(url).hostname;
+
+  // Aislamiento multi-ISP: sólo IPs de las redes VPN del propio ISP. Los
+  // equipos descubiertos por un MikroTik del ISP (APs fuera de sus redes) se
+  // permiten porque viajan por la tabla de rutas propia de ese túnel.
+  const tenantId = await resolveTenant(req, mikrotikId);
+  if (tenantId === false) {
+    return res.status(403).json({ success: false, error: 'No tienes acceso a ese MikroTik' });
+  }
+  const scope = await networkScopeFor(req.userRole, tenantId);
+  if (!mikrotikId && !ipAllowed(targetIp, scope)) {
+    return res.status(403).json({
+      success: false,
+      error: `La IP ${targetIp} no pertenece a las redes VPN de tu ISP. Agrégala en ISP → VPN (redes de ONUs/LAN).`,
+    });
+  }
 
   let session: UserBrowserSession;
   try {
@@ -255,16 +317,25 @@ browserRouter.post('/open', async (req: AuthRequest, res) => {
     return res.status(503).json({ success: false, error: e?.message || 'No se pudo iniciar tu escritorio remoto' });
   }
 
-  // La regla se instala DESPUÉS de crear el contenedor para poder aislarla por
-  // su IP origen. Esto evita que dos sesiones con el mismo destino LAN se pisen.
+  // La ruta y el firewall se instalan DESPUÉS de crear el contenedor para
+  // aislarlos por su IP origen. Así dos sesiones con el mismo destino LAN no
+  // se pisan y ningún escritorio ve redes de otro ISP.
   let routeWarning: string | undefined;
+  let routeReady = false;
   try {
     const sourceIp = await getUserBrowserIp(session);
-    const routeReady = await prepareTenantRoute(req, url, sourceIp, mikrotikId);
+    routeReady = await prepareTenantRoute(tenantId, targetIp, sourceIp, mikrotikId);
     if (!routeReady) routeWarning = 'No se pudo confirmar la ruta VPN seleccionada; revisa que el túnel L2TP esté conectado.';
-
   } catch (e: any) {
     routeWarning = e?.message || 'No se pudo preparar la ruta VPN hacia el equipo';
+  }
+  try {
+    // La IP puntual sólo se abre si quedó fijada al túnel del MikroTik elegido.
+    const extra = mikrotikId && routeReady ? [targetIp] : [];
+    const isolated = await isolate(session, scope, extra);
+    if (!isolated) routeWarning = routeWarning || 'No se pudo aplicar el firewall del escritorio remoto.';
+  } catch (e: any) {
+    routeWarning = routeWarning || e?.message || 'No se pudo aplicar el firewall del escritorio remoto';
   }
 
   touchSession(userId);

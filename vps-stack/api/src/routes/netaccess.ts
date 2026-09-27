@@ -21,14 +21,17 @@ async function ensureApRoute(mikrotikId: string, tenantId: string | null | undef
       const device = await pool.query(`SELECT tenant_id FROM mikrotik_devices WHERE id = $1 LIMIT 1`, [mikrotikId]);
       tId = device.rows[0]?.tenant_id ?? null;
     }
+    // Primero el túnel propio del MikroTik (un ISP puede tener varios routers);
+    // si no está enlazado, el último túnel activo del ISP como antes.
     const { rows } = await pool.query(
-      `SELECT tunnel_ip
-         FROM tenant_vpn_peers
-        WHERE ($1::uuid IS NULL OR tenant_id = $1)
-          AND COALESCE(is_active, true) = true AND tunnel_ip IS NOT NULL
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC
+      `SELECT p.tunnel_ip
+         FROM tenant_vpn_peers p
+         LEFT JOIN mikrotik_devices d ON d.id = $2 AND d.l2tp_peer_id = p.id
+        WHERE ($1::uuid IS NULL OR p.tenant_id = $1)
+          AND COALESCE(p.is_active, true) = true AND p.tunnel_ip IS NOT NULL
+        ORDER BY (d.id IS NOT NULL) DESC, p.updated_at DESC NULLS LAST, p.created_at DESC
         LIMIT 1`,
-      [tId]
+      [tId, mikrotikId]
     );
     const tunnelIp = rows[0]?.tunnel_ip;
     if (tunnelIp) await ensureL2tpTargetRoute(String(tunnelIp), ip);

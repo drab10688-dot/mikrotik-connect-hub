@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import { pool } from '../lib/db';
+import { networkScopeFor, ipAllowed } from '../lib/networks';
 
 /**
  * Acceso web directo a las ONUs (sin TR-069).
@@ -24,6 +25,14 @@ async function currentTenantId(req: AuthRequest): Promise<string | null> {
   if (req.tenantId) return req.tenantId;
   const { rows } = await pool.query(`SELECT id FROM tenants ORDER BY created_at LIMIT 1`);
   return rows[0]?.id || null;
+}
+
+/** Aislamiento multi-ISP: la IP debe estar en las redes VPN del propio ISP. */
+async function foreignIp(req: AuthRequest, res: Response, ip: string): Promise<boolean> {
+  const scope = await networkScopeFor(req.userRole, req.tenantId || null);
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) && ipAllowed(ip, scope)) return false;
+  res.status(403).json({ error: `La IP ${ip} no pertenece a las redes VPN de tu ISP.` });
+  return true;
 }
 
 function baseUrl(ip: string, port?: number | null, protocol?: string | null) {
@@ -373,6 +382,7 @@ onuWebRouter.post('/probe', async (req: AuthRequest, res: Response) => {
     const tenantId = await currentTenantId(req);
     const ip = String(req.body?.ip || '').trim();
     if (!ip) return res.status(400).json({ error: 'Indica la IP de la ONU' });
+    if (await foreignIp(req, res, ip)) return;
 
     const saved = await credentialsFor(tenantId, ip);
     const username = req.body?.username || saved?.username || 'admin';
@@ -479,6 +489,7 @@ onuWebRouter.get('/browse', async (req: AuthRequest, res: Response) => {
     const tenantId = await currentTenantId(req);
     const ip = String(req.query.ip || '').trim();
     if (!ip) return res.status(400).json({ error: 'IP requerida' });
+    if (await foreignIp(req, res, ip)) return;
     const saved = await credentialsFor(tenantId, ip);
     const base = baseUrl(ip, saved?.port, saved?.protocol);
     const path = String(req.query.path || '/');
@@ -505,6 +516,7 @@ onuWebRouter.post('/apply', requireRole('super_admin', 'admin', 'secretary'), as
   const b = req.body || {};
   const ip = String(b.ip || '').trim();
   if (!ip) return res.status(400).json({ error: 'Indica la IP de la ONU' });
+  if (await foreignIp(req, res, ip)) return;
 
   try {
     const saved = await credentialsFor(tenantId, ip);

@@ -113,7 +113,7 @@ const IspAcs = () => {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<"vpn" | "nat">("vpn");
   const [peerName, setPeerName] = useState("mikrotik-1");
-  const [onuNetworks, setOnuNetworks] = useState("10.82.0.0/21");
+  const [onuNetworks, setOnuNetworks] = useState("");
   const [script, setScript] = useState<string>("");
   const { data: acs, isLoading, error: acsError, refetch: refetchAcs } = useQuery({
     queryKey: ["isp-acs"],
@@ -324,8 +324,8 @@ const IspAcs = () => {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Red de administración de ONUs</Label>
-                    <Input value={onuNetworks} onChange={(e) => setOnuNetworks(e.target.value)} placeholder="10.82.0.0/21, 192.168.20.0/24" />
-                    <p className="text-xs text-muted-foreground">Puedes poner varias redes separadas por coma. Se agrega una ruta automática por cada una cuando el túnel conecta.</p>
+                    <Input value={onuNetworks} onChange={(e) => setOnuNetworks(e.target.value)} placeholder="192.168.20.0/24, 192.168.21.0/24" />
+                    <p className="text-xs text-muted-foreground">Solo las redes de ESTE router, con máscara /24 o menor (ej. 192.168.20.0/24). Si son varias, sepáralas con coma. No pueden encimarse con las de otro router o ISP: el escritorio remoto y el panel solo podrán entrar a estas redes.</p>
                   </div>
                 </>
               )}
@@ -445,10 +445,10 @@ const IspAcs = () => {
             <Input
               value={regenNetworks}
               onChange={(e) => setRegenNetworks(e.target.value)}
-              placeholder="10.82.0.0/21, 192.168.20.0/24"
+              placeholder="192.168.20.0/24, 192.168.21.0/24"
             />
             <p className="text-xs text-muted-foreground">
-              Varias redes separadas por coma. El script nuevo reemplaza rutas y NAT en la MikroTik.
+              Máscara /24 o menor; varias separadas por coma. Déjalo vacío para conservar las redes actuales. El escritorio remoto solo podrá entrar a estas redes.
             </p>
           </div>
           <DialogFooter>

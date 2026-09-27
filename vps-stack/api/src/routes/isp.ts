@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import { upsertL2tpUser, removeL2tpUser } from '../lib/l2tp';
+import { validateOnuNetworks, findNetworkClash } from '../lib/networks';
 import { tenantOnuQuota } from '../lib/acs-tenant';
 
 
@@ -489,7 +490,6 @@ ispRouter.post('/vpn/script', requireRole('super_admin', 'admin'), async (req: A
   if (!tenant) return;
 
   const name: string = (req.body?.name || 'mikrotik-1').toString().replace(/[^a-zA-Z0-9_-]/g, '');
-  const onuNetworks: string = (req.body?.onu_networks || tenant.onu_networks || '192.168.0.0/16').toString();
 
   const serverHost = PUBLIC_HOST || req.get('host')?.split(':')[0] || 'IP_DEL_VPS';
   const mode: string = (req.body?.mode || 'vpn').toString();
@@ -523,32 +523,30 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 
 
 
-  // Las redes del ISP deben ser exclusivas: dos ISP con el mismo rango se
-  // pisan las rutas del VPS y el panel no puede entrar a ninguno.
-  const wanted = onuNetworks.split(',').map((s) => s.trim()).filter(Boolean);
-  const { rows: others } = await pool.query(
-    `SELECT p.onu_networks, t.name AS tenant_name
-       FROM tenant_vpn_peers p JOIN tenants t ON t.id = p.tenant_id
-      WHERE p.tenant_id <> $1`,
-    [tenant.id]
-  );
-  for (const row of others) {
-    const used = String(row.onu_networks || '').split(',').map((s: string) => s.trim());
-    const clash = wanted.find((n) => used.includes(n));
-    if (clash) {
-      return res.status(409).json({
-        error: `La red ${clash} ya está en uso por el ISP "${row.tenant_name}". Usa un rango distinto para este ISP (por ejemplo 192.168.50.0/24).`,
-      });
-    }
-  }
-
   // Credenciales persistentes: si el peer ya existe, se reutilizan.
   const existing = await pool.query(
     `SELECT * FROM tenant_vpn_peers WHERE tenant_id = $1 AND name = $2`,
     [tenant.id, name]
   );
-
   let peer = existing.rows[0];
+
+  // Redes de ONUs/LAN de ESTE router. Son la base del aislamiento multi-ISP
+  // (rutas del VPS y firewall del escritorio remoto): máscara /24 o menor,
+  // varias permitidas, sin encimarse con ninguna otra VPN (de otro ISP ni de
+  // otro router del mismo ISP). Si se regenera sin escribir redes, se
+  // conservan las que ya tenía el router.
+  const typed = String(req.body?.onu_networks ?? '').trim();
+  const requested = typed || peer?.onu_networks || '';
+  let onuNetworks = String(peer?.onu_networks || '');
+  if (!peer || typed) {
+    const v = validateOnuNetworks(requested);
+    if ('error' in v) return res.status(400).json({ error: v.error });
+    const clash = await findNetworkClash(v.nets, peer?.id);
+    if (clash) return res.status(409).json({ error: clash });
+    onuNetworks = v.text;
+  }
+
+
   if (!peer) {
     // IP fija dentro del pool L2TP: se toma la primera libre real (contar
     // peers repite direcciones cuando alguno fue eliminado).

@@ -63,7 +63,7 @@ export default function Isps() {
     user_limit: "",
     admin_email: "",
     admin_password: "",
-    onu_networks: "192.168.0.0/16",
+    onu_networks: "",
   });
 
   const { data: isps = [], isLoading } = useQuery<Isp[]>({
@@ -88,7 +88,7 @@ export default function Isps() {
       }),
     onSuccess: () => {
       toast.success("ISP creado con su propio enlace TR-069");
-      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "", onu_networks: "192.168.0.0/16" });
+      setForm({ name: "", slug: "", onu_limit: "", user_limit: "", admin_email: "", admin_password: "", onu_networks: "" });
       setCreating(false);
       qc.invalidateQueries({ queryKey: ["admin-isps"] });
     },
@@ -257,12 +257,12 @@ export default function Isps() {
               <div className="space-y-1.5 md:col-span-2">
                 <Label>Red de ONUs / antenas (detrás de la MikroTik)</Label>
                 <Input
-                  placeholder="192.168.0.0/16"
+                  placeholder="192.168.20.0/24, 192.168.21.0/24"
                   value={form.onu_networks}
                   onChange={(e) => setForm({ ...form, onu_networks: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Subredes a las que el VPS llegará por la VPN. Separa varias con coma. Define el enrutamiento del navegador remoto y el panel.
+                  Referencia del ISP (máscara /24 o menor, varias con coma). Las redes que realmente abre el escritorio remoto se definen por router en ISP → VPN.
                 </p>
               </div>
               <div className="md:col-span-2 space-y-2">
@@ -319,7 +319,7 @@ function IspCard({
   const [color, setColor] = useState(isp.primary_color || "#0EA5A4");
   const [mkPort, setMkPort] = useState(String(isp.web_ports?.mikrotik?.port ?? 80));
   const [ubntPort, setUbntPort] = useState(String(isp.web_ports?.ubiquiti?.port ?? 443));
-  const [onuNetworks, setOnuNetworks] = useState(isp.onu_networks || "192.168.0.0/16");
+  const [onuNetworks, setOnuNetworks] = useState(isp.onu_networks || "");
   const used = Number(isp.onus_used || 0);
   const blocked = Number(isp.onus_blocked || 0);
   const max = isp.onu_limit && isp.onu_limit > 0 ? isp.onu_limit : null;
@@ -445,7 +445,7 @@ function IspCard({
           <Label className="text-xs font-medium">Red de ONUs / antenas (detrás de la MikroTik)</Label>
           <div className="flex gap-2">
             <Input
-              placeholder="192.168.0.0/16"
+              placeholder="192.168.20.0/24, 192.168.21.0/24"
               value={onuNetworks}
               onChange={(e) => setOnuNetworks(e.target.value)}
             />

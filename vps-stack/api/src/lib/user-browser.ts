@@ -1,5 +1,6 @@
 import { execFile } from 'child_process';
 import crypto from 'crypto';
+import { releaseBrowser, pruneBrowserRules } from './browser-fw';
 
 /**
  * Escritorio remoto INDEPENDIENTE por usuario.
@@ -226,6 +227,7 @@ export async function destroyUserBrowser(userId: string) {
   const name = s?.container || containerName(userId);
   sessions.delete(userId);
   await docker(['rm', '-f', name], 90000);
+  await releaseBrowser(name).catch(() => undefined);
 }
 
 /**
@@ -295,10 +297,17 @@ export async function prefetchBrowserImage() {
 }
 
 /** Limpia sesiones inactivas: cierra el escritorio y libera el puerto. */
-setInterval(() => {
+setInterval(async () => {
   const limit = IDLE_MINUTES * 60_000;
   for (const [userId, s] of sessions) {
-    if (Date.now() - s.lastActivity > limit) destroyUserBrowser(userId).catch(() => undefined);
+    if (Date.now() - s.lastActivity > limit) await destroyUserBrowser(userId).catch(() => undefined);
+  }
+  // Reglas de firewall de escritorios que ya no existen (reinicio del API, etc.).
+  const running = await docker(['ps', '--filter', 'name=omnisync-ub-', '--format', '{{.Names}}'], 8000);
+  if (running.ok) {
+    const alive = running.out.split('\n').map((n) => n.trim()).filter(Boolean);
+    for (const s of sessions.values()) alive.push(s.container);
+    await pruneBrowserRules(alive).catch(() => undefined);
   }
 }, 60_000).unref?.();
 
