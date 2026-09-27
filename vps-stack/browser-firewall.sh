@@ -58,6 +58,10 @@ iptables -t mangle -C FORWARD -s "$BROWSER_SUBNET" -j "$CHAIN" 2>/dev/null || \
 # permitido; todo lo demás descartado. Las reglas por escritorio del API se
 # insertan al inicio y quedan por encima.
 clean_tag mangle "$CHAIN" "$BASE_TAG"
+# Respuestas de conexiones ya establecidas: Nginx también vive en esta subred
+# (172.31.42.x) y Docker publica 80/443/7547/8081 hacia esa IP; sin esta regla
+# se descartan sus respuestas al panel, a las ONUs y a los escritorios.
+iptables -t mangle -I "$CHAIN" 1 -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$BASE_TAG" -j RETURN
 iptables -t mangle -A "$CHAIN" -d "$BROWSER_SUBNET" -m comment --comment "$BASE_TAG" -j RETURN
 iptables -t mangle -A "$CHAIN" -m comment --comment "$BASE_TAG" -j DROP
 

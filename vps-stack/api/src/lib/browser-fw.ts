@@ -44,6 +44,8 @@ const BASE = [
   `S='${SUBNET}'; C='${CHAIN}'`,
   `iptables -t mangle -N "$C" 2>/dev/null || true`,
   `iptables -t mangle -C FORWARD -s "$S" -j "$C" 2>/dev/null || iptables -t mangle -I FORWARD 1 -s "$S" -j "$C"`,
+  // Nginx también vive en esta subred: sus respuestas (panel, ONUs) son ESTABLISHED.
+  `iptables -t mangle -C "$C" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment omnisync-ub-base -j RETURN 2>/dev/null || iptables -t mangle -I "$C" 1 -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment omnisync-ub-base -j RETURN`,
   `iptables -t mangle -C "$C" -d "$S" -m comment --comment omnisync-ub-base -j RETURN 2>/dev/null || iptables -t mangle -A "$C" -d "$S" -m comment --comment omnisync-ub-base -j RETURN`,
   `iptables -t mangle -C "$C" -m comment --comment omnisync-ub-base -j DROP 2>/dev/null || iptables -t mangle -A "$C" -m comment --comment omnisync-ub-base -j DROP`,
 ].join('; ');
