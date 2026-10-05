@@ -1,17 +1,34 @@
 import { Router, Response } from 'express';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, requireRole } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { pool } from '../lib/db';
 import { tunnelRouter } from './tunnel';
-import { execSync } from 'child_process';
+import { execSync, execFile } from 'child_process';
+import { connect as netConnect } from 'net';
 
 export const systemRouter = Router();
 
 // Tunnel management routes
 systemRouter.use('/tunnel', tunnelRouter);
 
+/** IPv4 o nombre de equipo: nada que la shell pueda interpretar. */
+const HOST_RE = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/;
+
+/** Ejecuta un programa SIN shell (los argumentos nunca se interpretan). */
+function runFile(cmd: string, args: string[], timeout: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout }, (err, stdout, stderr) => {
+      const out = `${stdout || ''}${stderr || ''}`;
+      if (err) reject(Object.assign(new Error(out.trim() || err.message), { output: out }));
+      else resolve(out);
+    });
+  });
+}
+
 // ─── MikroTik Generic Command ────────────────
-systemRouter.post('/mikrotik/command', async (req: AuthRequest, res: Response) => {
+// Ejecuta cualquier comando REST en el router: solo administradores (el
+// técnico usa las rutas de cada sección, que validan ver/editar).
+systemRouter.post('/mikrotik/command', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { mikrotik_id, command, params: cmdParams } = req.body;
     if (!mikrotik_id || !command) return res.status(400).json({ error: 'mikrotik_id y command requeridos' });
@@ -29,16 +46,24 @@ systemRouter.post('/mikrotik/command', async (req: AuthRequest, res: Response) =
 });
 
 // ─── Diagnostics ─────────────────────────────
-systemRouter.post('/diagnostics', async (req: AuthRequest, res: Response) => {
+// Antes armaba comandos de shell con el texto del usuario (ping ${host}):
+// permitía ejecutar comandos en el contenedor de la API, que controla Docker.
+systemRouter.post('/diagnostics', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { host, port, action } = req.body;
+    const { action } = req.body;
+    const host = String(req.body?.host || '').trim();
+    const port = req.body?.port === undefined || req.body?.port === '' ? null : Number(req.body.port);
     if (!host) return res.status(400).json({ error: 'host requerido' });
+    if (!HOST_RE.test(host)) return res.status(400).json({ error: 'Host no válido' });
+    if (port !== null && !(Number.isInteger(port) && port >= 1 && port <= 65535)) {
+      return res.status(400).json({ error: 'Puerto no válido' });
+    }
 
     const results: any = { host, port, action, timestamp: new Date().toISOString() };
 
     // Ping test
     try {
-      const pingResult = execSync(`ping -c 3 -W 2 ${host} 2>&1`, { timeout: 10000 }).toString();
+      const pingResult = await runFile('ping', ['-c', '3', '-W', '2', host], 10000);
       const match = pingResult.match(/(\d+)% packet loss/);
       results.ping = {
         success: true,
@@ -49,19 +74,20 @@ systemRouter.post('/diagnostics', async (req: AuthRequest, res: Response) => {
       results.ping = { success: false, error: e.message };
     }
 
-    // Port check
+    // Port check (TCP directo, sin shell)
     if (port) {
-      try {
-        execSync(`timeout 3 bash -c "echo > /dev/tcp/${host}/${port}" 2>&1`, { timeout: 5000 });
-        results.port_check = { success: true, port, open: true };
-      } catch {
-        results.port_check = { success: true, port, open: false };
-      }
+      const open = await new Promise<boolean>((resolve) => {
+        const sock = netConnect({ host, port, timeout: 3000 });
+        sock.once('connect', () => { sock.destroy(); resolve(true); });
+        sock.once('timeout', () => { sock.destroy(); resolve(false); });
+        sock.once('error', () => resolve(false));
+      });
+      results.port_check = { success: true, port, open };
     }
 
     // DNS resolution
     try {
-      const dnsResult = execSync(`nslookup ${host} 2>&1`, { timeout: 5000 }).toString();
+      const dnsResult = await runFile('nslookup', [host], 5000);
       results.dns = { success: true, output: dnsResult };
     } catch (e: any) {
       results.dns = { success: false, error: e.message };
@@ -129,7 +155,8 @@ systemRouter.get('/accounting/summary', async (req: AuthRequest, res: Response) 
 });
 
 // ─── VPS Status ──────────────────────────────
-systemRouter.get('/vps/status', async (req: AuthRequest, res: Response) => {
+// Estado y administración de Docker: afectan a TODOS los ISP → solo superadmin.
+systemRouter.get('/vps/status', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
     const results: any = { timestamp: new Date().toISOString() };
 
@@ -181,12 +208,8 @@ systemRouter.get('/vps/status', async (req: AuthRequest, res: Response) => {
 });
 
 // ─── VPS Docker Management ───────────────────
-systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
+systemRouter.post('/vps/docker', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
   try {
-    if (req.userRole !== 'super_admin' && req.userRole !== 'admin') {
-      return res.status(403).json({ error: 'Solo administradores' });
-    }
-
     const { action, service } = req.body;
     const validActions = ['restart', 'stop', 'start', 'logs', 'ps', 'up', 'down', 'pull'];
     if (!validActions.includes(action)) {
@@ -202,8 +225,13 @@ systemRouter.post('/vps/docker', async (req: AuthRequest, res: Response) => {
     };
 
     const resolvedService = service
-      ? (serviceAliases[service] || service.replace(/^omnisync-/, ''))
+      ? (serviceAliases[service] || String(service).replace(/^omnisync-/, ''))
       : '';
+    // Solo servicios reales del compose: el nombre va dentro de un comando de shell.
+    const SERVICES = ['postgres', 'api', 'nginx', 'mongo', 'genieacs', 'coturn', 'wireguard', 'remote-browser'];
+    if (resolvedService && !SERVICES.includes(resolvedService)) {
+      return res.status(400).json({ error: `Servicio inválido. Válidos: ${SERVICES.join(', ')}` });
+    }
 
     // Include the integrated ACS profile so GenieACS/Mongo are visible and
     // manageable after updates or host restarts.

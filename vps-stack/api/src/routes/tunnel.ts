@@ -49,8 +49,9 @@ tunnelRouter.get('/status', (req: AuthRequest, res: Response) => {
 
 // ─── POST /install ────────────────────────────
 tunnelRouter.post('/install', (req: AuthRequest, res: Response) => {
-  if (req.userRole !== 'super_admin' && req.userRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo administradores' });
+  // Un túnel público expone el panel (y antes cualquier servicio interno): solo superadmin
+  if (req.userRole !== 'super_admin') {
+    return res.status(403).json({ error: 'Solo el superadministrador' });
   }
 
   if (isCloudflaredInstalled()) {
@@ -82,8 +83,9 @@ tunnelRouter.post('/install', (req: AuthRequest, res: Response) => {
 
 // ─── POST /start ──────────────────────────────
 tunnelRouter.post('/start', (req: AuthRequest, res: Response) => {
-  if (req.userRole !== 'super_admin' && req.userRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo administradores' });
+  // Un túnel público expone el panel (y antes cualquier servicio interno): solo superadmin
+  if (req.userRole !== 'super_admin') {
+    return res.status(403).json({ error: 'Solo el superadministrador' });
   }
 
   if (!isCloudflaredInstalled()) {
@@ -99,8 +101,10 @@ tunnelRouter.post('/start', (req: AuthRequest, res: Response) => {
   tunnelError = null;
 
   // cloudflared runs inside the API container, so target nginx by Docker service name
-  const targetHost = req.body.host || 'nginx';
-  const targetPort = req.body.port || 80;
+  // Destino fijo: antes host/port venían del usuario y podían apuntar a
+  // servicios internos (GenieACS, Postgres...) saltando el aislamiento multi-ISP.
+  const targetHost = 'nginx';
+  const targetPort = 80;
 
   tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://${targetHost}:${targetPort}`, '--no-autoupdate'], {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -147,8 +151,9 @@ tunnelRouter.post('/start', (req: AuthRequest, res: Response) => {
 
 // ─── POST /stop ───────────────────────────────
 tunnelRouter.post('/stop', (req: AuthRequest, res: Response) => {
-  if (req.userRole !== 'super_admin' && req.userRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo administradores' });
+  // Un túnel público expone el panel (y antes cualquier servicio interno): solo superadmin
+  if (req.userRole !== 'super_admin') {
+    return res.status(403).json({ error: 'Solo el superadministrador' });
   }
 
   if (tunnelProcess) {

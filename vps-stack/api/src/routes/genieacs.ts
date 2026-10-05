@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { AuthRequest, getAccessibleDeviceIds } from '../middleware/auth';
+import { AuthRequest, getAccessibleDeviceIds, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { syncAcsOwnership, tenantAcsDeviceIds } from '../lib/acs-tenant';
 
@@ -10,6 +10,17 @@ import {
 } from '../lib/acs-signal';
 
 export const genieacsRouter = Router();
+
+// Rutas con :mikrotikId (auto-sync, señal, alertas): el router debe ser visible
+// para el usuario (admin = su ISP, técnico = asignados). Antes no se validaba.
+genieacsRouter.param('mikrotikId', async (req: AuthRequest, res: Response, next: NextFunction, mikrotikId: string) => {
+  try {
+    if (await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId)) return next();
+    res.status(403).json({ error: 'Sin acceso al router' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 const GENIEACS_NBI = process.env.GENIEACS_NBI_URL || 'http://genieacs:7557';
 
