@@ -34,7 +34,7 @@ const ACTION_LABEL: Record<string, string> = {
 function CredentialsCard({ deviceId }: { deviceId: string }) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [form, setForm] = useState<Record<string, { username: string; ssh_port: string; api_port: string; add_password: string }>>({});
+  const [form, setForm] = useState<Record<string, { username: string; ssh_port: string; api_port: string; web_port: string; add_password: string }>>({});
 
   const { data: creds } = useQuery({
     queryKey: ["cpe-creds", deviceId],
@@ -45,7 +45,7 @@ function CredentialsCard({ deviceId }: { deviceId: string }) {
   useEffect(() => {
     if (!creds) return;
     const next: typeof form = {};
-    for (const c of creds) next[c.brand] = { username: c.username, ssh_port: String(c.ssh_port || 22), api_port: String(c.api_port || 8728), add_password: "" };
+    for (const c of creds) next[c.brand] = { username: c.username, ssh_port: String(c.ssh_port || 22), api_port: String(c.api_port || 8728), web_port: c.web_port ? String(c.web_port) : "", add_password: "" };
     setForm(next);
   }, [creds]);
 
@@ -56,6 +56,7 @@ function CredentialsCard({ deviceId }: { deviceId: string }) {
         username: form[brand].username,
         ssh_port: Number(form[brand].ssh_port) || 22,
         api_port: Number(form[brand].api_port) || 8728,
+        web_port: Number(form[brand].web_port) || null,
         add_password: form[brand].add_password || undefined,
         clear_passwords: clear,
       }),
@@ -71,13 +72,13 @@ function CredentialsCard({ deviceId }: { deviceId: string }) {
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2"><KeyRound className="w-4 h-4" /> Acceso a las antenas de esta sede</CardTitle>
         <CardDescription>
-          Usuario y claves con que el sistema entra a las antenas de los clientes (MikroTik por API 8728, o SSH; Ubiquiti por SSH). Puedes guardar varias claves: se prueban
+          Usuario, claves y puertos con que el sistema entra a las antenas de los clientes (MikroTik por API, o SSH; Ubiquiti por SSH; la web la usa el robot). Puedes guardar varias claves: se prueban
           en orden y el sistema recuerda cuál entró en cada antena. Las claves no se vuelven a mostrar.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-2">
         {(creds || []).map((c: any) => {
-          const f = form[c.brand] || { username: "", ssh_port: "22", api_port: "8728", add_password: "" };
+          const f = form[c.brand] || { username: "", ssh_port: "22", api_port: "8728", web_port: "", add_password: "" };
           const set = (patch: Partial<typeof f>) => setForm({ ...form, [c.brand]: { ...f, ...patch } });
           return (
             <div key={c.brand} className="rounded-lg border p-3 space-y-3">
@@ -87,11 +88,12 @@ function CredentialsCard({ deviceId }: { deviceId: string }) {
                   {c.password_count ? `${c.password_count} clave${c.password_count > 1 ? "s" : ""} guardada${c.password_count > 1 ? "s" : ""}` : "Sin claves"}
                 </Badge>
               </div>
-              <div className={`grid gap-2 ${c.brand === "mikrotik" ? "grid-cols-4" : "grid-cols-3"}`}>
-                <div className="col-span-2 space-y-1">
-                  <Label className="text-xs">Usuario</Label>
-                  <Input value={f.username} disabled={!isAdmin} onChange={(e) => set({ username: e.target.value })} />
-                </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Usuario</Label>
+                <Input value={f.username} disabled={!isAdmin} onChange={(e) => set({ username: e.target.value })} />
+              </div>
+              {/* Todos los puertos de acceso de la sede en un solo lugar */}
+              <div className={`grid gap-2 ${c.brand === "mikrotik" ? "grid-cols-3" : "grid-cols-2"}`}>
                 {c.brand === "mikrotik" && (
                   <div className="space-y-1">
                     <Label className="text-xs" title="Puerto del servicio api en IP → Services (8728 de fábrica)">Puerto API</Label>
@@ -101,6 +103,18 @@ function CredentialsCard({ deviceId }: { deviceId: string }) {
                 <div className="space-y-1">
                   <Label className="text-xs">Puerto SSH</Label>
                   <Input type="number" value={f.ssh_port} disabled={!isAdmin} onChange={(e) => set({ ssh_port: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" title={c.brand === "mikrotik" ? "WebFig (www en IP → Services)" : "Web de airOS"}>
+                    Puerto web
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder={`${c.isp_web_port ?? ""} (ISP)`}
+                    value={f.web_port}
+                    disabled={!isAdmin}
+                    onChange={(e) => set({ web_port: e.target.value })}
+                  />
                 </div>
               </div>
               {isAdmin && (
@@ -196,6 +210,96 @@ function JobProgress({ deviceId, jobId, action, onDone }: { deviceId: string; jo
   );
 }
 
+const PROBE_STYLE: Record<string, { label: string; className: string }> = {
+  ok: { label: "Entra", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
+  clave: { label: "Clave no entra", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  cerrado: { label: "Cerrado", className: "bg-muted text-muted-foreground" },
+  "sin-claves": { label: "Falta clave", className: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
+  "no-probado": { label: "Responde", className: "bg-sky-500/15 text-sky-500 border-sky-500/30" },
+};
+
+/**
+ * Equipo de prueba: con la IP de una antena conocida se ve qué forma de
+ * entrar funciona (API, SSH, web) con las claves y puertos de la sede, antes
+ * de aplicar nada en lote. Lo que entra queda aprendido para esa antena.
+ */
+function ProbeCard({ deviceId, onAction, busy }: {
+  deviceId: string;
+  onAction: (action: string, target: any) => void;
+  busy: boolean;
+}) {
+  const { isAdmin } = useAuth();
+  const [ip, setIp] = useState("");
+  const probe = useMutation({
+    mutationFn: () => cpeApi.probe(deviceId, ip.trim()),
+    onError: (e: any) => toast.error(e.message || "No se pudo probar"),
+  });
+  const d = probe.data;
+  const webOpen = d?.checks?.some((c: any) => c.method === "MikroTik WebFig" && c.open);
+  const apiOk = d?.checks?.some((c: any) => c.method === "MikroTik API" && c.result === "ok");
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2"><ScanSearch className="w-4 h-4" /> Probar con un equipo conocido</CardTitle>
+        <CardDescription>
+          Escribe la IP de una antena que sepas que funciona. Se prueba cada forma de entrar (API, SSH y web, en los puertos de arriba)
+          con las claves de la sede, sin cambiar nada. Úsalo para validar la sede antes de aplicar cambios en lote.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Input className="h-9 w-48 font-mono" placeholder="192.168.105.77" value={ip} onChange={(e) => setIp(e.target.value)} />
+          <Button size="sm" className="h-9" onClick={() => probe.mutate()} disabled={probe.isPending || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip.trim())}>
+            {probe.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5 mr-1" />}
+            {probe.isPending ? "Probando… (hasta 1 min)" : "Probar acceso"}
+          </Button>
+        </div>
+
+        {d && (
+          <div className="space-y-3">
+            <p className="text-sm">
+              {d.identified
+                ? <>✅ <b>{BRAND_LABEL[d.identified.brand]}</b> {[d.identified.model, d.identified.version].filter(Boolean).join(" · ")} — entra por <b>{d.identified.via}</b>. Quedó aprendido para esta antena.</>
+                : <>⚠️ Ninguna forma de entrar funcionó todavía con las claves de la sede.</>}
+              {d.target
+                ? <span className="text-muted-foreground"> · Cliente PPPoE: {d.target.pppoe_user}</span>
+                : <span className="text-amber-500"> · Esa IP no es de un cliente PPPoE conectado en esta sede.</span>}
+            </p>
+            <table className="w-full text-sm">
+              <tbody>
+                {d.checks.map((c: any) => {
+                  const s = PROBE_STYLE[c.result] || PROBE_STYLE.cerrado;
+                  return (
+                    <tr key={c.method} className="border-b last:border-0">
+                      <td className="py-1.5 pr-3 font-medium">{c.method}</td>
+                      <td className="py-1.5 pr-3 font-mono text-xs">:{c.port}</td>
+                      <td className="py-1.5 pr-3"><Badge variant="outline" className={s.className}>{s.label}</Badge></td>
+                      <td className="py-1.5 text-xs text-muted-foreground">{c.message}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {d.target && (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAction("identify", d.target)}>
+                  <ScanSearch className="w-3.5 h-3.5 mr-1" /> Identificar
+                </Button>
+                {isAdmin && webOpen && !apiOk && (
+                  <Button size="sm" disabled={busy} onClick={() => onAction("enable-api", d.target)}>
+                    <PlugZap className="w-3.5 h-3.5 mr-1" /> Activar API con el robot en esta antena
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function CpePanel({ deviceId }: { deviceId: string }) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
@@ -250,10 +354,11 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   });
 
   const start = useMutation({
-    mutationFn: (body: { action: string; new_password?: string; allow_from?: string }) =>
+    mutationFn: ({ targets, ...body }: { action: string; new_password?: string; allow_from?: string; targets?: any[] }) =>
       cpeApi.startJob(deviceId, {
         ...body,
-        targets: chosen.map((c) => ({ mac: c.mac, ip: c.ip, pppoe_user: c.pppoe_user, new_user: newUsers[keyOf(c)]?.trim() || undefined })),
+        // targets explícitos (equipo de prueba) o las antenas seleccionadas
+        targets: targets ?? chosen.map((c) => ({ mac: c.mac, ip: c.ip, pppoe_user: c.pppoe_user, new_user: newUsers[keyOf(c)]?.trim() || undefined })),
       }),
     onSuccess: (d: any, body) => {
       setJob({ id: d.job_id, action: body.action });
@@ -288,6 +393,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   return (
     <div className="space-y-4">
       <CredentialsCard deviceId={deviceId} />
+      <ProbeCard deviceId={deviceId} onAction={(action, target) => start.mutate({ action, targets: [target] })} busy={start.isPending} />
 
       {job && (
         <JobProgress

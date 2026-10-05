@@ -294,9 +294,11 @@ export const sslApi = {
 // ─── Antenas de clientes por sede (SSH) ─────────
 export const cpeApi = {
   credentials: async (mikrotikId: string) => unwrapArray<any>(await apiGet<any>(`/cpe/${mikrotikId}/credentials`)),
-  saveCredentials: async (mikrotikId: string, data: { brand: string; username: string; ssh_port?: number; api_port?: number; add_password?: string; clear_passwords?: boolean }) =>
+  saveCredentials: async (mikrotikId: string, data: { brand: string; username: string; ssh_port?: number; api_port?: number; web_port?: number | null; add_password?: string; clear_passwords?: boolean }) =>
     apiPut<any>(`/cpe/${mikrotikId}/credentials`, data),
   list: async (mikrotikId: string) => unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/cpes`)),
+  /** Prueba cada forma de entrar (API, SSH, web) a una antena por su IP. */
+  probe: async (mikrotikId: string, ip: string) => unwrapData<any>(await apiPost<any>(`/cpe/${mikrotikId}/probe`, { ip })),
   startJob: async (mikrotikId: string, body: { action: string; targets: any[]; new_password?: string; allow_from?: string; webfig_port?: number }) =>
     unwrapData<any>(await apiPost<any>(`/cpe/${mikrotikId}/jobs`, body)),
   job: async (mikrotikId: string, jobId: string) => unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/jobs/${jobId}`)),

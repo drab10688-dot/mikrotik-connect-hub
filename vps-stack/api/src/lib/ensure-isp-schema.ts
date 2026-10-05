@@ -278,6 +278,8 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
      )`,
     // Puerto de la API de RouterOS en las antenas MikroTik de la sede (8728 de fábrica)
     `ALTER TABLE cpe_credentials ADD COLUMN IF NOT EXISTS api_port INTEGER NOT NULL DEFAULT 8728`,
+    // Puerto web de las antenas de la sede (WebFig / airOS). NULL = el de "Puertos web" del ISP
+    `ALTER TABLE cpe_credentials ADD COLUMN IF NOT EXISTS web_port INTEGER`,
     // Lo aprendido de cada antena (por MAC): marca, modelo y qué clave entró
     `CREATE TABLE IF NOT EXISTS cpe_devices (
        mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,

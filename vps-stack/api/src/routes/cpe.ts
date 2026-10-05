@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import { connect as netConnect } from 'net';
 import { pool } from '../lib/db';
 import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { mikrotikRequest, mikrotikNativeRequest, getDeviceConfig, isAuthenticationError } from '../lib/mikrotik';
@@ -60,12 +61,19 @@ const isAdmin = (req: AuthRequest) => req.userRole === 'super_admin' || req.user
 cpeRouter.get('/:mikrotikId/credentials', async (req: AuthRequest, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT brand, username, ssh_port, api_port, cardinality(passwords) AS password_count, updated_at
+      `SELECT brand, username, ssh_port, api_port, web_port, cardinality(passwords) AS password_count, updated_at
          FROM cpe_credentials WHERE mikrotik_id = $1 ORDER BY brand`,
       [req.params.mikrotikId]
     );
-    // Las claves nunca salen de la API: solo cuántas hay
-    res.json({ success: true, data: BRANDS.map((b) => rows.find((r) => r.brand === b) || { brand: b, username: b === 'ubiquiti' ? 'ubnt' : 'admin', ssh_port: 22, api_port: DEFAULT_API_PORT, password_count: 0 }) });
+    const ispPorts = await tenantWebPorts(req.tenantId);
+    // Las claves nunca salen de la API: solo cuántas hay. web_port vacío = el de "Puertos web" del ISP
+    res.json({
+      success: true,
+      data: BRANDS.map((b) => ({
+        ...(rows.find((r) => r.brand === b) || { brand: b, username: b === 'ubiquiti' ? 'ubnt' : 'admin', ssh_port: 22, api_port: DEFAULT_API_PORT, web_port: null, password_count: 0 }),
+        isp_web_port: ispPorts[b]?.port || 80,
+      })),
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -77,7 +85,8 @@ cpeRouter.get('/:mikrotikId/credentials', async (req: AuthRequest, res: Response
  */
 cpeRouter.put('/:mikrotikId/credentials', async (req: AuthRequest, res: Response) => {
   if (!isAdmin(req)) return res.status(403).json({ success: false, error: 'Solo administradores' });
-  const { brand, username, ssh_port, api_port, add_password, clear_passwords } = req.body || {};
+  const { brand, username, ssh_port, api_port, web_port, add_password, clear_passwords } = req.body || {};
+  const webPort = Number(web_port) > 0 && Number(web_port) < 65536 ? Number(web_port) : null;
   if (!BRANDS.includes(brand)) return res.status(400).json({ success: false, error: 'Marca no válida' });
   if (!SAFE_USERNAME.test(String(username || ''))) return res.status(400).json({ success: false, error: 'Usuario no válido' });
   if (add_password !== undefined && (typeof add_password !== 'string' || !add_password || add_password.length > 128 || /[\r\n]/.test(add_password))) {
@@ -87,18 +96,19 @@ cpeRouter.put('/:mikrotikId/credentials', async (req: AuthRequest, res: Response
   const apiPort = Number(api_port) > 0 && Number(api_port) < 65536 ? Number(api_port) : DEFAULT_API_PORT;
   try {
     await pool.query(
-      `INSERT INTO cpe_credentials (tenant_id, mikrotik_id, brand, username, ssh_port, api_port, passwords)
-       VALUES ($1, $2, $3, $4, $5, $8, CASE WHEN $6::text IS NULL THEN '{}'::text[] ELSE ARRAY[$6::text] END)
+      `INSERT INTO cpe_credentials (tenant_id, mikrotik_id, brand, username, ssh_port, api_port, web_port, passwords)
+       VALUES ($1, $2, $3, $4, $5, $8, $9, CASE WHEN $6::text IS NULL THEN '{}'::text[] ELSE ARRAY[$6::text] END)
        ON CONFLICT (mikrotik_id, brand) DO UPDATE SET
          username = EXCLUDED.username,
          ssh_port = EXCLUDED.ssh_port,
          api_port = EXCLUDED.api_port,
+         web_port = EXCLUDED.web_port,
          passwords = CASE
            WHEN $7 THEN COALESCE(EXCLUDED.passwords, '{}')
            WHEN $6::text IS NULL THEN cpe_credentials.passwords
            ELSE ARRAY[$6::text] || array_remove(cpe_credentials.passwords, $6::text) END,
          updated_at = now()`,
-      [req.tenantId ?? null, req.params.mikrotikId, brand, username, port, add_password ?? null, Boolean(clear_passwords), apiPort]
+      [req.tenantId ?? null, req.params.mikrotikId, brand, username, port, add_password ?? null, Boolean(clear_passwords), apiPort, webPort]
     );
     res.json({ success: true });
   } catch (error: any) {
@@ -106,10 +116,116 @@ cpeRouter.put('/:mikrotikId/credentials', async (req: AuthRequest, res: Response
   }
 });
 
-async function loadCredentials(mikrotikId: string): Promise<Map<CpeBrand, { username: string; port: number; apiPort: number; passwords: string[] }>> {
-  const { rows } = await pool.query(`SELECT brand, username, ssh_port, api_port, passwords FROM cpe_credentials WHERE mikrotik_id = $1`, [mikrotikId]);
-  return new Map(rows.map((r: any) => [r.brand, { username: r.username, port: r.ssh_port || 22, apiPort: r.api_port || DEFAULT_API_PORT, passwords: r.passwords || [] }]));
+type SedeCreds = { username: string; port: number; apiPort: number; webPort: number | null; passwords: string[] };
+
+async function loadCredentials(mikrotikId: string): Promise<Map<CpeBrand, SedeCreds>> {
+  const { rows } = await pool.query(`SELECT brand, username, ssh_port, api_port, web_port, passwords FROM cpe_credentials WHERE mikrotik_id = $1`, [mikrotikId]);
+  return new Map(rows.map((r: any) => [r.brand, {
+    username: r.username, port: r.ssh_port || 22, apiPort: r.api_port || DEFAULT_API_PORT,
+    webPort: r.web_port || null, passwords: r.passwords || [],
+  }]));
 }
+
+/** ¿El puerto TCP acepta conexión? (sin iniciar sesión) */
+function tcpOpen(ip: string, port: number, timeoutMs = 4000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = netConnect({ host: ip, port, timeout: timeoutMs });
+    s.once('connect', () => { s.destroy(); resolve(true); });
+    s.once('timeout', () => { s.destroy(); resolve(false); });
+    s.once('error', () => resolve(false));
+  });
+}
+
+/**
+ * Equipo de prueba: con la IP de una antena que se sabe que funciona, prueba
+ * cada forma de entrar (API, SSH y web, cada una en su puerto) con las claves
+ * de la sede y dice cuál funciona. Lo que entra queda aprendido para el lote.
+ */
+cpeRouter.post('/:mikrotikId/probe', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = req.params.mikrotikId;
+    const ip = String(req.body?.ip || '').trim();
+    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return res.status(400).json({ success: false, error: 'IP no válida' });
+    const creds = await loadCredentials(mikrotikId);
+    const ispPorts = await tenantWebPorts(req.tenantId);
+    await ensureApRoute(mikrotikId, req.tenantId ?? null, ip);
+
+    // Cliente PPPoE dueño de esa IP (para poder lanzar acciones sobre él)
+    const session = (await activeSessions(mikrotikId)).find((a: any) => String(a.address) === ip);
+    const mk = creds.get('mikrotik');
+    const ub = creds.get('ubiquiti');
+    const ports = {
+      mikrotik_api: mk?.apiPort || DEFAULT_API_PORT,
+      mikrotik_ssh: mk?.port || 22,
+      mikrotik_web: mk?.webPort || ispPorts.mikrotik?.port || 80,
+      ubiquiti_ssh: ub?.port || 22,
+      ubiquiti_web: ub?.webPort || ispPorts.ubiquiti?.port || 443,
+    };
+    const uniq = [...new Set(Object.values(ports))];
+    const open = new Map<number, boolean>(await Promise.all(uniq.map(async (p) => [p, await tcpOpen(ip, p)] as [number, boolean])));
+
+    const checks: Array<{ method: string; port: number; open: boolean; result: 'ok' | 'clave' | 'cerrado' | 'sin-claves' | 'no-probado'; message: string }> = [];
+    const cands = (c?: SedeCreds) => (c?.passwords || []).map((password) => ({ username: c!.username, password, port: c!.port, apiPort: c!.apiPort }));
+    let identified: { brand: CpeBrand; model: string | null; version: string | null; via: string; login: CpeLogin } | null = null;
+
+    // MikroTik por API
+    if (!open.get(ports.mikrotik_api)) checks.push({ method: 'MikroTik API', port: ports.mikrotik_api, open: false, result: 'cerrado', message: 'Puerto cerrado o API apagada' });
+    else if (!mk?.passwords.length) checks.push({ method: 'MikroTik API', port: ports.mikrotik_api, open: true, result: 'sin-claves', message: 'Puerto abierto; falta cargar la clave MikroTik' });
+    else {
+      const r = await mikrotikApiLogin(ip, cands(mk));
+      if (typeof r === 'object') {
+        identified = { brand: 'mikrotik', model: r.resource?.['board-name'] || null, version: r.resource?.version || null, via: 'API', login: r.login };
+        checks.push({ method: 'MikroTik API', port: ports.mikrotik_api, open: true, result: 'ok', message: `Entra · ${[identified.model, identified.version].filter(Boolean).join(' · ')}` });
+      } else checks.push({ method: 'MikroTik API', port: ports.mikrotik_api, open: true, result: r === 'auth' ? 'clave' : 'cerrado', message: r === 'auth' ? 'Ninguna clave MikroTik entra' : 'No responde como API' });
+    }
+
+    // SSH (MikroTik y Ubiquiti)
+    for (const [brand, c, port] of [['mikrotik', mk, ports.mikrotik_ssh], ['ubiquiti', ub, ports.ubiquiti_ssh]] as Array<[CpeBrand, SedeCreds | undefined, number]>) {
+      const label = `${brand === 'mikrotik' ? 'MikroTik' : 'Ubiquiti'} SSH`;
+      if (!open.get(port)) { checks.push({ method: label, port, open: false, result: 'cerrado', message: 'Puerto cerrado o SSH apagado' }); continue; }
+      if (!c?.passwords.length) { checks.push({ method: label, port, open: true, result: 'sin-claves', message: `Puerto abierto; falta cargar la clave ${brand === 'mikrotik' ? 'MikroTik' : 'Ubiquiti'}` }); continue; }
+      try {
+        const found = await findLogin(ip, cands(c), IDENTIFY[brand]);
+        const ident = parseIdentify(found.output);
+        if (ident && !identified) identified = { brand: ident.brand, model: ident.model, version: ident.version, via: 'SSH', login: found.login };
+        checks.push({ method: label, port, open: true, result: 'ok', message: ident ? `Entra · ${[ident.model, ident.version].filter(Boolean).join(' · ')}` : 'Entra (no es de esta marca)' });
+      } catch (e: any) {
+        checks.push({ method: label, port, open: true, result: e instanceof SshAuthError ? 'clave' : 'cerrado', message: e instanceof SshAuthError ? 'La clave no entra' : e.message });
+      }
+    }
+
+    // Web (WebFig / airOS): solo si responde; el robot la usa para activar la API
+    checks.push({ method: 'MikroTik WebFig', port: ports.mikrotik_web, open: !!open.get(ports.mikrotik_web), result: open.get(ports.mikrotik_web) ? 'no-probado' : 'cerrado', message: open.get(ports.mikrotik_web) ? 'Responde: el robot puede activar la API por aquí' : 'Puerto cerrado' });
+    if (ports.ubiquiti_web !== ports.mikrotik_web) {
+      checks.push({ method: 'Ubiquiti web', port: ports.ubiquiti_web, open: !!open.get(ports.ubiquiti_web), result: open.get(ports.ubiquiti_web) ? 'no-probado' : 'cerrado', message: open.get(ports.ubiquiti_web) ? 'Responde' : 'Puerto cerrado' });
+    }
+
+    // Aprendizaje: lo que entró queda guardado para esta antena
+    const mac = formatMac(session?.['caller-id']);
+    if (identified && mac) {
+      await pool.query(
+        `INSERT INTO cpe_devices (mikrotik_id, mac, ip, pppoe_user, brand, model, version, login_hash, last_ok_at, last_error)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),NULL)
+         ON CONFLICT (mikrotik_id, mac) DO UPDATE SET ip = EXCLUDED.ip, pppoe_user = COALESCE(EXCLUDED.pppoe_user, cpe_devices.pppoe_user),
+           brand = EXCLUDED.brand, model = COALESCE(EXCLUDED.model, cpe_devices.model), version = COALESCE(EXCLUDED.version, cpe_devices.version),
+           login_hash = EXCLUDED.login_hash, last_ok_at = now(), last_error = NULL, updated_at = now()`,
+        [mikrotikId, mac, ip, session?.name || null, identified.brand, identified.model, identified.version, passwordHash(identified.login.password)]
+      ).catch(() => undefined);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ip,
+        target: session ? { mac, ip, pppoe_user: String(session.name) } : null,
+        identified: identified ? { brand: identified.brand, model: identified.model, version: identified.version, via: identified.via } : null,
+        checks,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ─── Lista de antenas cliente con señal ─────────────────────────
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | null> =>
@@ -186,7 +302,7 @@ async function currentIp(mikrotikId: string, mac: string, fallback: string): Pro
 
 type Ctx = {
   mikrotikId: string; tenantId: string | null; action: Action; newPassword?: string;
-  creds: Map<CpeBrand, { username: string; port: number; apiPort: number; passwords: string[] }>;
+  creds: Map<CpeBrand, SedeCreds>;
   promoted: Set<CpeBrand>;
   webPort: number; allowFrom: string;
   shotTaken: { value: boolean };
@@ -436,7 +552,10 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
     if (extra.some((n) => !CIDR.test(n))) return res.status(400).json({ success: false, error: 'Red de gestión no válida (ej: 10.10.10.0/24)' });
     const allowFrom = [VPN_NET, ...extra].join(',');
     const webPortReq = Number(req.body?.webfig_port);
-    const webPort = webPortReq > 0 && webPortReq < 65536 ? webPortReq : (await tenantWebPorts(req.tenantId)).mikrotik?.port || 80;
+    // Puerto de WebFig: el pedido, el de la sede o el de "Puertos web" del ISP
+    const sedeCreds = await loadCredentials(mikrotikId);
+    const webPort = webPortReq > 0 && webPortReq < 65536 ? webPortReq
+      : sedeCreds.get('mikrotik')?.webPort || (await tenantWebPorts(req.tenantId)).mikrotik?.port || 80;
     const targets: Target[] = asArray(req.body?.targets).slice(0, 300).map((t: any) => ({
       mac: String(t?.mac || ''), ip: String(t?.ip || ''), pppoe_user: String(t?.pppoe_user || ''),
       new_user: t?.new_user ? String(t.new_user).trim() : undefined,
@@ -452,7 +571,7 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
       return res.status(400).json({ success: false, error: 'La clave nueva debe tener 8 a 64 caracteres: letras, números y !@#%^*()_+=.,:~-' });
     }
 
-    const creds = await loadCredentials(mikrotikId);
+    const creds = sedeCreds;
     const results: Result[] = targets.map((t) => ({ mac: t.mac, ip: t.ip, pppoe_user: t.pppoe_user, new_user: t.new_user, status: 'pendiente', message: 'En cola' }));
     const { rows } = await pool.query(
       `INSERT INTO cpe_jobs (tenant_id, mikrotik_id, user_id, action, results) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
