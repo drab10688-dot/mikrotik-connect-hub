@@ -14,7 +14,6 @@ import { MobileNav } from "./MobileNav";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useMyTenant } from "@/hooks/useTenantBranding";
-import { useSecretaryPermissions } from "@/hooks/useSecretaryPermissions";
 import { useMyPermissions } from "@/hooks/usePermissions";
 import { ChangePasswordDialog } from "@/components/account/ChangePasswordDialog";
 import { useState, useEffect, useRef } from "react";
@@ -24,12 +23,15 @@ type MenuEntry = {
   label: string;
   path: string;
   module?: "onus" | "mikrotik" | "onu_web";
+  /** Sección de permisos del técnico */
   section?: string;
+  /** Solo para administradores del ISP */
+  adminOnly?: boolean;
   group: string;
 };
 
 const menuItems: MenuEntry[] = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", section: "dashboard", group: "Operación" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", group: "Operación" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus", section: "onus", group: "Operación" },
   { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik", group: "Operación" },
   { icon: UserPlus, label: "Usuarios PPPoE", path: "/pppoe", module: "mikrotik", section: "pppoe", group: "Operación" },
@@ -38,15 +40,14 @@ const menuItems: MenuEntry[] = [
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
   { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
-  { icon: Users, label: "Usuarios", path: "/admin/users", section: "usuarios", group: "Administración" },
-  { icon: KeyRound, label: "Roles y permisos", path: "/admin/permissions", section: "roles", group: "Administración" },
-  { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", section: "respaldos", group: "Administración" },
+  { icon: Users, label: "Usuarios", path: "/admin/users", adminOnly: true, group: "Administración" },
+  { icon: KeyRound, label: "Roles y permisos", path: "/admin/permissions", adminOnly: true, group: "Administración" },
+  { icon: DatabaseBackup, label: "Copias de seguridad", path: "/admin/respaldos", adminOnly: true, group: "Administración" },
 ];
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const { signOut, isSecretary, isReseller, isSuperAdmin, isAdmin, user } = useAuth();
-  const { assignments: secretaryAssignments, isLoading: loadingPermissions } = useSecretaryPermissions();
+  const { signOut, isSuperAdmin, isAdmin, user } = useAuth();
   const { can, isLoading: loadingSections } = useMyPermissions();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,21 +86,6 @@ export const Sidebar = () => {
     toast.info("Logo eliminado");
   };
 
-  const currentDeviceId = localStorage.getItem("mikrotik_device_id") || "";
-  const currentPerms =
-    secretaryAssignments?.find((a: any) => a.mikrotik_id === currentDeviceId) ||
-    secretaryAssignments?.find((a: any) => !a.mikrotik_id);
-
-  const secretaryPermMap: Record<string, string> = {
-    '/onus': 'can_manage_onu',
-    '/acs': 'can_manage_onu',
-    '/topology': 'can_manage_pppoe',
-    '/mikrotik': 'can_manage_pppoe',
-    '/pppoe': 'can_manage_pppoe',
-    '/settings': 'can_manage_settings',
-    '/diagnostics': 'can_manage_diagnostics',
-  };
-
   // Módulos habilitados por el super admin para este ISP
   const moduleEnabled = (module?: "onus" | "mikrotik" | "onu_web") => {
     if (!module) return true;
@@ -121,26 +107,10 @@ export const Sidebar = () => {
 
   const moduleMenuItems = menuItems
     .filter((item) => moduleEnabled(item.module))
-    // Permisos por sección definidos para cada ISP
-    .filter(
-      (item) =>
-        item.path === "/dashboard" ||
-        // El admin del ISP nunca pierde la administración de su propio ISP
-        (isAdmin && (item.section === "usuarios" || item.section === "roles")) ||
-        can(item.section)
-    );
+    // Administración: solo admins | resto: permisos del técnico (el admin ve todo)
+    .filter((item) => (item.adminOnly ? isAdmin : can(item.section)));
 
-  const filteredMenuItems = isSuperAdmin
-    ? superAdminMenu
-    : isSecretary
-    ? moduleMenuItems.filter(item => {
-        if (item.path === '/dashboard') return true;
-        if (!currentPerms) return false;
-        const permKey = secretaryPermMap[item.path];
-        if (permKey) return currentPerms?.[permKey] === true;
-        return false;
-      })
-    : moduleMenuItems;
+  const filteredMenuItems = isSuperAdmin ? superAdminMenu : moduleMenuItems;
 
   const groups = filteredMenuItems.reduce<Record<string, MenuEntry[]>>((acc, item) => {
     (acc[item.group] ||= []).push(item);
@@ -157,17 +127,11 @@ export const Sidebar = () => {
     navigate("/login");
   };
 
-  const roleLabel = isSuperAdmin
-    ? "Super admin"
-    : isSecretary
-    ? "Asistente"
-    : isReseller
-    ? "Reseller"
-    : "Operador";
+  const roleLabel = isSuperAdmin ? "Super admin" : isAdmin ? "Admin ISP" : "Técnico";
 
   return (
     <>
-      <MobileNav items={filteredMenuItems} showAdmin={!isSecretary && !isReseller} />
+      <MobileNav items={filteredMenuItems} showAdmin={isAdmin} />
 
       <aside className="hidden md:flex h-screen w-64 fixed left-0 top-0 z-40 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         {/* Halo de marca */}
@@ -220,7 +184,7 @@ export const Sidebar = () => {
 
         {/* Navegación */}
         <nav className="relative flex-1 px-3 py-4 space-y-5 overflow-y-auto">
-          {(isSecretary && loadingPermissions) || loadingSections ? (
+          {loadingSections ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-sidebar-primary mx-auto" />
             </div>

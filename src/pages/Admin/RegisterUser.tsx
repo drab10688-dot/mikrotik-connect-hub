@@ -21,7 +21,7 @@ export default function RegisterUser() {
     email: '',
     password: '',
     fullName: '',
-    role: 'user' as 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary',
+    role: 'user' as 'super_admin' | 'admin' | 'user',
   });
 
   const { data: devices = [] } = useQuery({
@@ -32,8 +32,8 @@ export default function RegisterUser() {
 
   const allowedRoles = useMemo(() => {
     return isSuperAdmin
-      ? (['user', 'admin', 'super_admin', 'reseller', 'secretary'] as const)
-      : (['user', 'admin', 'reseller', 'secretary'] as const);
+      ? (['user', 'admin', 'super_admin'] as const)
+      : (['user', 'admin'] as const);
   }, [isSuperAdmin]);
 
   useEffect(() => {
@@ -117,17 +117,15 @@ export default function RegisterUser() {
                   <Select value={formData.role} onValueChange={(value: any) => setFormData({ ...formData, role: value })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">Usuario</SelectItem>
-                      <SelectItem value="reseller">Revendedor</SelectItem>
-                      <SelectItem value="secretary">Asistente</SelectItem>
+                      <SelectItem value="user">Técnico</SelectItem>
                       <SelectItem value="admin">Administrador</SelectItem>
                       {isSuperAdmin && <SelectItem value="super_admin">Super Administrador</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
-                {['admin', 'secretary', 'reseller'].includes(formData.role) && devices.length > 0 && (
+                {formData.role === 'user' && devices.length > 0 && (
                   <div className="space-y-2">
-                    <Label htmlFor="device" className="flex items-center gap-2"><Router className="h-4 w-4" />Asignar Dispositivo MikroTik (Opcional)</Label>
+                    <Label htmlFor="device" className="flex items-center gap-2"><Router className="h-4 w-4" />Router del técnico (opcional; más routers en Usuarios)</Label>
                     <Select value={selectedDeviceId || "none"} onValueChange={(value) => setSelectedDeviceId(value === "none" ? "" : value)}>
                       <SelectTrigger><SelectValue placeholder="Seleccionar dispositivo..." /></SelectTrigger>
                       <SelectContent>

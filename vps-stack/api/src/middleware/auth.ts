@@ -120,6 +120,21 @@ function normalizeStringParam(value: string | string[] | undefined, paramName: s
   throw new Error(`Parámetro inválido: ${paramName}`);
 }
 
+/**
+ * SQL de los routers visibles para un usuario ($1 = user_id):
+ *  - admin del ISP: todos los routers de su ISP;
+ *  - técnico: solo los asignados (user_mikrotik_access) y de su mismo ISP.
+ * Usuarios sin ISP (instalación antigua) solo ven routers sin ISP.
+ */
+const VISIBLE_DEVICES_SQL = `
+  SELECT md.id FROM mikrotik_devices md
+    JOIN users u ON u.id = $1
+   WHERE md.tenant_id IS NOT DISTINCT FROM u.tenant_id
+     AND (
+       EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.role::text = 'admin')
+       OR EXISTS (SELECT 1 FROM user_mikrotik_access uma WHERE uma.mikrotik_id = md.id AND uma.user_id = u.id)
+     )`;
+
 export async function verifyDeviceAccess(
   userId: string,
   role: string,
@@ -128,28 +143,10 @@ export async function verifyDeviceAccess(
   if (role === 'super_admin') return true;
 
   const mikrotikId = normalizeStringParam(mikrotikIdParam, 'mikrotikId');
-
   const { rows } = await pool.query(
-    `SELECT id FROM user_mikrotik_access WHERE user_id = $1 AND mikrotik_id = $2
-     UNION
-     SELECT sa.id FROM secretary_assignments sa
-     WHERE sa.secretary_id = $1
-       AND (
-         sa.mikrotik_id = $2
-         OR (
-           sa.mikrotik_id IS NULL
-           AND EXISTS (
-             SELECT 1 FROM mikrotik_devices md
-             WHERE md.id = $2 AND md.created_by = sa.assigned_by
-           )
-         )
-       )
-     UNION
-     SELECT id FROM reseller_assignments WHERE reseller_id = $1 AND mikrotik_id = $2
-     LIMIT 1`,
+    `SELECT 1 FROM (${VISIBLE_DEVICES_SQL}) v WHERE v.id = $2 LIMIT 1`,
     [userId, mikrotikId]
   );
-
   return rows.length > 0;
 }
 
@@ -172,19 +169,8 @@ export async function getAccessibleDeviceIds(
     return rows.map((r: any) => r.id);
   }
 
-  const { rows } = await pool.query(
-    `SELECT DISTINCT md.id, md.tenant_id
-       FROM mikrotik_devices md
-      WHERE md.created_by = $1
-         OR EXISTS (SELECT 1 FROM user_mikrotik_access uma WHERE uma.mikrotik_id = md.id AND uma.user_id = $1)
-         OR EXISTS (SELECT 1 FROM secretary_assignments sa WHERE sa.secretary_id = $1 AND (sa.mikrotik_id = md.id OR (sa.mikrotik_id IS NULL AND sa.assigned_by = md.created_by)))
-         OR EXISTS (SELECT 1 FROM reseller_assignments ra WHERE ra.reseller_id = $1 AND ra.mikrotik_id = md.id)`,
-    [req.userId]
-  );
-
-  return rows
-    .filter((r: any) => (req.tenantId ? r.tenant_id === req.tenantId : !r.tenant_id))
-    .map((r: any) => r.id);
+  const { rows } = await pool.query(VISIBLE_DEVICES_SQL, [req.userId]);
+  return rows.map((r: any) => r.id);
 }
 
 // ─── Autorización por rol ─────────────────────────────────
@@ -196,46 +182,5 @@ export function requireRole(...roles: string[]) {
       return res.status(403).json({ error: 'No tienes permiso para esta acción' });
     }
     return next();
-  };
-}
-
-/**
- * Devuelve true si el asistente tiene el permiso solicitado en alguna de sus
- * asignaciones (por dispositivo o global). Si la columna no existe todavía en
- * instalaciones antiguas, no se bloquea el acceso.
- */
-export async function secretaryHasPermission(userId: string, permKey: string): Promise<boolean> {
-  if (!/^can_[a-z0-9_]+$/.test(permKey)) return false;
-  try {
-    const { rows } = await pool.query(
-      `SELECT 1 FROM secretary_assignments
-       WHERE secretary_id = $1 AND COALESCE(${permKey}, false) = true
-       LIMIT 1`,
-      [userId]
-    );
-    return rows.length > 0;
-  } catch (error) {
-    console.error(`⚠️ Auth: no se pudo verificar ${permKey}:`, error);
-    return false; // ante la duda, denegar
-  }
-}
-
-/**
- * Middleware de módulo. super_admin/admin/user pasan siempre; el asistente
- * necesita el permiso concreto; el reseller solo accede a lo que se le permita.
- */
-export function requirePermission(permKey: string, allowReseller = false) {
-  return async (req: AuthRequest, res: Response, next: NextFunction) => {
-    const role = req.userRole || 'user';
-    if (role === 'super_admin' || role === 'admin' || role === 'user') return next();
-    if (role === 'reseller') {
-      return allowReseller ? next() : res.status(403).json({ error: 'No tienes permiso para este módulo' });
-    }
-    if (role === 'secretary') {
-      const allowed = await secretaryHasPermission(req.userId!, permKey);
-      if (!allowed) return res.status(403).json({ error: 'No tienes permiso para este módulo' });
-      return next();
-    }
-    return res.status(403).json({ error: 'No tienes permiso para este módulo' });
   };
 }

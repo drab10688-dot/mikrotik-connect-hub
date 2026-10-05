@@ -13,10 +13,10 @@ const ROLE_ORDER = `CASE ur.role::text
   ELSE 5
 END`;
 
-/** Roles que cada rol puede asignar. */
+/** Roles que cada rol puede asignar (user = Técnico). */
 function allowedRoles(role?: string): string[] {
-  if (role === 'super_admin') return ['super_admin', 'admin', 'user', 'secretary', 'reseller'];
-  if (role === 'admin') return ['admin', 'user', 'secretary', 'reseller'];
+  if (role === 'super_admin') return ['super_admin', 'admin', 'user'];
+  if (role === 'admin') return ['admin', 'user'];
   return [];
 }
 
@@ -55,7 +55,7 @@ usersRouter.get('/', async (req: AuthRequest, res: Response) => {
 // Crear usuario dentro del ISP (admin) o en cualquier ISP (super_admin)
 usersRouter.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { email, password, full_name, role, tenant_id } = req.body || {};
+    const { email, password, full_name, role, tenant_id, mikrotik_id } = req.body || {};
     const newRole = role || 'user';
 
     if (!allowedRoles(req.userRole).includes(newRole)) {
@@ -105,6 +105,18 @@ usersRouter.post('/', async (req: AuthRequest, res: Response) => {
       rows[0].id,
       newRole,
     ]);
+
+    // Router inicial del técnico (más routers: Usuarios → expandir fila).
+    // Antes el panel lo enviaba pero se ignoraba. Debe ser del mismo ISP.
+    if (newRole === 'user' && mikrotik_id) {
+      await pool.query(
+        `INSERT INTO user_mikrotik_access (user_id, mikrotik_id, granted_by)
+         SELECT $1, md.id, $3 FROM mikrotik_devices md
+          WHERE md.id = $2 AND md.tenant_id IS NOT DISTINCT FROM $4::uuid
+         ON CONFLICT DO NOTHING`,
+        [rows[0].id, mikrotik_id, req.userId, targetTenant]
+      ).catch((e) => console.warn('[USERS] router inicial:', e.message));
+    }
 
     res.status(201).json({ data: { ...rows[0], role: newRole } });
   } catch (error: any) {

@@ -318,6 +318,12 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        updated_at TIMESTAMPTZ DEFAULT now()
      )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS backup_settings_tenant_key ON backup_settings(tenant_key)`,
+    // Roles: Asistente y Revendedor se retiraron → pasan a Técnico (user)
+    `INSERT INTO user_roles (user_id, role)
+       SELECT DISTINCT user_id, 'user'::app_role FROM user_roles WHERE role::text IN ('secretary', 'reseller')
+     ON CONFLICT DO NOTHING`,
+    `DELETE FROM user_roles WHERE role::text IN ('secretary', 'reseller')`,
+
     // Copia automática programada (se sube a Dropbox)
     `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS schedule_enabled BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS schedule_frequency TEXT NOT NULL DEFAULT 'daily'`,

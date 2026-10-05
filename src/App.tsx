@@ -46,23 +46,23 @@ const App = () => (
 
           {/* Panel de gestión de ONUs */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/onus" element={<ProtectedRoute permission="can_manage_onu" module="onus" section="onus"><Onus /></ProtectedRoute>} />
-          <Route path="/mikrotik" element={<ProtectedRoute permission="can_manage_pppoe" module="mikrotik" section="mikrotik"><Network /></ProtectedRoute>} />
-          <Route path="/pppoe" element={<ProtectedRoute permission="can_manage_pppoe" module="mikrotik" section="pppoe"><PppoeUsers /></ProtectedRoute>} />
+          <Route path="/onus" element={<ProtectedRoute module="onus" section="onus"><Onus /></ProtectedRoute>} />
+          <Route path="/mikrotik" element={<ProtectedRoute module="mikrotik" section="mikrotik"><Network /></ProtectedRoute>} />
+          <Route path="/pppoe" element={<ProtectedRoute module="mikrotik" section="pppoe"><PppoeUsers /></ProtectedRoute>} />
           <Route path="/topology" element={<ProtectedRoute module="mikrotik" section="topology"><Topology /></ProtectedRoute>} />
           <Route path="/acs" element={<ProtectedRoute section="vpn"><IspAcs /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute permission="can_manage_settings" section="configuracion"><Settings /></ProtectedRoute>} />
-          <Route path="/diagnostics" element={<ProtectedRoute permission="can_manage_diagnostics" section="diagnostico"><Diagnostics /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute section="configuracion"><Settings /></ProtectedRoute>} />
+          <Route path="/diagnostics" element={<ProtectedRoute section="diagnostico"><Diagnostics /></ProtectedRoute>} />
 
 
           {/* Administración */}
-          <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin section="roles"><Permissions /></ProtectedRoute>} />
+          <Route path="/admin/permissions" element={<ProtectedRoute requireAdmin><Permissions /></ProtectedRoute>} />
           <Route path="/admin/isps" element={<ProtectedRoute requireSuperAdmin><Isps /></ProtectedRoute>} />
-          <Route path="/admin/users" element={<ProtectedRoute requireAdmin section="usuarios"><UsersAdmin /></ProtectedRoute>} />
-          <Route path="/admin/register-user" element={<ProtectedRoute requireAdmin section="usuarios"><RegisterUser /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute requireAdmin><UsersAdmin /></ProtectedRoute>} />
+          <Route path="/admin/register-user" element={<ProtectedRoute requireAdmin><RegisterUser /></ProtectedRoute>} />
           <Route path="/admin/correo" element={<ProtectedRoute requireSuperAdmin><MailSettings /></ProtectedRoute>} />
           <Route path="/admin/dominio" element={<ProtectedRoute requireSuperAdmin><SslSettings /></ProtectedRoute>} />
-          <Route path="/admin/respaldos" element={<ProtectedRoute requireAdmin section="respaldos"><Backups /></ProtectedRoute>} />
+          <Route path="/admin/respaldos" element={<ProtectedRoute requireAdmin><Backups /></ProtectedRoute>} />
           
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

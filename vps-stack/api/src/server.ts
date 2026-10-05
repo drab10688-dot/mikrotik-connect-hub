@@ -20,8 +20,9 @@ import { ispRouter, ispPublicRouter, requireSection, requireModule } from './rou
 import { mailRouter } from './routes/mail';
 import { backupRouter, runScheduledBackups } from './routes/backup';
 import { sslRouter, renewSslIfNeeded } from './routes/ssl';
+import { securityRouter } from './routes/security';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
-import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
+import { authMiddleware, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
 import { runPppoeMonitor, cleanupPppoeEvents } from './cron/pppoe-monitor';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
@@ -58,23 +59,25 @@ app.use('/api/public', ispPublicRouter); // resolución del token TR-069 por ISP
 app.use('/api/tenants', authMiddleware, tenantsRouter);
 app.use('/api/isp', authMiddleware, ispRouter);
 app.use('/api/devices', authMiddleware, devicesRouter);
-app.use('/api/pppoe', authMiddleware, requirePermission('can_manage_pppoe'), requireSection('mikrotik'), requireModule('enable_mikrotik'), pppoeRouter);
+app.use('/api/pppoe', authMiddleware, requireSection('pppoe'), requireModule('enable_mikrotik'), pppoeRouter);
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/auth/users', authMiddleware, requireRole('super_admin', 'admin'), usersRouter);
-app.use('/api/onu', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), requireModule('enable_onus'), onuRouter);
-app.use('/api/genieacs', authMiddleware, requirePermission('can_manage_onu'), requireSection('onus'), requireModule('enable_onus'), requireModule('enable_tr069'), genieacsRouter);
+app.use('/api/onu', authMiddleware, requireSection('onus'), requireModule('enable_onus'), onuRouter);
+app.use('/api/genieacs', authMiddleware, requireSection('onus'), requireModule('enable_onus'), requireModule('enable_tr069'), genieacsRouter);
 // Acceso web directo a la ONU (sin TR-069), con perfiles aprendidos por modelo
-app.use('/api/netaccess', authMiddleware, requireSection('red'), requireModule('enable_mikrotik'), netAccessRouter);
+// netaccess decide qué es editar (editRed); el proxy web de equipos es consulta.
+app.use('/api/netaccess', authMiddleware, requireSection('red', 'view'), requireModule('enable_mikrotik'), netAccessRouter);
 // Autorización del escritorio remoto para Nginx auth_request (sin sesión de Express)
 app.get('/api/browser-authz', authorizeBrowserAccess);
 // Escritorio PRIVADO por usuario: valida el token y enruta al contenedor propio
 app.get('/api/browser-authz-vnc', authorizeUserVnc);
-app.use('/api/browser', authMiddleware, requireSection('red'), browserRouter);
-app.use('/api/vpn', authMiddleware, requirePermission('can_manage_vps_services'), vpnRouter);
+app.use('/api/browser', authMiddleware, requireSection('red', 'view'), browserRouter);
+app.use('/api/vpn', authMiddleware, requireSection('vpn'), vpnRouter);
 // Servidor de correo (SMTP) y copias de seguridad por ISP / del sistema
-app.use('/api/mail', authMiddleware, requireSection('correo'), mailRouter);
+app.use('/api/mail', authMiddleware, requireRole('super_admin', 'admin'), mailRouter);
 app.use('/api/ssl', authMiddleware, requireRole('super_admin'), sslRouter);
-app.use('/api/backup', authMiddleware, requireSection('respaldos'), backupRouter);
+app.use('/api/security', authMiddleware, requireRole('super_admin'), securityRouter);
+app.use('/api/backup', authMiddleware, requireRole('super_admin', 'admin'), backupRouter);
 
 
 // Aliases for frontend compatibility

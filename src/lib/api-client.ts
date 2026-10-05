@@ -291,6 +291,14 @@ export const sslApi = {
     unwrapData<any>(await apiPost<any>('/ssl/issue', { domain, email })),
 };
 
+// ─── Seguridad del servidor (fail2ban SSH, solo superadmin) ─────────
+export const securityApi = {
+  fail2ban: async () => unwrapData<any>(await apiGet<any>('/security/fail2ban')),
+  setFail2ban: async (enabled: boolean, admin_ips: string) =>
+    unwrapData<any>(await apiPost<any>('/security/fail2ban', { enabled, admin_ips })),
+  unban: async (ip: string) => apiPost<any>('/security/fail2ban/unban', { ip }),
+};
+
 // ─── Copias de seguridad (ISP y sistema completo) ─────────
 export const backupApi = {
   list: async () => unwrapArray<any>(await apiGet<any>('/backup')),
@@ -397,14 +405,6 @@ export const usersApi = {
   createUser: async (data: any) => apiPost('/auth/users', data),
 };
 
-// ─── Secretary API ────────────────────────────────────────
-export const secretariesApi = {
-  myAssignments: async () => unwrapArray(await apiGet<any>('/devices/my-secretary-assignments')),
-  assignments: async (mikrotikId: string) => unwrapArray(await apiGet<any>(`/devices/${mikrotikId}/secretaries`)),
-  assign: (mikrotikId: string, data: any) => apiPost(`/devices/${mikrotikId}/secretaries`, data),
-  update: (assignmentId: string, permissions: any) => apiPut(`/devices/secretaries/${assignmentId}`, permissions),
-  remove: (assignmentId: string) => apiDelete(`/devices/secretaries/${assignmentId}`),
-};
 
 // ─── Cloudflare Tunnel API (estilo Stream Player Pro) ─────
 export const vpsApi = {

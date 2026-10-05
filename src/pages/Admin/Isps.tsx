@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Building2, Copy, Plus, Save, Trash2, Antenna, ExternalLink, Megaphone } from "lucide-react";
 import { mergeLanding, type LandingContent } from "@/lib/landing";
+import { ServerSecurityCard } from "@/components/admin/ServerSecurityCard";
 
 interface Isp {
   id: string;
@@ -298,6 +299,8 @@ export default function Isps() {
             )}
           </div>
         )}
+
+        <ServerSecurityCard />
       </main>
     </div>
   );

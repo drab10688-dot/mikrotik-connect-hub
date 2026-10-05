@@ -58,7 +58,7 @@ async function mtCached(mikrotikId: string, path: string, ttlMs = 20000): Promis
 
 
 
-const editRed = requireSection('red', true);
+const editRed = requireSection('red', 'edit');
 
 export const netAccessRouter = Router();
 

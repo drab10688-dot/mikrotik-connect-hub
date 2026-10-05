@@ -20,13 +20,9 @@ interface Props {
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Administrador",
-  user: "Operador",
-  secretary: "Asistente",
-  reseller: "Reseller",
+  user: "Técnico",
 };
 
-/** Secciones que el administrador del ISP nunca pierde (evita auto-bloqueo). */
-const ADMIN_LOCKED = ["dashboard", "usuarios", "roles"];
 
 /** Permisos individuales: parten del rol y lo anulan solo para ese usuario. */
 export const UserPermissionsDialog = ({ userId, userLabel, open, onOpenChange }: Props) => {
@@ -67,7 +63,8 @@ export const UserPermissionsDialog = ({ userId, userLabel, open, onOpenChange }:
   }, [base, userPerms]);
 
   const labels = base?.labels || {};
-  const locked = (section: string) => isSuperAdmin || (isAdmin && ADMIN_LOCKED.includes(section));
+  // Superadmin y admin del ISP tienen acceso total: no hay nada que limitar
+  const locked = (_section?: string) => isSuperAdmin || isAdmin;
 
   const toggle = (section: string, key: "can_view" | "can_edit", value: boolean) =>
     setPerms((prev) =>
@@ -124,6 +121,8 @@ export const UserPermissionsDialog = ({ userId, userLabel, open, onOpenChange }:
           <DialogDescription>
             {isSuperAdmin
               ? "Los super administradores tienen acceso total y no se pueden limitar."
+              : isAdmin
+              ? "El administrador del ISP tiene acceso total. Los permisos solo se ajustan a técnicos."
               : userPerms?.has_overrides
               ? "Este usuario tiene permisos individuales que anulan los de su rol."
               : "Mostrando los permisos heredados del rol. Al guardar se crearán permisos individuales para este usuario."}
@@ -171,12 +170,12 @@ export const UserPermissionsDialog = ({ userId, userLabel, open, onOpenChange }:
           <Button
             variant="outline"
             onClick={() => reset.mutate()}
-            disabled={reset.isPending || !userId || isSuperAdmin}
+            disabled={reset.isPending || !userId || locked()}
           >
             <RotateCcw className="mr-2 h-4 w-4" />
             {reset.isPending ? "Restableciendo…" : "Heredar del rol"}
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending || !userId || isSuperAdmin}>
+          <Button onClick={() => save.mutate()} disabled={save.isPending || !userId || locked()}>
             <Save className="mr-2 h-4 w-4" />
             {save.isPending ? "Guardando…" : "Guardar permisos"}
           </Button>

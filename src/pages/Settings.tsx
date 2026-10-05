@@ -46,22 +46,19 @@ const statusBadge = (ok: boolean | null) => {
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { user, isSuperAdmin, isAdmin, isSecretary } = useAuth();
+  const { user, isSuperAdmin, isAdmin } = useAuth();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [diagnosticResult, setDiagnosticResult] = useState<ConnectionDiagnosticResult | null>(null);
 
   useEffect(() => { cleanupLegacyStorage(); }, []);
 
   const { data: devices, isLoading } = useQuery({
-    queryKey: ['mikrotik-devices-select', user?.id, isSecretary],
+    queryKey: ['mikrotik-devices-select', user?.id],
     queryFn: async () => {
-      if (isSecretary) {
-        return await devicesApi.list();
-      }
+      // La API ya devuelve solo los routers visibles: admin = todos los de su ISP,
+      // técnico = los que tiene asignados.
       const allDevices = await devicesApi.list();
-      if (isSuperAdmin) return allDevices.filter((d: any) => d.status === 'active');
-      if (isAdmin) return allDevices.filter((d: any) => d.status === 'active');
-      return allDevices.filter((d: any) => d.created_by === user?.id && ['active', 'pending'].includes(d.status));
+      return allDevices.filter((d: any) => d.status === 'active');
     },
     enabled: !!user,
   });
@@ -152,7 +149,7 @@ export default function Settings() {
         <div className="max-w-2xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <div><h1 className="text-3xl font-bold">Configuración</h1><p className="text-muted-foreground">Selecciona el dispositivo MikroTik</p></div>
-            {!isSecretary && <AddDeviceDialog />}
+            {isAdmin && <AddDeviceDialog />}
           </div>
           <Card>
             <CardHeader>
@@ -179,7 +176,7 @@ export default function Settings() {
                     const device = devices.find((d: any) => d.id === selectedDevice);
                     return device ? (
                        <div className="p-4 bg-muted rounded-lg space-y-2">
-                         <div className="flex items-center justify-between mb-3 pb-2 border-b"><span className="text-sm font-medium">Información del Dispositivo</span><EditDeviceDialog device={device} canDelete={isSuperAdmin || isAdmin} onDeleted={() => { setSelectedDevice(""); clearSelectedDevice(); }} /></div>
+                         <div className="flex items-center justify-between mb-3 pb-2 border-b"><span className="text-sm font-medium">Información del Dispositivo</span>{isAdmin && <EditDeviceDialog device={device} canDelete onDeleted={() => { setSelectedDevice(""); clearSelectedDevice(); }} />}</div>
                          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Host de conexión:</span><span className="font-medium">{device.host}</span></div>
                          {device.vpn_peer_name && <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5 text-primary" />Ruta:</span><span className="font-medium text-primary">{device.vpn_peer_name} · {device.vpn_peer_address?.split('/')[0]}</span></div>}
                          {device.l2tp_peer_name && <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5 text-primary" />Ruta:</span><span className="font-medium text-primary">L2TP · {device.l2tp_peer_name} ({device.l2tp_tunnel_ip})</span></div>}

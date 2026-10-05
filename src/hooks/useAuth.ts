@@ -6,7 +6,7 @@ interface VpsUser {
   id: string;
   email: string;
   full_name: string | null;
-  role: 'super_admin' | 'admin' | 'user' | 'reseller' | 'secretary';
+  role: 'super_admin' | 'admin' | 'user';
 }
 
 // Global session cache to avoid re-validating on every mount
@@ -88,8 +88,6 @@ export const useAuth = () => {
     signOut,
     isSuperAdmin: role === 'super_admin',
     isAdmin: role === 'admin' || role === 'super_admin',
-    isReseller: role === 'reseller',
-    isSecretary: role === 'secretary',
     isAuthenticated: !!user && !!getToken(),
   };
 };

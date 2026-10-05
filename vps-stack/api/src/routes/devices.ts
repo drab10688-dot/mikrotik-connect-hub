@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { connect as netConnect } from 'net';
 import { pool } from '../lib/db';
-import { AuthRequest, verifyDeviceAccess, requireRole } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, getAccessibleDeviceIds, requireRole } from '../middleware/auth';
 import { mikrotikRequest, mikrotikRequestWithFallback, testNativeApiLogin, isNativeApiPort } from '../lib/mikrotik';
 
 export const devicesRouter = Router();
@@ -100,7 +100,7 @@ const classifyMikrotikError = (error: unknown): ConnectionDiagnostic => {
 devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
   try {
     let query: string;
-    let params: string[];
+    let params: any[];
 
     if (req.userRole === 'super_admin') {
       query = `
@@ -118,13 +118,12 @@ devicesRouter.get('/', async (req: AuthRequest, res: Response) => {
         FROM mikrotik_devices md
         LEFT JOIN vpn_peers vp ON vp.mikrotik_id = md.id AND vp.is_active = true
         LEFT JOIN tenant_vpn_peers lp ON lp.id = md.l2tp_peer_id AND lp.is_active = true
-        WHERE md.status = 'active'::device_status AND (
-          EXISTS (SELECT 1 FROM user_mikrotik_access uma WHERE uma.mikrotik_id = md.id AND uma.user_id = $1)
-          OR EXISTS (SELECT 1 FROM secretary_assignments sa WHERE sa.secretary_id = $1 AND (sa.mikrotik_id = md.id OR (sa.mikrotik_id IS NULL AND sa.assigned_by = md.created_by)))
-          OR EXISTS (SELECT 1 FROM reseller_assignments ra WHERE ra.mikrotik_id = md.id AND ra.reseller_id = $1)
-        )
+        WHERE md.id = ANY($1::uuid[])
+          -- El admin también ve los desactivados (para reactivarlos); el técnico solo los activos.
+          AND ($2::boolean OR md.status = 'active'::device_status)
         ORDER BY md.name`;
-      params = [req.userId!];
+      // Admin del ISP: todos los routers de su ISP | técnico: solo los asignados
+      params = [(await getAccessibleDeviceIds(req)) || [], req.userRole === 'admin'];
     }
 
     const { rows } = await pool.query(query, params);
@@ -402,8 +401,8 @@ devicesRouter.post('/:id/connect/diagnose', async (req: AuthRequest, res: Respon
   }
 });
 
-// Add device (asistentes y resellers no pueden registrar dispositivos)
-devicesRouter.post('/', requireRole('super_admin', 'admin', 'user'), async (req: AuthRequest, res: Response) => {
+// Agregar router: solo administradores (el técnico usa los que se le asignan)
+devicesRouter.post('/', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { name, host, direct_host, port, username, password, version, latitude, longitude, hotspot_url, vpn_peer_id, l2tp_peer_id } = req.body;
     let selectedVpnPeer: { id: string; peer_address: string } | null = null;
@@ -576,7 +575,7 @@ devicesRouter.delete('/accesses/:accessId', async (req: AuthRequest, res: Respon
 });
 
 // Update device
-devicesRouter.put('/:id', async (req: AuthRequest, res: Response) => {
+devicesRouter.put('/:id', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
@@ -715,302 +714,5 @@ devicesRouter.delete('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ─── Reseller Assignments ─────────────────────
-devicesRouter.get('/:id/resellers', async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
-    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
-
-    const { rows } = await pool.query(
-      `SELECT ra.*, u.email, u.full_name
-       FROM reseller_assignments ra
-       LEFT JOIN users u ON u.id = ra.reseller_id
-       WHERE ra.mikrotik_id = $1`,
-      [id]
-    );
-    res.json({ data: rows });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-devicesRouter.post('/:id/resellers', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { reseller_id, commission_percentage } = req.body;
-
-    const { rows } = await pool.query(
-      `INSERT INTO reseller_assignments (reseller_id, mikrotik_id, assigned_by, commission_percentage)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [reseller_id, id, req.userId, commission_percentage || 0]
-    );
-    res.status(201).json({ data: rows[0] });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-devicesRouter.put('/resellers/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { assignmentId } = req.params;
-    const { commission_percentage } = req.body;
-    const { rows } = await pool.query(
-      'UPDATE reseller_assignments SET commission_percentage = $1 WHERE id = $2 RETURNING *',
-      [commission_percentage, assignmentId]
-    );
-    res.json({ data: rows[0] });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-devicesRouter.delete('/resellers/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { assignmentId } = req.params;
-    await pool.query('DELETE FROM reseller_assignments WHERE id = $1', [assignmentId]);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
-// ─── Columnas de permisos de asistentes ───────────────────
-// Instalaciones antiguas no tienen las columnas nuevas (RADIUS, ONU,
-// Configuración, Diagnóstico). Se crean al vuelo y se cachea la lista real
-// para no intentar escribir columnas inexistentes (eso rompía "Asignar").
-const SECRETARY_PERM_COLUMNS = [
-  'can_manage_pppoe','can_create_pppoe','can_edit_pppoe','can_delete_pppoe','can_disconnect_pppoe','can_toggle_pppoe',
-  'can_manage_queues','can_create_queues','can_edit_queues','can_delete_queues','can_toggle_queues','can_suspend_queues','can_reactivate_queues',
-  'can_manage_clients','can_create_clients','can_edit_clients','can_delete_clients',
-  'can_manage_payments','can_record_payments','can_view_payment_history','can_reactivate_services',
-  'can_manage_billing','can_create_invoices','can_edit_invoices','can_delete_invoices','can_send_invoices',
-  'can_manage_reports','can_view_reports_dashboard','can_export_reports',
-  'can_manage_hotspot','can_create_hotspot_users','can_edit_hotspot_users','can_delete_hotspot_users',
-  'can_manage_vouchers','can_sell_vouchers','can_print_vouchers','can_view_hotspot_accounting','can_view_hotspot_reports',
-  'can_manage_address_list','can_create_address_list','can_delete_address_list',
-  'can_manage_backup','can_create_backup','can_restore_backup',
-  'can_manage_vps_services','can_view_vps','can_manage_vps_docker',
-  'can_manage_radius','can_manage_radius_users','can_view_radius_stats',
-  'can_manage_onu','can_configure_onu_wifi','can_reboot_onu',
-  'can_manage_settings','can_manage_diagnostics',
-];
-
-let permColumnsCache: Set<string> | null = null;
-
-async function getSecretaryPermColumns(): Promise<Set<string>> {
-  if (permColumnsCache) return permColumnsCache;
-
-  for (const col of SECRETARY_PERM_COLUMNS) {
-    try {
-      await pool.query(
-        `ALTER TABLE secretary_assignments ADD COLUMN IF NOT EXISTS ${col} BOOLEAN DEFAULT true`
-      );
-    } catch (error) {
-      console.error(`⚠️ No se pudo crear la columna ${col}:`, error);
-    }
-  }
-
-  // El ON CONFLICT necesita el índice único; en instalaciones antiguas puede faltar.
-  try {
-    await pool.query(
-      `DELETE FROM secretary_assignments sa
-        WHERE sa.ctid <> (
-          SELECT max(b.ctid) FROM secretary_assignments b
-           WHERE b.secretary_id = sa.secretary_id
-             AND b.mikrotik_id IS NOT DISTINCT FROM sa.mikrotik_id
-        )`
-    );
-    await pool.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS secretary_assignments_secretary_mikrotik_key
-         ON secretary_assignments (secretary_id, mikrotik_id)`
-    );
-  } catch (error) {
-    console.error('⚠️ No se pudo crear el índice único de asignaciones:', error);
-  }
-
-
-
-  const { rows } = await pool.query(
-    `SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'secretary_assignments' AND column_name LIKE 'can\\_%'`
-  );
-  permColumnsCache = new Set(rows.map((r: any) => r.column_name));
-  return permColumnsCache;
-}
-
-// ─── Secretary Assignments ────────────────────
-devicesRouter.get('/my-secretary-assignments', async (req: AuthRequest, res: Response) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT sa.*,
-              md.id as "device_id", md.name as device_name, md.host, md.port, md.version, md.status as device_status,
-              CASE WHEN md.id IS NULL THEN NULL ELSE json_build_object(
-                'id', md.id, 'name', md.name, 'host', md.host,
-                'port', md.port, 'version', md.version, 'status', md.status
-              ) END as mikrotik_devices
-       FROM secretary_assignments sa
-       LEFT JOIN mikrotik_devices md ON md.id = sa.mikrotik_id
-       WHERE sa.secretary_id = $1`,
-      [req.userId]
-    );
-    res.json({ data: rows });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-devicesRouter.get('/:id/secretaries', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const isSuper = req.userRole === 'super_admin';
-
-    if (id === 'all') {
-      // El super admin ve todo dentro de su ISP; el global solo lo sin-ISP.
-      const { rows } = await pool.query(
-        isSuper
-          ? `SELECT sa.*, u.email, u.full_name
-             FROM secretary_assignments sa
-             LEFT JOIN users u ON u.id = sa.secretary_id
-             WHERE ($1::uuid IS NULL AND u.tenant_id IS NULL)
-                OR u.tenant_id = $1::uuid`
-          : `SELECT sa.*, u.email, u.full_name
-             FROM secretary_assignments sa
-             LEFT JOIN users u ON u.id = sa.secretary_id
-             WHERE sa.assigned_by = $1`,
-        isSuper ? [req.tenantId || null] : [req.userId]
-      );
-      return res.json({ data: rows });
-    }
-
-    const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, id);
-    if (!hasAccess) return res.status(403).json({ error: 'Sin acceso' });
-
-    const { rows } = await pool.query(
-      `SELECT sa.*, u.email, u.full_name
-       FROM secretary_assignments sa
-       LEFT JOIN users u ON u.id = sa.secretary_id
-       WHERE sa.mikrotik_id = $1 OR (sa.mikrotik_id IS NULL AND sa.assigned_by = $2)`,
-      [id, req.userId]
-    );
-    res.json({ data: rows });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-devicesRouter.post('/:id/secretaries', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { secretary_id, ...rest } = req.body || {};
-    if (!secretary_id) return res.status(400).json({ error: 'secretary_id requerido' });
-
-    // El usuario asignado debe tener rol de asistente (evita escalar privilegios)
-    const { rows: roleRows } = await pool.query(
-      `SELECT 1 FROM user_roles WHERE user_id = $1 AND role = 'secretary'::app_role LIMIT 1`,
-      [secretary_id]
-    );
-    if (roleRows.length === 0) {
-      return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de asistente' });
-    }
-
-    const mikrotikId = !id || id === 'all' || id === 'null' ? null : id;
-
-    if (mikrotikId) {
-      const hasAccess = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
-      if (!hasAccess) return res.status(403).json({ error: 'Sin acceso a este dispositivo' });
-    }
-
-    const validColumns = await getSecretaryPermColumns();
-    const permKeys = Object.keys(rest).filter(
-      (k) => /^can_[a-z0-9_]+$/.test(k) && validColumns.has(k)
-    );
-
-    // Una asignación global (mikrotik_id NULL) no la deduplica el UNIQUE de
-    // Postgres, así que se limpia antes para no crear filas repetidas.
-    if (!mikrotikId) {
-      await pool.query(
-        'DELETE FROM secretary_assignments WHERE secretary_id = $1 AND mikrotik_id IS NULL',
-        [secretary_id]
-      );
-    }
-
-    const columns = ['secretary_id', 'mikrotik_id', 'assigned_by', ...permKeys];
-    const values: any[] = [secretary_id, mikrotikId, req.userId, ...permKeys.map((k) => rest[k] === true)];
-    const placeholders = values.map((_, i) => `$${i + 1}`).join(',');
-    const updates = permKeys.map((k) => `${k} = EXCLUDED.${k}`).join(', ');
-
-    const { rows } = await pool.query(
-      `INSERT INTO secretary_assignments (${columns.join(', ')})
-       VALUES (${placeholders})
-       ON CONFLICT (secretary_id, mikrotik_id) DO UPDATE
-         SET assigned_by = EXCLUDED.assigned_by${updates ? `, ${updates}` : ''}
-       RETURNING *`,
-      values
-    );
-    res.status(201).json({ data: rows[0] });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
-devicesRouter.put('/secretaries/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { assignmentId } = req.params;
-    const fields = req.body;
-
-    const { rows: owner } = await pool.query(
-      'SELECT assigned_by FROM secretary_assignments WHERE id = $1',
-      [assignmentId]
-    );
-    if (!owner[0]) return res.status(404).json({ error: 'Asignación no encontrada' });
-    if (req.userRole !== 'super_admin' && owner[0].assigned_by !== req.userId) {
-      return res.status(403).json({ error: 'No puedes modificar esta asignación' });
-    }
-
-    const validColumns = await getSecretaryPermColumns();
-    const setClauses: string[] = [];
-    const values: any[] = [];
-    let i = 1;
-
-    for (const [key, value] of Object.entries(fields)) {
-      if (/^can_[a-z0-9_]+$/.test(key) && validColumns.has(key)) {
-        setClauses.push(`${key} = $${i}`);
-        values.push(value === true);
-        i++;
-      }
-    }
-
-    if (setClauses.length === 0) return res.status(400).json({ error: 'No fields to update' });
-
-    values.push(assignmentId);
-    const { rows } = await pool.query(
-      `UPDATE secretary_assignments SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
-      values
-    );
-    res.json({ data: rows[0] });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-devicesRouter.delete('/secretaries/:assignmentId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { assignmentId } = req.params;
-    const { rows: owner } = await pool.query(
-      'SELECT assigned_by FROM secretary_assignments WHERE id = $1',
-      [assignmentId]
-    );
-    if (!owner[0]) return res.json({ success: true });
-    if (req.userRole !== 'super_admin' && owner[0].assigned_by !== req.userId) {
-      return res.status(403).json({ error: 'No puedes eliminar esta asignación' });
-    }
-    await pool.query('DELETE FROM secretary_assignments WHERE id = $1', [assignmentId]);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// Las asignaciones de asistentes/revendedores (sistema anterior) se retiraron:
+// el técnico recibe routers por user_mikrotik_access (/devices/accesses).

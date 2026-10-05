@@ -14,6 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { apiGet, apiPost, apiDelete, apiPut } from '@/lib/api-client';
 import { UserPermissionsDialog } from '@/components/admin/UserPermissionsDialog';
 import { ShieldCheck } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function UsersAdmin() {
   const queryClient = useQueryClient();
@@ -21,6 +22,7 @@ export default function UsersAdmin() {
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [deviceToDelete, setDeviceToDelete] = useState<{ id: string; name: string } | null>(null);
   const [permUser, setPermUser] = useState<{ id: string; label: string } | null>(null);
+  const { isSuperAdmin } = useAuth();
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -189,8 +191,9 @@ export default function UsersAdmin() {
 
                       const isExpanded = expandedUsers.has(userId);
                       const userRole = user.user_roles?.[0]?.role || user.role;
-                      const allDevices = devices || [];
-                      const shouldShowDevices = allDevices.length > 0;
+                      // Solo el técnico recibe routers uno a uno (el admin ve todos los de su ISP)
+                      const allDevices = (devices || []).filter((d: any) => (d.tenant_id || null) === (user.tenant_id || null));
+                      const shouldShowDevices = userRole === "user" && allDevices.length > 0;
 
 
                       return (
@@ -209,11 +212,9 @@ export default function UsersAdmin() {
                               <Select value={userRole || 'user'} onValueChange={(value) => handleRoleChange(userId, value)}>
                                 <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="super_admin"><div className="flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Super Admin</div></SelectItem>
+                                  {isSuperAdmin && <SelectItem value="super_admin"><div className="flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Super Admin</div></SelectItem>}
                                   <SelectItem value="admin"><div className="flex items-center gap-2"><Shield className="h-4 w-4 text-blue-500" />Administrador</div></SelectItem>
-                                  <SelectItem value="user"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-green-500" />Operador</div></SelectItem>
-                                  <SelectItem value="secretary"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-amber-500" />Asistente</div></SelectItem>
-                                  <SelectItem value="reseller"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-purple-500" />Reseller</div></SelectItem>
+                                  <SelectItem value="user"><div className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-green-500" />Técnico</div></SelectItem>
 
                                 </SelectContent>
                               </Select>
@@ -239,7 +240,7 @@ export default function UsersAdmin() {
                             <TableRow>
                               <TableCell colSpan={6} className="bg-muted/50">
                                 <div className="p-4 space-y-2">
-                                  <h4 className="font-semibold text-sm mb-3">Acceso a Dispositivos</h4>
+                                  <h4 className="font-semibold text-sm mb-3">Routers asignados a este técnico</h4>
                                   <div className="grid gap-2">
                                     {allDevices.map((device: any) => {
                                       const hasAccess = getUserDeviceAccess(userId, device.id);
@@ -307,7 +308,6 @@ export default function UsersAdmin() {
               Esta acción:
               <ul className="list-disc list-inside mt-2 space-y-1">
                 <li>Eliminará todos los accesos de usuarios a este dispositivo</li>
-                <li>Eliminará todos los vouchers asociados</li>
                 <li>No se puede deshacer</li>
               </ul>
             </AlertDialogDescription>

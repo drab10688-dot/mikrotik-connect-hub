@@ -10,10 +10,12 @@ import { tenantOnuQuota } from '../lib/acs-tenant';
 export const ispRouter = Router();
 export const ispPublicRouter = Router();
 
+/**
+ * Secciones que el admin del ISP puede dar o quitar a sus técnicos.
+ * Usuarios, roles, respaldos y correo no están aquí: son solo de administradores.
+ */
 export const SECTIONS = [
-  'dashboard',
   'onus',
-  'onu_web',
   'mikrotik',
   'pppoe',
   'topology',
@@ -21,17 +23,11 @@ export const SECTIONS = [
   'vpn',
   'configuracion',
   'diagnostico',
-  'usuarios',
-  'roles',
-  'correo',
-  'respaldos',
 ] as const;
 export type Section = (typeof SECTIONS)[number];
 
 export const SECTION_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
   onus: 'Gestion de ONUs',
-  onu_web: 'Mini-panel de equipos',
   mikrotik: 'Conexion MikroTik',
   pppoe: 'Usuarios PPPoE',
   topology: 'Mapa de red',
@@ -39,34 +35,26 @@ export const SECTION_LABELS: Record<string, string> = {
   vpn: 'Credenciales y VPN',
   configuracion: 'Configuracion',
   diagnostico: 'Diagnostico API',
-  usuarios: 'Usuarios',
-  roles: 'Roles y permisos',
-  correo: 'Correo (SMTP)',
-  respaldos: 'Copias de seguridad',
 };
-
-export type RoleName = 'admin' | 'user' | 'secretary' | 'reseller';
-export const ROLE_NAMES: RoleName[] = ['admin', 'user', 'secretary', 'reseller'];
 
 /**
- * Permisos por defecto que recibe cada ISP nuevo.
- * view = ver la seccion | edit = puede modificar.
+ * Roles: super_admin (todo), admin (todo su ISP) y user = Técnico, el único
+ * rol con matriz de permisos. Sus routers se asignan uno a uno
+ * (user_mikrotik_access).
  */
+export type RoleName = 'user';
+export const ROLE_NAMES: RoleName[] = ['user'];
+
+/** Permisos por defecto del técnico en cada ISP nuevo (view = ver | edit = modificar). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, { view: string[]; edit: string[] }> = {
-  admin: { view: [...SECTIONS], edit: [...SECTIONS] },
   user: {
-    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'pppoe', 'topology', 'red', 'vpn', 'diagnostico'],
-    edit: ['onus', 'onu_web', 'pppoe', 'red'],
-  },
-  secretary: {
-    view: ['dashboard', 'onus', 'onu_web', 'mikrotik', 'pppoe', 'topology', 'red'],
-    edit: ['onus'],
-  },
-  reseller: {
-    view: ['dashboard', 'onus', 'topology'],
-    edit: [],
+    view: ['onus', 'mikrotik', 'pppoe', 'topology', 'red', 'vpn', 'diagnostico'],
+    edit: ['onus', 'pppoe', 'red'],
   },
 };
+
+/** Métodos HTTP que solo consultan: el resto exige "editar". */
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /** Crea la matriz de permisos por defecto de un ISP (idempotente). */
 export async function seedTenantPermissions(db: { query: Function }, tenantId: string) {
@@ -185,7 +173,7 @@ ispPublicRouter.get('/tr069/:token', async (req: Request, res: Response) => {
 });
 
 // ─── ACS: datos TR-069 del ISP ──────────────────────────────
-ispRouter.get('/acs', async (req: AuthRequest, res: Response) => {
+ispRouter.get('/acs', requireSection('vpn'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
   const quota = await tenantOnuQuota(tenant.id).catch(() => null);
@@ -241,59 +229,51 @@ ispRouter.put('/acs/credentials', requireRole('super_admin', 'admin'), async (re
 });
 
 // ─── Permisos por rol y sección ─────────────────────────────
-ispRouter.get('/permissions', async (req: AuthRequest, res: Response) => {
+const SECTION_LIST: readonly string[] = SECTIONS;
+const onlySections = <T extends { section: string }>(rows: T[]) => rows.filter((r) => SECTION_LIST.includes(r.section));
+
+ispRouter.get('/permissions', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
-  let { rows } = await pool.query(
-    `SELECT role, section, can_view, can_edit FROM role_permissions WHERE tenant_id = $1`,
-    [tenant.id]
+  const load = () => pool.query(
+    `SELECT role, section, can_view, can_edit FROM role_permissions WHERE tenant_id = $1 AND role = ANY($2)`,
+    [tenant.id, ROLE_NAMES]
   );
-  // ISP sin matriz de permisos (recien creado o migrado): sembrar defaults.
-  if (!rows.length) {
+  let { rows } = await load();
+  // Siembra lo que falte (ISP nuevo o sección nueva); no toca lo ya guardado.
+  if (rows.length < SECTIONS.length * ROLE_NAMES.length) {
     await seedTenantPermissions(pool, tenant.id).catch(() => undefined);
-    ({ rows } = await pool.query(
-      `SELECT role, section, can_view, can_edit FROM role_permissions WHERE tenant_id = $1`,
-      [tenant.id]
-    ));
+    ({ rows } = await load());
   }
-  res.json({ data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: rows } });
+  res.json({ data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: onlySections(rows) } });
 });
 
 /** Permisos efectivos del usuario autenticado (rol + anulaciones individuales). */
 ispRouter.get('/my-permissions', async (req: AuthRequest, res: Response) => {
   const empty = { sections: SECTIONS, labels: SECTION_LABELS, permissions: [] as any[], full_access: false };
   try {
-    if (req.userRole === 'super_admin' || !req.tenantId) {
+    // Superadmin y admin del ISP: acceso total (los módulos del ISP siguen aplicando).
+    if (req.userRole === 'super_admin' || req.userRole === 'admin' || !req.tenantId) {
       return res.json({ data: { ...empty, full_access: true } });
     }
-    const { rows: rolePerms } = await pool.query(
+    const rolePerms = async () => (await pool.query(
       `SELECT section, can_view, can_edit FROM role_permissions
-        WHERE tenant_id = $1 AND role = $2`,
-      [req.tenantId, req.userRole]
-    );
-    if (!rolePerms.length) {
+        WHERE tenant_id = $1 AND role = 'user'`,
+      [req.tenantId]
+    )).rows;
+    let fresh = await rolePerms();
+    if (fresh.length < SECTIONS.length) {
       await seedTenantPermissions(pool, req.tenantId).catch(() => undefined);
+      fresh = await rolePerms();
     }
-    const { rows: fresh } = await pool.query(
-      `SELECT section, can_view, can_edit FROM role_permissions
-        WHERE tenant_id = $1 AND role = $2`,
-      [req.tenantId, req.userRole]
-    );
     const { rows: own } = await pool.query(
       `SELECT section, can_view, can_edit FROM user_permissions
         WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
       [req.userId, req.tenantId]
     );
     const map = new Map<string, any>();
-    for (const p of fresh) map.set(p.section, { ...p });
-    for (const p of own) map.set(p.section, { ...p });
-    // El administrador del ISP siempre conserva la administración de su ISP:
-    // así nunca puede dejarse fuera al desactivar interruptores por error.
-    if (req.userRole === 'admin') {
-      for (const section of ['dashboard', 'usuarios', 'roles'] as const) {
-        map.set(section, { section, can_view: true, can_edit: true });
-      }
-    }
+    for (const p of onlySections(fresh)) map.set(p.section, { ...p });
+    for (const p of onlySections(own)) map.set(p.section, { ...p });
     res.json({
       data: { sections: SECTIONS, labels: SECTION_LABELS, permissions: [...map.values()], full_access: false },
     });
@@ -302,6 +282,28 @@ ispRouter.get('/my-permissions', async (req: AuthRequest, res: Response) => {
     res.json({ data: { ...empty, full_access: true } });
   }
 });
+
+/**
+ * ISP del usuario cuyos permisos se editan. El admin solo puede tocar usuarios
+ * de su propio ISP (antes se usaba el ISP de quien editaba, sin comprobarlo).
+ */
+async function targetUserTenant(req: AuthRequest, res: Response): Promise<{ tenantId: string; role: string } | null> {
+  const { rows } = await pool.query(
+    `SELECT u.tenant_id,
+            (SELECT ur.role::text FROM user_roles ur WHERE ur.user_id = u.id
+              ORDER BY CASE ur.role::text WHEN 'super_admin' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END LIMIT 1) AS role
+       FROM users u WHERE u.id = $1`,
+    [req.params.userId]
+  );
+  const u = rows[0];
+  if (!u) { res.status(404).json({ error: 'Usuario no encontrado' }); return null; }
+  if (req.userRole !== 'super_admin' && u.tenant_id !== req.tenantId) {
+    res.status(403).json({ error: 'Ese usuario no pertenece a tu ISP' });
+    return null;
+  }
+  if (!u.tenant_id) { res.status(400).json({ error: 'El usuario no pertenece a ningún ISP' }); return null; }
+  return { tenantId: u.tenant_id, role: u.role || 'user' };
+}
 
 ispRouter.put('/permissions', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
@@ -335,48 +337,42 @@ ispRouter.put('/permissions', requireRole('super_admin', 'admin'), async (req: A
 
 // ─── Permisos individuales por usuario (anulan los del rol) ─
 ispRouter.get('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const tenant = await ensureTenant(req, res);
-  if (!tenant) return;
-
-  // Rol del usuario dentro del ISP (base heredada)
-  const { rows: roleRows } = await pool.query(
-    `SELECT ur.role::text AS role FROM user_roles ur WHERE ur.user_id = $1 LIMIT 1`,
-    [req.params.userId]
-  );
-  const userRole = roleRows[0]?.role || 'user';
+  const target = await targetUserTenant(req, res);
+  if (!target) return;
 
   const { rows: rolePerms } = await pool.query(
     `SELECT section, can_view, can_edit FROM role_permissions
-      WHERE tenant_id = $1 AND role = $2`,
-    [tenant.id, userRole]
+      WHERE tenant_id = $1 AND role = 'user'`,
+    [target.tenantId]
   );
 
   const { rows } = await pool.query(
     `SELECT section, can_view, can_edit FROM user_permissions
       WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
-    [req.params.userId, tenant.id]
+    [req.params.userId, target.tenantId]
   );
+  const own = onlySections(rows);
 
   res.json({
     data: {
       sections: SECTIONS,
       labels: SECTION_LABELS,
-      role: userRole,
-      role_permissions: rolePerms,
-      permissions: rows,
-      has_overrides: rows.length > 0,
+      role: target.role,
+      role_permissions: onlySections(rolePerms),
+      permissions: own,
+      has_overrides: own.length > 0,
     },
   });
 });
 
 /** Quita las anulaciones individuales: el usuario vuelve a heredar su rol. */
 ispRouter.delete('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const tenant = await ensureTenant(req, res);
-  if (!tenant) return;
+  const target = await targetUserTenant(req, res);
+  if (!target) return;
   try {
     await pool.query(
       `DELETE FROM user_permissions WHERE user_id = $1 AND (tenant_id IS NULL OR tenant_id = $2)`,
-      [req.params.userId, tenant.id]
+      [req.params.userId, target.tenantId]
     );
     res.json({ success: true });
   } catch (error: any) {
@@ -386,8 +382,9 @@ ispRouter.delete('/user-permissions/:userId', requireRole('super_admin', 'admin'
 
 
 ispRouter.put('/user-permissions/:userId', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const tenant = await ensureTenant(req, res);
-  if (!tenant) return;
+  const target = await targetUserTenant(req, res);
+  if (!target) return;
+  const tenant = { id: target.tenantId };
   const items = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
   const client = await pool.connect();
   try {
@@ -413,11 +410,23 @@ ispRouter.put('/user-permissions/:userId', requireRole('super_admin', 'admin'), 
   }
 });
 
-/** Middleware: exige permiso de sección (super_admin siempre pasa). */
-export function requireSection(section: Section, edit = false) {
+/** POST que solo leen del equipo ("Leer parámetros", diagnósticos, señal). */
+const READ_ACTIONS = /\/(refresh(-[a-z]+)?|diagnostics|signal-collect\/[^/]+|acs-signal\/collect)$/;
+
+/**
+ * Middleware: exige permiso de sección. Superadmin y admin del ISP pasan
+ * siempre. Para el técnico, modo 'auto': consultar exige "ver" y modificar
+ * exige "editar"; 'view' / 'edit' fuerzan uno de los dos.
+ */
+export function requireSection(section: Section, mode: 'auto' | 'view' | 'edit' = 'auto') {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (req.userRole === 'super_admin') return next();
+    if (req.userRole === 'super_admin' || req.userRole === 'admin') return next();
     if (!req.tenantId) return next(); // instalación sin multi-ISP
+    const edit = mode === 'edit'
+      || (mode === 'auto' && !READ_METHODS.has(req.method) && !READ_ACTIONS.test(req.path));
+    const deny = () => res.status(403).json({
+      error: edit ? `No tienes permiso para modificar ${SECTION_LABELS[section] || section}` : `Sin permiso para ${SECTION_LABELS[section] || section}`,
+    });
     try {
       // 1) Permiso individual del usuario (tiene prioridad)
       const { rows: own } = await pool.query(
@@ -425,21 +434,16 @@ export function requireSection(section: Section, edit = false) {
           WHERE user_id = $1 AND section = $2 LIMIT 1`,
         [req.userId, section]
       ).catch(() => ({ rows: [] as any[] }) as any);
-      if (own[0]) {
-        if (edit ? own[0].can_edit : own[0].can_view) return next();
-        return res.status(403).json({ error: `Sin permiso para ${section}` });
-      }
+      if (own[0]) return (edit ? own[0].can_edit : own[0].can_view) ? next() : deny();
 
-      // 2) Permiso del rol dentro del ISP
+      // 2) Permiso del rol técnico dentro del ISP
       const { rows } = await pool.query(
         `SELECT can_view, can_edit FROM role_permissions
-         WHERE tenant_id = $1 AND role = $2 AND section = $3 LIMIT 1`,
-        [req.tenantId, req.userRole, section]
+         WHERE tenant_id = $1 AND role = 'user' AND section = $2 LIMIT 1`,
+        [req.tenantId, section]
       );
       const perm = rows[0];
-      if (!perm) return res.status(403).json({ error: `Sin permiso para ${section}` });
-      if (edit ? perm.can_edit : perm.can_view) return next();
-      return res.status(403).json({ error: `Sin permiso para ${section}` });
+      return perm && (edit ? perm.can_edit : perm.can_view) ? next() : deny();
     } catch {
       return next(); // tabla ausente: no romper instalaciones antiguas
     }
@@ -474,7 +478,7 @@ export function requireModule(column: 'enable_tr069' | 'enable_onu_web' | 'enabl
 }
 
 // ─── VPN del ISP: peer + script RouterOS listo para pegar ───
-ispRouter.get('/vpn', async (req: AuthRequest, res: Response) => {
+ispRouter.get('/vpn', requireSection('vpn'), async (req: AuthRequest, res: Response) => {
   const tenant = await ensureTenant(req, res);
   if (!tenant) return;
   const { rows } = await pool.query(

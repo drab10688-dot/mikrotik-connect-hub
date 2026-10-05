@@ -11,17 +11,17 @@ import { KeyRound, Eye, Pencil, ShieldCheck, RotateCcw, Save } from "lucide-reac
 
 type Perm = { role: string; section: string; can_view: boolean; can_edit: boolean };
 
+/** El administrador del ISP tiene acceso total; solo el técnico tiene matriz. */
 const ROLES: { id: string; label: string; desc: string }[] = [
-  { id: "admin", label: "Administrador", desc: "Control total del ISP" },
-  { id: "user", label: "Operador", desc: "Operación diaria de red y ONUs" },
-  { id: "secretary", label: "Asistente", desc: "Atención al cliente y soporte básico" },
-  { id: "reseller", label: "Reseller", desc: "Solo consulta de su cartera" },
+  {
+    id: "user",
+    label: "Técnico",
+    desc: "Qué puede ver y modificar cada técnico. Los routers de cada uno se asignan en Usuarios.",
+  },
 ];
 
 const FALLBACK_LABELS: Record<string, string> = {
-  dashboard: "Dashboard",
   onus: "Gestión de ONUs",
-  onu_web: "Mini-panel de equipos",
   mikrotik: "Conexión MikroTik",
   pppoe: "Usuarios PPPoE",
   topology: "Mapa de red",
@@ -29,14 +29,11 @@ const FALLBACK_LABELS: Record<string, string> = {
   vpn: "Credenciales y VPN",
   configuracion: "Configuración",
   diagnostico: "Diagnóstico API",
-  usuarios: "Usuarios",
-  roles: "Roles y permisos",
 };
 
 const GROUPS: { title: string; sections: string[] }[] = [
-  { title: "Operación", sections: ["dashboard", "onus", "mikrotik", "pppoe", "topology", "red"] },
+  { title: "Operación", sections: ["onus", "mikrotik", "pppoe", "topology", "red"] },
   { title: "Infraestructura", sections: ["vpn", "configuracion", "diagnostico"] },
-  { title: "Administración", sections: ["usuarios", "roles"] },
 ];
 
 const Permissions = () => {
@@ -119,7 +116,8 @@ const Permissions = () => {
             <div>
               <h1 className="text-xl font-bold tracking-tight md:text-2xl">Roles y permisos del ISP</h1>
               <p className="text-sm text-muted-foreground">
-                Define qué puede ver y editar cada rol. Se aplica a todos los usuarios de este ISP.
+                El administrador del ISP tiene acceso total. Aquí defines qué puede ver y editar el
+                técnico; en Usuarios → Permisos puedes ajustarlo para un técnico en particular.
               </p>
             </div>
           </div>
@@ -216,9 +214,9 @@ const Permissions = () => {
 
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/50 px-4 py-3 text-xs text-muted-foreground backdrop-blur">
           <span className="flex items-center gap-2">
-            <Eye className="h-3.5 w-3.5" /> Ver = acceso de lectura
+            <Eye className="h-3.5 w-3.5" /> Ver = consultar (incluye leer parámetros y diagnósticos)
             <span className="mx-2 opacity-40">|</span>
-            <Pencil className="h-3.5 w-3.5" /> Editar = puede aplicar cambios
+            <Pencil className="h-3.5 w-3.5" /> Editar = aplicar cambios en los equipos
           </span>
           <Button onClick={() => save.mutate()} disabled={save.isPending} size="sm">
             {save.isPending ? "Guardando…" : "Guardar"}
