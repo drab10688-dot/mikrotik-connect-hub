@@ -15,7 +15,7 @@ import { linkApClients, pppoeSessions, saveApLink, deleteApLink, normMac } from 
  * antes de leer su señal. Sin esto la lectura falla con EHOSTUNREACH aunque
  * la VPN esté conectada y las credenciales sean correctas.
  */
-async function ensureApRoute(mikrotikId: string, tenantId: string | null | undefined, ip: string): Promise<void> {
+export async function ensureApRoute(mikrotikId: string, tenantId: string | null | undefined, ip: string): Promise<void> {
   try {
     let tId = tenantId ?? null;
     if (!tId) {
@@ -44,7 +44,7 @@ async function ensureApRoute(mikrotikId: string, tenantId: string | null | undef
  * Devuelve al instante el último resultado conocido y refresca en segundo plano,
  * para que las tablas no queden vacías cuando la VPN responde lento.
  */
-async function mtCached(mikrotikId: string, path: string, ttlMs = 20000): Promise<any> {
+export async function mtCached(mikrotikId: string, path: string, ttlMs = 20000): Promise<any> {
   const key = `net:${mikrotikId}:${path}`;
   const loader = async () => {
     const config = await getDeviceConfig(pool, mikrotikId);
@@ -106,7 +106,7 @@ export function detectBrand(entry: Record<string, any>): string {
   return 'otro';
 }
 
-async function tenantWebPorts(tenantId?: string | null) {
+export async function tenantWebPorts(tenantId?: string | null) {
   const ports = { ...DEFAULT_WEB_PORTS };
   if (!tenantId) return ports;
   try {
@@ -144,7 +144,7 @@ const AP_COLS = `id, ip, name, brand, username, password, port, protocol, access
                  sector, mikrotik_id, mac, role, tower`;
 
 /** "aabbccddeeff" → "AA:BB:CC:DD:EE:FF" (para mostrar y guardar). */
-function formatMac(mac?: string | null): string | null {
+export function formatMac(mac?: string | null): string | null {
   const hex = normalizeMac(mac || '');
   return hex.length === 12 ? hex.match(/../g)!.join(':') : null;
 }
@@ -442,14 +442,16 @@ async function autoReadAp(
   return { ip, brand, port: cfg.port, protocol: cfg.protocol, ok: false as const, clients: [] as any[], error: lastError };
 }
 
-netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Response) => {
-  try {
-    const mikrotikId = await guard(req, res);
-    if (!mikrotikId) return;
-
-    const data = await swr(
-      `aps-auto:${mikrotikId}:${req.tenantId ?? 'global'}`,
+/**
+ * APs detectados en una sede con sus clientes wireless (caché 60 s). Lo usan
+ * la pestaña APs / Señal y la lista de antenas cliente. Devuelve una copia con
+ * el cliente PPPoE de cada estación (`cl.pppoe`).
+ */
+export async function apsWithPppoe(tenantId: string | null | undefined, mikrotikId: string): Promise<any> {
+  const data = await swr(
+      `aps-auto:${mikrotikId}:${tenantId ?? 'global'}`,
       async () => {
+        const req = { tenantId };
         const ports = await tenantWebPorts(req.tenantId);
         const [neighborsRaw, arpRaw, leasesRaw, savedRows] = await Promise.all([
           mtCached(mikrotikId, '/rest/ip/neighbor', 60000),
@@ -527,20 +529,26 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
       { ttlMs: 60000 }
     );
 
-    // Cliente PPPoE de cada estación wireless (sobre una copia: `data` es caché).
-    const out = JSON.parse(JSON.stringify(data));
-    try {
-      const [activeRaw, secretsRaw] = await Promise.all([
-        mtCached(mikrotikId, '/rest/ppp/active', 10000),
-        mtCached(mikrotikId, '/rest/ppp/secret'),
-      ]);
-      const { active, comments } = pppoeSessions(asArray(activeRaw), asArray(secretsRaw));
-      await linkApClients(mikrotikId, out.aps || [], active, comments, Number(out.read_at) || Date.now());
-    } catch (e: any) {
-      out.pppoe_error = e?.message || 'No se pudo leer PPPoE';
-    }
+  // Cliente PPPoE de cada estación wireless (sobre una copia: `data` es caché).
+  const out = JSON.parse(JSON.stringify(data));
+  try {
+    const [activeRaw, secretsRaw] = await Promise.all([
+      mtCached(mikrotikId, '/rest/ppp/active', 10000),
+      mtCached(mikrotikId, '/rest/ppp/secret'),
+    ]);
+    const { active, comments } = pppoeSessions(asArray(activeRaw), asArray(secretsRaw));
+    await linkApClients(mikrotikId, out.aps || [], active, comments, Number(out.read_at) || Date.now());
+  } catch (e: any) {
+    out.pppoe_error = e?.message || 'No se pudo leer PPPoE';
+  }
+  return out;
+}
 
-    res.json({ success: true, data: out });
+netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    res.json({ success: true, data: await apsWithPppoe(req.tenantId, mikrotikId) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

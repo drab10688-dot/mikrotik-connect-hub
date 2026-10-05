@@ -263,6 +263,62 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS tower TEXT`,
     `CREATE INDEX IF NOT EXISTS ap_credentials_device_idx ON ap_credentials(tenant_id, mikrotik_id)`,
 
+    // Antenas de los clientes (CPE en modo router) por sede
+    // Credenciales por sede y marca: varias claves posibles, se prueban en orden
+    `CREATE TABLE IF NOT EXISTS cpe_credentials (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+       brand TEXT NOT NULL,
+       username TEXT NOT NULL,
+       passwords TEXT[] NOT NULL DEFAULT '{}',
+       ssh_port INTEGER NOT NULL DEFAULT 22,
+       updated_at TIMESTAMPTZ DEFAULT now(),
+       UNIQUE (mikrotik_id, brand)
+     )`,
+    // Puerto de la API de RouterOS en las antenas MikroTik de la sede (8728 de fábrica)
+    `ALTER TABLE cpe_credentials ADD COLUMN IF NOT EXISTS api_port INTEGER NOT NULL DEFAULT 8728`,
+    // Lo aprendido de cada antena (por MAC): marca, modelo y qué clave entró
+    `CREATE TABLE IF NOT EXISTS cpe_devices (
+       mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+       mac TEXT NOT NULL,
+       ip TEXT,
+       pppoe_user TEXT,
+       brand TEXT,
+       model TEXT,
+       version TEXT,
+       login_hash TEXT,
+       last_ok_at TIMESTAMPTZ,
+       last_error TEXT,
+       updated_at TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (mikrotik_id, mac)
+     )`,
+    // Copia de la configuración antes de cada cambio (se guardan las 3 últimas)
+    `CREATE TABLE IF NOT EXISTS cpe_backups (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+       mac TEXT NOT NULL,
+       ip TEXT,
+       pppoe_user TEXT,
+       brand TEXT,
+       content TEXT NOT NULL,
+       created_at TIMESTAMPTZ DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS cpe_backups_idx ON cpe_backups(mikrotik_id, mac, created_at DESC)`,
+    // Registro de cambios en lote: quién, qué y resultado por antena (sin claves)
+    `CREATE TABLE IF NOT EXISTS cpe_jobs (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+       mikrotik_id UUID NOT NULL REFERENCES mikrotik_devices(id) ON DELETE CASCADE,
+       user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+       action TEXT NOT NULL,
+       status TEXT NOT NULL DEFAULT 'running',
+       results JSONB NOT NULL DEFAULT '[]',
+       created_at TIMESTAMPTZ DEFAULT now(),
+       finished_at TIMESTAMPTZ
+     )`,
+    `CREATE INDEX IF NOT EXISTS cpe_jobs_idx ON cpe_jobs(mikrotik_id, created_at DESC)`,
+
     // Servidor de correo (SMTP): tenant_id NULL = configuración global del sistema
     `CREATE TABLE IF NOT EXISTS smtp_settings (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

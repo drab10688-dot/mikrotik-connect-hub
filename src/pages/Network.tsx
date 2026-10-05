@@ -17,6 +17,7 @@ import {
   AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown, Pencil,
 } from "lucide-react";
 import { ApSignalDialog, type ApTargetInfo } from "@/components/network/ApSignalDialog";
+import { CpePanel } from "@/components/network/CpePanel";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 import { usePagedSearch } from "@/hooks/use-paged-search";
 import { SearchBox, Pager } from "@/components/common/SearchPager";
@@ -534,6 +535,7 @@ export default function Network() {
             <TabsTrigger value="desconexiones"><Activity className="w-4 h-4 mr-2" />Desconexiones</TabsTrigger>
             <TabsTrigger value="equipos"><Antenna className="w-4 h-4 mr-2" />Equipos / Antenas</TabsTrigger>
             <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>
+            <TabsTrigger value="cpes"><Antenna className="w-4 h-4 mr-2" />Antenas cliente</TabsTrigger>
             <TabsTrigger value="cableado"><Cable className="w-4 h-4 mr-2" />Cableado LAN</TabsTrigger>
             <TabsTrigger value="puertos"><Wifi className="w-4 h-4 mr-2" />Puertos web</TabsTrigger>
           </TabsList>
@@ -1268,6 +1270,11 @@ export default function Network() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ─── Antenas de clientes: acceso por SSH y cambios en lote ─── */}
+          <TabsContent value="cpes" className="mt-4">
+            {deviceId ? <CpePanel deviceId={deviceId} /> : <p className="text-sm text-muted-foreground">Selecciona un MikroTik.</p>}
           </TabsContent>
 
           {/* ─── Cableado LAN ─── */}

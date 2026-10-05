@@ -21,6 +21,7 @@ import { mailRouter } from './routes/mail';
 import { backupRouter, runScheduledBackups } from './routes/backup';
 import { sslRouter, renewSslIfNeeded } from './routes/ssl';
 import { securityRouter } from './routes/security';
+import { cpeRouter } from './routes/cpe';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -72,6 +73,8 @@ app.get('/api/browser-authz', authorizeBrowserAccess);
 // Escritorio PRIVADO por usuario: valida el token y enruta al contenedor propio
 app.get('/api/browser-authz-vnc', authorizeUserVnc);
 app.use('/api/browser', authMiddleware, requireSection('red', 'view'), browserRouter);
+// Antenas de clientes por sede (credenciales, señal y cambios en lote por SSH)
+app.use('/api/cpe', authMiddleware, requireSection('red', 'view'), requireModule('enable_mikrotik'), cpeRouter);
 app.use('/api/vpn', authMiddleware, requireSection('vpn'), vpnRouter);
 // Servidor de correo (SMTP) y copias de seguridad por ISP / del sistema
 app.use('/api/mail', authMiddleware, requireRole('super_admin', 'admin'), mailRouter);

@@ -291,6 +291,18 @@ export const sslApi = {
     unwrapData<any>(await apiPost<any>('/ssl/issue', { domain, email })),
 };
 
+// ─── Antenas de clientes por sede (SSH) ─────────
+export const cpeApi = {
+  credentials: async (mikrotikId: string) => unwrapArray<any>(await apiGet<any>(`/cpe/${mikrotikId}/credentials`)),
+  saveCredentials: async (mikrotikId: string, data: { brand: string; username: string; ssh_port?: number; api_port?: number; add_password?: string; clear_passwords?: boolean }) =>
+    apiPut<any>(`/cpe/${mikrotikId}/credentials`, data),
+  list: async (mikrotikId: string) => unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/cpes`)),
+  startJob: async (mikrotikId: string, body: { action: string; targets: any[]; new_password?: string; allow_from?: string; webfig_port?: number }) =>
+    unwrapData<any>(await apiPost<any>(`/cpe/${mikrotikId}/jobs`, body)),
+  job: async (mikrotikId: string, jobId: string) => unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/jobs/${jobId}`)),
+  jobs: async (mikrotikId: string) => unwrapArray<any>(await apiGet<any>(`/cpe/${mikrotikId}/jobs`)),
+};
+
 // ─── Seguridad del servidor (fail2ban SSH, solo superadmin) ─────────
 export const securityApi = {
   fail2ban: async () => unwrapData<any>(await apiGet<any>('/security/fail2ban')),

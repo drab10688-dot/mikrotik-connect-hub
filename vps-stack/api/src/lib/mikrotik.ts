@@ -30,7 +30,7 @@ const AUTH_COOLDOWN_MS = 60_000;
 const nativeApiQueues = new Map<string, Promise<void>>();
 
 
-function isAuthenticationError(error: Error): boolean {
+export function isAuthenticationError(error: Error): boolean {
   return /login failed|invalid user|invalid password|authentication failed|not logged in|cannot log in/i.test(error.message);
 }
 
@@ -725,6 +725,20 @@ export function testNativeApiLogin(
 }
 
 /** Check if a port is likely a native MikroTik API port */
+/**
+ * API nativa de RouterOS en cualquier puerto (antenas con la API en un puerto
+ * propio). mikrotikRequest decide por número de puerto y con uno no estándar
+ * intentaría REST.
+ */
+export function mikrotikNativeRequest(
+  config: MikroTikConfig,
+  path: string,
+  method: string = 'GET',
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  return tryNativeApiWithFallback({ ...config, port: normalizePort(config.port) }, path, method, body);
+}
+
 export function isNativeApiPort(port: number | string): boolean {
   const normalizedPort = typeof port === 'string' ? Number(port) : port;
   return Number.isFinite(normalizedPort)
