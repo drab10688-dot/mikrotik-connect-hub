@@ -99,9 +99,9 @@ export async function runInWebfig(
     const user = (await page.$('#name')) || (await page.$('input[type=text]'));
     if (!pass || !user) throw new Error('No se encontró el formulario de inicio de sesión de WebFig');
 
-    // Usuario: se borra lo que traiga (WebFig propone "admin") y se escribe
-    await user.click({ clickCount: 3 });
-    await page.keyboard.press('Backspace');
+    // Usuario: se vacía lo que traiga (WebFig propone "admin") y se escribe
+    await user.evaluate((el: any) => { el.value = ''; });
+    await user.click();
     await user.type(opts.username, { delay: 20 });
     await pass.click();
     await pass.type(opts.password, { delay: 20 });
@@ -147,9 +147,28 @@ export async function runInWebfig(
     if (!clicked) throw new Error('No se encontró el botón Terminal en WebFig');
     await sleep(3000);
 
-    // La terminal recibe el teclado de la página: se enfoca y se escribe
+    // La terminal de WebFig manda cada tecla al router por separado: si se
+    // escribe rápido, llegan desordenadas. Se escribe despacio y, ANTES de
+    // pulsar Enter, se compara lo que muestra la pantalla con el comando; si no
+    // coincide se borra la línea (Ctrl+C) y se reintenta más lento. Nunca se
+    // ejecuta un comando mal escrito.
     await page.mouse.click(640, 450);
-    await page.keyboard.type(opts.command, { delay: 20 });
+    const flat = (s: string) => s.replace(/\s+/g, '');
+    const want = flat(opts.command);
+    let typedOk = false;
+    for (const delay of [90, 180, 300]) {
+      await page.keyboard.type(opts.command, { delay });
+      await sleep(1500);
+      const screen = flat(await page.evaluate('document.body.innerText').catch(() => '') as string);
+      // La línea en curso es lo que sigue al último prompt "] >"
+      const current = screen.slice(screen.lastIndexOf(']>') + 2);
+      if (current.startsWith(want) && current.length <= want.length + 2) { typedOk = true; break; }
+      await page.keyboard.down('Control');
+      await page.keyboard.press('KeyC');
+      await page.keyboard.up('Control');
+      await sleep(1500);
+    }
+    if (!typedOk) throw new Error('La terminal de WebFig no recibió el comando completo; no se ejecutó nada');
     await page.keyboard.press('Enter');
     await sleep(3000);
     return { shot: await shot() };
