@@ -15,9 +15,12 @@ import {
 import { toast } from "sonner";
 import {
   Database, HardDriveDownload, Loader2, Trash2, Building2, Server,
-  RotateCcw, Upload, Cloud, CloudDownload, CloudUpload, PlugZap,
+  RotateCcw, Upload, Cloud, CloudDownload, CloudUpload, PlugZap, CalendarClock,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+
+const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 const formatSize = (bytes: number) => {
   if (!bytes) return "—";
@@ -113,7 +116,7 @@ export default function Backups() {
   const saveSettings = useMutation({
     mutationFn: (s: any) => backupApi.saveSettings(s),
     onSuccess: () => {
-      toast.success("Configuración de Dropbox guardada");
+      toast.success("Configuración guardada");
       queryClient.invalidateQueries({ queryKey: ["backup-settings"] });
       queryClient.invalidateQueries({ queryKey: ["backup-remote"] });
     },
@@ -300,6 +303,83 @@ export default function Backups() {
                 </Button>
               </div>
 
+              {/* Copia automática programada: siempre se sube a Dropbox */}
+              <div className="space-y-3 rounded-lg border border-border/60 p-4">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-5 w-5 text-sky-500" />
+                  <p className="font-medium">Copia automática</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {settings?.scope === "system"
+                    ? "Copia total del sistema"
+                    : "Copia del ISP"} a la hora indicada (hora Colombia). Se sube siempre a Dropbox; en el
+                  servidor solo quedan las 3 últimas.
+                </p>
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={Boolean(dropbox?.schedule_enabled)}
+                      onCheckedChange={(v) => setDropbox((d: any) => ({ ...d, schedule_enabled: v }))}
+                    />
+                    <Label>Activar</Label>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Frecuencia</Label>
+                    <Select
+                      value={dropbox?.schedule_frequency || "daily"}
+                      onValueChange={(v) => setDropbox((d: any) => ({ ...d, schedule_frequency: v }))}
+                    >
+                      <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Diaria</SelectItem>
+                        <SelectItem value="weekly">Semanal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {dropbox?.schedule_frequency === "weekly" && (
+                    <div className="space-y-1">
+                      <Label>Día</Label>
+                      <Select
+                        value={String(dropbox?.schedule_weekday ?? 0)}
+                        onValueChange={(v) => setDropbox((d: any) => ({ ...d, schedule_weekday: Number(v) }))}
+                      >
+                        <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {WEEKDAYS.map((name, i) => (
+                            <SelectItem key={i} value={String(i)}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <Label>Hora</Label>
+                    <Select
+                      value={String(dropbox?.schedule_hour ?? 2)}
+                      onValueChange={(v) => setDropbox((d: any) => ({ ...d, schedule_hour: Number(v) }))}
+                    >
+                      <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {dropbox?.schedule_enabled && !dropbox?.dropbox_enabled && (
+                  <p className="text-xs text-amber-500">
+                    Activa y configura Dropbox: sin Dropbox la copia queda solo en el servidor.
+                  </p>
+                )}
+                {settings?.last_scheduled_at && (
+                  <p className={`text-xs ${settings.last_scheduled_error ? "text-destructive" : "text-muted-foreground"}`}>
+                    Última copia automática: {new Date(settings.last_scheduled_at).toLocaleString("es-CO")}
+                    {settings.last_scheduled_error ? ` · ${settings.last_scheduled_error}` : " · OK"}
+                  </p>
+                )}
+              </div>
+
               {Boolean(remoteFiles?.length) && (
                 <div className="space-y-2 pt-2">
                   <p className="text-sm font-medium">Copias en Dropbox</p>
@@ -340,6 +420,9 @@ export default function Backups() {
                         {new Date(job.created_at).toLocaleString("es-CO")} · {formatSize(Number(job.size_bytes))}
                         {job.tenant_name ? ` · ${job.tenant_name}` : ""}
                       </p>
+                      {job.status === "ok" && job.error && (
+                        <p className="text-xs text-amber-500">{job.error}</p>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={job.scope === "system" ? "default" : "secondary"}>

@@ -190,11 +190,10 @@ if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
 
-# Respaldo diario: se activa solo si aún no existe (no toca firewall ni SSH).
+# Las copias se programan en el panel (Respaldos → Copia automática → Dropbox).
+# Retira la copia local diaria de una versión anterior (quedaba en el mismo VPS).
+rm -f /etc/cron.d/omnisync-backup /etc/logrotate.d/omnisync-backup
 # fail2ban/firewall en servidores existentes: sudo bash $INSTALL_DIR/seguridad.sh fail2ban
-if [ ! -f /etc/cron.d/omnisync-backup ] && [ -f "$INSTALL_DIR/seguridad.sh" ]; then
-  bash "$INSTALL_DIR/seguridad.sh" respaldos || true
-fi
 
 # Comprobación real del escritorio remoto (HTTPS autofirmado)
 for P in 8081; do

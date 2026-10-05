@@ -107,37 +107,42 @@ function toDropbox(cfg: any): dropbox.DropboxConfig {
   };
 }
 
-/** Sube la copia recién creada a Dropbox si el ISP lo tiene activado. */
-async function maybeUploadRemote(
+/**
+ * Sube la copia recién creada a Dropbox. Las copias manuales respetan
+ * "Subir automáticamente"; las programadas (force) siempre se suben, porque
+ * una copia que solo queda en el servidor se pierde si el servidor cae.
+ */
+async function uploadRemote(
   tenantId: string | null,
   filename: string,
-  filePath: string
-): Promise<string | null> {
+  filePath: string,
+  force = false
+): Promise<{ remote: string | null; error?: string }> {
   try {
     const cfg = await loadDropboxConfig(tenantId);
-    if (!cfg || !cfg.auto_upload) return null;
+    if (!cfg) return { remote: null, error: force ? 'Dropbox no está configurado' : undefined };
+    if (!cfg.auto_upload && !force) return { remote: null };
     const remote = await dropbox.uploadFile(toDropbox(cfg), filePath, filename);
     if (cfg.keep_remote) await dropbox.pruneRemote(toDropbox(cfg), Number(cfg.keep_remote));
-    return remote;
+    return { remote };
   } catch (e: any) {
     console.warn('[BACKUP] Dropbox:', e.message);
-    return null;
+    return { remote: null, error: `Dropbox: ${e.message}` };
   }
 }
 
+type BackupResult = { filename: string; size_bytes: number; remote_path: string | null; remote_error?: string };
 
-
-/** Copia de seguridad de un ISP: exporta sus tablas a un JSON comprimido. */
-backupRouter.post('/tenant', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const tenantId = req.userRole === 'super_admin' && req.body?.tenant_id
-    ? String(req.body.tenant_id)
-    : req.tenantId;
-  if (!tenantId) return res.status(400).json({ error: 'No hay un ISP asociado a esta copia' });
+/** Copia de un ISP: exporta sus tablas a un JSON comprimido. */
+async function createTenantBackup(
+  tenantId: string,
+  userId?: string,
+  opts: { auto?: boolean } = {}
+): Promise<BackupResult> {
+  const { rows: tRows } = await pool.query(`SELECT slug FROM tenants WHERE id = $1`, [tenantId]);
+  if (!tRows[0]) throw Object.assign(new Error('ISP no encontrado'), { status: 404 });
 
   try {
-    const { rows: tRows } = await pool.query(`SELECT slug FROM tenants WHERE id = $1`, [tenantId]);
-    if (!tRows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
-
     const payload: Record<string, any> = {
       generated_at: new Date().toISOString(),
       scope: 'tenant',
@@ -156,25 +161,24 @@ backupRouter.post('/tenant', requireRole('super_admin', 'admin'), async (req: Au
     }
 
     const dir = ensureDir();
-    const filename = `isp-${tRows[0].slug}-${stamp()}.json.gz`;
+    const filename = `isp-${tRows[0].slug}-${opts.auto ? 'auto-' : ''}${stamp()}.json.gz`;
     const filePath = path.join(dir, filename);
     const gz = zlib.gzipSync(Buffer.from(JSON.stringify(payload, null, 2)));
     fs.writeFileSync(filePath, gz);
 
-    const remote = await maybeUploadRemote(tenantId, filename, filePath);
-    await registerJob(tenantId, 'tenant', filename, gz.length, req.userId, 'ok', undefined, remote);
-    res.json({ data: { filename, size_bytes: gz.length, remote_path: remote } });
-
+    const up = await uploadRemote(tenantId, filename, filePath, opts.auto);
+    await registerJob(tenantId, 'tenant', filename, gz.length, userId, 'ok', up.error, up.remote);
+    return { filename, size_bytes: gz.length, remote_path: up.remote, remote_error: up.error };
   } catch (error: any) {
-    await registerJob(tenantId, 'tenant', 'error', 0, req.userId, 'error', error.message);
-    res.status(500).json({ error: error.message });
+    await registerJob(tenantId, 'tenant', 'error', 0, userId, 'error', error.message);
+    throw error;
   }
-});
+}
 
-/** Copia total del sistema: volcado completo de PostgreSQL (solo super_admin). */
-backupRouter.post('/system', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
+/** Copia total del sistema: volcado completo de PostgreSQL. */
+async function createSystemBackup(userId?: string, opts: { auto?: boolean } = {}): Promise<BackupResult> {
   const dir = ensureDir();
-  const filename = `sistema-${stamp()}.sql.gz`;
+  const filename = `sistema-${opts.auto ? 'auto-' : ''}${stamp()}.sql.gz`;
   const filePath = path.join(dir, filename);
 
   try {
@@ -204,16 +208,92 @@ backupRouter.post('/system', requireRole('super_admin'), async (req: AuthRequest
     });
 
     const size = fs.statSync(filePath).size;
-    const remote = await maybeUploadRemote(null, filename, filePath);
-    await registerJob(null, 'system', filename, size, req.userId, 'ok', undefined, remote);
-    res.json({ data: { filename, size_bytes: size, remote_path: remote } });
-
+    const up = await uploadRemote(null, filename, filePath, opts.auto);
+    await registerJob(null, 'system', filename, size, userId, 'ok', up.error, up.remote);
+    return { filename, size_bytes: size, remote_path: up.remote, remote_error: up.error };
   } catch (error: any) {
     fs.rmSync(filePath, { force: true });
-    await registerJob(null, 'system', filename, 0, req.userId, 'error', error.message);
+    await registerJob(null, 'system', filename, 0, userId, 'error', error.message);
+    throw error;
+  }
+}
+
+backupRouter.post('/tenant', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
+  const tenantId = req.userRole === 'super_admin' && req.body?.tenant_id
+    ? String(req.body.tenant_id)
+    : req.tenantId;
+  if (!tenantId) return res.status(400).json({ error: 'No hay un ISP asociado a esta copia' });
+  try {
+    res.json({ data: await createTenantBackup(tenantId, req.userId) });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/** Copia total del sistema (solo super_admin). */
+backupRouter.post('/system', requireRole('super_admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({ data: await createSystemBackup(req.userId) });
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  COPIA AUTOMÁTICA PROGRAMADA
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Copias automáticas que se conservan en el servidor (la copia real va a Dropbox). */
+const KEEP_LOCAL_AUTO = 3;
+
+function pruneLocalAuto(prefix: string) {
+  try {
+    const dir = ensureDir();
+    const files = fs.readdirSync(dir)
+      .filter((f) => f.startsWith(prefix))
+      .sort()
+      .reverse();
+    for (const f of files.slice(KEEP_LOCAL_AUTO)) fs.rmSync(path.join(dir, f), { force: true });
+  } catch (e: any) {
+    console.warn('[BACKUP] limpieza local:', e.message);
+  }
+}
+
+/**
+ * Se ejecuta cada hora (server.ts). Hace la copia de cada configuración con
+ * programación activa cuando llega su hora (hora local del contenedor: TZ).
+ * Fila global (tenant_id NULL) = copia total del sistema; fila de ISP = copia del ISP.
+ */
+export async function runScheduledBackups(): Promise<void> {
+  const { rows } = await pool.query(
+    `SELECT s.*, t.slug FROM backup_settings s LEFT JOIN tenants t ON t.id = s.tenant_id
+      WHERE s.schedule_enabled = true`
+  );
+  const now = new Date();
+  for (const s of rows) {
+    if (now.getHours() !== Number(s.schedule_hour)) continue;
+    if (s.schedule_frequency === 'weekly' && now.getDay() !== Number(s.schedule_weekday)) continue;
+    // Evita repetir si el proceso se reinicia dentro de la misma hora
+    if (s.last_scheduled_at && now.getTime() - new Date(s.last_scheduled_at).getTime() < 2 * 3600_000) continue;
+
+    let error: string | null = null;
+    try {
+      const r = s.tenant_id
+        ? await createTenantBackup(s.tenant_id, undefined, { auto: true })
+        : await createSystemBackup(undefined, { auto: true });
+      error = r.remote_error || null;
+      console.log(`[BACKUP] automática ${r.filename}${r.remote_path ? ' → Dropbox' : ''}${error ? ` (${error})` : ''}`);
+      pruneLocalAuto(s.tenant_id ? `isp-${s.slug}-auto-` : 'sistema-auto-');
+    } catch (e: any) {
+      error = e.message;
+      console.error('[BACKUP] automática falló:', e.message);
+    }
+    await pool.query(
+      `UPDATE backup_settings SET last_scheduled_at = now(), last_scheduled_error = $2 WHERE id = $1`,
+      [s.id, error]
+    ).catch(() => undefined);
+  }
+}
 
 /** Historial de copias visibles para el usuario. */
 backupRouter.get('/', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
@@ -504,8 +584,22 @@ backupRouter.get('/settings', requireRole('super_admin', 'admin'), async (req: A
             keep_remote: cfg.keep_remote || 10,
             has_secret: Boolean(cfg.dropbox_app_secret),
             has_refresh_token: Boolean(cfg.dropbox_refresh_token),
+            schedule_enabled: Boolean(cfg.schedule_enabled),
+            schedule_frequency: cfg.schedule_frequency || 'daily',
+            schedule_hour: cfg.schedule_hour ?? 2,
+            schedule_weekday: cfg.schedule_weekday ?? 0,
+            last_scheduled_at: cfg.last_scheduled_at,
+            last_scheduled_error: cfg.last_scheduled_error,
+            scope: req.tenantId ? 'tenant' : 'system',
           }
         : {
+            schedule_enabled: false,
+            schedule_frequency: 'daily',
+            schedule_hour: 2,
+            schedule_weekday: 0,
+            last_scheduled_at: null,
+            last_scheduled_error: null,
+            scope: req.tenantId ? 'tenant' : 'system',
             dropbox_enabled: false,
             auto_upload: true,
             dropbox_app_key: '',
@@ -526,9 +620,14 @@ backupRouter.put('/settings', requireRole('super_admin', 'admin'), async (req: A
   const b = req.body || {};
   try {
     await pool.query(
-      `INSERT INTO backup_settings (tenant_id, dropbox_enabled, auto_upload, dropbox_app_key, dropbox_app_secret, dropbox_refresh_token, dropbox_folder, keep_remote)
-       VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),$7,$8)
+      `INSERT INTO backup_settings (tenant_id, dropbox_enabled, auto_upload, dropbox_app_key, dropbox_app_secret, dropbox_refresh_token, dropbox_folder, keep_remote,
+                                   schedule_enabled, schedule_frequency, schedule_hour, schedule_weekday)
+       VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),$7,$8,$9,$10,$11,$12)
        ON CONFLICT (tenant_key) DO UPDATE SET
+         schedule_enabled = EXCLUDED.schedule_enabled,
+         schedule_frequency = EXCLUDED.schedule_frequency,
+         schedule_hour = EXCLUDED.schedule_hour,
+         schedule_weekday = EXCLUDED.schedule_weekday,
          dropbox_enabled = EXCLUDED.dropbox_enabled,
          auto_upload = EXCLUDED.auto_upload,
          dropbox_app_key = EXCLUDED.dropbox_app_key,
@@ -546,6 +645,10 @@ backupRouter.put('/settings', requireRole('super_admin', 'admin'), async (req: A
         String(b.dropbox_refresh_token || ''),
         String(b.dropbox_folder || '/OmniSync'),
         Number(b.keep_remote) || 10,
+        Boolean(b.schedule_enabled),
+        b.schedule_frequency === 'weekly' ? 'weekly' : 'daily',
+        Math.min(23, Math.max(0, Math.trunc(Number(b.schedule_hour ?? 2)) || 0)),
+        Math.min(6, Math.max(0, Math.trunc(Number(b.schedule_weekday ?? 0)) || 0)),
       ]
     );
     res.json({ success: true });

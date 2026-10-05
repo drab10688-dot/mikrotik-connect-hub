@@ -18,7 +18,7 @@ import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
 import { mailRouter } from './routes/mail';
-import { backupRouter } from './routes/backup';
+import { backupRouter, runScheduledBackups } from './routes/backup';
 import { sslRouter, renewSslIfNeeded } from './routes/ssl';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requirePermission, requireRole } from './middleware/auth';
@@ -109,6 +109,11 @@ cron.schedule('0 3 * * *', () => {
   cleanupPppoeEvents(pool)
     .then(n => console.log(`[CRON] PPPoE events cleanup: ${n} registros`))
     .catch(e => console.error('[CRON] PPPoE cleanup error:', e.message));
+});
+
+// Cron: copias automáticas programadas desde Respaldos (revisa cada hora)
+cron.schedule('5 * * * *', () => {
+  runScheduledBackups().catch(e => console.error('[BACKUP] cron error:', e.message));
 });
 
 // Cron: renovación del certificado HTTPS del panel (diaria, 4:15 AM)

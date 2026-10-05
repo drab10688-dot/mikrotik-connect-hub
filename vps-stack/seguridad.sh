@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
 #  OmniSync — Endurecimiento del servidor (lo llama install.sh; también manual)
+#  Las copias de seguridad se programan en el panel: Respaldos → Copia automática (Dropbox).
 #
 #  Uso:
 #    sudo bash /opt/omnisync/seguridad.sh            # todo lo de abajo
 #    sudo bash /opt/omnisync/seguridad.sh firewall   # cierra puertos internos desde internet
 #    sudo bash /opt/omnisync/seguridad.sh fail2ban   # bloquea IPs que fallan la clave SSH
-#    sudo bash /opt/omnisync/seguridad.sh respaldos  # copia diaria 02:30 en /var/backups/omnisync
 #
 #  Variables opcionales:
 #    ADMIN_IPS="1.2.3.4 5.6.7.0/24"  IPs que fail2ban nunca bloquea (además de la VPN)
@@ -70,33 +70,12 @@ EOF
   fi
 }
 
-instalar_respaldos() {
-  chmod 700 "$INSTALL_DIR/backup-omnisync.sh"
-  cat > /etc/cron.d/omnisync-backup <<EOF
-# OmniSync: respaldo diario (PostgreSQL + GenieACS + configuración), 14 días
-30 2 * * * root bash $INSTALL_DIR/backup-omnisync.sh >> /var/log/omnisync-backup.log 2>&1
-EOF
-  chmod 644 /etc/cron.d/omnisync-backup
-  cat > /etc/logrotate.d/omnisync-backup <<'EOF'
-/var/log/omnisync-backup.log {
-  monthly
-  rotate 6
-  compress
-  missingok
-  notifempty
-}
-EOF
-  echo -e "${GREEN}✓ Respaldo diario 02:30 en /var/backups/omnisync (14 días)${NC}"
-}
-
 case "${1:-todo}" in
   firewall)  instalar_firewall ;;
   fail2ban)  instalar_fail2ban ;;
-  respaldos) instalar_respaldos ;;
   todo)
     instalar_firewall
     if [ "${SIN_FAIL2BAN:-0}" != "1" ]; then instalar_fail2ban || true; fi
-    instalar_respaldos
     ;;
-  *) echo "Uso: $0 [todo|firewall|fail2ban|respaldos]"; exit 1 ;;
+  *) echo "Uso: $0 [todo|firewall|fail2ban]"; exit 1 ;;
 esac

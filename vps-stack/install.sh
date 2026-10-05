@@ -303,8 +303,8 @@ if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
 
-# Seguridad: puertos internos cerrados desde internet, fail2ban SSH y
-# respaldo diario. ADMIN_IPS="ip1 ip2" evita que fail2ban bloquee tus IPs;
+# Seguridad: puertos internos cerrados desde internet y fail2ban SSH.
+# ADMIN_IPS="ip1 ip2" evita que fail2ban bloquee tus IPs;
 # SIN_FAIL2BAN=1 lo omite.
 if [ -f "$INSTALL_DIR/seguridad.sh" ]; then
   L2TP_TUNNEL_NET="${L2TP_TUNNEL_NET:-192.168.42.0/24}" bash "$INSTALL_DIR/seguridad.sh" todo \
@@ -334,7 +334,7 @@ echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
 echo -e "  Escritorio remoto: ${GREEN}https://${VPS_PUBLIC_IP}:8081${NC}  (privado por usuario, sin clave: usa tu sesión del panel)"
 echo -e "  GenieACS UI:      ${GREEN}ssh -L 3001:127.0.0.1:3001 root@${VPS_PUBLIC_IP}${NC} → http://localhost:3001  (cambia admin/admin)"
-echo -e "  Respaldos:        ${GREEN}/var/backups/omnisync${NC}  (diario 02:30, 14 días)"
+echo -e "  Respaldos:        ${GREEN}Panel → Respaldos → Copia automática${NC}  (sube a Dropbox)"
 echo -e "  SSH protegido:    ${GREEN}fail2ban-client status sshd${NC}"
 echo -e "  TR-069 por ISP:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/tr069/<token>/${NC}  (token en el panel → cada ISP ve solo sus ONUs)"
 echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/tr069/<token>/${NC}"

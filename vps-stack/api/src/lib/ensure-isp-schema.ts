@@ -318,6 +318,13 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        updated_at TIMESTAMPTZ DEFAULT now()
      )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS backup_settings_tenant_key ON backup_settings(tenant_key)`,
+    // Copia automática programada (se sube a Dropbox)
+    `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS schedule_enabled BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS schedule_frequency TEXT NOT NULL DEFAULT 'daily'`,
+    `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS schedule_hour INTEGER NOT NULL DEFAULT 2`,
+    `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS schedule_weekday INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMPTZ`,
+    `ALTER TABLE backup_settings ADD COLUMN IF NOT EXISTS last_scheduled_error TEXT`,
 
     // Nuevas secciones de permisos: correo y respaldos (solo admin por defecto)
     `INSERT INTO role_permissions (tenant_id, role, section, can_view, can_edit)
