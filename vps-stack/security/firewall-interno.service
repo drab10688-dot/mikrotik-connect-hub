@@ -1,0 +1,13 @@
+[Unit]
+Description=Firewall de servicios internos (bloquea desde internet los puertos internos de Docker)
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/firewall-interno.sh
+ExecStop=/usr/local/sbin/firewall-interno.sh --quitar
+
+[Install]
+WantedBy=multi-user.target

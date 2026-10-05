@@ -1,5 +1,13 @@
 # OmniACS Docker Stack — Gestión de ONUs (TR-069 + VPN L2TP) multi-ISP
 
+# Rotación de logs de cada contenedor (máx. 30 MB por servicio). Sin esto los
+# logs de Docker crecen sin límite. Se aplica al recrear el contenedor.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ============================================
   # PostgreSQL - Base de datos principal
@@ -8,6 +16,7 @@ services:
     image: postgres:16-alpine
     container_name: omnisync-postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${DB_NAME:-omnisync}
       POSTGRES_USER: ${DB_USER:-omnisync}
@@ -15,8 +24,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    # Solo local: la API llega por la red Docker; desde el host, psql/pg_dump.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     networks:
       - omnisync-net
     healthcheck:
@@ -32,6 +42,7 @@ services:
     build: ./api
     container_name: omnisync-api
     restart: unless-stopped
+    logging: *default-logging
     cap_add:
       - NET_ADMIN
     environment:
@@ -71,8 +82,9 @@ services:
       # Minutos sin actividad del visor antes de cerrar pestañas y borrar datos
       BROWSER_IDLE_MINUTES: ${BROWSER_IDLE_MINUTES:-10}
       TZ: ${TZ:-America/Bogota}
+    # Solo local: desde fuera se entra por Nginx (/api/).
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - backup_data:/opt/omnisync/backups
       - ./nginx-dyn:/opt/omnisync/nginx-dyn
@@ -92,6 +104,7 @@ services:
     image: nginx:alpine
     container_name: omnisync-nginx
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"
@@ -121,6 +134,7 @@ services:
     image: mongo:4.4
     container_name: omnisync-mongo
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - mongo_data:/data/db
     networks:
@@ -139,6 +153,7 @@ services:
     image: drumsergio/genieacs:latest
     container_name: omnisync-genieacs
     restart: unless-stopped
+    logging: *default-logging
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo:27017/genieacs
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_JWT_SECRET:-changeme_genieacs_jwt_secret}
@@ -150,9 +165,9 @@ services:
     ports:
       # TCP entra por Nginx para conservar el enlace /tr069/<token>/.
       - "7547:7547/udp"      # CWMP UDP / STUN (Connection Request NAT traversal)
-      - "7567:7567"          # File Server (firmware/config)
-      - "7557:7557"          # NBI (API GenieACS)
-      - "3001:3000"          # UI GenieACS
+      - "7567:7567"          # File Server (firmware) — para la VPN; firewall-interno lo cierra desde internet
+      - "127.0.0.1:7557:7557"  # NBI — solo local (scripts del host); la API usa la red Docker
+      - "127.0.0.1:3001:3000"  # UI GenieACS — solo local; desde fuera: túnel SSH (ssh -L 3001:127.0.0.1:3001)
     depends_on:
       - mongo
     networks:
@@ -188,6 +203,7 @@ services:
     image: lscr.io/linuxserver/wireguard:latest
     container_name: omnisync-wireguard
     restart: "no"
+    logging: *default-logging
     profiles: ["wireguard"]
     cap_add:
       - NET_ADMIN
@@ -216,6 +232,7 @@ services:
     image: lscr.io/linuxserver/chromium:latest
     container_name: omnisync-browser
     restart: unless-stopped
+    logging: *default-logging
     shm_size: "1gb"
     # Necesario en kernels/libseccomp antiguos (p. ej. algunos VPS Contabo).
     # Evita: CanCreateUserNamespace() clone() failure: EPERM.

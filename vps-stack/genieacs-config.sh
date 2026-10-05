@@ -14,7 +14,7 @@ NBI_URL="${NBI_URL:-http://localhost:7557}"
 DB="${DB:-genieacs}"
 ACS_HOST="${ACS_HOST:-10.13.13.1}"
 ACS_PORT="${ACS_PORT:-7547}"
-ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-60}"
+ACS_INFORM_INTERVAL="${ACS_INFORM_INTERVAL:-300}"
 # Credenciales de Connection Request (el ACS las escribe en la ONU y las usa
 # para despertarla al instante). Sin esto, cada orden espera al próximo Inform.
 ACS_CR_USER="${ACS_CR_USER:-omnisync}"

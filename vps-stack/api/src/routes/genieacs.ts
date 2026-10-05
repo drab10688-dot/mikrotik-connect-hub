@@ -435,7 +435,7 @@ genieacsRouter.get('/inform-monitor', async (req: AuthRequest, res: Response) =>
       totals: {
         acs: scope.unrestricted ? list.length : mine.length,
         visible: mine.length,
-        informing5m: mine.filter((d) => d.secondsAgo !== null && d.secondsAgo <= 300).length,
+        informing5m: mine.filter((d) => d.secondsAgo !== null && d.secondsAgo <= 360).length,
       },
       devices: safe,
     });
@@ -1383,8 +1383,9 @@ const FAST_PROJECTION = [
 ].join(',');
 
 
-// Intervalo objetivo de Inform (segundos) para que el panel se actualice rápido.
-const FAST_INFORM_SECONDS = Number(process.env.ACS_FAST_INFORM || 60);
+// Intervalo objetivo de Inform (segundos). Los cambios no esperan al Inform:
+// GenieACS los aplica al instante por Connection Request (~3 s) vía la VPN.
+const FAST_INFORM_SECONDS = Number(process.env.ACS_FAST_INFORM || 300);
 const fastInformApplied = new Set<string>();
 
 async function ensureFastInform(devices: any[]): Promise<void> {

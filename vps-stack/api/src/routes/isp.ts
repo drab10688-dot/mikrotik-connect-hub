@@ -159,7 +159,7 @@ function acsUrls(tenant: any, req: Request) {
     acs_password: tenant.acs_password || tenant.acs_token,
     connection_request_username: tenant.cr_username || 'omnisync',
     connection_request_password: tenant.cr_password || 'OmniSync2026',
-    inform_interval: tenant.inform_interval || 60,
+    inform_interval: tenant.inform_interval || 300,
     stun_enable: false,
     stun_host: tenant.stun_host || host,
     stun_port: tenant.stun_port || 3478,

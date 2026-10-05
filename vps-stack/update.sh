@@ -190,6 +190,12 @@ if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
 
+# Respaldo diario: se activa solo si aún no existe (no toca firewall ni SSH).
+# fail2ban/firewall en servidores existentes: sudo bash $INSTALL_DIR/seguridad.sh fail2ban
+if [ ! -f /etc/cron.d/omnisync-backup ] && [ -f "$INSTALL_DIR/seguridad.sh" ]; then
+  bash "$INSTALL_DIR/seguridad.sh" respaldos || true
+fi
+
 # Comprobación real del escritorio remoto (HTTPS autofirmado)
 for P in 8081; do
   CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:$P/" || echo 000)

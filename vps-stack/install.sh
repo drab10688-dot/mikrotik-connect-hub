@@ -164,7 +164,8 @@ fi
 if command -v ufw >/dev/null 2>&1; then
   # 8081 = escritorio remoto privado (HTTPS + token). Los escritorios por
   # usuario NO publican puertos: sólo son accesibles a través de Nginx.
-  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 7557/tcp 7567/tcp 3001/tcp 3478/tcp 3478/udp 1701/udp 8081/tcp; do
+  # 3001/7557/7567 ya no se abren: son internos (UI GenieACS solo por túnel SSH).
+  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 3478/tcp 3478/udp 1701/udp 8081/tcp; do
     ufw allow "$p" >/dev/null 2>&1 || true
   done
   # Restos de versiones anteriores (Winbox 8082 y escritorios por ISP 8100-8129)
@@ -302,6 +303,14 @@ if [ -f "$INSTALL_DIR/browser-firewall.sh" ]; then
   bash "$INSTALL_DIR/browser-firewall.sh" || true
 fi
 
+# Seguridad: puertos internos cerrados desde internet, fail2ban SSH y
+# respaldo diario. ADMIN_IPS="ip1 ip2" evita que fail2ban bloquee tus IPs;
+# SIN_FAIL2BAN=1 lo omite.
+if [ -f "$INSTALL_DIR/seguridad.sh" ]; then
+  L2TP_TUNNEL_NET="${L2TP_TUNNEL_NET:-192.168.42.0/24}" bash "$INSTALL_DIR/seguridad.sh" todo \
+    || echo -e "  ${YELLOW}⚠ Seguridad incompleta; reintenta: sudo bash $INSTALL_DIR/seguridad.sh${NC}"
+fi
+
 # Escritorio remoto: comprobación real por HTTPS (certificado autofirmado)
 DESK_CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:8081/ || echo 000)
 if [ "$DESK_CODE" = "000" ]; then
@@ -324,7 +333,9 @@ fi
 echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
 echo -e "  Escritorio remoto: ${GREEN}https://${VPS_PUBLIC_IP}:8081${NC}  (privado por usuario, sin clave: usa tu sesión del panel)"
-echo -e "  GenieACS UI:      ${GREEN}http://${VPS_PUBLIC_IP}:3001${NC}  (admin/admin)"
+echo -e "  GenieACS UI:      ${GREEN}ssh -L 3001:127.0.0.1:3001 root@${VPS_PUBLIC_IP}${NC} → http://localhost:3001  (cambia admin/admin)"
+echo -e "  Respaldos:        ${GREEN}/var/backups/omnisync${NC}  (diario 02:30, 14 días)"
+echo -e "  SSH protegido:    ${GREEN}fail2ban-client status sshd${NC}"
 echo -e "  TR-069 por ISP:   ${GREEN}http://${VPS_PUBLIC_IP}:7547/tr069/<token>/${NC}  (token en el panel → cada ISP ve solo sus ONUs)"
 echo -e "  TR-069 por VPN:   ${GREEN}http://192.168.42.1:7547/tr069/<token>/${NC}"
 echo -e "  Credenciales VPN: ${GREEN}/opt/omnisync-l2tp/vpn.conf${NC}"
