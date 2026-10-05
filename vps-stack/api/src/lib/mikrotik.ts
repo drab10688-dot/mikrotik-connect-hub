@@ -352,8 +352,9 @@ function restPathToNativeCommand(path: string, method: string): { command: strin
       idWords[0] = `?.id=${idWords[0].split('=.id=')[1]}`;
     }
   } else if (method === 'POST' || method === 'post') {
-    // POST with body usually = add
-    if (!cmd.endsWith('/add') && !cmd.endsWith('/set') && !cmd.endsWith('/remove')) {
+    // POST with body usually = add; si la ruta ya termina en una acción
+    // (make-static, enable, disable…) se ejecuta tal cual.
+    if (!/\/(add|set|remove|make-static|enable|disable|reset-counters)$/.test(cmd)) {
       cmd += idWords.length ? '/set' : '/add';
     }
   } else if (method === 'PUT' || method === 'put' || method === 'PATCH') {

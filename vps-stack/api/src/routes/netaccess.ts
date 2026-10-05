@@ -1,13 +1,13 @@
 import { Router, Response } from 'express';
 import http from 'http';
 import https from 'https';
-import { AuthRequest, verifyDeviceAccess, WEB_TOKEN_COOKIE } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, getAccessibleDeviceIds, WEB_TOKEN_COOKIE } from '../middleware/auth';
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { readApClients, signalQuality, type ApTarget } from '../lib/ap-signal';
 import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import { pool } from '../lib/db';
 import { requireSection } from './isp';
-import { swr, keepWarm } from '../lib/cache';
+import { swr, keepWarm, peek, invalidate } from '../lib/cache';
 import { linkApClients, pppoeSessions, saveApLink, deleteApLink, normMac } from '../lib/ap-pppoe-link';
 
 /**
@@ -139,6 +139,72 @@ async function guard(req: AuthRequest, res: Response) {
 
 const asArray = (data: unknown): any[] => (Array.isArray(data) ? data : []);
 
+// ─── APs guardados por sede ─────────────────────────────────────
+const AP_COLS = `id, ip, name, brand, username, password, port, protocol, access_method, ssh_port,
+                 sector, mikrotik_id, mac, role, tower`;
+
+/** "aabbccddeeff" → "AA:BB:CC:DD:EE:FF" (para mostrar y guardar). */
+function formatMac(mac?: string | null): string | null {
+  const hex = normalizeMac(mac || '');
+  return hex.length === 12 ? hex.match(/../g)!.join(':') : null;
+}
+
+/** APs de una sede. Los antiguos sin sede también, hasta que se lean por una. */
+async function savedApsForDevice(tenantId: string | null | undefined, mikrotikId: string): Promise<any[]> {
+  const { rows } = await pool
+    .query(
+      `SELECT ${AP_COLS} FROM ap_credentials
+        WHERE tenant_id IS NOT DISTINCT FROM $1 AND (mikrotik_id = $2 OR mikrotik_id IS NULL)
+        ORDER BY tower NULLS LAST, sector NULLS LAST, ip`,
+      [tenantId ?? null, mikrotikId]
+    )
+    .catch(() => ({ rows: [] as any[] }));
+  return rows;
+}
+
+/**
+ * Sigue a cada AP por su MAC: si recibe IP por DHCP y le cambió, actualiza la
+ * guardada; si aún no tenía MAC, la aprende de la IP actual.
+ */
+async function followApIps(rows: any[], leasesRaw: unknown, arpRaw: unknown): Promise<void> {
+  const ipByMac = new Map<string, string>();
+  const macByIp = new Map<string, string>();
+  const leases = asArray(leasesRaw).filter((l: any) => String(l.status || 'bound') === 'bound');
+  for (const e of [...leases, ...asArray(arpRaw)]) {
+    const mac = normalizeMac(e['mac-address'] || e['active-mac-address']);
+    const ip = String(e.address || e['active-address'] || '');
+    if (!mac || !IPV4.test(ip)) continue;
+    if (!ipByMac.has(mac)) ipByMac.set(mac, ip);
+    if (!macByIp.has(ip)) macByIp.set(ip, mac);
+  }
+  for (const r of rows) {
+    const mac = normalizeMac(r.mac);
+    try {
+      if (mac) {
+        const ip = ipByMac.get(mac);
+        if (ip && ip !== r.ip) {
+          await pool.query(`UPDATE ap_credentials SET ip = $2, updated_at = now() WHERE id = $1`, [r.id, ip]);
+          r.ip = ip;
+        }
+      } else if (macByIp.has(r.ip)) {
+        r.mac = formatMac(macByIp.get(r.ip));
+        await pool.query(`UPDATE ap_credentials SET mac = $2 WHERE id = $1`, [r.id, r.mac]);
+      }
+    } catch { /* IP ocupada por otro registro: se deja como estaba */ }
+  }
+}
+
+/** Un AP sin sede que respondió por este MikroTik queda ligado a él. */
+async function claimAp(row: any, mikrotikId: string): Promise<void> {
+  if (!row?.id || row.mikrotik_id) return;
+  row.mikrotik_id = mikrotikId;
+  await pool.query(`UPDATE ap_credentials SET mikrotik_id = $2 WHERE id = $1 AND mikrotik_id IS NULL`, [row.id, mikrotikId]).catch(() => undefined);
+}
+
+/** Último login que funcionó por AP detectado (para "Guardar detectados"). */
+const goodLogins = new Map<string, { username: string; password: string; port: number; protocol: 'http' | 'https'; accessMethod?: string; sshPort?: number }>();
+const loginKey = (tenantId: string | null | undefined, ip: string) => `${tenantId ?? 'global'}:${ip}`;
+
 // ─── Puertos web configurados por ISP ───────────────────────────
 netAccessRouter.get('/web-ports', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await tenantWebPorts(req.tenantId) });
@@ -164,12 +230,20 @@ netAccessRouter.put('/web-ports', editRed, async (req: AuthRequest, res: Respons
 // ─── Credenciales de los APs/antenas (por ISP) ──────────────────
 netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) => {
   try {
+    // ?mikrotik_id= → solo esa sede. Sin él: las sedes que el usuario puede ver.
+    const only = typeof req.query.mikrotik_id === 'string' ? req.query.mikrotik_id : null;
+    if (only && !(await verifyDeviceAccess(req.userId!, req.userRole!, only))) {
+      return res.status(403).json({ success: false, error: 'Sin acceso al router' });
+    }
+    const visible = only ? [only] : await getAccessibleDeviceIds(req);
     const { rows } = await pool.query(
-      `SELECT id, ip, name, brand, username, port, protocol, access_method, ssh_port, sector
+      `SELECT id, ip, name, brand, username, port, protocol, access_method, ssh_port, sector,
+              mikrotik_id, mac, role, tower
          FROM ap_credentials
         WHERE tenant_id IS NOT DISTINCT FROM $1
-        ORDER BY ip`,
-      [req.tenantId ?? null]
+          AND ($2::uuid[] IS NULL OR mikrotik_id = ANY($2::uuid[]) OR mikrotik_id IS NULL)
+        ORDER BY tower NULLS LAST, sector NULLS LAST, ip`,
+      [req.tenantId ?? null, visible]
     );
     res.json({ success: true, data: rows });
   } catch (error: any) {
@@ -177,39 +251,62 @@ netAccessRouter.get('/ap-credentials', async (req: AuthRequest, res: Response) =
   }
 });
 
+/**
+ * Guarda/actualiza un AP. Los campos que no se envían se conservan (antes,
+ * guardar solo el sector desde el mapa borraba el usuario guardado).
+ * Texto vacío ('') borra sector/torre.
+ */
 netAccessRouter.put('/ap-credentials', editRed, async (req: AuthRequest, res: Response) => {
   try {
-    const { ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector } = req.body || {};
+    const b = req.body || {};
+    const { ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector, tower, role, mac, mikrotik_id } = b;
     if (!ip || !IPV4.test(String(ip))) {
       return res.status(400).json({ success: false, error: 'IP del AP inválida' });
     }
+    if (mikrotik_id && !(await verifyDeviceAccess(req.userId!, req.userRole!, String(mikrotik_id)))) {
+      return res.status(403).json({ success: false, error: 'Sin acceso a esa sede' });
+    }
+    const has = (k: string) => Object.prototype.hasOwnProperty.call(b, k);
     const { rows } = await pool.query(
-      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, access_method,
+                                   ssh_port, sector, tower, role, mac, mikrotik_id)
+       VALUES ($1,$2,$3,COALESCE($4,'otro'),$5,COALESCE($6,''),$7,COALESCE($8,'http'),COALESCE($9,'auto'),
+               COALESCE($10,22),NULLIF($11,''),NULLIF($12,''),COALESCE($13,'sector'),$14,$15)
        ON CONFLICT (tenant_id, ip) DO UPDATE SET
-         name = EXCLUDED.name,
-         sector = EXCLUDED.sector,
-         brand = EXCLUDED.brand,
-         username = EXCLUDED.username,
-         password = COALESCE(NULLIF(EXCLUDED.password, ''), ap_credentials.password),
-         port = EXCLUDED.port,
-         protocol = EXCLUDED.protocol,
-         access_method = EXCLUDED.access_method,
-         ssh_port = EXCLUDED.ssh_port,
+         name = CASE WHEN $16 THEN EXCLUDED.name ELSE ap_credentials.name END,
+         brand = COALESCE($4, ap_credentials.brand),
+         username = CASE WHEN $17 THEN EXCLUDED.username ELSE ap_credentials.username END,
+         password = COALESCE(NULLIF($6, ''), ap_credentials.password),
+         port = CASE WHEN $18 THEN EXCLUDED.port ELSE ap_credentials.port END,
+         protocol = COALESCE($8, ap_credentials.protocol),
+         access_method = COALESCE($9, ap_credentials.access_method),
+         ssh_port = COALESCE($10, ap_credentials.ssh_port),
+         sector = CASE WHEN $11 IS NULL THEN ap_credentials.sector ELSE NULLIF($11, '') END,
+         tower = CASE WHEN $12 IS NULL THEN ap_credentials.tower ELSE NULLIF($12, '') END,
+         role = COALESCE($13, ap_credentials.role),
+         mac = COALESCE($14, ap_credentials.mac),
+         mikrotik_id = COALESCE($15, ap_credentials.mikrotik_id),
          updated_at = now()
-       RETURNING id, ip, name, brand, username, port, protocol, access_method, ssh_port, sector`,
+       RETURNING id, ip, name, brand, username, port, protocol, access_method, ssh_port, sector, tower, role, mac, mikrotik_id`,
       [
         req.tenantId ?? null,
         String(ip),
         name || null,
-        brand || 'otro',
+        brand || null,
         username || null,
-        password || '',
+        password || null,
         Number(port) > 0 ? Number(port) : null,
-        protocol === 'https' ? 'https' : 'http',
-        ['auto', 'web', 'ssh'].includes(access_method) ? access_method : 'auto',
-        Number(ssh_port) > 0 ? Number(ssh_port) : 22,
-        sector || null,
+        protocol === undefined ? null : protocol === 'https' ? 'https' : 'http',
+        ['auto', 'web', 'ssh'].includes(access_method) ? access_method : null,
+        Number(ssh_port) > 0 ? Number(ssh_port) : null,
+        sector === undefined || sector === null ? null : String(sector).trim(),
+        tower === undefined || tower === null ? null : String(tower).trim(),
+        role === 'ptp' || role === 'sector' ? role : null,
+        formatMac(mac),
+        mikrotik_id || null,
+        has('name'),
+        has('username'),
+        has('port'),
       ]
     );
     res.json({ success: true, data: rows[0] });
@@ -336,6 +433,7 @@ async function autoReadAp(
   for (const c of candidates) {
     try {
       const clients = await readApClients({ ip, brand, port: c.port, protocol: c.protocol, username: c.username, password: c.password, accessMethod: c.accessMethod, sshPort: c.sshPort });
+      goodLogins.set(loginKey(tenantId, ip), c);
       return { ip, brand, port: c.port, protocol: c.protocol, ok: true as const, clients, error: null };
     } catch (error: any) {
       lastError = error?.message || String(error);
@@ -353,20 +451,18 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
       `aps-auto:${mikrotikId}:${req.tenantId ?? 'global'}`,
       async () => {
         const ports = await tenantWebPorts(req.tenantId);
-        const [neighborsRaw, arpRaw, savedRes] = await Promise.all([
+        const [neighborsRaw, arpRaw, leasesRaw, savedRows] = await Promise.all([
           mtCached(mikrotikId, '/rest/ip/neighbor', 60000),
           mtCached(mikrotikId, '/rest/ip/arp', 60000),
-          pool
-            .query(
-              `SELECT ip, name, brand, username, password, port, protocol, access_method, ssh_port, sector
-                 FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1`,
-              [req.tenantId ?? null]
-            )
-            .catch(() => ({ rows: [] as any[] })),
+          mtCached(mikrotikId, '/rest/ip/dhcp-server/lease', 60000),
+          savedApsForDevice(req.tenantId, mikrotikId),
         ]);
+        // APs con IP por DHCP: se siguen por MAC antes de leerlos
+        await followApIps(savedRows, leasesRaw, arpRaw);
 
-        const saved = new Map<string, any>((savedRes.rows || []).map((r: any) => [String(r.ip), r]));
-        const candidates = new Map<string, { ip: string; name: string; brand: string }>();
+        const saved = new Map<string, any>(savedRows.map((r: any) => [String(r.ip), r]));
+        const leaseByIp = new Map<string, any>(asArray(leasesRaw).map((l: any) => [String(l.address), l]));
+        const candidates = new Map<string, { ip: string; name: string; brand: string; mac: string | null }>();
 
         const add = (entry: any) => {
           const ip = entry?.address;
@@ -377,12 +473,13 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
             ip,
             name: entry.identity || entry['host-name'] || entry.comment || prev?.name || ip,
             brand: brand !== 'otro' ? brand : prev?.brand || 'otro',
+            mac: prev?.mac || formatMac(entry['mac-address']),
           });
         };
         asArray(neighborsRaw).forEach(add);
         asArray(arpRaw).forEach(add);
         for (const [ip, row] of saved) {
-          candidates.set(ip, { ip, name: row.name || ip, brand: row.brand || 'otro' });
+          candidates.set(ip, { ip, name: row.name || ip, brand: row.brand || 'otro', mac: row.mac || candidates.get(ip)?.mac || null });
         }
 
         // Sólo equipos que pueden ser APs: marcas conocidas o registrados a mano.
@@ -396,11 +493,23 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
           const chunk = list.slice(i, i + CONCURRENCY);
           const read = await Promise.all(
             chunk.map((c) =>
-              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip), mikrotikId).then((r) => ({
-                ...r,
-                name: saved.get(c.ip)?.name || c.name,
-                saved: saved.has(c.ip),
-              }))
+              autoReadAp(req.tenantId, c.ip, c.brand, ports, saved.get(c.ip), mikrotikId).then(async (r) => {
+                const row = saved.get(c.ip);
+                if (r.ok && row) await claimAp(row, mikrotikId);
+                const lease = leaseByIp.get(c.ip);
+                return {
+                  ...r,
+                  name: row?.name || c.name,
+                  mac: c.mac,
+                  saved: Boolean(row),
+                  saved_id: row?.id || null,
+                  role: row?.role || null,
+                  tower: row?.tower || null,
+                  sector: row?.sector || null,
+                  // DHCP: dinámica → se puede fijar desde el panel
+                  dhcp: lease ? (String(lease.dynamic) === 'true' ? 'dinamica' : 'estatica') : null,
+                };
+              })
             )
           );
           results.push(...read);
@@ -439,6 +548,60 @@ netAccessRouter.get('/:mikrotikId/aps-auto', async (req: AuthRequest, res: Respo
 
 // Vínculo manual antena (MAC) -> cliente PPPoE. Necesario cuando la antena
 // está en puente y el PPPoE lo hace el router de atrás (MAC distinta).
+/**
+ * Guarda los APs detectados (que respondieron) en esta sede, con el login que
+ * funcionó, su MAC y su marca. body.ips opcional: solo esos.
+ */
+netAccessRouter.post('/:mikrotikId/aps/save-detected', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    const wanted: string[] | null = Array.isArray(req.body?.ips) ? req.body.ips.map(String) : null;
+    const auto: any = peek(`aps-auto:${mikrotikId}:${req.tenantId ?? 'global'}`);
+    const aps: any[] = (auto?.aps || []).filter((a: any) => a.ok && !a.saved && (!wanted || wanted.includes(a.ip)));
+    let saved = 0;
+    for (const ap of aps) {
+      const login = goodLogins.get(loginKey(req.tenantId, ap.ip));
+      if (!login) continue;
+      await pool.query(
+        `INSERT INTO ap_credentials (tenant_id, ip, name, brand, username, password, port, protocol, access_method,
+                                     ssh_port, mac, mikrotik_id, role)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'sector')
+         ON CONFLICT (tenant_id, ip) DO NOTHING`,
+        [req.tenantId ?? null, ap.ip, ap.name || ap.ip, ap.brand || 'otro', login.username, login.password,
+         login.port, login.protocol, login.accessMethod || 'auto', login.sshPort || 22, formatMac(ap.mac), mikrotikId]
+      );
+      saved++;
+    }
+    // Recalcula la lista (marca "guardado") en la próxima consulta
+    if (saved) invalidate(`aps-auto:${mikrotikId}:`);
+    res.json({ success: true, data: { saved, skipped: aps.length - saved } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** Convierte la concesión DHCP dinámica de un AP en estática (su IP ya no cambia). */
+netAccessRouter.post('/:mikrotikId/ap/:ip/static-lease', editRed, async (req: AuthRequest, res: Response) => {
+  try {
+    const mikrotikId = await guard(req, res);
+    if (!mikrotikId) return;
+    const ip = String(req.params.ip);
+    if (!IPV4.test(ip)) return res.status(400).json({ success: false, error: 'IP inválida' });
+    const config = await getDeviceConfig(pool, mikrotikId);
+    const lease = asArray(await mikrotikRequest(config, '/rest/ip/dhcp-server/lease'))
+      .find((l: any) => String(l.address) === ip);
+    if (!lease) return res.status(404).json({ success: false, error: 'Ese equipo no tiene concesión DHCP en este MikroTik' });
+    if (String(lease.dynamic) !== 'true') {
+      return res.json({ success: true, data: { already: true, message: 'La IP ya era fija' } });
+    }
+    await mikrotikRequest(config, '/rest/ip/dhcp-server/lease/make-static', 'POST', { numbers: lease['.id'] });
+    res.json({ success: true, data: { already: false, message: `IP ${ip} fijada en el DHCP` } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 netAccessRouter.put('/:mikrotikId/ap-links', editRed, async (req: AuthRequest, res: Response) => {
   try {
     const mikrotikId = await guard(req, res);
@@ -1061,20 +1224,18 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
     );
     const router = devRows[0] || { name: 'MikroTik', host: '' };
 
-    const [apsRes, activeRaw, secretsRaw, arpRaw, wirelessRaw] = await Promise.all([
-      pool.query(
-        `SELECT id, ip, name, brand, sector, username, password, port, protocol
-           FROM ap_credentials WHERE tenant_id IS NOT DISTINCT FROM $1 ORDER BY sector NULLS LAST, ip`,
-        [req.tenantId ?? null]
-      ).catch(() => ({ rows: [] as any[] })),
+    const [aps, activeRaw, secretsRaw, arpRaw, wirelessRaw, leasesRaw] = await Promise.all([
+      savedApsForDevice(req.tenantId, mikrotikId),
       mikrotikRequest(config, '/rest/ppp/active').catch(() => []),
       mikrotikRequest(config, '/rest/ppp/secret').catch(() => []),
       mikrotikRequest(config, '/rest/ip/arp').catch(() => []),
       mikrotikRequest(config, '/rest/interface/wireless/registration-table').catch(() => []),
+      mtCached(mikrotikId, '/rest/ip/dhcp-server/lease', 60000),
     ]);
+    // Solo los APs de esta sede, con su IP actual (DHCP → seguidos por MAC)
+    await followApIps(aps, leasesRaw, arpRaw);
 
     const ports = await tenantWebPorts(req.tenantId);
-    const aps = apsRes.rows as any[];
 
     // Clientes leídos de cada AP (en paralelo)
     const apResults = await Promise.all(
@@ -1087,12 +1248,15 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
           protocol: (ap.protocol || fallback.protocol) as 'http' | 'https',
           username: ap.username || (ap.brand === 'ubiquiti' ? 'ubnt' : 'admin'),
           password: ap.password || '',
+          accessMethod: ap.access_method || 'auto',
+          sshPort: ap.ssh_port || 22,
         };
         let clients: any[] = [];
         let error: string | null = null;
         try {
           await ensureApRoute(mikrotikId, req.tenantId, ap.ip);
           clients = await readApClients(target);
+          await claimAp(ap, mikrotikId);
         } catch (e: any) {
           error = e?.message || 'sin respuesta';
         }
@@ -1141,27 +1305,57 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
       };
     };
 
-    // Nodos AP agrupados por sector
+    // Nodos AP agrupados por torre → sector. El enlace PtP de cada torre va en
+    // su propio grupo ("Enlace PtP"). `sectors` sigue plano (lo usa el mapa
+    // gráfico); `towers` agrupa para el árbol.
     const sectors = new Map<string, any>();
-    const sectorOf = (name?: string | null) => (name && String(name).trim()) || 'Sin sector';
+    const towers = new Map<string, any>();
+    const clean = (v?: string | null) => (v && String(v).trim()) || '';
 
     for (const { ap, target, clients, error } of apResults) {
-      const key = sectorOf(ap.sector);
-      if (!sectors.has(key)) sectors.set(key, { type: 'sector', name: key, aps: [], clients: [] });
-      sectors.get(key).aps.push({
+      const tower = clean(ap.tower);
+      const isPtp = ap.role === 'ptp';
+      const sectorName = isPtp ? 'Enlace PtP' : clean(ap.sector) || 'Sin sector';
+      const key = tower ? `${tower} · ${sectorName}` : sectorName;
+      if (!sectors.has(key)) sectors.set(key, { type: 'sector', name: key, sector: sectorName, tower: tower || null, aps: [], clients: [] });
+      const node = {
         type: 'ap',
         id: ap.id,
         ip: ap.ip,
+        mac: ap.mac || null,
         name: ap.name || ap.ip,
         brand: ap.brand,
+        role: isPtp ? 'ptp' : 'sector',
+        tower: tower || null,
+        sector: clean(ap.sector) || null,
         online: !error,
         error,
         web_url: `${target.protocol}://${ap.ip}:${target.port}/`,
         proxy_path: `/api/netaccess/${mikrotikId}/web/${ap.ip}/${target.port}/`,
         total_clients: clients.length,
+        // El "cliente" de un PtP es el otro extremo del enlace: se muestra su señal
         clients: clients.map((c) => clientNode(c, ap.ip)),
-      });
+      };
+      sectors.get(key).aps.push(node);
+
+      const tKey = tower || 'Sin torre';
+      if (!towers.has(tKey)) towers.set(tKey, { type: 'tower', name: tKey, ptp: [], sectors: new Map<string, any[]>() });
+      const t = towers.get(tKey);
+      if (isPtp) t.ptp.push(node);
+      else {
+        const s = clean(ap.sector) || 'Sin sector';
+        if (!t.sectors.has(s)) t.sectors.set(s, []);
+        t.sectors.get(s).push(node);
+      }
     }
+    const towerList = [...towers.values()]
+      .sort((a, b) => Number(a.name === 'Sin torre') - Number(b.name === 'Sin torre') || a.name.localeCompare(b.name))
+      .map((t) => ({
+        type: 'tower',
+        name: t.name,
+        ptp: t.ptp,
+        sectors: [...t.sectors.entries()].map(([name, list]) => ({ type: 'sector', name, aps: list })),
+      }));
 
     // Wireless del propio router = sector local
     const localClients = asArray(wirelessRaw).map((r: any) => {
@@ -1232,6 +1426,7 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
       host: router.host,
       proxy_path: `/api/netaccess/${mikrotikId}/web/${router.host}/${ports.mikrotik.port}/`,
       sectors: [...sectors.values()],
+      towers: towerList,
       direct_clients: orphans,
     };
 

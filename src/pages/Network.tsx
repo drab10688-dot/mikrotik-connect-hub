@@ -136,13 +136,15 @@ export default function Network() {
 
   // ─── Credenciales de APs + señal consolidada ───
   const [showApForm, setShowApForm] = useState(false);
-  const [apForm, setApForm] = useState<{ id?: string; ip: string; name: string; brand: string; username: string; password: string; port: string }>({
-    ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "",
-  });
+  type ApForm = { id?: string; ip: string; name: string; brand: string; username: string; password: string; port: string; tower: string; sector: string; role: string };
+  const EMPTY_AP_FORM: ApForm = { ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "", tower: "", sector: "", role: "sector" };
+  const [apForm, setApForm] = useState<ApForm>(EMPTY_AP_FORM);
 
+  // APs guardados de ESTA sede (cada AP pertenece a un MikroTik)
   const { data: apCreds, isLoading: apCredsLoading } = useQuery({
-    queryKey: ["ap-credentials"],
-    queryFn: () => netAccessApi.listApCredentials(),
+    queryKey: ["ap-credentials", deviceId],
+    queryFn: () => netAccessApi.listApCredentials(deviceId),
+    enabled: !!deviceId,
   });
 
   const apCredList = (apCreds || []) as any[];
@@ -159,28 +161,6 @@ export default function Network() {
   const autoAps: any[] = (apsAuto as any)?.aps ?? [];
 
 
-  // Lee los clientes de todos los APs guardados en paralelo
-  const { data: allApClientsRaw, isFetching: allApsFetching, error: allApClientsError, refetch: refetchAllAps } = useQuery({
-    queryKey: ["ap-all-clients", deviceId],
-    queryFn: async () => {
-      if (!deviceId || !apCredList.length) return {};
-      const entries = await Promise.allSettled(
-        apCredList.map((c) => netAccessApi.apClients(deviceId, c.ip, c.brand).then((r: any) => [c.ip, r.clients ?? []] as const))
-      );
-      const map: Record<string, any[]> = {};
-      entries.forEach((e, i) => {
-        if (e.status === "fulfilled") map[apCredList[i].ip] = e.value[1];
-        else map[apCredList[i].ip] = [];
-      });
-      return map;
-    },
-    enabled: !!deviceId && apCredList.length > 0 && !browserOpen,
-    refetchInterval: browserOpen ? false : 30_000,
-    refetchOnWindowFocus: false,
-  });
-
-  const allApClients = (allApClientsRaw || {}) as Record<string, any[]>;
-
   const saveAp = useMutation({
     mutationFn: () => {
       const { id, ...payload } = apForm;
@@ -188,16 +168,40 @@ export default function Network() {
         ...payload,
         name: payload.name || null,
         port: payload.port ? Number(payload.port) : null,
+        mikrotik_id: deviceId,
       });
     },
     onSuccess: () => {
-      toast.success("Credenciales del AP guardadas");
+      toast.success("AP guardado");
       qc.invalidateQueries({ queryKey: ["ap-credentials"] });
+      qc.invalidateQueries({ queryKey: ["topology", deviceId] });
       setShowApForm(false);
-      setApForm({ ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "" });
+      setApForm(EMPTY_AP_FORM);
     },
     onError: (e: any) => toast.error(e.message || "No se pudieron guardar"),
   });
+
+  // Guardar en el mapa los APs detectados (todos o uno)
+  const saveDetected = useMutation({
+    mutationFn: (ips?: string[]) => netAccessApi.saveDetectedAps(deviceId, ips),
+    onSuccess: (d: any) => {
+      toast.success(d?.saved ? `${d.saved} AP guardados en el mapa` : "No había APs nuevos para guardar");
+      qc.invalidateQueries({ queryKey: ["ap-credentials"] });
+      qc.invalidateQueries({ queryKey: ["aps-auto", deviceId] });
+      qc.invalidateQueries({ queryKey: ["topology", deviceId] });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudieron guardar"),
+  });
+
+  const fixApIp = useMutation({
+    mutationFn: (ip: string) => netAccessApi.fixApIp(deviceId, ip),
+    onSuccess: (d: any) => {
+      toast.success(d?.message || "IP fijada");
+      qc.invalidateQueries({ queryKey: ["aps-auto", deviceId] });
+    },
+    onError: (e: any) => toast.error(e.message || "No se pudo fijar la IP"),
+  });
+  const unsavedDetected = autoAps.filter((a: any) => a.ok && !a.saved).length;
 
   const deleteAp = useMutation({
     mutationFn: (id: string) => netAccessApi.deleteApCredentials(id),
@@ -958,10 +962,18 @@ export default function Network() {
                     El panel descubre solo las antenas desde la MikroTik (vecinos y ARP) y lee la señal de cualquier marca sin abrir navegador ni registrar nada. Se actualiza cada 60 s.
                   </CardDescription>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => refetchApsAuto()} disabled={apsAutoFetching}>
-                  {apsAutoFetching ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
-                  Actualizar
-                </Button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {unsavedDetected > 0 && (
+                    <Button size="sm" onClick={() => saveDetected.mutate(undefined)} disabled={saveDetected.isPending}>
+                      {saveDetected.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                      Guardar {unsavedDetected} en el mapa
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => refetchApsAuto()} disabled={apsAutoFetching}>
+                    {apsAutoFetching ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                    Actualizar
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {apsAutoError ? (
@@ -994,24 +1006,57 @@ export default function Network() {
                             <th className="py-2 pr-4">IP</th>
                             <th className="py-2 pr-4">Nombre</th>
                             <th className="py-2 pr-4">Marca</th>
-                            <th className="py-2 pr-4">Acceso</th>
+                            <th className="py-2 pr-4">MAC</th>
                             <th className="py-2 pr-4">Clientes</th>
-                            <th className="py-2">Estado</th>
+                            <th className="py-2 pr-4">Estado</th>
+                            <th className="py-2">Mapa</th>
                           </tr>
                         </thead>
                         <tbody>
                           {autoAps.map((ap: any) => (
                             <tr key={ap.ip} className="border-b last:border-0">
-                              <td className="py-2 pr-4 font-mono text-xs">{ap.ip}</td>
-                              <td className="py-2 pr-4">{ap.name || "—"}</td>
+                              <td className="py-2 pr-4 font-mono text-xs">
+                                {ap.ip}
+                                {ap.dhcp === "dinamica" && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="ml-1 h-6 px-1.5 text-[11px] text-amber-500"
+                                    title="Recibe IP por DHCP y puede cambiar: fíjala en el MikroTik"
+                                    onClick={() => fixApIp.mutate(ap.ip)}
+                                    disabled={fixApIp.isPending}
+                                  >
+                                    Fijar IP
+                                  </Button>
+                                )}
+                              </td>
+                              <td className="py-2 pr-4">
+                                {ap.name || "—"}
+                                {(ap.tower || ap.sector) && (
+                                  <span className="block text-[11px] text-muted-foreground">
+                                    {[ap.tower, ap.role === "ptp" ? "Enlace PtP" : ap.sector].filter(Boolean).join(" · ")}
+                                  </span>
+                                )}
+                              </td>
                               <td className="py-2 pr-4 capitalize">{ap.brand}</td>
-                              <td className="py-2 pr-4 text-xs">{ap.protocol}://{ap.port}</td>
+                              <td className="py-2 pr-4 font-mono text-[11px]">{ap.mac || "—"}</td>
                               <td className="py-2 pr-4"><Badge variant={ap.clients?.length ? "default" : "secondary"}>{ap.clients?.length ?? 0}</Badge></td>
-                              <td className="py-2">
+                              <td className="py-2 pr-4">
                                 {ap.ok ? (
                                   <Badge variant="outline" className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30">Leído</Badge>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">{ap.error || "Sin lectura"}</span>
+                                )}
+                              </td>
+                              <td className="py-2">
+                                {ap.saved ? (
+                                  <Badge variant="secondary">En el mapa</Badge>
+                                ) : ap.ok ? (
+                                  <Button size="sm" variant="outline" className="h-7" onClick={() => saveDetected.mutate([ap.ip])} disabled={saveDetected.isPending}>
+                                    <Save className="w-3.5 h-3.5 mr-1" /> Guardar
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Agrégalo abajo con su clave</span>
                                 )}
                               </td>
                             </tr>
@@ -1096,12 +1141,13 @@ export default function Network() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <div>
-                  <CardTitle className="text-base flex items-center gap-2"><KeyRound className="w-4 h-4" /> Credenciales opcionales</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2"><KeyRound className="w-4 h-4" /> APs y enlaces de esta sede (mapa de red)</CardTitle>
                   <CardDescription>
-                    Solo necesarias si una antena tiene usuario/contraseña personalizados y no se pudo leer automáticamente.
+                    Los APs guardados forman el Mapa de red: torre → enlace PtP / sectores → clientes. Se reconocen por su MAC,
+                    así que si reciben IP por DHCP el panel los sigue aunque la IP cambie. Agrega a mano solo los que no se detecten.
                   </CardDescription>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => setShowApForm((v) => !v)}>
+                <Button size="sm" variant="outline" onClick={() => { setApForm(EMPTY_AP_FORM); setShowApForm((v) => !v); }}>
                   <Plus className="w-4 h-4 mr-1" /> Agregar AP
                 </Button>
               </CardHeader>
@@ -1138,13 +1184,36 @@ export default function Network() {
                       <Label className="text-xs">Contraseña</Label>
                       <Input type="password" placeholder="••••••" value={apForm.password} onChange={(e) => setApForm({ ...apForm, password: e.target.value })} />
                     </div>
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1 space-y-1.5">
-                        <Label className="text-xs">Puerto</Label>
-                        <Input type="number" placeholder="auto" value={apForm.port} onChange={(e) => setApForm({ ...apForm, port: e.target.value })} />
-                      </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Puerto</Label>
+                      <Input type="number" placeholder="auto" value={apForm.port} onChange={(e) => setApForm({ ...apForm, port: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Torre / nodo</Label>
+                      <Input placeholder="Torre Norte" value={apForm.tower} onChange={(e) => setApForm({ ...apForm, tower: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Tipo</Label>
+                      <Select value={apForm.role} onValueChange={(v) => setApForm({ ...apForm, role: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sector">Sector / AP</SelectItem>
+                          <SelectItem value="ptp">Enlace PtP</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Sector</Label>
+                      <Input
+                        placeholder={apForm.role === "ptp" ? "—" : "Sector 1 (90°)"}
+                        disabled={apForm.role === "ptp"}
+                        value={apForm.sector}
+                        onChange={(e) => setApForm({ ...apForm, sector: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex items-end">
                       <Button size="sm" onClick={() => saveAp.mutate()} disabled={saveAp.isPending}>
-                        <Save className="w-3.5 h-3.5" /> Guardar
+                        <Save className="w-3.5 h-3.5 mr-1" /> Guardar
                       </Button>
                     </div>
                   </div>
@@ -1157,25 +1226,31 @@ export default function Network() {
                     <table className="w-full text-sm">
                       <thead className="text-left text-muted-foreground">
                         <tr className="border-b">
+                          <th className="py-2 pr-4">Torre</th>
+                          <th className="py-2 pr-4">Tipo / sector</th>
                           <th className="py-2 pr-4">IP</th>
                           <th className="py-2 pr-4">Nombre</th>
                           <th className="py-2 pr-4">Marca</th>
+                          <th className="py-2 pr-4">MAC</th>
                           <th className="py-2 pr-4">Usuario</th>
-                          <th className="py-2 pr-4">Puerto</th>
                           <th className="py-2">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {apCredList.map((c: any) => (
                           <tr key={c.id} className="border-b last:border-0">
+                            <td className="py-2 pr-4">{c.tower || "—"}</td>
+                            <td className="py-2 pr-4">
+                              {c.role === "ptp" ? <Badge variant="outline">Enlace PtP</Badge> : c.sector || "Sin sector"}
+                            </td>
                             <td className="py-2 pr-4 font-mono text-xs">{c.ip}</td>
                             <td className="py-2 pr-4">{c.name || "—"}</td>
                             <td className="py-2 pr-4 capitalize">{c.brand}</td>
+                            <td className="py-2 pr-4 font-mono text-[11px]">{c.mac || "—"}</td>
                             <td className="py-2 pr-4">{c.username || "—"}</td>
-                            <td className="py-2 pr-4">{c.port || "auto"}</td>
                             <td className="py-2">
                               <div className="flex gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "" }); setShowApForm(true); }}>
+                                <Button size="sm" variant="ghost" title="Editar" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "", tower: c.tower || "", sector: c.sector || "", role: c.role || "sector" }); setShowApForm(true); }}>
                                   <KeyRound className="w-3.5 h-3.5" />
                                 </Button>
                                 <Button size="sm" variant="ghost" onClick={() => deleteAp.mutate(c.id)}>
@@ -1189,7 +1264,7 @@ export default function Network() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Sin credenciales manuales: el panel usa las de fábrica de cada marca.</p>
+                  <p className="text-sm text-muted-foreground">Todavía no hay APs guardados en esta sede. Usa "Guardar en el mapa" arriba o agrega uno a mano.</p>
                 )}
               </CardContent>
             </Card>

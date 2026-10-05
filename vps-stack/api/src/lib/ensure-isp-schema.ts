@@ -255,6 +255,13 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS notes TEXT`,
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS access_method TEXT NOT NULL DEFAULT 'auto'`,
     `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS ssh_port INTEGER NOT NULL DEFAULT 22`,
+    // Cada AP pertenece a una sede (MikroTik) y se reconoce por su MAC: con
+    // IP por DHCP la IP puede cambiar. role: sector | ptp. tower: torre/nodo.
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS mikrotik_id UUID REFERENCES mikrotik_devices(id) ON DELETE CASCADE`,
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS mac TEXT`,
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'sector'`,
+    `ALTER TABLE ap_credentials ADD COLUMN IF NOT EXISTS tower TEXT`,
+    `CREATE INDEX IF NOT EXISTS ap_credentials_device_idx ON ap_credentials(tenant_id, mikrotik_id)`,
 
     // Servidor de correo (SMTP): tenant_id NULL = configuración global del sistema
     `CREATE TABLE IF NOT EXISTS smtp_settings (

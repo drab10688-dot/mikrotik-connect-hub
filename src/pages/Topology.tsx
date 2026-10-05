@@ -38,7 +38,7 @@ export default function Topology() {
             <Network className="h-6 w-6 text-primary" /> Mapa de red
           </h1>
           <p className="text-sm text-muted-foreground">
-            Topología por sectores: MikroTik → AP/antena → cliente, con la señal de cada enlace.
+            Topología por torres: MikroTik → torre → enlace PtP y sectores → clientes, con la señal de cada enlace.
           </p>
         </header>
 

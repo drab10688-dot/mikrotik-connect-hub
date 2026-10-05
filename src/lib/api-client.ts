@@ -522,7 +522,15 @@ export const netAccessApi = {
   deleteApLink: async (mikrotikId: string, mac: string) =>
     unwrapData<any>(await apiDelete<any>(`/netaccess/${mikrotikId}/ap-links/${encodeURIComponent(mac)}`)),
 
-  listApCredentials: async () => unwrapData<any>(await apiGet<any>('/netaccess/ap-credentials')),
+  /** APs guardados; con mikrotikId, solo los de esa sede. */
+  listApCredentials: async (mikrotikId?: string) =>
+    unwrapData<any>(await apiGet<any>(`/netaccess/ap-credentials${mikrotikId ? `?mikrotik_id=${mikrotikId}` : ''}`)),
+  /** Guarda en el mapa los APs detectados que respondieron (todos o los indicados). */
+  saveDetectedAps: async (mikrotikId: string, ips?: string[]) =>
+    unwrapData<any>(await apiPost<any>(`/netaccess/${mikrotikId}/aps/save-detected`, ips ? { ips } : {})),
+  /** Convierte la IP DHCP dinámica del AP en estática en el MikroTik. */
+  fixApIp: async (mikrotikId: string, ip: string) =>
+    unwrapData<any>(await apiPost<any>(`/netaccess/${mikrotikId}/ap/${ip}/static-lease`, {})),
   saveApCredentials: async (payload: any) =>
     unwrapData<any>(await apiPut<any>('/netaccess/ap-credentials', payload)),
   deleteApCredentials: async (id: string) =>

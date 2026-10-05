@@ -58,6 +58,11 @@ export async function swr<T>(
   return entry.value;
 }
 
+/** Último valor guardado de una clave, sin cargar ni refrescar nada. */
+export function peek<T>(key: string): T | undefined {
+  return (store.get(key) as Entry<T> | undefined)?.value;
+}
+
 export function invalidate(prefix: string) {
   for (const key of store.keys()) {
     if (key.startsWith(prefix)) store.delete(key);

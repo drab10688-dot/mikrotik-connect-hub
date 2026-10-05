@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Router, Radio, User, ChevronDown, ChevronRight, RefreshCw, MonitorCog } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Router, Radio, User, ChevronDown, ChevronRight, RefreshCw, MonitorCog, RadioTower, Link2, Pencil } from "lucide-react";
 
 /** Barra gráfica de señal (dBm) con color por calidad. */
 function SignalBar({ signal, snr, quality }: { signal: number | null; snr: number | null; quality?: string }) {
@@ -32,14 +33,15 @@ function SignalBar({ signal, snr, quality }: { signal: number | null; snr: numbe
 
 interface Props {
   mikrotikId: string;
-  onManage?: (ip: string) => void;
   onAdvanced: (device: { ip: string; name: string; proxy_path: string }) => void;
 }
 
-export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
+type Edit = { tower: string; role: string; sector: string };
+
+export function TopologyTree({ mikrotikId, onAdvanced }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [sectorEdit, setSectorEdit] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<Record<string, Edit>>({});
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["topology", mikrotikId],
@@ -48,18 +50,28 @@ export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
     refetchInterval: 60000,
   });
 
-  const saveSector = useMutation({
-    mutationFn: (ap: any) =>
-      netAccessApi.saveApCredentials({ ip: ap.ip, name: ap.name, brand: ap.brand, sector: sectorEdit[ap.ip] || null }),
-    onSuccess: () => {
-      toast.success("Sector actualizado");
+  // Solo envía ubicación: usuario y clave guardados se conservan
+  const savePlace = useMutation({
+    mutationFn: ({ ap, edit }: { ap: any; edit: Edit }) =>
+      netAccessApi.saveApCredentials({
+        ip: ap.ip,
+        mikrotik_id: mikrotikId,
+        tower: edit.tower,
+        role: edit.role,
+        sector: edit.role === "ptp" ? "" : edit.sector,
+      }),
+    onSuccess: (_d, { ap }) => {
+      toast.success("Ubicación guardada");
+      setEditing(({ [ap.ip]: _, ...rest }) => rest);
       qc.invalidateQueries({ queryKey: ["topology", mikrotikId] });
+      qc.invalidateQueries({ queryKey: ["ap-credentials"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
 
   const tree = data?.tree;
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const isOpen = (k: string) => open[k] !== false;
 
   if (!mikrotikId) {
     return (
@@ -69,15 +81,90 @@ export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
     );
   }
 
+  const ApRow = ({ ap }: { ap: any }) => {
+    const edit = editing[ap.ip];
+    return (
+      <div className="ml-4 border-l pl-4 space-y-1">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {ap.role === "ptp"
+            ? <Link2 className={`h-4 w-4 ${ap.online ? "text-primary" : "text-destructive"}`} />
+            : <Radio className={`h-4 w-4 ${ap.online ? "text-primary" : "text-destructive"}`} />}
+          <span className="font-medium">{ap.name}</span>
+          <span className="font-mono text-xs text-muted-foreground">{ap.ip}</span>
+          <Badge variant="secondary" className="text-[10px]">{ap.brand}</Badge>
+          {ap.role !== "ptp" && <Badge variant="outline" className="text-[10px]">{ap.total_clients} clientes</Badge>}
+          {ap.error && <span className="text-xs text-destructive">{ap.error}</span>}
+          <div className="ml-auto flex items-center gap-1">
+            {!edit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                title="Cambiar torre / tipo / sector"
+                onClick={() => setEditing({ ...editing, [ap.ip]: { tower: ap.tower || "", role: ap.role || "sector", sector: ap.sector || "" } })}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => onAdvanced({ ip: ap.ip, name: ap.name, proxy_path: ap.proxy_path })}>
+              Avanzado
+            </Button>
+          </div>
+        </div>
+
+        {edit && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+            <Input
+              className="h-7 w-36 text-xs"
+              placeholder="Torre"
+              value={edit.tower}
+              onChange={(e) => setEditing({ ...editing, [ap.ip]: { ...edit, tower: e.target.value } })}
+            />
+            <Select value={edit.role} onValueChange={(v) => setEditing({ ...editing, [ap.ip]: { ...edit, role: v } })}>
+              <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sector">Sector / AP</SelectItem>
+                <SelectItem value="ptp">Enlace PtP</SelectItem>
+              </SelectContent>
+            </Select>
+            {edit.role !== "ptp" && (
+              <Input
+                className="h-7 w-36 text-xs"
+                placeholder="Sector"
+                value={edit.sector}
+                onChange={(e) => setEditing({ ...editing, [ap.ip]: { ...edit, sector: e.target.value } })}
+              />
+            )}
+            <Button size="sm" className="h-7" onClick={() => savePlace.mutate({ ap, edit })} disabled={savePlace.isPending}>Guardar</Button>
+            <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditing(({ [ap.ip]: _, ...rest }) => rest)}>Cancelar</Button>
+          </div>
+        )}
+
+        {(ap.clients || []).map((c: any) => (
+          <div key={`${ap.id}-${c.mac}`} className="ml-4 border-l pl-4 flex flex-wrap items-center gap-3 py-1">
+            {ap.role === "ptp" ? <Link2 className="h-3.5 w-3.5 text-muted-foreground" /> : <User className="h-3.5 w-3.5 text-muted-foreground" />}
+            <span className="text-sm">{ap.role === "ptp" ? `Otro extremo · ${c.name}` : c.name}</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{c.ip || c.mac}</span>
+            <SignalBar signal={c.signal} snr={c.snr} quality={c.quality} />
+            {c.ccq !== null && c.ccq !== undefined && (
+              <span className="text-xs text-muted-foreground">CCQ {c.ccq}%</span>
+            )}
+            <span className="text-xs text-muted-foreground">{[c.tx_rate, c.rx_rate].filter(Boolean).join(" / ")}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="text-base flex items-center gap-2">
-            <Router className="h-4 w-4" /> Árbol de red por sectores
+            <Router className="h-4 w-4" /> Árbol de red por torres
           </CardTitle>
           <CardDescription>
-            MikroTik → sector → AP/antena → cliente, con la señal de cada cliente en gráfico.
+            MikroTik → torre → enlace PtP y sectores → clientes, con la señal de cada enlace. Usa el lápiz para
+            ubicar cada AP en su torre.
           </CardDescription>
         </div>
         <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
@@ -87,10 +174,10 @@ export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
       <CardContent className="space-y-3">
         {data?.totals && (
           <div className="flex flex-wrap gap-2 text-xs">
-            <Badge variant="secondary">{data.totals.sectors} sectores</Badge>
+            <Badge variant="secondary">{(tree?.towers || []).length} torres</Badge>
             <Badge variant="secondary">{data.totals.aps} APs</Badge>
             <Badge variant="secondary">{data.totals.clients_with_signal} clientes con señal</Badge>
-            <Badge variant="outline">{data.totals.direct_clients} directos al router</Badge>
+            <Badge variant="outline">{data.totals.direct_clients} sin AP identificado</Badge>
           </div>
         )}
 
@@ -109,59 +196,41 @@ export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
               </Button>
             </div>
 
-            {(tree.sectors || []).map((sector: any) => (
-              <div key={sector.name} className="ml-4 border-l pl-4 space-y-2">
-                <button
-                  className="flex items-center gap-2 text-sm font-medium"
-                  onClick={() => toggle(`s:${sector.name}`)}
-                >
-                  {open[`s:${sector.name}`] === false ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  {sector.name}
-                  <Badge variant="outline" className="text-[10px]">{sector.aps.length} AP</Badge>
+            {!(tree.towers || []).length && (
+              <p className="ml-4 text-sm text-muted-foreground">
+                No hay APs guardados en esta sede. En Conexión MikroTik → APs / Señal usa "Guardar en el mapa".
+              </p>
+            )}
+
+            {(tree.towers || []).map((tower: any) => (
+              <div key={tower.name} className="ml-4 border-l pl-4 space-y-2">
+                <button className="flex items-center gap-2 text-sm font-semibold" onClick={() => toggle(`t:${tower.name}`)}>
+                  {isOpen(`t:${tower.name}`) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  <RadioTower className="h-4 w-4 text-primary" />
+                  {tower.name}
+                  <Badge variant="outline" className="text-[10px]">
+                    {tower.sectors.reduce((n: number, s: any) => n + s.aps.length, 0)} AP
+                  </Badge>
                 </button>
 
-                {open[`s:${sector.name}`] !== false && sector.aps.map((ap: any) => (
-                  <div key={ap.id} className="ml-4 border-l pl-4 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <Radio className={`h-4 w-4 ${ap.online ? "text-primary" : "text-destructive"}`} />
-                      <span className="font-medium">{ap.name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{ap.ip}</span>
-                      <Badge variant="secondary" className="text-[10px]">{ap.brand}</Badge>
-                      <Badge variant="outline" className="text-[10px]">{ap.total_clients} clientes</Badge>
-                      {ap.error && <span className="text-xs text-destructive">{ap.error}</span>}
-                      <div className="ml-auto flex items-center gap-1">
-                        <Input
-                          className="h-7 w-32 text-xs"
-                          placeholder="Sector"
-                          value={sectorEdit[ap.ip] ?? (sector.name === "Sin sector" ? "" : sector.name)}
-                          onChange={(e) => setSectorEdit({ ...sectorEdit, [ap.ip]: e.target.value })}
-                        />
-                        <Button size="sm" variant="ghost" onClick={() => saveSector.mutate(ap)}>Guardar</Button>
-                        {onManage && <Button size="sm" variant="ghost" onClick={() => onManage(ap.ip)}>Mini-panel</Button>}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => onAdvanced({ ip: ap.ip, name: ap.name, proxy_path: ap.proxy_path })}
+                {isOpen(`t:${tower.name}`) && (
+                  <>
+                    {tower.ptp.map((ap: any) => <ApRow key={ap.id} ap={ap} />)}
+                    {tower.sectors.map((sector: any) => (
+                      <div key={sector.name} className="ml-4 border-l pl-4 space-y-2">
+                        <button
+                          className="flex items-center gap-2 text-sm font-medium"
+                          onClick={() => toggle(`s:${tower.name}:${sector.name}`)}
                         >
-                          Avanzado
-                        </Button>
-                      </div>
-                    </div>
-
-                    {(ap.clients || []).map((c: any) => (
-                      <div key={`${ap.id}-${c.mac}`} className="ml-4 border-l pl-4 flex flex-wrap items-center gap-3 py-1">
-                        <User className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-sm">{c.name}</span>
-                        <span className="font-mono text-[11px] text-muted-foreground">{c.ip || c.mac}</span>
-                        <SignalBar signal={c.signal} snr={c.snr} quality={c.quality} />
-                        {c.ccq !== null && c.ccq !== undefined && (
-                          <span className="text-xs text-muted-foreground">CCQ {c.ccq}%</span>
-                        )}
-                        <span className="text-xs text-muted-foreground">{c.tx_rate || ""}</span>
+                          {isOpen(`s:${tower.name}:${sector.name}`) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          {sector.name}
+                          <Badge variant="outline" className="text-[10px]">{sector.aps.length} AP</Badge>
+                        </button>
+                        {isOpen(`s:${tower.name}:${sector.name}`) && sector.aps.map((ap: any) => <ApRow key={ap.id} ap={ap} />)}
                       </div>
                     ))}
-                  </div>
-                ))}
+                  </>
+                )}
               </div>
             ))}
 
@@ -169,7 +238,7 @@ export function TopologyTree({ mikrotikId, onManage, onAdvanced }: Props) {
               <div className="ml-4 border-l pl-4">
                 <button className="flex items-center gap-2 text-sm font-medium" onClick={() => toggle("direct")}>
                   {open.direct ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  Clientes directos del router
+                  Clientes PPPoE sin AP identificado
                   <Badge variant="outline" className="text-[10px]">{tree.direct_clients.length}</Badge>
                 </button>
                 {open.direct && tree.direct_clients.map((c: any) => (
