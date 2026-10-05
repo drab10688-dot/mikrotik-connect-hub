@@ -147,6 +147,12 @@ cron.schedule('* * * * *', () => {
     .catch((e: any) => console.error('[ACS] sincronización:', e.message));
 });
 
+// Red de seguridad: una promesa rechazada sin capturar en una ruta (Express 4
+// no captura errores async) ya no tumba toda la API para todos los ISP.
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[API] Promesa rechazada sin capturar:', reason?.stack || reason);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 OmniSync API running on port ${PORT}`);
 

@@ -481,6 +481,9 @@ export async function apsWithPppoe(tenantId: string | null | undefined, mikrotik
         asArray(neighborsRaw).forEach(add);
         asArray(arpRaw).forEach(add);
         for (const [ip, row] of saved) {
+          // Un AP sin sede solo se lee aquí si este MikroTik lo ve (vecino/ARP):
+          // leerlo por otra sede desviaría su ruta al túnel equivocado.
+          if (!row.mikrotik_id && !candidates.has(ip)) continue;
           candidates.set(ip, { ip, name: row.name || ip, brand: row.brand || 'otro', mac: row.mac || candidates.get(ip)?.mac || null });
         }
 
@@ -1246,6 +1249,7 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
     const ports = await tenantWebPorts(req.tenantId);
 
     // Clientes leídos de cada AP (en paralelo)
+    const arpIps = new Set(asArray(arpRaw).map((a: any) => String(a.address)));
     const apResults = await Promise.all(
       aps.map(async (ap) => {
         const fallback = ports[ap.brand] || ports.otro;
@@ -1261,6 +1265,10 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
         };
         let clients: any[] = [];
         let error: string | null = null;
+        // Sin sede y este MikroTik no lo ve en ARP: no se lee (desviaría su ruta)
+        if (!ap.mikrotik_id && !arpIps.has(String(ap.ip))) {
+          return { ap, target, clients, error: 'Sin sede asignada: edítalo y elige su MikroTik' };
+        }
         try {
           await ensureApRoute(mikrotikId, req.tenantId, ap.ip);
           clients = await readApClients(target);
@@ -1334,6 +1342,7 @@ netAccessRouter.get('/:mikrotikId/topology', async (req: AuthRequest, res: Respo
         name: ap.name || ap.ip,
         brand: ap.brand,
         role: isPtp ? 'ptp' : 'sector',
+        mikrotik_id: ap.mikrotik_id || null,
         tower: tower || null,
         sector: clean(ap.sector) || null,
         online: !error,

@@ -137,8 +137,8 @@ export default function Network() {
 
   // ─── Credenciales de APs + señal consolidada ───
   const [showApForm, setShowApForm] = useState(false);
-  type ApForm = { id?: string; ip: string; name: string; brand: string; username: string; password: string; port: string; tower: string; sector: string; role: string };
-  const EMPTY_AP_FORM: ApForm = { ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "", tower: "", sector: "", role: "sector" };
+  type ApForm = { id?: string; ip: string; name: string; brand: string; username: string; password: string; port: string; tower: string; sector: string; role: string; mikrotik_id: string };
+  const EMPTY_AP_FORM: ApForm = { ip: "", name: "", brand: "mikrotik", username: "admin", password: "", port: "", tower: "", sector: "", role: "sector", mikrotik_id: "" };
   const [apForm, setApForm] = useState<ApForm>(EMPTY_AP_FORM);
 
   // APs guardados de ESTA sede (cada AP pertenece a un MikroTik)
@@ -169,7 +169,7 @@ export default function Network() {
         ...payload,
         name: payload.name || null,
         port: payload.port ? Number(payload.port) : null,
-        mikrotik_id: deviceId,
+        mikrotik_id: payload.mikrotik_id || deviceId,
       });
     },
     onSuccess: () => {
@@ -1191,6 +1191,17 @@ export default function Network() {
                       <Input type="number" placeholder="auto" value={apForm.port} onChange={(e) => setApForm({ ...apForm, port: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
+                      <Label className="text-xs">Sede (MikroTik)</Label>
+                      <Select value={apForm.mikrotik_id || deviceId} onValueChange={(v) => setApForm({ ...apForm, mikrotik_id: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(devices as any[]).map((d: any) => (
+                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
                       <Label className="text-xs">Torre / nodo</Label>
                       <Input placeholder="Torre Norte" value={apForm.tower} onChange={(e) => setApForm({ ...apForm, tower: e.target.value })} />
                     </div>
@@ -1241,7 +1252,10 @@ export default function Network() {
                       <tbody>
                         {apCredList.map((c: any) => (
                           <tr key={c.id} className="border-b last:border-0">
-                            <td className="py-2 pr-4">{c.tower || "—"}</td>
+                            <td className="py-2 pr-4">
+                              {c.tower || "—"}
+                              {!c.mikrotik_id && <Badge variant="outline" className="ml-1 text-[10px] border-amber-500/40 text-amber-500" title="Edítalo y elige su MikroTik">Sin sede</Badge>}
+                            </td>
                             <td className="py-2 pr-4">
                               {c.role === "ptp" ? <Badge variant="outline">Enlace PtP</Badge> : c.sector || "Sin sector"}
                             </td>
@@ -1252,7 +1266,7 @@ export default function Network() {
                             <td className="py-2 pr-4">{c.username || "—"}</td>
                             <td className="py-2">
                               <div className="flex gap-1">
-                                <Button size="sm" variant="ghost" title="Editar" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "", tower: c.tower || "", sector: c.sector || "", role: c.role || "sector" }); setShowApForm(true); }}>
+                                <Button size="sm" variant="ghost" title="Editar" onClick={() => { setApForm({ id: c.id, ip: c.ip, name: c.name || "", brand: c.brand, username: c.username || "", password: "", port: c.port ? String(c.port) : "", tower: c.tower || "", sector: c.sector || "", role: c.role || "sector", mikrotik_id: c.mikrotik_id || deviceId }); setShowApForm(true); }}>
                                   <KeyRound className="w-3.5 h-3.5" />
                                 </Button>
                                 <Button size="sm" variant="ghost" onClick={() => deleteAp.mutate(c.id)}>

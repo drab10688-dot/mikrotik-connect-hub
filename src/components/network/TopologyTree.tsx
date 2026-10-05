@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { netAccessApi } from "@/lib/api-client";
+import { netAccessApi, devicesApi } from "@/lib/api-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,12 +36,18 @@ interface Props {
   onAdvanced: (device: { ip: string; name: string; proxy_path: string }) => void;
 }
 
-type Edit = { tower: string; role: string; sector: string };
+type Edit = { tower: string; role: string; sector: string; mikrotik_id: string };
 
 export function TopologyTree({ mikrotikId, onAdvanced }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<Record<string, Edit>>({});
+
+  // Sedes (MikroTik) a las que se puede mover un AP
+  const { data: sedes } = useQuery({
+    queryKey: ["mikrotik-devices"],
+    queryFn: () => devicesApi.list(),
+  });
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["topology", mikrotikId],
@@ -55,7 +61,7 @@ export function TopologyTree({ mikrotikId, onAdvanced }: Props) {
     mutationFn: ({ ap, edit }: { ap: any; edit: Edit }) =>
       netAccessApi.saveApCredentials({
         ip: ap.ip,
-        mikrotik_id: mikrotikId,
+        mikrotik_id: edit.mikrotik_id || mikrotikId,
         tower: edit.tower,
         role: edit.role,
         sector: edit.role === "ptp" ? "" : edit.sector,
@@ -93,6 +99,7 @@ export function TopologyTree({ mikrotikId, onAdvanced }: Props) {
           <span className="font-mono text-xs text-muted-foreground">{ap.ip}</span>
           <Badge variant="secondary" className="text-[10px]">{ap.brand}</Badge>
           {ap.role !== "ptp" && <Badge variant="outline" className="text-[10px]">{ap.total_clients} clientes</Badge>}
+          {!ap.mikrotik_id && <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-500">Sin sede</Badge>}
           {ap.error && <span className="text-xs text-destructive">{ap.error}</span>}
           <div className="ml-auto flex items-center gap-1">
             {!edit && (
@@ -100,7 +107,7 @@ export function TopologyTree({ mikrotikId, onAdvanced }: Props) {
                 size="sm"
                 variant="ghost"
                 title="Cambiar torre / tipo / sector"
-                onClick={() => setEditing({ ...editing, [ap.ip]: { tower: ap.tower || "", role: ap.role || "sector", sector: ap.sector || "" } })}
+                onClick={() => setEditing({ ...editing, [ap.ip]: { tower: ap.tower || "", role: ap.role || "sector", sector: ap.sector || "", mikrotik_id: ap.mikrotik_id || mikrotikId } })}
               >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
@@ -119,6 +126,14 @@ export function TopologyTree({ mikrotikId, onAdvanced }: Props) {
               value={edit.tower}
               onChange={(e) => setEditing({ ...editing, [ap.ip]: { ...edit, tower: e.target.value } })}
             />
+            <Select value={edit.mikrotik_id} onValueChange={(v) => setEditing({ ...editing, [ap.ip]: { ...edit, mikrotik_id: v } })}>
+              <SelectTrigger className="h-7 w-48 text-xs" title="Sede (MikroTik) a la que pertenece"><SelectValue placeholder="Sede" /></SelectTrigger>
+              <SelectContent>
+                {((sedes as any[]) || []).map((d: any) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={edit.role} onValueChange={(v) => setEditing({ ...editing, [ap.ip]: { ...edit, role: v } })}>
               <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>

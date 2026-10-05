@@ -58,13 +58,17 @@ const isAdmin = (req: AuthRequest) => req.userRole === 'super_admin' || req.user
 
 // ─── Credenciales de las antenas cliente por sede ───────────────
 cpeRouter.get('/:mikrotikId/credentials', async (req: AuthRequest, res: Response) => {
-  const { rows } = await pool.query(
-    `SELECT brand, username, ssh_port, api_port, cardinality(passwords) AS password_count, updated_at
-       FROM cpe_credentials WHERE mikrotik_id = $1 ORDER BY brand`,
-    [req.params.mikrotikId]
-  );
-  // Las claves nunca salen de la API: solo cuántas hay
-  res.json({ success: true, data: BRANDS.map((b) => rows.find((r) => r.brand === b) || { brand: b, username: b === 'ubiquiti' ? 'ubnt' : 'admin', ssh_port: 22, api_port: DEFAULT_API_PORT, password_count: 0 }) });
+  try {
+    const { rows } = await pool.query(
+      `SELECT brand, username, ssh_port, api_port, cardinality(passwords) AS password_count, updated_at
+         FROM cpe_credentials WHERE mikrotik_id = $1 ORDER BY brand`,
+      [req.params.mikrotikId]
+    );
+    // Las claves nunca salen de la API: solo cuántas hay
+    res.json({ success: true, data: BRANDS.map((b) => rows.find((r) => r.brand === b) || { brand: b, username: b === 'ubiquiti' ? 'ubnt' : 'admin', ssh_port: 22, api_port: DEFAULT_API_PORT, password_count: 0 }) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 /**
@@ -81,21 +85,25 @@ cpeRouter.put('/:mikrotikId/credentials', async (req: AuthRequest, res: Response
   }
   const port = Number(ssh_port) > 0 && Number(ssh_port) < 65536 ? Number(ssh_port) : 22;
   const apiPort = Number(api_port) > 0 && Number(api_port) < 65536 ? Number(api_port) : DEFAULT_API_PORT;
-  await pool.query(
-    `INSERT INTO cpe_credentials (tenant_id, mikrotik_id, brand, username, ssh_port, api_port, passwords)
-     VALUES ($1, $2, $3, $4, $5, CASE WHEN $6::text IS NULL THEN '{}'::text[] ELSE ARRAY[$6::text] END)
-     ON CONFLICT (mikrotik_id, brand) DO UPDATE SET
-       username = EXCLUDED.username,
-       ssh_port = EXCLUDED.ssh_port,
-       api_port = EXCLUDED.api_port,
-       passwords = CASE
-         WHEN $7 THEN COALESCE(EXCLUDED.passwords, '{}')
-         WHEN $6::text IS NULL THEN cpe_credentials.passwords
-         ELSE ARRAY[$6::text] || array_remove(cpe_credentials.passwords, $6::text) END,
-       updated_at = now()`,
-    [req.tenantId ?? null, req.params.mikrotikId, brand, username, port, add_password ?? null, Boolean(clear_passwords)]
-  );
-  res.json({ success: true });
+  try {
+    await pool.query(
+      `INSERT INTO cpe_credentials (tenant_id, mikrotik_id, brand, username, ssh_port, api_port, passwords)
+       VALUES ($1, $2, $3, $4, $5, $8, CASE WHEN $6::text IS NULL THEN '{}'::text[] ELSE ARRAY[$6::text] END)
+       ON CONFLICT (mikrotik_id, brand) DO UPDATE SET
+         username = EXCLUDED.username,
+         ssh_port = EXCLUDED.ssh_port,
+         api_port = EXCLUDED.api_port,
+         passwords = CASE
+           WHEN $7 THEN COALESCE(EXCLUDED.passwords, '{}')
+           WHEN $6::text IS NULL THEN cpe_credentials.passwords
+           ELSE ARRAY[$6::text] || array_remove(cpe_credentials.passwords, $6::text) END,
+         updated_at = now()`,
+      [req.tenantId ?? null, req.params.mikrotikId, brand, username, port, add_password ?? null, Boolean(clear_passwords), apiPort]
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 async function loadCredentials(mikrotikId: string): Promise<Map<CpeBrand, { username: string; port: number; apiPort: number; passwords: string[] }>> {
