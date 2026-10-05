@@ -235,10 +235,12 @@ cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
   try {
     const mikrotikId = req.params.mikrotikId;
     const [activeRaw, devRes, aps] = await Promise.all([
-      mtCached(mikrotikId, '/rest/ppp/active', 10000),
+      // Sesiones PPPoE: caché; si aún no hay nada, lectura directa
+      mtCached(mikrotikId, '/rest/ppp/active', 10000).then((r: any) => (asArray(r).length ? r : activeSessions(mikrotikId))),
       pool.query(`SELECT * FROM cpe_devices WHERE mikrotik_id = $1`, [mikrotikId]),
-      // La señal sale de los APs (caché 60 s); si tarda, la lista sale sin señal
-      withTimeout(apsWithPppoe(req.tenantId, mikrotikId).catch(() => null), 15000),
+      // La señal sale de los APs (caché 60 s). Si aún no está leída, la lista sale
+      // ya y la lectura sigue en segundo plano (el panel vuelve a pedir en segundos)
+      withTimeout(apsWithPppoe(req.tenantId, mikrotikId).catch(() => null), 3000),
     ]);
     const devByMac = new Map<string, any>(devRes.rows.map((d: any) => [d.mac, d]));
     const signalByUser = new Map<string, any>();
@@ -364,12 +366,13 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
             shot = out.shot;
             return;
           } catch (e: any) {
-            if (e instanceof WebfigAuthError) continue;
+            // Captura de lo que vio el robot (también cuando la clave no entra)
             r.shot = e?.shot;
+            if (e instanceof WebfigAuthError) continue;
             throw new Error(`WebFig: ${e.message}`);
           }
         }
-        throw new Error('Ninguna clave de la sede entra en WebFig');
+        throw new Error('Ninguna clave de la sede entra en WebFig (revisa la captura)');
       });
       // Verificación: la API debe responder con esa misma clave
       let ok = false;

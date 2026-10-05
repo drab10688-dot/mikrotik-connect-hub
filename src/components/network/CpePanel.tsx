@@ -316,11 +316,12 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [pwd, setPwd] = useState({ a: "", b: "" });
   const [job, setJob] = useState<{ id: string; action: string } | null>(null);
 
-  const { data, isFetching, refetch } = useQuery({
+  const { data, isFetching, refetch, error: listError } = useQuery({
     queryKey: ["cpes", deviceId],
     queryFn: () => cpeApi.list(deviceId),
     enabled: !!deviceId,
-    refetchInterval: 60_000,
+    // Mientras la señal de los APs se lee en segundo plano, se vuelve a pedir pronto
+    refetchInterval: (q) => ((q.state.data as any)?.signal_pending ? 8_000 : 60_000),
     refetchOnWindowFocus: false,
   });
   const cpes: any[] = data?.cpes || [];
@@ -551,7 +552,9 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                 })}
                 {!visible.length && (
                   <tr><td colSpan={10} className="py-6 text-center text-muted-foreground">
-                    {isFetching ? "Cargando clientes…" : "No hay clientes PPPoE conectados con esos filtros."}
+                    {listError
+                      ? <span className="text-destructive">No se pudo leer la lista: {(listError as any)?.message}</span>
+                      : isFetching ? "Cargando clientes…" : cpes.length ? "Ningún cliente coincide con esos filtros." : "No hay clientes PPPoE conectados en esta sede."}
                   </td></tr>
                 )}
               </tbody>

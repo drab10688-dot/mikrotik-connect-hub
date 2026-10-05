@@ -99,20 +99,40 @@ export async function runInWebfig(
     const user = (await page.$('#name')) || (await page.$('input[type=text]'));
     if (!pass || !user) throw new Error('No se encontró el formulario de inicio de sesión de WebFig');
 
+    // Usuario: se borra lo que traiga (WebFig propone "admin") y se escribe
     await user.click({ clickCount: 3 });
     await page.keyboard.press('Backspace');
-    await user.type(opts.username);
+    await user.type(opts.username, { delay: 20 });
     await pass.click();
-    await pass.type(opts.password);
-    await page.keyboard.press('Enter');
+    await pass.type(opts.password, { delay: 20 });
 
-    // Sesión iniciada = desaparece el campo de clave
-    // (Las funciones que corren dentro del navegador van como texto: la API no tiene tipos del DOM)
-    const logged = await page
-      .waitForFunction('!document.querySelector("input[type=password]")', { timeout: 20_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!logged) throw new WebfigAuthError('WebFig rechazó el usuario o la clave');
+    // Botón "Login" (si no se encuentra, Enter en el campo de clave).
+    // Las funciones que corren dentro del navegador van como texto: la API no tiene tipos del DOM.
+    const pressed = await page.evaluate(`(() => {
+      const els = Array.from(document.querySelectorAll('input[type=button],input[type=submit],button,a'))
+        .filter((e) => /^log ?in$/i.test(((e.value || e.innerText || '') + '').trim()) && e.offsetParent !== null);
+      if (!els.length) return false;
+      els[0].click();
+      return true;
+    })()`);
+    if (!pressed) await page.keyboard.press('Enter');
+
+    // Sesión iniciada = el campo de clave ya no se ve (WebFig lo oculta, no lo
+    // borra) o aparece "Logout". Clave incorrecta = el formulario sigue visible.
+    const state = await page
+      .waitForFunction(`(() => {
+        const p = document.querySelector('input[type=password]');
+        const hidden = !p || p.offsetParent === null || p.getBoundingClientRect().height === 0;
+        return hidden || /\\blog ?out\\b/i.test(document.body.innerText) ? 'ok' : false;
+      })()`, { timeout: 20_000, polling: 500 })
+      .then(() => 'ok')
+      .catch(() => 'fail');
+    if (state !== 'ok') {
+      const text: string = await page.evaluate('document.body.innerText').catch(() => '') as string;
+      throw /wrong|invalid|incorrect|denied|fail|error/i.test(text)
+        ? new WebfigAuthError('WebFig rechazó el usuario o la clave')
+        : new Error('No se pudo confirmar el inicio de sesión en WebFig (revisa la captura)');
+    }
     await sleep(2500);
 
     // Botón/pestaña "Terminal" (el elemento más interno con ese texto exacto)
