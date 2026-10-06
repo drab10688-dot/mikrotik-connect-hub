@@ -142,6 +142,9 @@ export async function runInWebfig(
         ? new WebfigAuthError('WebFig rechazó el usuario o la clave')
         : new Error('No se pudo confirmar el inicio de sesión en WebFig (revisa la captura)');
     }
+    // Antenas lentas (6.x) muestran "Loading ▮▮▮" un buen rato: esperar a que termine
+    await page.waitForFunction(`!/^\\s*Loading/i.test(document.body.innerText || '')`, { timeout: 90_000, polling: 1000 })
+      .catch(() => { throw new Error('WebFig se quedó en "Loading" (antena lenta o saturada)'); });
     await sleep(3000);
 
     // RouterOS 6.x abre la Terminal en una ventana emergente; v7 en la misma página
