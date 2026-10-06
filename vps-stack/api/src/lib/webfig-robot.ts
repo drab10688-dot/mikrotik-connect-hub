@@ -183,23 +183,39 @@ export async function runInWebfig(
     await term.mouse.click(Math.round(vp.width / 2), Math.round(vp.height / 2));
     const flat = (s: string) => s.replace(/\s+/g, '');
     const want = flat(opts.command);
-    let typedOk = false;
-    for (const delay of [90, 180, 300]) {
-      await term.keyboard.type(opts.command, { delay });
-      await sleep(1500);
-      const screen = flat(await readScreen());
-      const at = screen.lastIndexOf(']>');
-      if (at < 0 && delay === 300) {
-        // Pantalla ilegible (terminal dibujada en 6.x): se confía en la escritura más lenta
-        typedOk = true;
-        break;
-      }
-      const current = screen.slice(at + 2);
-      if (at >= 0 && current.startsWith(want) && current.length <= want.length + 2) { typedOk = true; break; }
+    const cancelLine = async () => {
       await term.keyboard.down('Control');
       await term.keyboard.press('KeyC');
       await term.keyboard.up('Control');
       await sleep(1500);
+    };
+    const screenMatches = async (): Promise<boolean | null> => {
+      const screen = flat(await readScreen());
+      const at = screen.lastIndexOf(']>');
+      if (at < 0) return null; // pantalla ilegible
+      const current = screen.slice(at + 2);
+      return current.startsWith(want) && current.length <= want.length + 2;
+    };
+    let typedOk = false;
+    // 1) Inserción atómica vía CDP: manda el comando completo de una vez,
+    //    sin carrera tecla por tecla (el problema de las 6.x).
+    try {
+      const cdp = await term.target().createCDPSession();
+      await cdp.send('Input.insertText', { text: opts.command });
+      await sleep(2000);
+      const ok = await screenMatches();
+      if (ok === true) typedOk = true;
+      else if (ok === false) await cancelLine();
+    } catch { /* sin CDP, se sigue con el tecleo */ }
+    // 2) Respaldo: tecleo lento con verificación; si sale mal, se borra y se repite más lento
+    for (const delay of [150, 300, 500]) {
+      if (typedOk) break;
+      await term.keyboard.type(opts.command, { delay });
+      await sleep(2000);
+      const ok = await screenMatches();
+      if (ok === true) { typedOk = true; break; }
+      if (ok === false) await cancelLine();
+      // ok === null: pantalla ilegible, se intenta el siguiente método sin pulsar Enter a ciegas
     }
     if (!typedOk) throw new Error('La terminal de WebFig no recibió el comando completo; no se ejecutó nada');
     await term.keyboard.press('Enter');
