@@ -80,7 +80,7 @@ export async function withRobot<T>(fn: (browser: Browser) => Promise<T>): Promis
 export class WebfigAuthError extends Error {}
 
 /** Método de escritura que funcionó: 'insert' (atómico) o el retardo entre teclas en ms. */
-export type WebfigMethod = 'insert' | number;
+export type WebfigMethod = 'insert' | 'echo' | number;
 
 export interface WebfigResult { shot?: string; method?: WebfigMethod }
 
@@ -194,32 +194,63 @@ export async function runInWebfig(
       await term.keyboard.up('Control');
       await sleep(1500);
     };
-    const screenMatches = async (): Promise<boolean | null> => {
+    const currentLine = async (): Promise<string | null> => {
       const screen = flat(await readScreen());
       const at = screen.lastIndexOf(']>');
-      if (at < 0) return null; // pantalla ilegible
-      const current = screen.slice(at + 2);
+      return at < 0 ? null : screen.slice(at + 2);
+    };
+    const screenMatches = async (): Promise<boolean | null> => {
+      const current = await currentLine();
+      if (current === null) return null; // pantalla ilegible
       return current.startsWith(want) && current.length <= want.length + 2;
+    };
+    // Tecleo sincronizado con el eco: se manda UNA letra y no se manda la
+    // siguiente hasta verla en pantalla. Así es imposible que lleguen
+    // desordenadas, sin importar lo lenta que esté la antena o la VPN.
+    const typeWithEcho = async (): Promise<boolean | null> => {
+      const cmd = opts.command;
+      for (let i = 0; i < cmd.length; i++) {
+        const ch = cmd[i];
+        await term.keyboard.type(ch);
+        if (/\s/.test(ch)) { await sleep(250); continue; } // los espacios no se comparan
+        const expected = flat(cmd.slice(0, i + 1));
+        const deadline = Date.now() + 8000;
+        let seen: string | null = null;
+        while (Date.now() < deadline) {
+          seen = await currentLine();
+          if (seen === expected) break;
+          // Ya apareció algo distinto a lo esperado: letra perdida o cambiada
+          if (seen !== null && seen.length >= expected.length) return false;
+          await sleep(120);
+        }
+        if (seen === null) return null;
+        if (seen !== expected) return false; // la letra nunca llegó
+        await sleep(40);
+      }
+      return true;
     };
     let usedMethod: WebfigMethod | null = null;
     // Métodos de escritura, en orden: primero el que ya funcionó en esta
-    // antena (si se conoce), luego inserción atómica y tecleo cada vez más lento.
-    const methods: WebfigMethod[] = ['insert', 150, 300, 500];
+    // antena (si se conoce), luego inserción atómica, tecleo con eco (2
+    // intentos) y, si la pantalla no se puede leer, tecleo muy lento.
+    const methods: WebfigMethod[] = ['insert', 'echo', 'echo', 500];
     if (opts.preferred !== undefined && methods.includes(opts.preferred)) {
       methods.splice(methods.indexOf(opts.preferred), 1);
       methods.unshift(opts.preferred);
     }
     for (const m of methods) {
       if (m === 'insert') {
-        // Inserción atómica vía CDP: manda el comando completo de una vez,
-        // sin carrera tecla por tecla (el problema de las 6.x).
+        // Inserción atómica vía CDP: manda el comando completo de una vez
         try {
           const cdp = await term.target().createCDPSession();
           await cdp.send('Input.insertText', { text: opts.command });
           await sleep(2000);
         } catch { continue; /* sin CDP, siguiente método */ }
+      } else if (m === 'echo') {
+        const typed = await typeWithEcho();
+        if (typed === false) { await cancelLine(); continue; }
+        await sleep(800);
       } else {
-        // Tecleo lento con verificación; si sale mal, se borra y se repite más lento
         await term.keyboard.type(opts.command, { delay: m });
         await sleep(2000);
       }
