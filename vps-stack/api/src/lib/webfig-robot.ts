@@ -79,16 +79,21 @@ export async function withRobot<T>(fn: (browser: Browser) => Promise<T>): Promis
 
 export class WebfigAuthError extends Error {}
 
-export interface WebfigResult { shot?: string }
+/** Método de escritura que funcionó: 'insert' (atómico) o el retardo entre teclas en ms. */
+export type WebfigMethod = 'insert' | number;
+
+export interface WebfigResult { shot?: string; method?: WebfigMethod }
 
 /**
  * Entra a WebFig y ejecuta `command` en su Terminal.
  * Lanza WebfigAuthError si la clave no entra. Devuelve una captura (JPEG
- * base64) del final, útil para revisar qué vio el robot.
+ * base64) del final, útil para revisar qué vio el robot, y el método de
+ * escritura que funcionó (`method`) para reutilizarlo la próxima vez.
+ * `preferred` permite probar primero el método que ya funcionó en esta antena.
  */
 export async function runInWebfig(
   browser: Browser,
-  opts: { ip: string; port: number; username: string; password: string; command: string }
+  opts: { ip: string; port: number; username: string; password: string; command: string; preferred?: WebfigMethod }
 ): Promise<WebfigResult> {
   const page = await browser.newPage();
   const shot = async () =>
