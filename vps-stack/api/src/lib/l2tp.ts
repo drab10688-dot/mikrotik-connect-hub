@@ -108,6 +108,48 @@ chmod +x /etc/ppp/ip-up.local`
 }
 
 
+/**
+ * Connection Request por túneles concretos (redes repetidas entre routers).
+ *
+ * GenieACS solo puede despertar la ONU por la ruta global, que apunta a UN
+ * túnel. Cuando la IP de la ONU existe en varios routers del ISP, se envía el
+ * mismo Connection Request por cada túnel con `curl --interface pppX`
+ * (SO_BINDTODEVICE: ignora la ruta global). Si llega a una ONU equivocada con
+ * la misma IP, esta solo hace un Inform extra a su propio ACS.
+ * Los valores van como argumentos posicionales del shell, nunca interpolados.
+ */
+export function connectionRequestViaTunnels(
+  url: string,
+  username: string,
+  password: string,
+  tunnelIps: string[],
+): Promise<string> {
+  const peers = tunnelIps.map(esc).filter((p) => /^\d{1,3}(\.\d{1,3}){3}$/.test(p));
+  if (!/^http:\/\/\d{1,3}(\.\d{1,3}){3}(:\d{1,5})?(\/[^\s'"]*)?$/.test(url) || !peers.length) {
+    return Promise.resolve('');
+  }
+  const script =
+    `command -v curl >/dev/null 2>&1 || apk add --no-cache curl >/dev/null 2>&1 || exit 0; ` +
+    `url="$1"; auth="$2:$3"; shift 3; ` +
+    `for peer in "$@"; do ` +
+    `ifc=$(ip -o -4 addr show | grep -F "peer $peer/" | head -1 | awk '{print $2}'); ` +
+    `[ -n "$ifc" ] || continue; ` +
+    `code=$(curl -s -o /dev/null -w '%{http_code}' --interface "$ifc" --anyauth -u "$auth" -m 4 "$url" 2>/dev/null); ` +
+    `echo "$peer $ifc $code"; ` +
+    `done`;
+  return new Promise((resolve) => {
+    execFile(
+      'docker',
+      ['exec', CONTAINER, 'sh', '-c', script, 'sh', url, username, password, ...peers],
+      { timeout: 60000 },
+      (err, stdout) => {
+        if (err) console.warn(`[l2tp] connection request por túneles: ${err.message}`);
+        resolve(stdout || '');
+      },
+    );
+  });
+}
+
 /** Elimina la cuenta L2TP, sus rutas registradas y corta la sesión activa. */
 export async function removeL2tpUser(username: string, tunnelIp?: string) {
   const u = esc(username);

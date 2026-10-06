@@ -325,7 +325,7 @@ const IspAcs = () => {
                   <div className="space-y-1.5">
                     <Label>Red de administración de ONUs</Label>
                     <Input value={onuNetworks} onChange={(e) => setOnuNetworks(e.target.value)} placeholder="192.168.20.0/24, 192.168.21.0/24" />
-                    <p className="text-xs text-muted-foreground">Solo las redes de ESTE router, con máscara /24 o menor (ej. 192.168.20.0/24). Si son varias, sepáralas con coma. No pueden encimarse con las de otro router o ISP: el escritorio remoto y el panel solo podrán entrar a estas redes.</p>
+                    <p className="text-xs text-muted-foreground">Solo las redes de ESTE router, con máscara /24 o menor (ej. 192.168.20.0/24). Si son varias, sepáralas con coma. Pueden repetirse en otros routers (por ejemplo, un pool RADIUS compartido): cada túnel responde por el suyo y cada ISP solo ve sus ONUs por su token. El escritorio remoto y el panel solo podrán entrar a estas redes, siempre por tus propios túneles.</p>
                   </div>
                 </>
               )}

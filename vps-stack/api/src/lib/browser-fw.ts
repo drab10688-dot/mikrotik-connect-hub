@@ -1,5 +1,5 @@
 import { execFile } from 'child_process';
-import type { Cidr } from './networks';
+import type { Cidr, NetworkPin } from './networks';
 
 /**
  * Firewall POR ESCRITORIO remoto (aislamiento multi-ISP).
@@ -36,6 +36,41 @@ const safeName = (v: string) => v.replace(/[^a-zA-Z0-9_.-]/g, '');
 const safeIp = (v: string) => (/^\d{1,3}(\.\d{1,3}){3}$/.test(v) ? v : '');
 
 /**
+ * Prioridad de las reglas "desde este escritorio hacia la red X, usa la tabla
+ * del túnel de SU ISP". Va después de las IP puntuales (20000+ifindex,
+ * l2tp.ts) y antes de la tabla main (32766), donde la ruta global de una red
+ * repetida puede apuntar al túnel de otro ISP.
+ */
+const PIN_PREF = 30500;
+
+/** Borra las reglas de fijación por túnel de una IP de escritorio. */
+const unpinScript = (ip: string) =>
+  ip ? `while ip rule del pref ${PIN_PREF} from '${ip}/32' 2>/dev/null; do :; done` : 'true';
+
+/**
+ * Fija cada red del ISP a la tabla 31000+N de su túnel (N = último octeto de
+ * la IP de túnel; la misma tabla que usa restore-l2tp-routes.sh). La tabla
+ * lleva además un "unreachable" de respaldo: con el túnel caído el tráfico se
+ * corta en vez de caer a la ruta global (que podría ser de otro ISP).
+ */
+function pinScript(ip: string, pins: NetworkPin[]): string {
+  const lines: string[] = [unpinScript(ip)];
+  for (const pin of pins) {
+    const peer = safeIp(pin.tunnelIp);
+    const n = Number(peer.split('.')[3]);
+    if (!peer || !(n >= 1 && n <= 254)) continue;
+    const table = 31000 + n;
+    lines.push(
+      `IFC=$(ip -o -4 addr show | grep -F "peer ${peer}/" | head -1 | awk '{print $2}'); ` +
+        `[ -n "$IFC" ] && ip route replace default dev "$IFC" table ${table} 2>/dev/null; ` +
+        `ip route replace unreachable default metric 4294967295 table ${table} 2>/dev/null; ` +
+        `ip rule add pref ${PIN_PREF} from '${ip}/32' to '${pin.cidr.text}' table ${table} || exit 1`,
+    );
+  }
+  return lines.join('; ');
+}
+
+/**
  * Estructura base (idempotente): cadena, enganche en FORWARD y cola
  * "permitir su propia subred (Nginx) y descartar el resto".
  * La misma estructura la crea browser-firewall.sh en instalación/actualización.
@@ -67,14 +102,15 @@ function flushScript(name: string, ip: string): string {
 
 /**
  * Aplica el aislamiento de un escritorio: sólo `allow` (null = sin límite,
- * super admin) y nunca `deny`. `extra` son IPs puntuales ya validadas (equipo
+ * super admin), cada red fijada al túnel de su ISP (`pins`). `extra` son IPs
+ * puntuales ya validadas (equipo
  * descubierto por la MikroTik del propio ISP).
  */
 export async function isolateBrowser(
   container: string,
   sourceIp: string,
   allow: Cidr[] | null,
-  deny: Cidr[],
+  pins: NetworkPin[],
   extra: string[] = [],
 ): Promise<boolean> {
   const name = safeName(container);
@@ -83,7 +119,9 @@ export async function isolateBrowser(
   const tag = `${TAG_PREFIX}${name}`;
 
   // Se insertan al inicio, así que el último insertado se evalúa primero:
-  // orden final = IPs puntuales > DROP de otros ISP > redes propias > cola DROP.
+  // orden final = IPs puntuales > redes propias > cola DROP. Las redes propias
+  // salen solo por los túneles del ISP (`pins`), aunque otro ISP las repita;
+  // si la fijación falla no se abre nada (queda la cola DROP).
   // La IP puntual va por su propia tabla de rutas (túnel del router elegido),
   // por eso puede estar aunque coincida con la LAN repetida de otro ISP.
   const rules: string[] = [];
@@ -95,10 +133,10 @@ export async function isolateBrowser(
   } else {
     for (const c of allow) add(c.text, 'RETURN');
   }
-  for (const c of deny) add(c.text, 'DROP');
   for (const e of extra.map(safeIp).filter(Boolean)) add(`${e}/32`, 'RETURN');
 
-  const r = await hostSh(`${BASE}; ${flushScript(name, ip)}; ${rules.join('; ')}${rules.length ? '; ' : ''}printf isolated`);
+  const pinning = allow === null ? unpinScript(ip) : pinScript(ip, pins);
+  const r = await hostSh(`${BASE}; ${flushScript(name, ip)}; ${pinning}; ${rules.join('; ')}${rules.length ? '; ' : ''}printf isolated`);
   return r.ok && r.out.includes('isolated');
 }
 
@@ -106,7 +144,8 @@ export async function isolateBrowser(
 export async function releaseBrowser(container: string, sourceIp?: string | null): Promise<void> {
   const name = safeName(container);
   if (!name) return;
-  await hostSh(flushScript(name, sourceIp ? safeIp(sourceIp) : ''));
+  const ip = sourceIp ? safeIp(sourceIp) : '';
+  await hostSh(`${flushScript(name, ip)}; ${unpinScript(ip)}`);
 }
 
 /** Elimina reglas de escritorios que ya no existen (reinicios del API, fallos). */

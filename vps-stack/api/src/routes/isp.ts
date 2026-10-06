@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import { upsertL2tpUser, removeL2tpUser } from '../lib/l2tp';
-import { validateOnuNetworks, findNetworkClash } from '../lib/networks';
+import { validateOnuNetworks } from '../lib/networks';
 import { tenantOnuQuota } from '../lib/acs-tenant';
 
 
@@ -536,17 +536,16 @@ add chain=forward action=accept protocol=udp dst-address=${serverHost} dst-port=
 
   // Redes de ONUs/LAN de ESTE router. Son la base del aislamiento multi-ISP
   // (rutas del VPS y firewall del escritorio remoto): máscara /24 o menor,
-  // varias permitidas, sin encimarse con ninguna otra VPN (de otro ISP ni de
-  // otro router del mismo ISP). Si se regenera sin escribir redes, se
-  // conservan las que ya tenía el router.
+  // varias permitidas. Pueden repetirse en otros routers (pools RADIUS
+  // compartidos, mismo ISP u otro): cada ISP queda fijado a sus túneles (ver
+  // lib/networks.ts). Si se regenera sin escribir redes, se conservan las que
+  // ya tenía el router.
   const typed = String(req.body?.onu_networks ?? '').trim();
   const requested = typed || peer?.onu_networks || '';
   let onuNetworks = String(peer?.onu_networks || '');
   if (!peer || typed) {
     const v = validateOnuNetworks(requested);
     if ('error' in v) return res.status(400).json({ error: v.error });
-    const clash = await findNetworkClash(v.nets, peer?.id);
-    if (clash) return res.status(409).json({ error: clash });
     onuNetworks = v.text;
   }
 

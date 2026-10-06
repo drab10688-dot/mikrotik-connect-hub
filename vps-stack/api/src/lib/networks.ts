@@ -7,9 +7,10 @@ import { pool } from './db';
  * remoto y el acceso web a ONUs sólo alcanzan las redes del ISP dueño. Por eso
  * se validan con reglas estrictas:
  *  - Sólo rangos privados (10/8, 172.16/12, 192.168/16, 100.64/10).
- *  - Máscara mínima /24 (configurable con ONU_NET_MIN_PREFIX): un /16 tapa las
- *    redes de otros ISP y de los otros routers del mismo ISP.
- *  - Sin solapes con ninguna otra VPN (de otro ISP o de otro router del mismo).
+ *  - Máscara mínima /24 (configurable con ONU_NET_MIN_PREFIX): un /16 se lleva
+ *    la ruta global de redes que también usan otros routers.
+ *  - Puede repetirse en otros routers, del mismo ISP o de otro (ver
+ *    tunnelsForIp/NetworkPin más abajo).
  *  - Se permiten varias redes separadas por coma o espacio.
  */
 
@@ -114,66 +115,77 @@ export function validateOnuNetworks(value: unknown): { ok: true; nets: Cidr[]; t
 }
 
 /**
- * Comprueba que las redes no se enciman con las de otra VPN (de otro ISP o de
- * otro router del mismo ISP). `exceptPeerId` excluye el peer que se edita.
+ * Redes repetidas: se permiten entre routers del mismo ISP y entre ISP
+ * distintos. Las ONUs se reparten por el token de la URL TR-069, no por IP, y
+ * el tráfico de cada ISP queda fijado a SUS túneles:
+ *  - respuestas: marcas de conexión por túnel (restore-l2tp-routes.sh);
+ *  - escritorio remoto: reglas por IP origen hacia las tablas de sus túneles
+ *    (browser-fw.ts, `pins`);
+ *  - Connection Request: se envía por cada túnel del ISP dueño de la ONU.
  */
-export async function findNetworkClash(nets: Cidr[], exceptPeerId?: string | null): Promise<string | null> {
+
+/**
+ * Túneles que declaran una red con `ip`: los del ISP indicado (`own`) y el
+ * total de routers activos de cualquier ISP (`total`).
+ */
+export async function tunnelsForIp(ip: string, tenantId: string): Promise<{ own: string[]; total: number }> {
   const { rows } = await pool.query(
-    `SELECT p.id, p.name, p.onu_networks, t.name AS tenant_name
-       FROM tenant_vpn_peers p JOIN tenants t ON t.id = p.tenant_id
-      WHERE ($1::uuid IS NULL OR p.id <> $1::uuid)`,
-    [exceptPeerId || null],
+    `SELECT tenant_id, tunnel_ip, onu_networks FROM tenant_vpn_peers
+      WHERE tunnel_ip IS NOT NULL AND COALESCE(is_active, true) = true`,
   );
-  for (const row of rows) {
-    for (const raw of splitNetworks(row.onu_networks)) {
-      const other = parseCidr(raw);
-      if (!other) continue;
-      const hit = nets.find((n) => overlaps(n, other));
-      if (hit) {
-        return `La red ${hit.text} se encima con ${other.text} del router "${row.name}" (ISP "${String(row.tenant_name).trim()}"). Cada router debe declarar sus propias redes.`;
-      }
-    }
-  }
-  return null;
+  const hits = rows.filter((r: any) => splitNetworks(r.onu_networks).some((raw) => {
+    const c = parseCidr(raw);
+    return c ? ipInCidr(ip, c) : false;
+  }));
+  return {
+    own: hits.filter((r: any) => r.tenant_id === tenantId).map((r: any) => String(r.tunnel_ip)),
+    total: hits.length,
+  };
+}
+
+export interface NetworkPin {
+  cidr: Cidr;
+  /** IP de túnel del router del ISP que declara la red. */
+  tunnelIp: string;
 }
 
 export interface NetworkScope {
   /** Redes del ISP. `null` = sin restricción (super admin sin ISP asignado). */
   allow: Cidr[] | null;
   /**
-   * Redes de OTROS ISP que caen dentro de las propias (VPN antiguas con
-   * rangos amplios, p. ej. 192.168.0.0/16). Se bloquean explícitamente.
+   * Cada red propia fijada al túnel de un router del ISP. Así una red que
+   * otro ISP también declara nunca sale por el túnel ajeno.
    */
-  deny: Cidr[];
+  pins: NetworkPin[];
 }
 
 /** Redes que puede alcanzar un usuario según su ISP. */
 export async function networkScopeFor(role: string | undefined, tenantId: string | null): Promise<NetworkScope> {
-  if (!tenantId) return { allow: role === 'super_admin' ? null : [], deny: [] };
+  if (!tenantId) return { allow: role === 'super_admin' ? null : [], pins: [] };
 
+  // El router actualizado más reciente gana cuando el ISP repite una red,
+  // igual que prepareTenantRoute (routes/browser.ts).
   const { rows } = await pool.query(
-    `SELECT tenant_id, onu_networks FROM tenant_vpn_peers
-      WHERE COALESCE(is_active, true) = true`,
+    `SELECT tunnel_ip, onu_networks FROM tenant_vpn_peers
+      WHERE tenant_id = $1 AND COALESCE(is_active, true) = true
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC`,
+    [tenantId],
   );
   const allow: Cidr[] = [];
-  const others: Cidr[] = [];
+  const pins: NetworkPin[] = [];
   for (const row of rows) {
     for (const raw of splitNetworks(row.onu_networks)) {
       const c = parseCidr(raw);
-      if (!c) continue;
-      (row.tenant_id === tenantId ? allow : others).push(c);
+      if (!c || allow.some((a) => a.text === c.text)) continue;
+      allow.push(c);
+      if (row.tunnel_ip) pins.push({ cidr: c, tunnelIp: String(row.tunnel_ip) });
     }
   }
-  // Solo las redes de otro ISP que caen DENTRO de una propia más amplia. Una
-  // red ajena más amplia que la propia (p. ej. otro ISP con 192.168.0.0/16)
-  // no se bloquea: taparía las redes del propio ISP.
-  const deny = others.filter((o) => allow.some((a) => o.prefix > a.prefix && overlaps(a, o)));
-  return { allow, deny };
+  return { allow, pins };
 }
 
-/** true si la IP pertenece al ISP (y no a otro ISP metido dentro de sus rangos). */
+/** true si la IP pertenece a las redes del ISP. */
 export function ipAllowed(ip: string, scope: NetworkScope): boolean {
   if (scope.allow === null) return true;
-  if (scope.deny.some((c) => ipInCidr(ip, c))) return false;
   return scope.allow.some((c) => ipInCidr(ip, c));
 }

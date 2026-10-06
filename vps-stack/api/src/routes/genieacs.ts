@@ -2,6 +2,8 @@ import { Router, Response, NextFunction } from 'express';
 import { AuthRequest, getAccessibleDeviceIds, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { syncAcsOwnership, tenantAcsDeviceIds } from '../lib/acs-tenant';
+import { tunnelsForIp } from '../lib/networks';
+import { connectionRequestViaTunnels } from '../lib/l2tp';
 
 import {
   ensureAcsSignalTables,
@@ -80,13 +82,62 @@ async function clearDeviceBacklog(deviceId: string) {
 }
 
 
+/**
+ * Redes repetidas entre routers: el Connection Request de GenieACS sale por la
+ * ruta global (un solo túnel). Si la IP de la ONU existe en varios túneles, se
+ * envía también por cada túnel del ISP dueño de la ONU (por token).
+ */
+async function wakeOnRepeatedNetworks(deviceId: string) {
+  try {
+    const owner = await pool.query(
+      `SELECT o.tenant_id, t.cr_username, t.cr_password
+         FROM acs_device_owners o JOIN tenants t ON t.id = o.tenant_id
+        WHERE o.acs_device_id = $1`,
+      [deviceId],
+    );
+    const row = owner.rows[0];
+    if (!row?.tenant_id) return;
+
+    const q = encodeURIComponent(JSON.stringify({ _id: deviceId }));
+    const projection = ['InternetGatewayDevice', 'Device']
+      .flatMap((r) => ['URL', 'Username', 'Password'].map((p) => `${r}.ManagementServer.ConnectionRequest${p}`))
+      .join(',');
+    const list = await genieFetch(`/devices/?query=${q}&projection=${encodeURIComponent(projection)}`);
+    const d = Array.isArray(list) ? list[0] : null;
+    const ms = d?.InternetGatewayDevice?.ManagementServer || d?.Device?.ManagementServer;
+    const url = String(ms?.ConnectionRequestURL?._value || '');
+    const host = url.match(/^http:\/\/(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/)?.[1];
+    if (!host) return;
+
+    // Solo si la red está repetida: la ruta global puede apuntar a otro router
+    // (propio o de otro ISP). Se envía únicamente por los túneles del dueño.
+    const { own, total } = await tunnelsForIp(host, row.tenant_id);
+    if (!own.length || total < 2) return;
+
+    const user = String(ms?.ConnectionRequestUsername?._value || row.cr_username || 'omnisync');
+    const pass = String(ms?.ConnectionRequestPassword?._value || row.cr_password || 'OmniSync2026');
+    const out = await connectionRequestViaTunnels(url, user, pass, own);
+    if (out.trim()) console.log(`[ACS] CR por túneles ${deviceId}: ${out.trim().replace(/\n/g, ' | ')}`);
+  } catch (e: any) {
+    console.warn(`[ACS] CR por túneles ${deviceId}: ${e.message}`);
+  }
+}
+
 // ─── Helper: fetch GenieACS NBI ──────────────────────────
 async function genieFetch(path: string, options: RequestInit = {}): Promise<any> {
   const taskPost = String(options.method || 'GET').toUpperCase() === 'POST'
     && /^\/devices\/([^/]+)\/tasks/.test(path);
   if (taskPost) {
     const m = path.match(/^\/devices\/([^/]+)\/tasks/);
-    if (m) await clearDeviceBacklog(decodeURIComponent(m[1]));
+    if (m) {
+      const deviceId = decodeURIComponent(m[1]);
+      await clearDeviceBacklog(deviceId);
+      // GenieACS guarda la tarea antes de su propio Connection Request; el
+      // nuestro sale un poco después para que la ONU la encuentre en cola.
+      if (path.includes('connection_request')) {
+        setTimeout(() => { void wakeOnRepeatedNetworks(deviceId); }, 1500);
+      }
+    }
   }
   const res = await fetch(`${GENIEACS_NBI}${path}`, {
     ...options,

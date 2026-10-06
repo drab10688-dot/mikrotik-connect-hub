@@ -214,7 +214,7 @@ async function userScope(userId: string) {
 async function isolate(session: UserBrowserSession, scope: NetworkScope, extra: string[] = []): Promise<boolean> {
   const ip = await getUserBrowserIp(session);
   if (!ip) return false;
-  return isolateBrowser(session.container, ip, scope.allow, scope.deny, extra);
+  return isolateBrowser(session.container, ip, scope.allow, scope.pins, extra);
 }
 
 function publicSession(s: UserBrowserSession) {
