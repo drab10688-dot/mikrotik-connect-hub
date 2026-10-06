@@ -9,7 +9,7 @@ import {
   CpeBrand, CpeLogin, SshAuthError, sshRun, findLogin, passwordHash, IDENTIFY, parseIdentify, BACKUP,
   setPppoeUserCmd, setPasswordCmd, SAFE_PPPOE_USER, SAFE_PASSWORD, SAFE_USERNAME,
 } from '../lib/cpe-ssh';
-import { withRobot, runInWebfig, WebfigAuthError } from '../lib/webfig-robot';
+import { withRobot, runInWebfig, WebfigAuthError, WebfigMethod } from '../lib/webfig-robot';
 import { mikrotikRowToClient, parseMikrotikTerse, parseUbiquitiSsh, signalQuality, type ApClient } from '../lib/ap-signal';
 
 /**
@@ -654,7 +654,8 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
       }
     };
     // Activar API va de UNA en UNA: el robot de WebFig se satura con varias a la vez
-    const lanes = action === 'enable-api' ? 1 : CONCURRENCY;
+    // enable-api va de a 3: la escritura ya es verificada y cada antena es independiente
+    const lanes = action === 'enable-api' ? 3 : CONCURRENCY;
     Promise.all(Array.from({ length: Math.min(lanes, targets.length) }, worker))
       .catch((e) => console.error('[CPE] job:', e?.message))
       .finally(async () => {
