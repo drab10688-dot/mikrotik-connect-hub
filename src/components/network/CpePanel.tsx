@@ -664,7 +664,11 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
               <input type="checkbox" checked={uf.demote} disabled={!uf.an} onChange={(e) => setUf({ ...uf, demote: e.target.checked })} />
               Dejar al usuario actual como operador: puede leer y cambiar configuración, pero NO ver contraseñas
             </label>
-            <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres.</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={uf.ar} onChange={(e) => setUf({ ...uf, ar: e.target.checked })} />
+              Activar anti-reset: apaga el botón de reset y protege el arranque (nadie puede resetearla de fábrica)
+            </label>
+            <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres. El anti-reset requiere firmware actualizado; si la antena no lo soporta, te avisa.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUsersOpen(false)}>Cancelar</Button>
