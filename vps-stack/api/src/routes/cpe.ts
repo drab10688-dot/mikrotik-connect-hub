@@ -348,7 +348,7 @@ async function currentIp(mikrotikId: string, mac: string, fallback: string): Pro
 type UserSpec = { name: string; password: string };
 type Ctx = {
   mikrotikId: string; tenantId: string | null; action: Action; newPassword?: string;
-  users?: { admin?: UserSpec; tech?: UserSpec; demote: boolean };
+  users?: { admin?: UserSpec; tech?: UserSpec; demote: boolean; antireset?: boolean };
   creds: Map<CpeBrand, SedeCreds>;
   promoted: Set<CpeBrand>;
   webPort: number; allowFrom: string;
@@ -564,6 +564,21 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
           done.push(`${login.username} → operador (sin ver claves)`);
         }
       }
+      if (u.antireset) {
+        // Anti-reset: botón de reset apagado + RouterBOOT protegido (bloquea reseteo de fábrica y netinstall)
+        try {
+          await apiCall(t.ip, lg, '/rest/system/routerboard/settings', 'PATCH', {
+            'protected-routerboot': 'enabled',
+            'reset-button': 'off',
+          });
+          // Verificar que quedó aplicado
+          const rb = await apiCall(t.ip, lg, '/rest/system/routerboard/settings');
+          if (String(rb?.['protected-routerboot']) === 'enabled') done.push('anti-reset activado');
+          else done.push('anti-reset: el bootloader de esta antena no lo soporta (actualiza el firmware)');
+        } catch (e: any) {
+          done.push(`anti-reset falló: ${e.message} (bootloader viejo — actualiza el firmware)`);
+        }
+      }
       if (u.admin) {
         await saveDevice({ login_hash: passwordHash(u.admin.password), last_ok_at: new Date(), last_error: null });
         // El sistema pasa a entrar con el admin nuevo (la clave vieja queda de respaldo)
@@ -699,9 +714,10 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
         }
       }
       const demote = !!req.body?.demote_current;
+      const antireset = !!req.body?.anti_reset;
       if (demote && !admin) return res.status(400).json({ success: false, error: 'Para bajar al usuario actual crea también el admin nuevo' });
-      if (!admin && !tech) return res.status(400).json({ success: false, error: 'Indica el admin nuevo o el técnico' });
-      users = { admin, tech, demote };
+      if (!admin && !tech && !antireset) return res.status(400).json({ success: false, error: 'Indica el admin nuevo, el técnico o el anti-reset' });
+      users = { admin, tech, demote, antireset };
     }
     const newPassword = action === 'password' ? String(req.body?.new_password || '') : undefined;
     if (action === 'password' && !SAFE_PASSWORD.test(newPassword!)) {

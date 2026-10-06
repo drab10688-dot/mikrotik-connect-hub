@@ -314,7 +314,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [apiOpen, setApiOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
-  const [uf, setUf] = useState({ an: "", ap: "", tn: "", tp: "", demote: false });
+  const [uf, setUf] = useState({ an: "", ap: "", tn: "", tp: "", demote: false, ar: false });
   const [allowFrom, setAllowFrom] = useState("");
   const [pwd, setPwd] = useState({ a: "", b: "" });
   const [job, setJob] = useState<{ id: string; action: string } | null>(null);
@@ -372,7 +372,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
       setPwdOpen(false);
       setApiOpen(false);
       setUsersOpen(false);
-      setUf({ an: "", ap: "", tn: "", tp: "", demote: false });
+      setUf({ an: "", ap: "", tn: "", tp: "", demote: false, ar: false });
       setPwd({ a: "", b: "" });
     },
     onError: (e: any) => toast.error(e.message || "No se pudo iniciar"),
@@ -664,17 +664,22 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
               <input type="checkbox" checked={uf.demote} disabled={!uf.an} onChange={(e) => setUf({ ...uf, demote: e.target.checked })} />
               Dejar al usuario actual como operador: puede leer y cambiar configuración, pero NO ver contraseñas
             </label>
-            <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres.</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={uf.ar} onChange={(e) => setUf({ ...uf, ar: e.target.checked })} />
+              Activar anti-reset: apaga el botón de reset y protege el arranque (nadie puede resetearla de fábrica)
+            </label>
+            <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres. El anti-reset requiere firmware actualizado; si la antena no lo soporta, te avisa.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUsersOpen(false)}>Cancelar</Button>
             <Button
-              disabled={start.isPending || (!uf.an && !uf.tn) || (!!uf.an && uf.ap.length < 8) || (!!uf.tn && uf.tp.length < 8)}
+              disabled={start.isPending || (!uf.an && !uf.tn && !uf.ar) || (!!uf.an && uf.ap.length < 8) || (!!uf.tn && uf.tp.length < 8)}
               onClick={() => start.mutate({
                 action: "users",
                 admin: uf.an ? { name: uf.an.trim(), password: uf.ap } : undefined,
                 tech: uf.tn ? { name: uf.tn.trim(), password: uf.tp } : undefined,
                 demote_current: uf.demote && !!uf.an,
+                anti_reset: uf.ar,
               })}
             >
               {start.isPending && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
