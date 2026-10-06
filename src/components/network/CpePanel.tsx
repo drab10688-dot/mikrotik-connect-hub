@@ -28,6 +28,7 @@ const ACTION_LABEL: Record<string, string> = {
   "pppoe-user": "Cambiar usuario PPPoE",
   password: "Cambiar clave de acceso",
   "enable-api": "Activar API (WebFig)",
+  users: "Usuarios de la antena",
 };
 
 /** Credenciales de las antenas cliente de la sede, por marca. Las claves nunca se muestran. */
@@ -312,6 +313,8 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [paste, setPaste] = useState("");
   const [pwdOpen, setPwdOpen] = useState(false);
   const [apiOpen, setApiOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [uf, setUf] = useState({ an: "", ap: "", tn: "", tp: "", demote: false });
   const [allowFrom, setAllowFrom] = useState("");
   const [pwd, setPwd] = useState({ a: "", b: "" });
   const [job, setJob] = useState<{ id: string; action: string } | null>(null);
@@ -358,7 +361,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   });
 
   const start = useMutation({
-    mutationFn: ({ targets, ...body }: { action: string; new_password?: string; allow_from?: string; targets?: any[] }) =>
+    mutationFn: ({ targets, ...body }: { action: string; new_password?: string; allow_from?: string; targets?: any[]; [k: string]: any }) =>
       cpeApi.startJob(deviceId, {
         ...body,
         // targets explícitos (equipo de prueba) o las antenas seleccionadas
@@ -368,6 +371,8 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
       setJob({ id: d.job_id, action: body.action });
       setPwdOpen(false);
       setApiOpen(false);
+      setUsersOpen(false);
+      setUf({ an: "", ap: "", tn: "", tp: "", demote: false });
       setPwd({ a: "", b: "" });
     },
     onError: (e: any) => toast.error(e.message || "No se pudo iniciar"),
@@ -461,6 +466,11 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
               {isAdmin && (
                 <Button size="sm" variant="outline" onClick={() => setPwdOpen(true)}>
                   <KeyRound className="w-3.5 h-3.5 mr-1" /> Cambiar clave de acceso
+                </Button>
+              )}
+              {isAdmin && (
+                <Button size="sm" variant="outline" onClick={() => setUsersOpen(true)} title="Admin aparte, técnico solo lectura">
+                  <KeyRound className="w-3.5 h-3.5 mr-1" /> Usuarios de la antena
                 </Button>
               )}
               {isAdmin && (
@@ -628,6 +638,47 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
             <Button onClick={() => start.mutate({ action: "enable-api", allow_from: allowFrom.trim() || undefined })} disabled={start.isPending}>
               {start.isPending && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
               Activar en {chosen.length} antenas
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={usersOpen} onOpenChange={setUsersOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Usuarios de {chosen.length} antenas MikroTik</DialogTitle>
+            <DialogDescription>
+              Por API. Primero se crea el admin nuevo y se comprueba que entra; solo entonces se baja al usuario actual.
+              El sistema pasa a entrar con el admin nuevo. El técnico puede ver la señal, hacer ping/pruebas y reiniciar,
+              pero no cambiar la configuración ni ver claves.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1"><Label>Admin nuevo (usuario)</Label><Input value={uf.an} onChange={(e) => setUf({ ...uf, an: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Clave del admin</Label><Input type="password" autoComplete="new-password" value={uf.ap} onChange={(e) => setUf({ ...uf, ap: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Técnico (usuario, opcional)</Label><Input value={uf.tn} onChange={(e) => setUf({ ...uf, tn: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Clave del técnico</Label><Input type="password" autoComplete="new-password" value={uf.tp} onChange={(e) => setUf({ ...uf, tp: e.target.value })} /></div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={uf.demote} disabled={!uf.an} onChange={(e) => setUf({ ...uf, demote: e.target.checked })} />
+              Dejar al usuario actual solo con permiso de ver (sin cambiar nada ni ver claves)
+            </label>
+            <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUsersOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={start.isPending || (!uf.an && !uf.tn) || (!!uf.an && uf.ap.length < 8) || (!!uf.tn && uf.tp.length < 8)}
+              onClick={() => start.mutate({
+                action: "users",
+                admin: uf.an ? { name: uf.an.trim(), password: uf.ap } : undefined,
+                tech: uf.tn ? { name: uf.tn.trim(), password: uf.tp } : undefined,
+                demote_current: uf.demote && !!uf.an,
+              })}
+            >
+              {start.isPending && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
+              Aplicar en {chosen.length} antenas
             </Button>
           </DialogFooter>
         </DialogContent>
