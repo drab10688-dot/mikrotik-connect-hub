@@ -555,12 +555,13 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       }
       if (u.demote) {
         if (!u.admin) throw new Error('Para bajar al usuario actual primero crea el admin nuevo');
-        await ensureGroup(lg, 'solo-lectura', 'local,ssh,read,winbox,web,api');
+        // Operador: lee y escribe toda la config, pero SIN 'sensitive' las claves le salen ocultas
+        await ensureGroup(lg, 'operador', 'local,ssh,read,write,test,reboot,winbox,web,api,!sensitive');
         const list = asArray(await apiCall(t.ip, lg, '/rest/user'));
         const cur = list.find((x: any) => String(x.name) === login.username);
         if (cur && login.username !== u.admin.name) {
-          await apiCall(t.ip, lg, `/rest/user/${encodeURIComponent(cur['.id'])}`, 'PATCH', { group: 'solo-lectura' });
-          done.push(`${login.username} → solo lectura`);
+          await apiCall(t.ip, lg, `/rest/user/${encodeURIComponent(cur['.id'])}`, 'PATCH', { group: 'operador' });
+          done.push(`${login.username} → operador (sin ver claves)`);
         }
       }
       if (u.admin) {
