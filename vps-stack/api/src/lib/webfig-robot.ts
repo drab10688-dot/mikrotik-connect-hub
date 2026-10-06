@@ -94,23 +94,32 @@ export async function runInWebfig(
   const shot = async () =>
     (await page.screenshot({ type: 'jpeg', quality: 45, encoding: 'base64' }).catch(() => undefined)) as string | undefined;
   try {
-    await page.goto(`http://${opts.ip}:${opts.port}/webfig/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    const pass = await page.waitForSelector('input[type=password]', { visible: true, timeout: 25_000 });
-    const user = (await page.$('#name')) || (await page.$('input[type=text]'));
-    if (!pass || !user) throw new Error('No se encontró el formulario de inicio de sesión de WebFig');
+    // RouterOS 6.x antiguos: WebFig puede estar en la raíz y no en /webfig/
+    let pass = null as any;
+    for (const path of ['/webfig/', '/']) {
+      try {
+        await page.goto(`http://${opts.ip}:${opts.port}${path}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        pass = await page.waitForSelector('input[type=password]', { visible: true, timeout: path === '/' ? 25_000 : 15_000 });
+        if (pass) break;
+      } catch { /* siguiente ruta */ }
+    }
+    if (!pass) throw new Error('No se encontró el formulario de inicio de sesión de WebFig');
+    const user = (await page.$('#name')) || (await page.$('input[name=user]')) || (await page.$('input[type=text]'));
+    if (!user) throw new Error('No se encontró el formulario de inicio de sesión de WebFig');
 
     // Usuario: se vacía lo que traiga (WebFig propone "admin") y se escribe
     await user.evaluate((el: any) => { el.value = ''; });
     await user.click();
     await user.type(opts.username, { delay: 20 });
     await pass.click();
+    await pass.evaluate((el: any) => { el.value = ''; });
     await pass.type(opts.password, { delay: 20 });
 
     // Botón "Login" (si no se encuentra, Enter en el campo de clave).
     // Las funciones que corren dentro del navegador van como texto: la API no tiene tipos del DOM.
     const pressed = await page.evaluate(`(() => {
       const els = Array.from(document.querySelectorAll('input[type=button],input[type=submit],button,a'))
-        .filter((e) => /^log ?in$/i.test(((e.value || e.innerText || '') + '').trim()) && e.offsetParent !== null);
+        .filter((e) => /^(log ?in|connect)$/i.test(((e.value || e.innerText || '') + '').trim()) && e.offsetParent !== null);
       if (!els.length) return false;
       els[0].click();
       return true;
@@ -124,7 +133,7 @@ export async function runInWebfig(
         const p = document.querySelector('input[type=password]');
         const hidden = !p || p.offsetParent === null || p.getBoundingClientRect().height === 0;
         return hidden || /\\blog ?out\\b/i.test(document.body.innerText) ? 'ok' : false;
-      })()`, { timeout: 20_000, polling: 500 })
+      })()`, { timeout: 25_000, polling: 500 })
       .then(() => 'ok')
       .catch(() => 'fail');
     if (state !== 'ok') {
@@ -133,45 +142,68 @@ export async function runInWebfig(
         ? new WebfigAuthError('WebFig rechazó el usuario o la clave')
         : new Error('No se pudo confirmar el inicio de sesión en WebFig (revisa la captura)');
     }
-    await sleep(2500);
+    await sleep(3000);
+
+    // RouterOS 6.x abre la Terminal en una ventana emergente; v7 en la misma página
+    const popupPromise = browser
+      .waitForTarget((t) => t.opener() === page.target() && t.type() === 'page', { timeout: 8000 })
+      .then((t) => t.page())
+      .catch(() => null);
 
     // Botón/pestaña "Terminal" (el elemento más interno con ese texto exacto)
     const clicked = await page.evaluate(`(() => {
-      const els = Array.from(document.querySelectorAll('a,button,span,div,td,li'))
-        .filter((e) => ['Terminal', 'New Terminal'].includes((e.innerText || '').trim()) && e.offsetParent !== null);
+      const els = Array.from(document.querySelectorAll('a,button,span,div,td,li,input'))
+        .filter((e) => ['Terminal', 'New Terminal'].includes(((e.value || e.innerText || '') + '').trim()) && e.offsetParent !== null);
       const el = els[els.length - 1];
       if (!el) return false;
       el.click();
       return true;
     })()`);
     if (!clicked) throw new Error('No se encontró el botón Terminal en WebFig');
-    await sleep(3000);
+    const popup = await popupPromise;
+    const term = popup || page;
+    if (popup) { await popup.setViewport({ width: 1000, height: 700 }).catch(() => undefined); await popup.bringToFront().catch(() => undefined); }
+    await sleep(4000);
+
+    // Texto de la terminal: incluye iframes (algunas 6.x la dibujan dentro de uno)
+    const readScreen = async (): Promise<string> => {
+      let txt = '';
+      for (const f of term.frames()) txt += (await f.evaluate('document.body ? document.body.innerText : ""').catch(() => '')) as string;
+      return txt;
+    };
 
     // La terminal de WebFig manda cada tecla al router por separado: si se
     // escribe rápido, llegan desordenadas. Se escribe despacio y, ANTES de
     // pulsar Enter, se compara lo que muestra la pantalla con el comando; si no
-    // coincide se borra la línea (Ctrl+C) y se reintenta más lento. Nunca se
-    // ejecuta un comando mal escrito.
-    await page.mouse.click(640, 450);
+    // coincide se borra la línea (Ctrl+C) y se reintenta más lento.
+    const vp = term.viewport() || { width: 1280, height: 800 };
+    await term.mouse.click(Math.round(vp.width / 2), Math.round(vp.height / 2));
     const flat = (s: string) => s.replace(/\s+/g, '');
     const want = flat(opts.command);
     let typedOk = false;
     for (const delay of [90, 180, 300]) {
-      await page.keyboard.type(opts.command, { delay });
+      await term.keyboard.type(opts.command, { delay });
       await sleep(1500);
-      const screen = flat(await page.evaluate('document.body.innerText').catch(() => '') as string);
-      // La línea en curso es lo que sigue al último prompt "] >"
-      const current = screen.slice(screen.lastIndexOf(']>') + 2);
-      if (current.startsWith(want) && current.length <= want.length + 2) { typedOk = true; break; }
-      await page.keyboard.down('Control');
-      await page.keyboard.press('KeyC');
-      await page.keyboard.up('Control');
+      const screen = flat(await readScreen());
+      const at = screen.lastIndexOf(']>');
+      if (at < 0 && delay === 300) {
+        // Pantalla ilegible (terminal dibujada en 6.x): se confía en la escritura más lenta
+        typedOk = true;
+        break;
+      }
+      const current = screen.slice(at + 2);
+      if (at >= 0 && current.startsWith(want) && current.length <= want.length + 2) { typedOk = true; break; }
+      await term.keyboard.down('Control');
+      await term.keyboard.press('KeyC');
+      await term.keyboard.up('Control');
       await sleep(1500);
     }
     if (!typedOk) throw new Error('La terminal de WebFig no recibió el comando completo; no se ejecutó nada');
-    await page.keyboard.press('Enter');
+    await term.keyboard.press('Enter');
     await sleep(3000);
-    return { shot: await shot() };
+    const result = { shot: (await term.screenshot({ type: 'jpeg', quality: 45, encoding: 'base64' }).catch(() => undefined)) as string | undefined };
+    if (popup) await popup.close().catch(() => undefined);
+    return result;
   } catch (e: any) {
     const s = await shot();
     throw Object.assign(e instanceof Error ? e : new Error(String(e)), { shot: s });

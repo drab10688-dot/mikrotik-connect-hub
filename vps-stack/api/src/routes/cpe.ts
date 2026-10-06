@@ -376,7 +376,8 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       });
       // Verificación: la API debe responder con esa misma clave
       let ok = false;
-      for (let i = 0; i < 3 && !ok; i++) {
+      // RouterOS 6.x tarda más en levantar el servicio API: hasta ~18 s
+      for (let i = 0; i < 6 && !ok; i++) {
         await sleep(3000);
         ok = typeof (await mikrotikApiLogin(t.ip, [used!])) === 'object';
       }
