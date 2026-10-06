@@ -439,6 +439,9 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       r.status = 'ok';
       r.message = `API activada en el puerto ${apiPort} (solo desde ${ctx.allowFrom})`;
       await saveDevice({ ip: t.ip, pppoe_user: t.pppoe_user, brand: 'mikrotik', login_hash: passwordHash(used!.password), last_ok_at: new Date(), last_error: null });
+      // Recuerda el método de escritura que funcionó para ir directo la próxima vez
+      if (usedMethod !== undefined)
+        await pool.query(`UPDATE cpe_devices SET webfig_method = $3 WHERE mikrotik_id = $1 AND mac = $2`, [mikrotikId, mac, String(usedMethod)]).catch(() => undefined);
       return;
     }
 
