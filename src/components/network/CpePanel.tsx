@@ -28,6 +28,7 @@ const ACTION_LABEL: Record<string, string> = {
   "pppoe-user": "Cambiar usuario PPPoE",
   password: "Cambiar clave de acceso",
   "enable-api": "Activar API (WebFig)",
+  users: "Usuarios de la antena",
 };
 
 /** Credenciales de las antenas cliente de la sede, por marca. Las claves nunca se muestran. */
@@ -312,6 +313,8 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [paste, setPaste] = useState("");
   const [pwdOpen, setPwdOpen] = useState(false);
   const [apiOpen, setApiOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [uf, setUf] = useState({ an: "", ap: "", tn: "", tp: "", demote: false });
   const [allowFrom, setAllowFrom] = useState("");
   const [pwd, setPwd] = useState({ a: "", b: "" });
   const [job, setJob] = useState<{ id: string; action: string } | null>(null);
@@ -358,7 +361,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   });
 
   const start = useMutation({
-    mutationFn: ({ targets, ...body }: { action: string; new_password?: string; allow_from?: string; targets?: any[] }) =>
+    mutationFn: ({ targets, ...body }: { action: string; new_password?: string; allow_from?: string; targets?: any[]; [k: string]: any }) =>
       cpeApi.startJob(deviceId, {
         ...body,
         // targets explícitos (equipo de prueba) o las antenas seleccionadas
@@ -368,6 +371,8 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
       setJob({ id: d.job_id, action: body.action });
       setPwdOpen(false);
       setApiOpen(false);
+      setUsersOpen(false);
+      setUf({ an: "", ap: "", tn: "", tp: "", demote: false });
       setPwd({ a: "", b: "" });
     },
     onError: (e: any) => toast.error(e.message || "No se pudo iniciar"),
@@ -461,6 +466,11 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
               {isAdmin && (
                 <Button size="sm" variant="outline" onClick={() => setPwdOpen(true)}>
                   <KeyRound className="w-3.5 h-3.5 mr-1" /> Cambiar clave de acceso
+                </Button>
+              )}
+              {isAdmin && (
+                <Button size="sm" variant="outline" onClick={() => setUsersOpen(true)} title="Admin aparte, técnico solo lectura">
+                  <KeyRound className="w-3.5 h-3.5 mr-1" /> Usuarios de la antena
                 </Button>
               )}
               {isAdmin && (
