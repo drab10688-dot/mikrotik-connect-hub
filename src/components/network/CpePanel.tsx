@@ -314,7 +314,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [apiOpen, setApiOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
-  const [uf, setUf] = useState({ an: "", ap: "", tn: "", tp: "", demote: false });
+  const [uf, setUf] = useState({ an: "", ap: "", tn: "", tp: "", demote: false, ar: false });
   const [allowFrom, setAllowFrom] = useState("");
   const [pwd, setPwd] = useState({ a: "", b: "" });
   const [job, setJob] = useState<{ id: string; action: string } | null>(null);
@@ -372,7 +372,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
       setPwdOpen(false);
       setApiOpen(false);
       setUsersOpen(false);
-      setUf({ an: "", ap: "", tn: "", tp: "", demote: false });
+      setUf({ an: "", ap: "", tn: "", tp: "", demote: false, ar: false });
       setPwd({ a: "", b: "" });
     },
     onError: (e: any) => toast.error(e.message || "No se pudo iniciar"),
@@ -673,12 +673,13 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setUsersOpen(false)}>Cancelar</Button>
             <Button
-              disabled={start.isPending || (!uf.an && !uf.tn) || (!!uf.an && uf.ap.length < 8) || (!!uf.tn && uf.tp.length < 8)}
+              disabled={start.isPending || (!uf.an && !uf.tn && !uf.ar) || (!!uf.an && uf.ap.length < 8) || (!!uf.tn && uf.tp.length < 8)}
               onClick={() => start.mutate({
                 action: "users",
                 admin: uf.an ? { name: uf.an.trim(), password: uf.ap } : undefined,
                 tech: uf.tn ? { name: uf.tn.trim(), password: uf.tp } : undefined,
                 demote_current: uf.demote && !!uf.an,
+                anti_reset: uf.ar,
               })}
             >
               {start.isPending && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
