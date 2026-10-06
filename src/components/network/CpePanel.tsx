@@ -469,7 +469,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                 </Button>
               )}
               {isAdmin && (
-                <Button size="sm" variant="outline" onClick={() => setUsersOpen(true)} title="Admin aparte, técnico solo lectura">
+                <Button size="sm" variant="outline" onClick={() => setUsersOpen(true)} title="Admin aparte, técnico y operador sin ver claves">
                   <KeyRound className="w-3.5 h-3.5 mr-1" /> Usuarios de la antena
                 </Button>
               )}
@@ -662,7 +662,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={uf.demote} disabled={!uf.an} onChange={(e) => setUf({ ...uf, demote: e.target.checked })} />
-              Dejar al usuario actual solo con permiso de ver (sin cambiar nada ni ver claves)
+              Dejar al usuario actual como operador: puede leer y cambiar configuración, pero NO ver contraseñas
             </label>
             <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres.</p>
           </div>
