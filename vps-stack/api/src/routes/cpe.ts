@@ -9,7 +9,7 @@ import {
   CpeBrand, CpeLogin, SshAuthError, sshRun, findLogin, passwordHash, IDENTIFY, parseIdentify, BACKUP,
   setPppoeUserCmd, setPasswordCmd, SAFE_PPPOE_USER, SAFE_PASSWORD, SAFE_USERNAME,
 } from '../lib/cpe-ssh';
-import { withRobot, runInWebfig, WebfigAuthError } from '../lib/webfig-robot';
+import { withRobot, runInWebfig, WebfigAuthError, WebfigMethod } from '../lib/webfig-robot';
 import { mikrotikRowToClient, parseMikrotikTerse, parseUbiquitiSsh, signalQuality, type ApClient } from '../lib/ap-signal';
 
 /**
@@ -399,14 +399,20 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       }
       const apiPort = ctx.creds.get('mikrotik')?.apiPort || DEFAULT_API_PORT;
       const command = `/ip service set api disabled=no port=${apiPort} address=${ctx.allowFrom}`;
+      // Método de escritura que ya funcionó en esta antena (se prueba primero)
+      await pool.query(`ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS webfig_method text`).catch(() => undefined);
+      const saved = dev?.webfig_method;
+      const preferred: WebfigMethod | undefined = saved === 'insert' ? 'insert' : (Number(saved) > 0 ? Number(saved) : undefined);
       let used: CpeLogin | null = null;
       let shot: string | undefined;
+      let usedMethod: WebfigMethod | undefined;
       await withRobot(async (browser) => {
         for (const login of cands) {
           try {
-            const out = await runInWebfig(browser, { ip: t.ip, port: ctx.webPort, username: login.username, password: login.password, command });
+            const out = await runInWebfig(browser, { ip: t.ip, port: ctx.webPort, username: login.username, password: login.password, command, preferred });
             used = login;
             shot = out.shot;
+            usedMethod = out.method;
             return;
           } catch (e: any) {
             // Captura de lo que vio el robot (también cuando la clave no entra)
@@ -433,6 +439,9 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       r.status = 'ok';
       r.message = `API activada en el puerto ${apiPort} (solo desde ${ctx.allowFrom})`;
       await saveDevice({ ip: t.ip, pppoe_user: t.pppoe_user, brand: 'mikrotik', login_hash: passwordHash(used!.password), last_ok_at: new Date(), last_error: null });
+      // Recuerda el método de escritura que funcionó para ir directo la próxima vez
+      if (usedMethod !== undefined)
+        await pool.query(`UPDATE cpe_devices SET webfig_method = $3 WHERE mikrotik_id = $1 AND mac = $2`, [mikrotikId, mac, String(usedMethod)]).catch(() => undefined);
       return;
     }
 
@@ -645,7 +654,8 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
       }
     };
     // Activar API va de UNA en UNA: el robot de WebFig se satura con varias a la vez
-    const lanes = action === 'enable-api' ? 1 : CONCURRENCY;
+    // enable-api va de a 3: la escritura ya es verificada y cada antena es independiente
+    const lanes = action === 'enable-api' ? 3 : CONCURRENCY;
     Promise.all(Array.from({ length: Math.min(lanes, targets.length) }, worker))
       .catch((e) => console.error('[CPE] job:', e?.message))
       .finally(async () => {
