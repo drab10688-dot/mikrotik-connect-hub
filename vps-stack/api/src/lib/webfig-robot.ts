@@ -201,31 +201,37 @@ export async function runInWebfig(
       const current = screen.slice(at + 2);
       return current.startsWith(want) && current.length <= want.length + 2;
     };
-    let typedOk = false;
-    // 1) Inserción atómica vía CDP: manda el comando completo de una vez,
-    //    sin carrera tecla por tecla (el problema de las 6.x).
-    try {
-      const cdp = await term.target().createCDPSession();
-      await cdp.send('Input.insertText', { text: opts.command });
-      await sleep(2000);
+    let usedMethod: WebfigMethod | null = null;
+    // Métodos de escritura, en orden: primero el que ya funcionó en esta
+    // antena (si se conoce), luego inserción atómica y tecleo cada vez más lento.
+    const methods: WebfigMethod[] = ['insert', 150, 300, 500];
+    if (opts.preferred !== undefined && methods.includes(opts.preferred)) {
+      methods.splice(methods.indexOf(opts.preferred), 1);
+      methods.unshift(opts.preferred);
+    }
+    for (const m of methods) {
+      if (m === 'insert') {
+        // Inserción atómica vía CDP: manda el comando completo de una vez,
+        // sin carrera tecla por tecla (el problema de las 6.x).
+        try {
+          const cdp = await term.target().createCDPSession();
+          await cdp.send('Input.insertText', { text: opts.command });
+          await sleep(2000);
+        } catch { continue; /* sin CDP, siguiente método */ }
+      } else {
+        // Tecleo lento con verificación; si sale mal, se borra y se repite más lento
+        await term.keyboard.type(opts.command, { delay: m });
+        await sleep(2000);
+      }
       const ok = await screenMatches();
-      if (ok === true) typedOk = true;
-      else if (ok === false) await cancelLine();
-    } catch { /* sin CDP, se sigue con el tecleo */ }
-    // 2) Respaldo: tecleo lento con verificación; si sale mal, se borra y se repite más lento
-    for (const delay of [150, 300, 500]) {
-      if (typedOk) break;
-      await term.keyboard.type(opts.command, { delay });
-      await sleep(2000);
-      const ok = await screenMatches();
-      if (ok === true) { typedOk = true; break; }
+      if (ok === true) { usedMethod = m; break; }
       if (ok === false) await cancelLine();
       // ok === null: pantalla ilegible, se intenta el siguiente método sin pulsar Enter a ciegas
     }
-    if (!typedOk) throw new Error('La terminal de WebFig no recibió el comando completo; no se ejecutó nada');
+    if (usedMethod === null) throw new Error('La terminal de WebFig no recibió el comando completo; no se ejecutó nada');
     await term.keyboard.press('Enter');
     await sleep(3000);
-    const result = { shot: (await term.screenshot({ type: 'jpeg', quality: 45, encoding: 'base64' }).catch(() => undefined)) as string | undefined };
+    const result: WebfigResult = { shot: (await term.screenshot({ type: 'jpeg', quality: 45, encoding: 'base64' }).catch(() => undefined)) as string | undefined, method: usedMethod };
     if (popup) await popup.close().catch(() => undefined);
     return result;
   } catch (e: any) {
