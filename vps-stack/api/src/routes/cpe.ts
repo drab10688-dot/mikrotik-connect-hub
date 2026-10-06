@@ -399,14 +399,20 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       }
       const apiPort = ctx.creds.get('mikrotik')?.apiPort || DEFAULT_API_PORT;
       const command = `/ip service set api disabled=no port=${apiPort} address=${ctx.allowFrom}`;
+      // Método de escritura que ya funcionó en esta antena (se prueba primero)
+      await pool.query(`ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS webfig_method text`).catch(() => undefined);
+      const saved = dev?.webfig_method;
+      const preferred: WebfigMethod | undefined = saved === 'insert' ? 'insert' : (Number(saved) > 0 ? Number(saved) : undefined);
       let used: CpeLogin | null = null;
       let shot: string | undefined;
+      let usedMethod: WebfigMethod | undefined;
       await withRobot(async (browser) => {
         for (const login of cands) {
           try {
-            const out = await runInWebfig(browser, { ip: t.ip, port: ctx.webPort, username: login.username, password: login.password, command });
+            const out = await runInWebfig(browser, { ip: t.ip, port: ctx.webPort, username: login.username, password: login.password, command, preferred });
             used = login;
             shot = out.shot;
+            usedMethod = out.method;
             return;
           } catch (e: any) {
             // Captura de lo que vio el robot (también cuando la clave no entra)
