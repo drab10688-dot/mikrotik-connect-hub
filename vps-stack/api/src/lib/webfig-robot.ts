@@ -181,18 +181,36 @@ export async function runInWebfig(
     const flat = (s: string) => s.replace(/\s+/g, '');
     const want = flat(opts.command);
     let typedOk = false;
-    for (const delay of [90, 180, 300]) {
-      await term.keyboard.type(opts.command, { delay });
-      await sleep(1500);
+    // Línea en curso (lo que sigue al último prompt "] >"); null si no se puede leer
+    const currentLine = async (): Promise<string | null> => {
       const screen = flat(await readScreen());
       const at = screen.lastIndexOf(']>');
-      if (at < 0 && delay === 300) {
-        // Pantalla ilegible (terminal dibujada en 6.x): se confía en la escritura más lenta
-        typedOk = true;
-        break;
+      return at < 0 ? null : screen.slice(at + 2);
+    };
+    // Escritura sincronizada con el eco: se manda UNA tecla y se espera a verla
+    // en pantalla antes de mandar la siguiente. RouterOS 6.x desordena las
+    // teclas si llegan antes de que el router devuelva el eco de la anterior.
+    for (let attempt = 0; attempt < 3 && !typedOk; attempt++) {
+      let typed = '';
+      let broken = false;
+      for (const ch of opts.command) {
+        await term.keyboard.type(ch);
+        typed += ch;
+        const target = flat(typed);
+        if (ch === ' ') { await sleep(250); continue; }
+        let seen = false;
+        for (let i = 0; i < 30; i++) {
+          await sleep(100);
+          const cur = await currentLine();
+          if (cur === null) { await sleep(400); seen = true; break; } // pantalla ilegible: ritmo fijo
+          if (cur === target) { seen = true; break; }
+          if (!target.startsWith(cur) ) break; // llegó algo distinto
+        }
+        if (!seen) { broken = true; break; }
       }
-      const current = screen.slice(at + 2);
-      if (at >= 0 && current.startsWith(want) && current.length <= want.length + 2) { typedOk = true; break; }
+      await sleep(800);
+      const cur = await currentLine();
+      if (!broken && (cur === null || cur === want)) { typedOk = true; break; }
       await term.keyboard.down('Control');
       await term.keyboard.press('KeyC');
       await term.keyboard.up('Control');
