@@ -348,7 +348,7 @@ async function currentIp(mikrotikId: string, mac: string, fallback: string): Pro
 type UserSpec = { name: string; password: string };
 type Ctx = {
   mikrotikId: string; tenantId: string | null; action: Action; newPassword?: string;
-  users?: { admin?: UserSpec; tech?: UserSpec; demote: boolean };
+  users?: { admin?: UserSpec; tech?: UserSpec; demote: boolean; antireset?: boolean };
   creds: Map<CpeBrand, SedeCreds>;
   promoted: Set<CpeBrand>;
   webPort: number; allowFrom: string;
@@ -699,9 +699,10 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
         }
       }
       const demote = !!req.body?.demote_current;
+      const antireset = !!req.body?.anti_reset;
       if (demote && !admin) return res.status(400).json({ success: false, error: 'Para bajar al usuario actual crea también el admin nuevo' });
-      if (!admin && !tech) return res.status(400).json({ success: false, error: 'Indica el admin nuevo o el técnico' });
-      users = { admin, tech, demote };
+      if (!admin && !tech && !antireset) return res.status(400).json({ success: false, error: 'Indica el admin nuevo, el técnico o el anti-reset' });
+      users = { admin, tech, demote, antireset };
     }
     const newPassword = action === 'password' ? String(req.body?.new_password || '') : undefined;
     if (action === 'password' && !SAFE_PASSWORD.test(newPassword!)) {
