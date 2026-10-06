@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { connect as netConnect } from 'net';
 import { pool } from '../lib/db';
-import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
+import { AuthRequest, verifyDeviceAccess, getAccessibleDeviceIds } from '../middleware/auth';
 import { mikrotikRequest, mikrotikNativeRequest, getDeviceConfig, isAuthenticationError } from '../lib/mikrotik';
 import { requireSection } from './isp';
 import { ensureApRoute, mtCached, apsWithPppoe, formatMac, detectBrand, tenantWebPorts } from './netaccess';
@@ -10,6 +10,7 @@ import {
   setPppoeUserCmd, setPasswordCmd, SAFE_PPPOE_USER, SAFE_PASSWORD, SAFE_USERNAME,
 } from '../lib/cpe-ssh';
 import { withRobot, runInWebfig, WebfigAuthError, WebfigMethod } from '../lib/webfig-robot';
+import { CpeHealth, HEALTH_CMD, parseHealthSsh, readMikrotikHealthApi, lanProblem } from '../lib/cpe-health';
 import { mikrotikRowToClient, parseMikrotikTerse, parseUbiquitiSsh, signalQuality, type ApClient } from '../lib/ap-signal';
 
 /**
@@ -58,6 +59,31 @@ const CIDR = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
 
 const apiCall = (ip: string, login: CpeLogin, path: string, method = 'GET', body?: Record<string, unknown>) =>
   mikrotikNativeRequest({ host: ip, port: login.apiPort || DEFAULT_API_PORT, username: login.username, password: login.password }, path, method, body);
+
+/** LAN (conectada, velocidad, dúplex, caídas) y tiempo encendida, leídos en la antena. */
+async function readCpeHealth(brand: CpeBrand, viaApi: boolean, ip: string, login: CpeLogin): Promise<CpeHealth | null> {
+  if (brand === 'mikrotik' && viaApi) {
+    return readMikrotikHealthApi((path, method, body) => apiCall(ip, login, path, method, body));
+  }
+  const out = await sshRun(ip, login, HEALTH_CMD[brand]).catch(() => '');
+  return out.includes('|') ? parseHealthSsh(brand, out) : null;
+}
+
+async function saveHealth(mikrotikId: string, mac: string, h: CpeHealth | null): Promise<void> {
+  if (!h) return;
+  await pool.query(
+    `UPDATE cpe_devices SET lan_iface = $3, lan_up = $4, lan_mbps = $5, lan_full = $6, lan_downs = $7,
+            cpe_uptime_s = $8, health_at = now(), updated_at = now()
+      WHERE mikrotik_id = $1 AND mac = $2`,
+    [mikrotikId, mac, h.lan_iface, h.lan_up, h.lan_mbps, h.lan_full, h.lan_downs, h.uptime_s]
+  ).catch(() => undefined);
+}
+
+const healthText = (h: CpeHealth | null) => {
+  if (!h || h.lan_up === null) return '';
+  if (!h.lan_up) return 'LAN desconectada';
+  return `LAN ${h.lan_mbps ? `${h.lan_mbps} Mbps` : 'conectada'}${h.lan_full === false ? ' half-duplex' : ''}`;
+};
 
 /** Prueba las claves por API. 'unreachable' = la API no responde (apagada o filtrada). */
 async function mikrotikApiLogin(ip: string, cands: CpeLogin[]): Promise<{ login: CpeLogin; resource: any } | 'auth' | 'unreachable'> {
@@ -270,6 +296,94 @@ cpeRouter.post('/:mikrotikId/probe', editRed, async (req: AuthRequest, res: Resp
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | null> =>
   Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
 
+// ─── Resumen de clientes (por sede y del ISP) ──────────────────
+/** Lectura de la antena "reciente": la revisión automática corre cada 15 min. */
+const HEALTH_FRESH_MS = 40 * 60_000;
+const fresh = (at: any, ms = HEALTH_FRESH_MS) => Boolean(at) && Date.now() - new Date(at).getTime() < ms;
+
+/**
+ * Contadores de una sede: PPPoE conectados/caídos, DHCP activos, antenas que
+ * responden o no, y problemas del lado del cliente (LAN caída o lenta, señal
+ * mala, reinicio reciente). Las antenas cuentan solo si ya fueron
+ * identificadas (el panel tiene su clave) y su cliente está conectado.
+ */
+async function sedeSummary(mikrotikId: string) {
+  const [activeRaw, secretsRaw, leasesRaw, devRes] = await Promise.all([
+    mtCached(mikrotikId, '/rest/ppp/active', 10000),
+    mtCached(mikrotikId, '/rest/ppp/secret'),
+    mtCached(mikrotikId, '/rest/ip/dhcp-server/lease', 15000),
+    pool.query(`SELECT * FROM cpe_devices WHERE mikrotik_id = $1`, [mikrotikId]),
+  ]);
+  const active = asArray(activeRaw);
+  const activeNames = new Set(active.map((a: any) => String(a.name)));
+  const secrets = asArray(secretsRaw).filter((s: any) => String(s.disabled) !== 'true');
+  const leases = asArray(leasesRaw);
+  const bound = leases.filter((l: any) => String(l.status) === 'bound');
+
+  // Clientes conectados ahora (por MAC): sesiones PPPoE y concesiones DHCP
+  const onlineMacs = new Set<string>();
+  for (const a of active) { const m = formatMac(a['caller-id']); if (m) onlineMacs.add(m); }
+  for (const l of bound) { const m = formatMac(l['active-mac-address'] || l['mac-address']); if (m) onlineMacs.add(m); }
+
+  const known = devRes.rows.filter((d: any) => d.login_hash && d.mac && onlineMacs.has(d.mac));
+  const responding = known.filter((d: any) => fresh(d.health_at) || fresh(d.signal_at) || fresh(d.last_ok_at));
+  const read = known.filter((d: any) => fresh(d.health_at));
+  const signalOf = (d: any) => (fresh(d.signal_at) ? d.signal : null);
+  return {
+    pppoe_active: active.length,
+    pppoe_total: secrets.length,
+    // Usuarios habilitados sin sesión ahora
+    pppoe_down: secrets.filter((s: any) => !activeNames.has(String(s.name))).length,
+    dhcp_active: bound.length,
+    // Concesiones fijas (estáticas) cuyo cliente no está conectado
+    dhcp_down: leases.filter((l: any) => String(l.dynamic) !== 'true' && String(l.status) !== 'bound' && String(l.disabled) !== 'true').length,
+    antennas_known: known.length,
+    antennas_responding: responding.length,
+    antennas_silent: known.length - responding.length,
+    lan_down: read.filter((d: any) => d.lan_up === false).length,
+    lan_slow: read.filter((d: any) => d.lan_up && (d.lan_full === false || (d.lan_mbps != null && d.lan_mbps < 100))).length,
+    signal_bad: known.filter((d: any) => { const s = signalOf(d); return s != null && s < -75; }).length,
+    rebooted_today: read.filter((d: any) => d.cpe_uptime_s != null && d.cpe_uptime_s < 86400).length,
+  };
+}
+
+/** Resumen de todas las sedes que el usuario puede ver (su ISP / sus routers). */
+cpeRouter.get('/summary', async (req: AuthRequest, res: Response) => {
+  try {
+    const ids = await getAccessibleDeviceIds(req);
+    const { rows: sedes } = await pool.query(
+      `SELECT id, name FROM mikrotik_devices
+        WHERE ($1::uuid[] IS NULL OR id = ANY($1::uuid[]))
+          AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
+        ORDER BY name`,
+      [ids, req.tenantId || null]
+    );
+    const per = await Promise.all(sedes.map(async (s: any) => {
+      try {
+        return { id: s.id, name: s.name, ok: true, ...(await withTimeout(sedeSummary(s.id), 8000) || { ok: false }) };
+      } catch {
+        return { id: s.id, name: s.name, ok: false };
+      }
+    }));
+    const keys = ['pppoe_active', 'pppoe_total', 'pppoe_down', 'dhcp_active', 'dhcp_down', 'antennas_known', 'antennas_responding',
+      'antennas_silent', 'lan_down', 'lan_slow', 'signal_bad', 'rebooted_today'] as const;
+    const total: Record<string, number> = {};
+    for (const k of keys) total[k] = per.reduce((a: number, s: any) => a + (Number(s[k]) || 0), 0);
+    res.json({ success: true, data: { total, sedes: per } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** Resumen de una sede (cabecera de "Antenas de los clientes"). */
+cpeRouter.get('/:mikrotikId/summary', async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, data: await sedeSummary(req.params.mikrotikId) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 /**
  * Clientes de la sede, en dos pestañas del panel:
  *  - kind=pppoe (por defecto): sesiones PPPoE activas.
@@ -345,6 +459,13 @@ cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
         version: dev?.version || null,
         last_ok_at: dev?.last_ok_at || null,
         last_error: dev?.last_error || null,
+        // Salud del lado del cliente (última lectura en la antena, < 40 min)
+        ...(dev && fresh(dev.health_at)
+          ? {
+              lan_up: dev.lan_up, lan_mbps: dev.lan_mbps, lan_full: dev.lan_full, lan_downs: dev.lan_downs,
+              cpe_uptime_s: dev.cpe_uptime_s, health_at: dev.health_at, lan_problem: lanProblem(dev),
+            }
+          : { lan_up: null, lan_mbps: null, lan_full: null, lan_downs: null, cpe_uptime_s: null, health_at: dev?.health_at || null, lan_problem: null }),
         ...(apSig || { signal: null, snr: null, quality: 'desconocida', ap: null }),
         // Medida por la propia antena (< 30 min): tiene prioridad sobre la del AP
         ...(dev?.signal_at && Date.now() - new Date(dev.signal_at).getTime() < 30 * 60_000
@@ -538,8 +659,11 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       // Identificar también lee la señal desde la antena (hacia su AP)
       const link = await readCpeLink(brand, viaApi, t.ip, login).catch(() => null);
       await saveLink(mikrotikId, mac, link);
+      // …y la salud del lado del cliente: LAN, velocidad, caídas, encendido
+      const health = await readCpeHealth(brand, viaApi, t.ip, login).catch(() => null);
+      await saveHealth(mikrotikId, mac, health);
       r.status = 'ok';
-      r.message = [brand === 'mikrotik' ? 'MikroTik' : 'Ubiquiti', model, version, `por ${via}`, linkText(link)].filter(Boolean).join(' · ');
+      r.message = [brand === 'mikrotik' ? 'MikroTik' : 'Ubiquiti', model, version, `por ${via}`, linkText(link), healthText(health)].filter(Boolean).join(' · ');
       return;
     }
 
@@ -886,6 +1010,12 @@ export async function refreshCpeSignals(): Promise<void> {
             let link = d.brand === 'mikrotik' ? await readCpeLink('mikrotik', true, ip, login) : null;
             if (!link) link = await readCpeLink(d.brand, false, ip, login);
             await saveLink(sede.mikrotik_id, d.mac, link);
+            // Salud del cliente: MikroTik por API y, si no contesta, por SSH
+            let health = d.brand === 'mikrotik' ? await readCpeHealth('mikrotik', true, ip, login).catch(() => null) : null;
+            if (!health || (health.lan_up === null && health.uptime_s === null)) {
+              health = await readCpeHealth(d.brand, false, ip, login).catch(() => null);
+            }
+            await saveHealth(sede.mikrotik_id, d.mac, health);
           } catch { /* antena sin respuesta: se reintenta en la próxima vuelta */ }
         }
       };

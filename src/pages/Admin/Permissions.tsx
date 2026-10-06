@@ -29,10 +29,11 @@ const FALLBACK_LABELS: Record<string, string> = {
   vpn: "Credenciales y VPN",
   configuracion: "Configuración",
   diagnostico: "Diagnóstico API",
+  escritorio: "Escritorio remoto (VNC)",
 };
 
 const GROUPS: { title: string; sections: string[] }[] = [
-  { title: "Operación", sections: ["onus", "mikrotik", "pppoe", "topology", "red"] },
+  { title: "Operación", sections: ["onus", "mikrotik", "pppoe", "topology", "red", "escritorio"] },
   { title: "Infraestructura", sections: ["vpn", "configuracion", "diagnostico"] },
 ];
 

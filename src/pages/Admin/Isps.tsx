@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Building2, Copy, Plus, Save, Trash2, Antenna, ExternalLink, Megaphone } from "lucide-react";
 import { mergeLanding, type LandingContent } from "@/lib/landing";
 import { ServerSecurityCard } from "@/components/admin/ServerSecurityCard";
+import { ServerResourcesCard } from "@/components/admin/ServerResourcesCard";
 
 interface Isp {
   id: string;
@@ -183,6 +184,8 @@ export default function Isps() {
             <Plus className="w-4 h-4 mr-2" /> Nuevo ISP
           </Button>
         </div>
+
+        <ServerResourcesCard />
 
         {creating && (
           <Card>

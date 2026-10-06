@@ -304,6 +304,14 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS ap_mac TEXT`,
     `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS ap_name TEXT`,
     `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS signal_at TIMESTAMPTZ`,
+    // Salud del lado del cliente (lib/cpe-health.ts): LAN, velocidad, caídas, encendido
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS lan_iface TEXT`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS lan_up BOOLEAN`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS lan_mbps INTEGER`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS lan_full BOOLEAN`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS lan_downs INTEGER`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS cpe_uptime_s INTEGER`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS health_at TIMESTAMPTZ`,
     // Copia de la configuración antes de cada cambio (se guardan las 3 últimas)
     `CREATE TABLE IF NOT EXISTS cpe_backups (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

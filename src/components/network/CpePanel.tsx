@@ -24,6 +24,41 @@ const QUALITY: Record<string, { label: string; className: string }> = {
 };
 
 const BRAND_LABEL: Record<string, string> = { mikrotik: "MikroTik", ubiquiti: "Ubiquiti" };
+
+/** Problemas del lado del cliente (leídos en la antena) para filtrar la lista. */
+const ISSUES: Record<string, { label: string; test: (c: any) => boolean }> = {
+  lan_down: { label: "LAN desconectada", test: (c) => c.lan_up === false },
+  lan_slow: { label: "LAN lenta / half-duplex", test: (c) => c.lan_up === true && (c.lan_full === false || (c.lan_mbps != null && c.lan_mbps < 100)) },
+  rebooted: { label: "Reiniciadas hoy", test: (c) => c.cpe_uptime_s != null && c.cpe_uptime_s < 86400 },
+  unread: { label: "Sin lectura de la antena", test: (c) => !!c.last_ok_at && c.lan_up == null },
+};
+
+function fmtUptime(s: number | null | undefined): string {
+  if (s == null) return "";
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  return d ? `${d} d ${h} h` : `${h} h ${Math.floor((s % 3600) / 60)} min`;
+}
+
+/** Celda LAN: estado, velocidad y dúplex, con el motivo en texto. */
+function LanCell({ c }: { c: any }) {
+  if (c.lan_up == null) return <span className="text-muted-foreground">—</span>;
+  const tip = [c.lan_problem, c.lan_downs != null ? `Caídas del enlace: ${c.lan_downs}` : null, c.cpe_uptime_s != null ? `Encendida hace ${fmtUptime(c.cpe_uptime_s)}` : null]
+    .filter(Boolean).join(" · ");
+  if (c.lan_up === false) {
+    return <span className="text-destructive font-medium" title={tip}>Desconectada</span>;
+  }
+  const bad = c.lan_full === false || (c.lan_mbps != null && c.lan_mbps < 100);
+  return (
+    <span className={bad ? "text-amber-600 dark:text-amber-400 font-medium" : ""} title={tip}>
+      {c.lan_mbps ? `${c.lan_mbps} Mbps` : "Conectada"}{c.lan_full === false ? " half" : ""}
+      {bad && <span className="block text-[10px] font-normal">revisar cable</span>}
+      {c.cpe_uptime_s != null && c.cpe_uptime_s < 86400 && (
+        <span className="block text-[10px] font-normal text-muted-foreground">encendida hace {fmtUptime(c.cpe_uptime_s)}</span>
+      )}
+    </span>
+  );
+}
 const ACTION_LABEL: Record<string, string> = {
   identify: "Identificar",
   "pppoe-user": "Cambiar usuario PPPoE",
@@ -308,6 +343,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [search, setSearch] = useState("");
   const [weakOnly, setWeakOnly] = useState(false);
   const [brandFilter, setBrandFilter] = useState("todas");
+  const [issue, setIssue] = useState("todos");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pppoeMode, setPppoeMode] = useState(false);
   const [newUsers, setNewUsers] = useState<Record<string, string>>({});
@@ -349,11 +385,12 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
     const term = search.trim().toLowerCase();
     return cpes.filter((c) => {
       if (weakOnly && !isWeak(c)) return false;
+      if (issue !== "todos" && !ISSUES[issue]?.test(c)) return false;
       if (brandFilter !== "todas" && (c.brand || "desconocida") !== brandFilter) return false;
       if (!term) return true;
       return [c.pppoe_user, c.name, c.ip, c.mac, c.model, c.ap].filter(Boolean).some((v: string) => String(v).toLowerCase().includes(term));
     });
-  }, [cpes, search, weakOnly, brandFilter]);
+  }, [cpes, search, weakOnly, brandFilter, issue]);
 
   const keyOf = (c: any) => c.mac || c.pppoe_user || c.ip;
   // Las acciones solo van a las seleccionadas que se VEN con el filtro actual:
@@ -464,6 +501,15 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                 <SelectItem value="desconocida">Sin identificar</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={issue} onValueChange={setIssue}>
+              <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos los estados</SelectItem>
+                {Object.entries(ISSUES).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v.label} ({cpes.filter(v.test).length})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button size="sm" variant={weakOnly ? "default" : "outline"} onClick={() => setWeakOnly((v) => !v)}>
               <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Señal mala
             </Button>
@@ -549,6 +595,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                   <th className="py-2 pr-3">Señal</th>
                   <th className="py-2 pr-3">SNR</th>
                   <th className="py-2 pr-3">Calidad</th>
+                  <th className="py-2 pr-3" title="Puerto LAN de la antena hacia el router del cliente">LAN</th>
                   <th className="py-2">Último acceso</th>
                 </tr>
               </thead>
@@ -592,6 +639,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                       </td>
                       <td className="py-2 pr-3">{c.snr != null ? `${c.snr} dB` : "—"}</td>
                       <td className="py-2 pr-3"><Badge variant="outline" className={q.className}>{q.label}</Badge></td>
+                      <td className="py-2 pr-3 text-xs"><LanCell c={c} /></td>
                       <td className="py-2 text-xs">
                         {c.last_error
                           ? <span className="text-destructive" title={c.last_error}>Error: {String(c.last_error).slice(0, 60)}</span>
@@ -602,7 +650,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                   );
                 })}
                 {!visible.length && (
-                  <tr><td colSpan={10} className="py-6 text-center text-muted-foreground">
+                  <tr><td colSpan={11} className="py-6 text-center text-muted-foreground">
                     {listError
                       ? <span className="text-destructive">No se pudo leer la lista: {(listError as any)?.message}</span>
                       : isFetching ? "Cargando clientes…" : cpes.length ? "Ningún cliente coincide con esos filtros."

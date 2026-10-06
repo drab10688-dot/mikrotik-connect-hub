@@ -21,6 +21,7 @@ import { CpePanel } from "@/components/network/CpePanel";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 import { usePagedSearch } from "@/hooks/use-paged-search";
 import { SearchBox, Pager } from "@/components/common/SearchPager";
+import { useMyPermissions } from "@/hooks/usePermissions";
 
 const AP_QUALITY: Record<string, { label: string; className: string }> = {
   excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
@@ -55,6 +56,8 @@ export default function Network() {
   const [browserTarget, setBrowserTarget] = useState<ProxyBrowserTarget | null>(null);
   const browserOpen = Boolean(browserTarget);
   const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
+  // Escritorio remoto (VNC): permiso aparte para técnicos
+  const canDesktop = useMyPermissions().can("escritorio");
 
   const { data: devices = [] } = useQuery({
     queryKey: ["net-devices"],
@@ -122,7 +125,7 @@ export default function Network() {
 
   // Precalienta el escritorio remoto del usuario al entrar a Red: cuando pulse
   // "Abrir", el contenedor VNC ya está arrancado y la pestaña abre al instante.
-  useEffect(() => { browserApi.session().catch(() => undefined); }, []);
+  useEffect(() => { if (canDesktop) browserApi.session().catch(() => undefined); }, [canDesktop]);
 
 
   const savePorts = useMutation({
@@ -454,21 +457,23 @@ export default function Network() {
             <Button onClick={openWebFig} disabled={!deviceId}>
               <Monitor className="w-4 h-4 mr-2" /> Abrir WebFig
             </Button>
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                try {
-                  await browserApi.session();
-                  window.open(remoteDesktopUrl('browser'), "_blank", "noopener");
-                } catch (e: any) {
-                  toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
-                }
-              }}
+            {canDesktop && (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    await browserApi.session();
+                    window.open(remoteDesktopUrl('browser'), "_blank", "noopener");
+                  } catch (e: any) {
+                    toast.error(e?.message || "No se pudo iniciar tu escritorio remoto");
+                  }
+                }}
 
-              title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
-            >
-              <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
-            </Button>
+                title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
+              >
+                <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
+              </Button>
+            )}
           </div>
         </div>
 

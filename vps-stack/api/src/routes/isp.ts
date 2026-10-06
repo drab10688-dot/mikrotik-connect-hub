@@ -23,6 +23,7 @@ export const SECTIONS = [
   'vpn',
   'configuracion',
   'diagnostico',
+  'escritorio',
 ] as const;
 export type Section = (typeof SECTIONS)[number];
 
@@ -35,6 +36,7 @@ export const SECTION_LABELS: Record<string, string> = {
   vpn: 'Credenciales y VPN',
   configuracion: 'Configuracion',
   diagnostico: 'Diagnostico API',
+  escritorio: 'Escritorio remoto (VNC)',
 };
 
 /**
@@ -45,11 +47,17 @@ export const SECTION_LABELS: Record<string, string> = {
 export type RoleName = 'user';
 export const ROLE_NAMES: RoleName[] = ['user'];
 
-/** Permisos por defecto del técnico en cada ISP nuevo (view = ver | edit = modificar). */
+/**
+ * Permisos por defecto del técnico (view = ver | edit = modificar): ONUs por
+ * TR-069 y antenas/APs con su señal y estado ("mikrotik" abre la página de
+ * red). El escritorio remoto (VNC) queda apagado hasta que el admin lo dé.
+ * Se siembran solo las filas que falten, así que en un ISP existente una
+ * sección nueva (p. ej. "escritorio") entra apagada sin tocar lo ya guardado.
+ */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, { view: string[]; edit: string[] }> = {
   user: {
-    view: ['onus', 'mikrotik', 'pppoe', 'topology', 'red', 'vpn', 'diagnostico'],
-    edit: ['onus', 'pppoe', 'red'],
+    view: ['onus', 'mikrotik', 'red'],
+    edit: ['onus'],
   },
 };
 
@@ -418,36 +426,65 @@ const READ_ACTIONS = /\/(refresh(-[a-z]+)?|diagnostics|signal-collect\/[^/]+|acs
  * siempre. Para el técnico, modo 'auto': consultar exige "ver" y modificar
  * exige "editar"; 'view' / 'edit' fuerzan uno de los dos.
  */
+/**
+ * ¿Puede un técnico usar una sección? Primero su permiso individual, luego el
+ * del rol técnico en su ISP. Sin fila = sin permiso.
+ */
+async function technicianAllowed(userId: string, tenantId: string, section: Section, edit: boolean): Promise<boolean> {
+  // 1) Permiso individual del usuario (tiene prioridad)
+  const { rows: own } = await pool.query(
+    `SELECT can_view, can_edit FROM user_permissions
+      WHERE user_id = $1 AND section = $2 LIMIT 1`,
+    [userId, section]
+  ).catch(() => ({ rows: [] as any[] }) as any);
+  if (own[0]) return Boolean(edit ? own[0].can_edit : own[0].can_view);
+
+  // 2) Permiso del rol técnico dentro del ISP
+  const { rows } = await pool.query(
+    `SELECT can_view, can_edit FROM role_permissions
+     WHERE tenant_id = $1 AND role = 'user' AND section = $2 LIMIT 1`,
+    [tenantId, section]
+  );
+  const perm = rows[0];
+  return Boolean(perm && (edit ? perm.can_edit : perm.can_view));
+}
+
 export function requireSection(section: Section, mode: 'auto' | 'view' | 'edit' = 'auto') {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (req.userRole === 'super_admin' || req.userRole === 'admin') return next();
     if (!req.tenantId) return next(); // instalación sin multi-ISP
     const edit = mode === 'edit'
       || (mode === 'auto' && !READ_METHODS.has(req.method) && !READ_ACTIONS.test(req.path));
-    const deny = () => res.status(403).json({
-      error: edit ? `No tienes permiso para modificar ${SECTION_LABELS[section] || section}` : `Sin permiso para ${SECTION_LABELS[section] || section}`,
-    });
     try {
-      // 1) Permiso individual del usuario (tiene prioridad)
-      const { rows: own } = await pool.query(
-        `SELECT can_view, can_edit FROM user_permissions
-          WHERE user_id = $1 AND section = $2 LIMIT 1`,
-        [req.userId, section]
-      ).catch(() => ({ rows: [] as any[] }) as any);
-      if (own[0]) return (edit ? own[0].can_edit : own[0].can_view) ? next() : deny();
-
-      // 2) Permiso del rol técnico dentro del ISP
-      const { rows } = await pool.query(
-        `SELECT can_view, can_edit FROM role_permissions
-         WHERE tenant_id = $1 AND role = 'user' AND section = $2 LIMIT 1`,
-        [req.tenantId, section]
-      );
-      const perm = rows[0];
-      return perm && (edit ? perm.can_edit : perm.can_view) ? next() : deny();
+      if (await technicianAllowed(req.userId!, req.tenantId, section, edit)) return next();
+      return res.status(403).json({
+        error: edit ? `No tienes permiso para modificar ${SECTION_LABELS[section] || section}` : `Sin permiso para ${SECTION_LABELS[section] || section}`,
+      });
     } catch {
       return next(); // tabla ausente: no romper instalaciones antiguas
     }
   };
+}
+
+/**
+ * Lo mismo que requireSection, para rutas sin sesión de Express (auth_request
+ * de Nginx del escritorio VNC): se resuelven rol e ISP desde el usuario.
+ */
+export async function userCanSection(userId: string, section: Section, edit = false): Promise<boolean> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.tenant_id,
+              EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role::text IN ('super_admin', 'admin')) AS full
+         FROM users u WHERE u.id = $1 LIMIT 1`,
+      [userId]
+    );
+    const u = rows[0];
+    if (!u) return false;
+    if (u.full || !u.tenant_id) return true;
+    return await technicianAllowed(userId, u.tenant_id, section, edit);
+  } catch {
+    return false; // escritorio: ante un error de base, no se abre
+  }
 }
 
 /** Middleware: exige que el ISP tenga activo el módulo (TR-069 / web ONU). */

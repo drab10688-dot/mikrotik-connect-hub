@@ -11,6 +11,7 @@ import { useModuleEnabled } from "@/hooks/useTenantBranding";
 import { useMyPermissions } from "@/hooks/usePermissions";
 import KpiCard, { KpiTone } from "@/components/dashboard/KpiCard";
 import OpticalMeter from "@/components/onu/OpticalMeter";
+import { ClientHealthSummary } from "@/components/dashboard/ClientHealthSummary";
 import { Antenna, Wifi, Server, Settings, Activity, SignalHigh, SignalLow, RefreshCw } from "lucide-react";
 
 
@@ -157,6 +158,8 @@ const Dashboard = () => {
         </div>
         )}
 
+        {/* Clientes y antenas: admin del ISP y técnicos con "Red, APs y señal" */}
+        {!isSuperAdmin && isEnabled("mikrotik") && can("red") && <ClientHealthSummary />}
 
         <Card className="mb-8">
           <CardHeader>

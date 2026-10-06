@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { browserApi, remoteDesktopUrl, remoteDesktopMobileUrl, isMobileDevice } from "@/lib/api-client";
+import { useMyPermissions } from "@/hooks/usePermissions";
 
 
 export interface ProxyBrowserTarget {
@@ -24,6 +25,7 @@ export function ProxyBrowserDialog({
   const startedTargetRef = useRef<string | null>(null);
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
+  const { can } = useMyPermissions();
 
   useEffect(() => {
     if (!target) {
@@ -34,6 +36,13 @@ export function ProxyBrowserDialog({
     const targetKey = `${target.directUrl}|${target.mikrotikId || ""}`;
     if (startedTargetRef.current === targetKey) return;
     startedTargetRef.current = targetKey;
+
+    // Técnicos: el escritorio remoto es un permiso aparte que da el admin
+    if (!can("escritorio")) {
+      toast.error("No tienes permiso para el escritorio remoto. Pídeselo al administrador de tu ISP.");
+      onOpenChangeRef.current(false);
+      return;
+    }
 
     // Se abre SIN "noopener" para conservar la referencia y poder redirigir
     // la pestaña al visor (con noopener window.open devuelve null y la

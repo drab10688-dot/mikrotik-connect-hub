@@ -72,7 +72,8 @@ app.use('/api/netaccess', authMiddleware, requireSection('red', 'view'), require
 app.get('/api/browser-authz', authorizeBrowserAccess);
 // Escritorio PRIVADO por usuario: valida el token y enruta al contenedor propio
 app.get('/api/browser-authz-vnc', authorizeUserVnc);
-app.use('/api/browser', authMiddleware, requireSection('red', 'view'), browserRouter);
+// Escritorio remoto: permiso propio (los técnicos lo reciben solo si el admin lo da)
+app.use('/api/browser', authMiddleware, requireSection('escritorio', 'view'), browserRouter);
 // Antenas de clientes por sede (credenciales, señal y cambios en lote por SSH)
 app.use('/api/cpe', authMiddleware, requireSection('red', 'view'), requireModule('enable_mikrotik'), cpeRouter);
 app.use('/api/vpn', authMiddleware, requireSection('vpn'), vpnRouter);

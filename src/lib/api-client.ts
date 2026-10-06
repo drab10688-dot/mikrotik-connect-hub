@@ -296,6 +296,9 @@ export const cpeApi = {
   credentials: async (mikrotikId: string) => unwrapArray<any>(await apiGet<any>(`/cpe/${mikrotikId}/credentials`)),
   saveCredentials: async (mikrotikId: string, data: { brand: string; username: string; ssh_port?: number; api_port?: number; web_port?: number | null; add_password?: string; clear_passwords?: boolean }) =>
     apiPut<any>(`/cpe/${mikrotikId}/credentials`, data),
+  /** Contadores de clientes de una sede, o de todas las sedes visibles. */
+  summary: async (mikrotikId: string) => unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/summary`)),
+  summaryAll: async () => unwrapData<any>(await apiGet<any>(`/cpe/summary`)),
   /** Clientes de la sede: sesiones PPPoE o concesiones DHCP. */
   list: async (mikrotikId: string, kind: "pppoe" | "dhcp" = "pppoe") =>
     unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/cpes?kind=${kind}`)),
@@ -451,6 +454,11 @@ export const vpsApi = {
   tunnelAgent: (mikrotikId: string, action: string, params?: any) => apiPost('/system/tunnel/agent', { mikrotik_id: mikrotikId, action, ...params }),
   status: async (mikrotikId: string) => unwrapData(await apiGet<any>(`/system/vps/status?mikrotik_id=${mikrotikId}`)),
   docker: (mikrotikId: string, action: string, service?: string) => apiPost('/system/vps/docker', { mikrotik_id: mikrotikId, action, service }),
+};
+
+// ─── Recursos del servidor (super admin) ─────────────────
+export const systemResourcesApi = {
+  get: async () => unwrapData<any>(await apiGet<any>('/system/resources')),
 };
 
 // ─── MikroTik Command API (generic) ──────────────────────

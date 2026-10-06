@@ -4,6 +4,7 @@ import { AuthRequest, verifyDeviceAccess } from '../middleware/auth';
 import { pool } from '../lib/db';
 import { ensureL2tpTargetRoute } from '../lib/l2tp';
 import { isolateBrowser } from '../lib/browser-fw';
+import { userCanSection } from './isp';
 import { NetworkScope, networkScopeFor, ipAllowed, ipInCidr, parseCidr, splitNetworks } from '../lib/networks';
 import {
   ensureUserBrowser,
@@ -84,6 +85,7 @@ export async function authorizeBrowserAccess(req: Request, res: Response) {
   const token = extractToken(req);
   const userId = verifyPanelToken(token);
   if (!userId) return res.status(401).end();
+  if (!(await userCanSection(userId, 'escritorio'))) return res.status(403).end();
   seedAuthCookie(req, res, token!);
   touchSession(userId);
   return res.status(200).end();
@@ -99,6 +101,8 @@ export async function authorizeUserVnc(req: Request, res: Response) {
   const token = extractToken(req);
   const userId = verifyPanelToken(token);
   if (!userId) return res.status(401).end();
+  // Técnicos: solo con el permiso "Escritorio remoto (VNC)" que da el admin
+  if (!(await userCanSection(userId, 'escritorio'))) return res.status(403).end();
   seedAuthCookie(req, res, token!);
   try {
     let s = getSession(userId);

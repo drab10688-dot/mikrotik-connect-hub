@@ -3,6 +3,7 @@ import { AuthRequest, verifyDeviceAccess, requireRole } from '../middleware/auth
 import { mikrotikRequest, getDeviceConfig } from '../lib/mikrotik';
 import { pool } from '../lib/db';
 import { tunnelRouter } from './tunnel';
+import { serverResources } from '../lib/resources';
 import { execSync, execFile } from 'child_process';
 import { connect as netConnect } from 'net';
 
@@ -202,6 +203,15 @@ systemRouter.get('/vps/status', requireRole('super_admin'), async (req: AuthRequ
     }
 
     res.json({ success: true, data: results });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── Recursos del servidor (general y por ISP) ──
+systemRouter.get('/resources', requireRole('super_admin'), async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, data: await serverResources() });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
