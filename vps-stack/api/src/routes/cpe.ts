@@ -564,6 +564,21 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
           done.push(`${login.username} → operador (sin ver claves)`);
         }
       }
+      if (u.antireset) {
+        // Anti-reset: botón de reset apagado + RouterBOOT protegido (bloquea reseteo de fábrica y netinstall)
+        try {
+          await apiCall(t.ip, lg, '/rest/system/routerboard/settings', 'PATCH', {
+            'protected-routerboot': 'enabled',
+            'reset-button': 'off',
+          });
+          // Verificar que quedó aplicado
+          const rb = await apiCall(t.ip, lg, '/rest/system/routerboard/settings');
+          if (String(rb?.['protected-routerboot']) === 'enabled') done.push('anti-reset activado');
+          else done.push('anti-reset: el bootloader de esta antena no lo soporta (actualiza el firmware)');
+        } catch (e: any) {
+          done.push(`anti-reset falló: ${e.message} (bootloader viejo — actualiza el firmware)`);
+        }
+      }
       if (u.admin) {
         await saveDevice({ login_hash: passwordHash(u.admin.password), last_ok_at: new Date(), last_error: null });
         // El sistema pasa a entrar con el admin nuevo (la clave vieja queda de respaldo)
