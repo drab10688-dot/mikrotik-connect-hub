@@ -643,6 +643,47 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={usersOpen} onOpenChange={setUsersOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Usuarios de {chosen.length} antenas MikroTik</DialogTitle>
+            <DialogDescription>
+              Por API. Primero se crea el admin nuevo y se comprueba que entra; solo entonces se baja al usuario actual.
+              El sistema pasa a entrar con el admin nuevo. El técnico puede ver la señal, hacer ping/pruebas y reiniciar,
+              pero no cambiar la configuración ni ver claves.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1"><Label>Admin nuevo (usuario)</Label><Input value={uf.an} onChange={(e) => setUf({ ...uf, an: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Clave del admin</Label><Input type="password" autoComplete="new-password" value={uf.ap} onChange={(e) => setUf({ ...uf, ap: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Técnico (usuario, opcional)</Label><Input value={uf.tn} onChange={(e) => setUf({ ...uf, tn: e.target.value })} /></div>
+              <div className="space-y-1"><Label>Clave del técnico</Label><Input type="password" autoComplete="new-password" value={uf.tp} onChange={(e) => setUf({ ...uf, tp: e.target.value })} /></div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={uf.demote} disabled={!uf.an} onChange={(e) => setUf({ ...uf, demote: e.target.checked })} />
+              Dejar al usuario actual solo con permiso de ver (sin cambiar nada ni ver claves)
+            </label>
+            <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUsersOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={start.isPending || (!uf.an && !uf.tn) || (!!uf.an && uf.ap.length < 8) || (!!uf.tn && uf.tp.length < 8)}
+              onClick={() => start.mutate({
+                action: "users",
+                admin: uf.an ? { name: uf.an.trim(), password: uf.ap } : undefined,
+                tech: uf.tn ? { name: uf.tn.trim(), password: uf.tp } : undefined,
+                demote_current: uf.demote && !!uf.an,
+              })}
+            >
+              {start.isPending && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
+              Aplicar en {chosen.length} antenas
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
         <DialogContent>
           <DialogHeader>
