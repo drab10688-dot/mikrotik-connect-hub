@@ -664,8 +664,8 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
   try {
     const mikrotikId = req.params.mikrotikId;
     const action = req.body?.action as Action;
-    if (!['identify', 'pppoe-user', 'password', 'enable-api'].includes(action)) return res.status(400).json({ success: false, error: 'Acción no válida' });
-    if ((action === 'password' || action === 'enable-api') && !isAdmin(req)) {
+    if (!['identify', 'pppoe-user', 'password', 'enable-api', 'users'].includes(action)) return res.status(400).json({ success: false, error: 'Acción no válida' });
+    if ((action === 'password' || action === 'enable-api' || action === 'users') && !isAdmin(req)) {
       return res.status(403).json({ success: false, error: 'Solo administradores pueden cambiar claves o activar servicios' });
     }
     // Activar API: solo desde la VPN (y redes de gestión extra que indique el admin)
@@ -687,6 +687,21 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
       const bad = targets.filter((t) => !t.new_user || !SAFE_PPPOE_USER.test(t.new_user));
       if (bad.length) return res.status(400).json({ success: false, error: `Usuario nuevo vacío o no válido para: ${bad.map((b) => b.pppoe_user).join(', ')}` });
     }
+    let users: Ctx['users'];
+    if (action === 'users') {
+      const SAFE_NAME = /^[A-Za-z0-9._-]{3,32}$/;
+      const parse = (o: any): UserSpec | undefined => (o?.name ? { name: String(o.name).trim(), password: String(o.password || '') } : undefined);
+      const admin = parse(req.body?.admin), tech = parse(req.body?.tech);
+      for (const s of [admin, tech]) {
+        if (s && (!SAFE_NAME.test(s.name) || !SAFE_PASSWORD.test(s.password))) {
+          return res.status(400).json({ success: false, error: 'Usuario (3-32: letras, números . _ -) o clave (8-64) no válidos' });
+        }
+      }
+      const demote = !!req.body?.demote_current;
+      if (demote && !admin) return res.status(400).json({ success: false, error: 'Para bajar al usuario actual crea también el admin nuevo' });
+      if (!admin && !tech) return res.status(400).json({ success: false, error: 'Indica el admin nuevo o el técnico' });
+      users = { admin, tech, demote };
+    }
     const newPassword = action === 'password' ? String(req.body?.new_password || '') : undefined;
     if (action === 'password' && !SAFE_PASSWORD.test(newPassword!)) {
       return res.status(400).json({ success: false, error: 'La clave nueva debe tener 8 a 64 caracteres: letras, números y !@#%^*()_+=.,:~-' });
@@ -704,7 +719,7 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
 
     // Segundo plano, de a CONCURRENCY antenas
     const ctx: Ctx = {
-      mikrotikId, tenantId: req.tenantId ?? null, action, newPassword, creds, promoted: new Set<CpeBrand>(),
+      mikrotikId, tenantId: req.tenantId ?? null, action, newPassword, users, creds, promoted: new Set<CpeBrand>(),
       webPort, allowFrom, shotTaken: { value: false },
     };
     let next = 0;
