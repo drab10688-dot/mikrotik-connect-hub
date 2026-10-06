@@ -26,6 +26,17 @@ if [ -f "$ROUTES_FILE" ]; then
             echo "Applying route $net dev $PPP_IF (peer $peer_ip)"
             ip route replace "$net" dev "$PPP_IF" 2>/dev/null || true
         done
+        # Quita las redes que este túnel tiene pero su router NO declara
+        # (scripts viejos o redes cambiadas): una /24 ajena por aquí le roba
+        # el tráfico a otro router u otro ISP. Las /32 puntuales (APs,
+        # antenas) y la ruta del peer no llevan "/" y se conservan.
+        wanted=" $(echo "$nets" | tr ',' ' ') "
+        for r in $(ip route show dev "$PPP_IF" 2>/dev/null | awk '$1 ~ /\// {print $1}'); do
+            case "$wanted" in
+                *" $r "*) ;;
+                *) echo "Removing stray route $r dev $PPP_IF"; ip route del "$r" dev "$PPP_IF" 2>/dev/null || true ;;
+            esac
+        done
     done < "$ROUTES_FILE"
 fi
 

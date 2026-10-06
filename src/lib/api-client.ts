@@ -324,6 +324,9 @@ export const backupApi = {
   runTenant: async (tenantId?: string) =>
     unwrapData<any>(await apiPost<any>('/backup/tenant', tenantId ? { tenant_id: tenantId } : {})),
   runSystem: async () => unwrapData<any>(await apiPost<any>('/backup/system', {})),
+  /** Clave que cifra la configuración del servidor dentro de la copia total. */
+  systemKey: async () => unwrapData<any>(await apiGet<any>('/backup/system-key')),
+  setSystemKey: async (passphrase: string) => unwrapData<any>(await apiPost<any>('/backup/system-key', { passphrase })),
   remove: (filename: string) => apiDelete(`/backup/${encodeURIComponent(filename)}`),
   downloadUrl: (filename: string) =>
     `${getApiBaseUrl()}/backup/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(getToken() || '')}`,

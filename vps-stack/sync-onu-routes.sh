@@ -14,6 +14,19 @@ set -uo pipefail
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
 [ "$EUID" -eq 0 ] || { echo -e "${RED}Ejecuta como root.${NC}"; exit 1; }
 
+# Con VPN L2TP por router (multi-ISP) las rutas las maneja l2tp-routes.sh con
+# las redes que declara CADA router. Este script viejo asume un solo túnel:
+# mandaba las redes de todas las ONUs (de todos los ISP) por el primer ppp y
+# rompía el Connection Request de los demás routers. Ahí se desactiva y quita
+# su cron; solo sigue activo en instalaciones de un solo túnel / WireGuard.
+if [ -s /opt/omnisync-l2tp/omnisync-routes ]; then
+  crontab -l 2>/dev/null | grep -q omnisync-sync-onu-routes && \
+    { crontab -l 2>/dev/null | grep -v omnisync-sync-onu-routes | crontab -; }
+  rm -f /usr/local/sbin/omnisync-sync-onu-routes
+  echo -e "${GREEN}✓ Rutas de ONUs por router (l2tp-routes.sh); aprendizaje global desactivado${NC}"
+  exit 0
+fi
+
 NBI="${NBI:-http://localhost:7557}"
 EXTRA_NETS="${ONU_NETS:-}"
 

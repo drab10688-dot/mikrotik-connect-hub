@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import * as dropbox from '../lib/dropbox';
+import { createSystemBundle, extractSystemBundle, restoreGenieacs, hasBackupKey, setBackupKey, OPENSSL_DECRYPT } from '../lib/system-bundle';
 
 export const backupRouter = Router();
 
@@ -175,14 +176,9 @@ async function createTenantBackup(
   }
 }
 
-/** Copia total del sistema: volcado completo de PostgreSQL. */
-async function createSystemBackup(userId?: string, opts: { auto?: boolean } = {}): Promise<BackupResult> {
-  const dir = ensureDir();
-  const filename = `sistema-${opts.auto ? 'auto-' : ''}${stamp()}.sql.gz`;
-  const filePath = path.join(dir, filename);
-
-  try {
-    await new Promise<void>((resolve, reject) => {
+/** Volcado completo de PostgreSQL (comprimido) en `filePath`. */
+function dumpPostgres(filePath: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
       const out = fs.createWriteStream(filePath);
       const gzip = zlib.createGzip();
       const dump = spawn(
@@ -206,11 +202,24 @@ async function createSystemBackup(userId?: string, opts: { auto?: boolean } = {}
         if (code !== 0) reject(new Error(stderr || `pg_dump terminó con código ${code}`));
       });
     });
+}
 
+/**
+ * Copia total del sistema: un .tar con la base del panel (todos los ISP), la
+ * de GenieACS y la configuración del servidor cifrada (lib/system-bundle.ts).
+ */
+async function createSystemBackup(userId?: string, opts: { auto?: boolean } = {}): Promise<BackupResult & { warnings?: string[] }> {
+  const dir = ensureDir();
+  const filename = `sistema-${opts.auto ? 'auto-' : ''}${stamp()}.tar`;
+  const filePath = path.join(dir, filename);
+
+  try {
+    const { warnings } = await createSystemBundle(dir, filePath, dumpPostgres);
     const size = fs.statSync(filePath).size;
     const up = await uploadRemote(null, filename, filePath, opts.auto);
-    await registerJob(null, 'system', filename, size, userId, 'ok', up.error, up.remote);
-    return { filename, size_bytes: size, remote_path: up.remote, remote_error: up.error };
+    const note = [...warnings, up.error].filter(Boolean).join(' · ') || undefined;
+    await registerJob(null, 'system', filename, size, userId, 'ok', note, up.remote);
+    return { filename, size_bytes: size, remote_path: up.remote, remote_error: up.error, warnings };
   } catch (error: any) {
     fs.rmSync(filePath, { force: true });
     await registerJob(null, 'system', filename, 0, userId, 'error', error.message);
@@ -486,6 +495,65 @@ function restoreSystemDump(filePath: string): Promise<void> {
   });
 }
 
+const isSystemFile = (name: string) => /\.(sql|sql\.gz|tar)$/i.test(name);
+
+/**
+ * Restaura una copia total: .sql/.sql.gz (formato anterior, solo PostgreSQL)
+ * o .tar (PostgreSQL + GenieACS). La configuración del servidor del .tar no
+ * se aplica sola: es para montar un servidor nuevo (ver LEEME.txt).
+ */
+async function restoreSystemFile(filePath: string, name: string) {
+  if (!/\.tar$/i.test(name)) {
+    await restoreSystemDump(filePath);
+    return { scope: 'system', restored: true, parts: ['postgres'] };
+  }
+  const bundle = await extractSystemBundle(filePath, ensureDir());
+  try {
+    const parts: string[] = [];
+    const warnings: string[] = [];
+    await restoreSystemDump(bundle.file('postgres.sql.gz')!);
+    parts.push('postgres');
+    const genie = bundle.file('genieacs.archive.gz');
+    if (genie) {
+      try {
+        await restoreGenieacs(genie);
+        parts.push('genieacs');
+      } catch (e: any) {
+        warnings.push(`GenieACS no se restauró: ${String(e.message).slice(0, 200)}`);
+      }
+    }
+    if (bundle.file('servidor-config.tar.gz.enc')) {
+      warnings.push(`La configuración del servidor (cifrada) no se aplica sola; para un servidor nuevo: ${OPENSSL_DECRYPT}`);
+    }
+    return { scope: 'system', restored: true, parts, warnings };
+  } finally {
+    fs.rmSync(bundle.work, { recursive: true, force: true });
+  }
+}
+
+/** ¿Hay clave de copia? (nunca se devuelve la clave) */
+backupRouter.get('/system-key', requireRole('super_admin'), (_req: AuthRequest, res: Response) => {
+  res.json({ data: { configured: hasBackupKey(ensureDir()) } });
+});
+
+/**
+ * Define o cambia la clave que cifra la configuración del servidor en la copia
+ * total. Se guarda solo en el servidor: sin ella no se puede descifrar esa
+ * parte, así que el super admin debe anotarla aparte.
+ */
+backupRouter.post('/system-key', requireRole('super_admin'), (req: AuthRequest, res: Response) => {
+  const key = String(req.body?.passphrase ?? '');
+  if (key.length < 12 || key.length > 128 || /[\r\n]/.test(key)) {
+    return res.status(400).json({ error: 'La clave de copia debe tener entre 12 y 128 caracteres' });
+  }
+  try {
+    setBackupKey(ensureDir(), key);
+    res.json({ data: { configured: true } });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /** Restaura desde una copia que ya está en el servidor (o en Dropbox). */
 backupRouter.post('/restore/:filename', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
   const filename = safeName(req.params.filename);
@@ -506,10 +574,9 @@ backupRouter.post('/restore/:filename', requireRole('super_admin', 'admin'), asy
       await dropbox.downloadFile(toDropbox(cfg), filename, filePath);
     }
 
-    if (filename.endsWith('.sql.gz') || filename.endsWith('.sql')) {
+    if (isSystemFile(filename)) {
       if (req.userRole !== 'super_admin') return res.status(403).json({ error: 'Sólo el super administrador puede restaurar el sistema' });
-      await restoreSystemDump(filePath);
-      return res.json({ data: { scope: 'system', restored: true } });
+      return res.json({ data: await restoreSystemFile(filePath, filename) });
     }
 
     const payload = readTenantBackup(filePath);
@@ -535,12 +602,11 @@ backupRouter.post(
     if (!file) return res.status(400).json({ error: 'Falta el archivo de la copia' });
 
     try {
-      if (file.originalname.endsWith('.sql.gz') || file.originalname.endsWith('.sql')) {
+      if (isSystemFile(file.originalname)) {
         if (req.userRole !== 'super_admin') {
           return res.status(403).json({ error: 'Sólo el super administrador puede restaurar el sistema' });
         }
-        await restoreSystemDump(file.path);
-        return res.json({ data: { scope: 'system', restored: true } });
+        return res.json({ data: await restoreSystemFile(file.path, file.originalname) });
       }
 
       const payload = readTenantBackup(file.path);
@@ -710,7 +776,7 @@ backupRouter.post('/remote/:filename/pull', requireRole('super_admin', 'admin'),
     const filePath = path.join(ensureDir(), filename);
     await dropbox.downloadFile(toDropbox(cfg), filename, filePath);
     const size = fs.statSync(filePath).size;
-    const scope = filename.endsWith('.sql.gz') ? 'system' : 'tenant';
+    const scope = isSystemFile(filename) ? 'system' : 'tenant';
     await pool.query(`DELETE FROM backup_jobs WHERE filename = $1`, [filename]).catch(() => undefined);
     await registerJob(scope === 'system' ? null : req.tenantId ?? null, scope, filename, size, req.userId, 'ok', undefined, dropbox.dropboxPath(toDropbox(cfg), filename));
     res.json({ data: { filename, size_bytes: size } });

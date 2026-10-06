@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import {
   Database, HardDriveDownload, Loader2, Trash2, Building2, Server,
-  RotateCcw, Upload, Cloud, CloudDownload, CloudUpload, PlugZap, CalendarClock,
+  RotateCcw, Upload, Cloud, CloudDownload, CloudUpload, PlugZap, CalendarClock, KeyRound,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
@@ -71,9 +71,29 @@ export default function Backups() {
     onError: (e: any) => toast.error(e?.message || "No se pudo crear la copia"),
   });
 
+  const { data: systemKey } = useQuery({
+    queryKey: ["backup-system-key"],
+    queryFn: () => backupApi.systemKey(),
+    enabled: isSuperAdmin,
+  });
+  const [keyDraft, setKeyDraft] = useState({ a: "", b: "" });
+  const saveKey = useMutation({
+    mutationFn: () => backupApi.setSystemKey(keyDraft.a),
+    onSuccess: () => {
+      toast.success("Clave de copia guardada. Anótala en un lugar seguro: sin ella no se puede descifrar la configuración.");
+      setKeyDraft({ a: "", b: "" });
+      queryClient.invalidateQueries({ queryKey: ["backup-system-key"] });
+    },
+    onError: (e: any) => toast.error(e?.message || "No se pudo guardar la clave"),
+  });
+
   const runSystem = useMutation({
     mutationFn: () => backupApi.runSystem(),
-    onSuccess: (d: any) => { toast.success(`Copia total creada (${formatSize(d?.size_bytes || 0)})`); refresh(); },
+    onSuccess: (d: any) => {
+      toast.success(`Copia total creada (${formatSize(d?.size_bytes || 0)})`);
+      for (const w of d?.warnings || []) toast.warning(w, { duration: 10000 });
+      refresh();
+    },
     onError: (e: any) => toast.error(e?.message || "No se pudo crear la copia del sistema"),
   });
 
@@ -87,6 +107,7 @@ export default function Backups() {
     mutationFn: (filename: string) => backupApi.restore(filename),
     onSuccess: (d: any) => {
       toast.success(d?.scope === "system" ? "Sistema restaurado" : "Datos del ISP restaurados");
+      for (const w of d?.warnings || []) toast.warning(w, { duration: 15000 });
       refresh();
     },
     onError: (e: any) => toast.error(e?.message || "No se pudo restaurar"),
@@ -96,6 +117,7 @@ export default function Backups() {
     mutationFn: (file: File) => backupApi.restoreUpload(file),
     onSuccess: (d: any) => {
       toast.success(d?.scope === "system" ? "Sistema restaurado desde el archivo" : "ISP restaurado desde el archivo");
+      for (const w of d?.warnings || []) toast.warning(w, { duration: 15000 });
       refresh();
     },
     onError: (e: any) => toast.error(e?.message || "No se pudo restaurar el archivo"),
@@ -167,7 +189,7 @@ export default function Backups() {
                     <div className="p-2 rounded-lg bg-accent/10"><Server className="h-6 w-6 text-accent" /></div>
                     <div>
                       <CardTitle className="text-lg">Copia total del sistema</CardTitle>
-                      <CardDescription>Volcado completo de la base de datos</CardDescription>
+                      <CardDescription>Todos los ISP: base del panel, GenieACS y configuración del servidor (cifrada)</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
@@ -176,6 +198,34 @@ export default function Backups() {
                     {runSystem.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Server className="mr-2 h-4 w-4" />}
                     Generar copia total
                   </Button>
+                  <div className="mt-4 space-y-2 rounded-lg border p-3">
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      <KeyRound className="h-4 w-4" /> Clave de copia
+                      <Badge variant={systemKey?.configured ? "secondary" : "outline"} className="ml-auto">
+                        {systemKey?.configured ? "Configurada" : "Sin configurar"}
+                      </Badge>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Cifra la configuración del servidor (claves de sesiones, base de datos y VPN) dentro de la copia total.
+                      Se guarda solo en este servidor, nunca en Dropbox: anótala aparte, sin ella no se puede descifrar.
+                      {!systemKey?.configured && " Mientras no la definas, la copia total sale sin esa parte."}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Input type="password" autoComplete="new-password" className="h-8 w-44" placeholder="Clave (mín. 12)"
+                        value={keyDraft.a} onChange={(e) => setKeyDraft({ ...keyDraft, a: e.target.value })} />
+                      <Input type="password" autoComplete="new-password" className="h-8 w-44" placeholder="Repetir clave"
+                        value={keyDraft.b} onChange={(e) => setKeyDraft({ ...keyDraft, b: e.target.value })} />
+                      <Button size="sm" variant="outline"
+                        disabled={saveKey.isPending || keyDraft.a.length < 12 || keyDraft.a !== keyDraft.b}
+                        onClick={() => saveKey.mutate()}>
+                        {systemKey?.configured ? "Cambiar clave" : "Guardar clave"}
+                      </Button>
+                    </div>
+                    {keyDraft.a && keyDraft.b && keyDraft.a !== keyDraft.b && <p className="text-xs text-destructive">Las claves no coinciden</p>}
+                    {systemKey?.configured && (
+                      <p className="text-[11px] text-muted-foreground">Si la cambias, las copias anteriores se siguen descifrando con la clave anterior.</p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -189,7 +239,7 @@ export default function Backups() {
                 <div>
                   <CardTitle className="text-lg">Restaurar desde un archivo</CardTitle>
                   <CardDescription>
-                    Sube un archivo <code>.json.gz</code> (copia de ISP) o <code>.sql.gz</code> (sistema completo)
+                    Sube un archivo <code>.json.gz</code> (copia de ISP) o <code>.tar</code> / <code>.sql.gz</code> (sistema completo)
                     para recuperar la plataforma después de un daño.
                   </CardDescription>
                 </div>
@@ -199,7 +249,7 @@ export default function Backups() {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".gz,.json,.sql"
+                accept=".gz,.json,.sql,.tar"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
