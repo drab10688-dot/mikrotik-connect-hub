@@ -21,7 +21,7 @@ import { mailRouter } from './routes/mail';
 import { backupRouter, runScheduledBackups } from './routes/backup';
 import { sslRouter, renewSslIfNeeded } from './routes/ssl';
 import { securityRouter } from './routes/security';
-import { cpeRouter } from './routes/cpe';
+import { cpeRouter, refreshCpeSignals } from './routes/cpe';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -115,6 +115,11 @@ cron.schedule('0 3 * * *', () => {
   cleanupPppoeEvents(pool)
     .then(n => console.log(`[CRON] PPPoE events cleanup: ${n} registros`))
     .catch(e => console.error('[CRON] PPPoE cleanup error:', e.message));
+});
+
+// Cron: señal leída desde las antenas de los clientes (cada 15 min, sin cambiar nada)
+cron.schedule('*/15 * * * *', () => {
+  refreshCpeSignals().catch((e) => console.error('[CPE] señal:', e.message));
 });
 
 // Cron: copias automáticas programadas desde Respaldos (revisa cada hora)

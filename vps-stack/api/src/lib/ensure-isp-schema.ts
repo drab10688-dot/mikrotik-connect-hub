@@ -295,6 +295,15 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        updated_at TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (mikrotik_id, mac)
      )`,
+    // Enlace leído DESDE la antena del cliente: su señal hacia el AP y a qué AP está conectada
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS signal INTEGER`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS snr INTEGER`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS ccq INTEGER`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS tx_rate TEXT`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS rx_rate TEXT`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS ap_mac TEXT`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS ap_name TEXT`,
+    `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS signal_at TIMESTAMPTZ`,
     // Copia de la configuración antes de cada cambio (se guardan las 3 últimas)
     `CREATE TABLE IF NOT EXISTS cpe_backups (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

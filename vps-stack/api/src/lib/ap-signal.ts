@@ -1,6 +1,8 @@
 import http from 'http';
 import https from 'https';
 import { Client } from 'ssh2';
+import { connect as netConnect } from 'net';
+import { mikrotikNativeRequest } from './mikrotik';
 
 /**
  * Lectura de calidad de señal directamente desde cada AP (MikroTik, Ubiquiti airOS,
@@ -17,6 +19,8 @@ export interface ApTarget {
   sshPort?: number;
   username?: string | null;
   password?: string | null;
+  /** Puerto de la API de RouterOS (MikroTik), 8728 de fábrica */
+  apiPort?: number;
 }
 
 export interface ApClient {
@@ -85,9 +89,14 @@ function request(
   });
 }
 
+/**
+ * Primer número del texto. RouterOS reporta "-58@6Mbps" o "-65dBm": antes se
+ * quitaban las letras y "-58@6Mbps" se leía como -586.
+ */
 function num(value: unknown): number | null {
   if (value === undefined || value === null || value === '') return null;
-  const parsed = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  const m = String(value).match(/-?\d+(\.\d+)?/);
+  const parsed = m ? parseFloat(m[0]) : NaN;
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -194,7 +203,7 @@ function sshExec(target: ApTarget, command: string): Promise<string> {
   });
 }
 
-function parseUbiquitiSsh(output: string): ApClient[] {
+export function parseUbiquitiSsh(output: string): ApClient[] {
   const start = output.indexOf('[');
   const end = output.lastIndexOf(']');
   if (start < 0 || end < start) throw new Error('SSH de airOS no devolvió la lista de estaciones');
@@ -221,7 +230,7 @@ function parseUbiquitiSsh(output: string): ApClient[] {
   });
 }
 
-function parseMikrotikTerse(output: string): ApClient[] {
+export function parseMikrotikTerse(output: string): ApClient[] {
   return output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes('mac-address=')).map((line) => {
     const fields: Record<string, string> = {};
     const pattern = /(?:^|\s)([\w-]+)=((?:(?!\s[\w-]+=).)*)/g;
@@ -262,6 +271,66 @@ async function readSsh(target: ApTarget): Promise<ApClient[]> {
   throw new Error(`SSH ${target.ip}:${target.sshPort || 22} no pudo leer la señal — ${errors.join('; ')}`);
 }
 
+/** Fila de registration-table de RouterOS (REST o API nativa) → cliente. */
+export function mikrotikRowToClient(r: any): ApClient {
+  const [txBytes, rxBytes] = String(r.bytes || '0,0').split(',');
+  const [txRate, rxRate] = String(r['tx-rate'] ? `${r['tx-rate']},${r['rx-rate'] || ''}` : r.rate || ',').split(',');
+  return finalize({
+    mac: r['mac-address'] || null,
+    name: r.comment || r['radio-name'] || r['last-ip'] || r.interface || null,
+    ip: r['last-ip'] || null,
+    signal: num(r['signal-strength'] ?? r.signal),
+    noise: num(r['noise-floor']),
+    snr: num(r['signal-to-noise']),
+    ccq: num(r['tx-ccq'] ?? r.ccq),
+    tx_rate: txRate || null,
+    rx_rate: rxRate || null,
+    tx_bytes: num(txBytes),
+    rx_bytes: num(rxBytes),
+    uptime: r.uptime || null,
+    distance: r.distance || null,
+  });
+}
+
+/** ¿El puerto TCP acepta conexión? (evita esperar timeouts largos) */
+function tcpOpen(ip: string, port: number, timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = netConnect({ host: ip, port, timeout: timeoutMs });
+    s.once('connect', () => { s.destroy(); resolve(true); });
+    s.once('timeout', () => { s.destroy(); resolve(false); });
+    s.once('error', () => resolve(false));
+  });
+}
+
+/**
+ * MikroTik por la API de RouterOS (8728): funciona en v6 y v7. La REST de
+ * abajo solo existe en v7, y SSH suele estar apagado.
+ */
+const apiClosedUntil = new Map<string, number>();
+
+export async function readMikrotikApi(target: ApTarget): Promise<ApClient[]> {
+  const port = target.apiPort || 8728;
+  const key = `${target.ip}:${port}`;
+  // API cerrada hace poco: no se espera de nuevo (la detección prueba varios logins)
+  if ((apiClosedUntil.get(key) || 0) > Date.now()) throw new Error(`API ${port} cerrada`);
+  if (!(await tcpOpen(target.ip, port))) {
+    apiClosedUntil.set(key, Date.now() + 5 * 60_000);
+    throw new Error(`API ${port} cerrada`);
+  }
+  const cfg = { host: target.ip, port, username: target.username || 'admin', password: target.password || '' };
+  let lastError = 'Sin tabla de registro';
+  for (const path of ['/rest/interface/wireless/registration-table', '/rest/interface/wifi/registration-table', '/rest/interface/wifiwave2/registration-table']) {
+    try {
+      const rows = await mikrotikNativeRequest(cfg, path);
+      if (Array.isArray(rows)) return rows.map(mikrotikRowToClient);
+    } catch (e: any) {
+      lastError = e?.message || String(e);
+      if (/login|password|credencial|rechaz/i.test(lastError)) break;
+    }
+  }
+  throw new Error(`API ${port}: ${lastError}`);
+}
+
 // ── MikroTik (RouterOS v7 REST: wireless o wifi) ─────────────────
 async function readMikrotik(target: ApTarget): Promise<ApClient[]> {
   const auth = 'Basic ' + Buffer.from(`${target.username || 'admin'}:${target.password || ''}`).toString('base64');
@@ -279,25 +348,7 @@ async function readMikrotik(target: ApTarget): Promise<ApClient[]> {
       if (res.status >= 400) { lastError = `HTTP ${res.status} en ${path}`; continue; }
       const parsed = JSON.parse(res.body);
       if (!Array.isArray(parsed)) { lastError = 'Respuesta inesperada del AP'; continue; }
-      return parsed.map((r: any) => {
-        const [txBytes, rxBytes] = String(r.bytes || '0,0').split(',');
-        const [txRate, rxRate] = String(r['tx-rate'] ? `${r['tx-rate']},${r['rx-rate'] || ''}` : r.rate || ',').split(',');
-        return finalize({
-          mac: r['mac-address'] || null,
-          name: r.comment || r['radio-name'] || r['last-ip'] || r.interface || null,
-          ip: r['last-ip'] || null,
-          signal: num(r['signal-strength'] ?? r.signal),
-          noise: num(r['noise-floor']),
-          snr: num(r['signal-to-noise']),
-          ccq: num(r['tx-ccq'] ?? r.ccq),
-          tx_rate: txRate || null,
-          rx_rate: rxRate || null,
-          tx_bytes: num(txBytes),
-          rx_bytes: num(rxBytes),
-          uptime: r.uptime || null,
-          distance: r.distance || null,
-        });
-      });
+      return parsed.map(mikrotikRowToClient);
     } catch (error: any) {
       lastError = error.message;
     }
@@ -441,6 +492,12 @@ async function readOne(target: ApTarget): Promise<ApClient[]> {
 
 export async function readApClients(target: ApTarget): Promise<ApClient[]> {
   if (target.accessMethod === 'ssh') return readSsh(target);
+  // MikroTik: primero la API de RouterOS (v6 y v7); si no responde, lo de siempre
+  if (target.brand === 'mikrotik' && target.accessMethod !== 'web') {
+    try {
+      return await readMikrotikApi(target);
+    } catch { /* API cerrada o sin permisos: sigue con REST/web */ }
+  }
   // Prueba el transporte configurado y luego los habituales: muchos APs
   // responden la API sólo por HTTP aunque su panel esté en HTTPS.
   const seen = new Set<string>();

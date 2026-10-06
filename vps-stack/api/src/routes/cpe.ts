@@ -10,6 +10,40 @@ import {
   setPppoeUserCmd, setPasswordCmd, SAFE_PPPOE_USER, SAFE_PASSWORD, SAFE_USERNAME,
 } from '../lib/cpe-ssh';
 import { withRobot, runInWebfig, WebfigAuthError } from '../lib/webfig-robot';
+import { mikrotikRowToClient, parseMikrotikTerse, parseUbiquitiSsh, signalQuality, type ApClient } from '../lib/ap-signal';
+
+/**
+ * Enlace visto DESDE la antena del cliente: su señal hacia el AP y a qué AP
+ * está conectada (en modo estación la tabla de registro tiene una sola fila: el AP).
+ */
+async function readCpeLink(brand: CpeBrand, viaApi: boolean, ip: string, login: CpeLogin): Promise<ApClient | null> {
+  if (brand === 'mikrotik' && viaApi) {
+    for (const path of ['/rest/interface/wireless/registration-table', '/rest/interface/wifi/registration-table']) {
+      const rows = await apiCall(ip, login, path).catch(() => null);
+      if (Array.isArray(rows) && rows.length) return mikrotikRowToClient(rows[0]);
+    }
+    return null;
+  }
+  const out = await sshRun(ip, login, brand === 'mikrotik'
+    ? '/interface wireless registration-table print terse without-paging'
+    : 'wstalist').catch(() => '');
+  const rows = brand === 'mikrotik' ? parseMikrotikTerse(out) : parseUbiquitiSsh(out);
+  return rows[0] || null;
+}
+
+async function saveLink(mikrotikId: string, mac: string, link: ApClient | null): Promise<void> {
+  if (!link) return;
+  await pool.query(
+    `UPDATE cpe_devices SET signal = $3, snr = $4, ccq = $5, tx_rate = $6, rx_rate = $7, ap_mac = $8, ap_name = $9,
+            signal_at = now(), updated_at = now()
+      WHERE mikrotik_id = $1 AND mac = $2`,
+    [mikrotikId, mac, link.signal != null ? Math.round(link.signal) : null, link.snr != null ? Math.round(link.snr) : null,
+     link.ccq != null ? Math.round(link.ccq) : null, link.tx_rate, link.rx_rate, formatMac(link.mac), link.name]
+  ).catch(() => undefined);
+}
+
+const linkText = (l: ApClient | null) =>
+  l ? [l.signal != null ? `${l.signal} dBm` : null, l.snr != null ? `SNR ${l.snr}` : null, l.name ? `AP ${l.name}` : null].filter(Boolean).join(' · ') : '';
 
 // ─── MikroTik por API de RouterOS (8728) ────────────────────────
 // Preferida sobre SSH: respuestas estructuradas, sin interpretar texto.
@@ -269,6 +303,15 @@ cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
         last_ok_at: dev?.last_ok_at || null,
         last_error: dev?.last_error || null,
         ...(signalByUser.get(String(a.name)) || { signal: null, snr: null, quality: 'desconocida', ap: null }),
+        // Medida por la propia antena (< 30 min): tiene prioridad sobre la del AP
+        ...(dev?.signal_at && Date.now() - new Date(dev.signal_at).getTime() < 30 * 60_000
+          ? {
+              signal: dev.signal, snr: dev.snr, ccq: dev.ccq, tx_rate: dev.tx_rate, rx_rate: dev.rx_rate,
+              quality: signalQuality(dev.signal, dev.snr),
+              ap: dev.ap_name || signalByUser.get(String(a.name))?.ap || dev.ap_mac,
+              signal_source: 'antena', signal_at: dev.signal_at,
+            }
+          : { signal_source: signalByUser.has(String(a.name)) ? 'ap' : null }),
       };
     }).sort((x, y) => x.pppoe_user.localeCompare(y.pppoe_user, undefined, { numeric: true }));
     res.json({ success: true, data: { cpes: list, signal_pending: !aps } });
@@ -436,8 +479,11 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
     const via = viaApi ? 'API' : 'SSH';
     await saveDevice({ ip: t.ip, pppoe_user: t.pppoe_user, brand, model, version, login_hash: passwordHash(login.password), last_ok_at: new Date(), last_error: null });
     if (action === 'identify') {
+      // Identificar también lee la señal desde la antena (hacia su AP)
+      const link = await readCpeLink(brand, viaApi, t.ip, login).catch(() => null);
+      await saveLink(mikrotikId, mac, link);
       r.status = 'ok';
-      r.message = [brand === 'mikrotik' ? 'MikroTik' : 'Ubiquiti', model, version, `por ${via}`].filter(Boolean).join(' · ');
+      r.message = [brand === 'mikrotik' ? 'MikroTik' : 'Ubiquiti', model, version, `por ${via}`, linkText(link)].filter(Boolean).join(' · ');
       return;
     }
 
@@ -634,3 +680,57 @@ cpeRouter.get('/:mikrotikId/jobs', async (req: AuthRequest, res: Response) => {
   ).catch(() => ({ rows: [] as any[] }));
   res.json({ success: true, data: rows });
 });
+
+// ─── Señal desde las antenas, cada 15 min (server.ts) ───────────
+let refreshing = false;
+
+/**
+ * Relee la señal de cada antena ya identificada y conectada, entrando con la
+ * clave que se sabe que funciona (login_hash). MikroTik por API y si no por
+ * SSH; Ubiquiti por SSH. No cambia nada en las antenas.
+ */
+export async function refreshCpeSignals(): Promise<void> {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const { rows: sedes } = await pool.query(
+      `SELECT DISTINCT c.mikrotik_id, d.tenant_id
+         FROM cpe_credentials c JOIN mikrotik_devices d ON d.id = c.mikrotik_id
+        WHERE cardinality(c.passwords) > 0`
+    );
+    for (const sede of sedes) {
+      const creds = await loadCredentials(sede.mikrotik_id);
+      const ipByMac = new Map<string, string>();
+      for (const a of await activeSessions(sede.mikrotik_id)) {
+        const m = formatMac(a['caller-id']);
+        if (m && a.address) ipByMac.set(m, String(a.address));
+      }
+      const { rows: devs } = await pool.query(
+        `SELECT mac, brand, login_hash FROM cpe_devices
+          WHERE mikrotik_id = $1 AND brand IS NOT NULL AND login_hash IS NOT NULL`,
+        [sede.mikrotik_id]
+      );
+      const work = devs.filter((d: any) => ipByMac.has(d.mac));
+      let next = 0;
+      const worker = async () => {
+        while (next < work.length) {
+          const d = work[next++];
+          const c = creds.get(d.brand);
+          const password = c?.passwords.find((p) => passwordHash(p) === d.login_hash);
+          if (!c || !password) continue;
+          const ip = ipByMac.get(d.mac)!;
+          const login: CpeLogin = { username: c.username, password, port: c.port, apiPort: c.apiPort };
+          try {
+            await ensureApRoute(sede.mikrotik_id, sede.tenant_id, ip);
+            let link = d.brand === 'mikrotik' ? await readCpeLink('mikrotik', true, ip, login) : null;
+            if (!link) link = await readCpeLink(d.brand, false, ip, login);
+            await saveLink(sede.mikrotik_id, d.mac, link);
+          } catch { /* antena sin respuesta: se reintenta en la próxima vuelta */ }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, work.length) }, worker));
+    }
+  } finally {
+    refreshing = false;
+  }
+}
