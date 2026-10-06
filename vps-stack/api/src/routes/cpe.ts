@@ -565,15 +565,16 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
         }
       }
       if (u.antireset) {
-        // Anti-reset: botón de reset apagado + RouterBOOT protegido (bloquea reseteo de fábrica y netinstall)
+        // Anti-reset con rescate: el botón sigue vivo pero hay que sostenerlo 5-10 min para resetear.
+        // Un técnico no lo hará, pero tú sí puedes recuperar una antena dañada (rayos) con Netinstall.
         try {
           await apiCall(t.ip, lg, '/rest/system/routerboard/settings', 'PATCH', {
-            'protected-routerboot': 'enabled',
-            'reset-button': 'off',
+            'reformat-hold-button': '5m',
+            'reformat-hold-button-max': '10m',
           });
           // Verificar que quedó aplicado
           const rb = await apiCall(t.ip, lg, '/rest/system/routerboard/settings');
-          if (String(rb?.['protected-routerboot']) === 'enabled') done.push('anti-reset activado');
+          if (String(rb?.['reformat-hold-button']) === '5m') done.push('anti-reset 5 min activado');
           else done.push('anti-reset: el bootloader de esta antena no lo soporta (actualiza el firmware)');
         } catch (e: any) {
           done.push(`anti-reset falló: ${e.message} (bootloader viejo — actualiza el firmware)`);
