@@ -404,7 +404,8 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
       // Método de escritura que ya funcionó en esta antena (se prueba primero)
       await pool.query(`ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS webfig_method text`).catch(() => undefined);
       const saved = dev?.webfig_method;
-      const preferred: WebfigMethod | undefined = saved === 'insert' ? 'insert' : (Number(saved) > 0 ? Number(saved) : undefined);
+      // (los tecleos rápidos viejos 150/300 se descartan: fallaban en 6.x)
+      const preferred: WebfigMethod | undefined = saved === 'insert' || saved === 'echo' ? saved : (saved === '500' ? 500 : undefined);
       let used: CpeLogin | null = null;
       let shot: string | undefined;
       let usedMethod: WebfigMethod | undefined;
