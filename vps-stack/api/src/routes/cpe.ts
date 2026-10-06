@@ -321,7 +321,7 @@ cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
 });
 
 // ─── Trabajos en lote ──────────────────────────────────────────
-type Action = 'identify' | 'pppoe-user' | 'password' | 'enable-api';
+type Action = 'identify' | 'pppoe-user' | 'password' | 'enable-api' | 'users';
 interface Target { mac: string; ip: string; pppoe_user: string; new_user?: string }
 interface Result {
   mac: string; ip: string; pppoe_user: string; new_user?: string;
@@ -345,8 +345,10 @@ async function currentIp(mikrotikId: string, mac: string, fallback: string): Pro
   return s?.address || fallback;
 }
 
+type UserSpec = { name: string; password: string };
 type Ctx = {
   mikrotikId: string; tenantId: string | null; action: Action; newPassword?: string;
+  users?: { admin?: UserSpec; tech?: UserSpec; demote: boolean };
   creds: Map<CpeBrand, SedeCreds>;
   promoted: Set<CpeBrand>;
   webPort: number; allowFrom: string;
@@ -517,6 +519,66 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
          SELECT id FROM cpe_backups WHERE mikrotik_id = $1 AND mac = $2 ORDER BY created_at DESC OFFSET 3)`,
       [mikrotikId, mac]
     ).catch(() => undefined);
+
+    // ── Usuarios de la antena: admin aparte, técnico y bajar al actual ──
+    if (action === 'users') {
+      const u = ctx.users!;
+      if (brand !== 'mikrotik' || !viaApi) throw new Error('Solo MikroTik con la API activa (usa "Activar API" primero)');
+      const ensureGroup = async (lg: CpeLogin, name: string, policy: string) => {
+        const groups = asArray(await apiCall(t.ip, lg, '/rest/user/group'));
+        const g = groups.find((x: any) => String(x.name) === name);
+        if (g) await apiCall(t.ip, lg, `/rest/user/group/${encodeURIComponent(g['.id'])}`, 'PATCH', { policy });
+        else await apiCall(t.ip, lg, '/rest/user/group', 'POST', { name, policy });
+      };
+      const upsertUser = async (lg: CpeLogin, name: string, password: string, group: string) => {
+        const list = asArray(await apiCall(t.ip, lg, '/rest/user'));
+        const ex = list.find((x: any) => String(x.name) === name);
+        if (ex) await apiCall(t.ip, lg, `/rest/user/${encodeURIComponent(ex['.id'])}`, 'PATCH', { password, group });
+        else await apiCall(t.ip, lg, '/rest/user', 'POST', { name, password, group });
+      };
+      const done: string[] = [];
+      let lg: CpeLogin = login;
+      if (u.admin) {
+        await upsertUser(lg, u.admin.name, u.admin.password, 'full');
+        // Verificar que el admin nuevo entra ANTES de tocar al actual
+        const fresh = { ...login, username: u.admin.name, password: u.admin.password };
+        const ok = await mikrotikApiLogin(t.ip, [fresh]);
+        if (typeof ok !== 'object') throw new Error(`Se creó ${u.admin.name} pero no se pudo entrar con él: no se tocó el usuario actual`);
+        lg = fresh;
+        done.push(`admin ${u.admin.name}`);
+      }
+      if (u.tech) {
+        // Técnico: ver señal, ping/escaneo (test) y reiniciar; sin escribir config ni ver claves
+        await ensureGroup(lg, 'tecnico', 'local,ssh,read,test,reboot,winbox,web,api');
+        await upsertUser(lg, u.tech.name, u.tech.password, 'tecnico');
+        done.push(`técnico ${u.tech.name}`);
+      }
+      if (u.demote) {
+        if (!u.admin) throw new Error('Para bajar al usuario actual primero crea el admin nuevo');
+        await ensureGroup(lg, 'solo-lectura', 'local,ssh,read,winbox,web,api');
+        const list = asArray(await apiCall(t.ip, lg, '/rest/user'));
+        const cur = list.find((x: any) => String(x.name) === login.username);
+        if (cur && login.username !== u.admin.name) {
+          await apiCall(t.ip, lg, `/rest/user/${encodeURIComponent(cur['.id'])}`, 'PATCH', { group: 'solo-lectura' });
+          done.push(`${login.username} → solo lectura`);
+        }
+      }
+      if (u.admin) {
+        await saveDevice({ login_hash: passwordHash(u.admin.password), last_ok_at: new Date(), last_error: null });
+        // El sistema pasa a entrar con el admin nuevo (la clave vieja queda de respaldo)
+        if (!ctx.promoted.has('mikrotik')) {
+          ctx.promoted.add('mikrotik');
+          await pool.query(
+            `UPDATE cpe_credentials SET username = $3, passwords = ARRAY[$4::text] || array_remove(passwords, $4::text), updated_at = now()
+              WHERE mikrotik_id = $1 AND brand = 'mikrotik'`,
+            [mikrotikId, u.admin.name, u.admin.password]
+          );
+        }
+      }
+      r.status = 'ok';
+      r.message = `${done.join(' · ')} · por API`;
+      return;
+    }
 
     if (action === 'pppoe-user') {
       const newUser = String(t.new_user || '').trim();
