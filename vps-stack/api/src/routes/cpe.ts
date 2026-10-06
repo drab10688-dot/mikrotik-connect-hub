@@ -644,7 +644,9 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
         await processTarget(ctx, targets[i], results[i]);
       }
     };
-    Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker))
+    // Activar API va de UNA en UNA: el robot de WebFig se satura con varias a la vez
+    const lanes = action === 'enable-api' ? 1 : CONCURRENCY;
+    Promise.all(Array.from({ length: Math.min(lanes, targets.length) }, worker))
       .catch((e) => console.error('[CPE] job:', e?.message))
       .finally(async () => {
         jobs.get(jobId)!.status = 'done';
