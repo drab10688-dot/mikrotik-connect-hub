@@ -666,7 +666,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={uf.ar} onChange={(e) => setUf({ ...uf, ar: e.target.checked })} />
-              Activar anti-reset: apaga el botón de reset y protege el arranque (nadie puede resetearla de fábrica)
+              Activar anti-reset: para resetearla hay que sostener el botón 5-10 minutos (un técnico no lo hará, pero tú sí puedes rescatarla si se daña)
             </label>
             <p className="text-[11px] text-muted-foreground">Usuario 3-32 (letras, números . _ -). Clave 8-64 caracteres. El anti-reset requiere firmware actualizado; si la antena no lo soporta, te avisa.</p>
           </div>
