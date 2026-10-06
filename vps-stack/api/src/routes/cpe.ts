@@ -18,17 +18,22 @@ import { mikrotikRowToClient, parseMikrotikTerse, parseUbiquitiSsh, signalQualit
  */
 async function readCpeLink(brand: CpeBrand, viaApi: boolean, ip: string, login: CpeLogin): Promise<ApClient | null> {
   if (brand === 'mikrotik' && viaApi) {
-    for (const path of ['/rest/interface/wireless/registration-table', '/rest/interface/wifi/registration-table']) {
+    // v6 y v7 con paquete wireless; v7 con "wifi" (7.13+) o "wifiwave2" (7.12 y antes)
+    for (const path of ['/rest/interface/wireless/registration-table', '/rest/interface/wifi/registration-table', '/rest/interface/wifiwave2/registration-table']) {
       const rows = await apiCall(ip, login, path).catch(() => null);
       if (Array.isArray(rows) && rows.length) return mikrotikRowToClient(rows[0]);
     }
     return null;
   }
-  const out = await sshRun(ip, login, brand === 'mikrotik'
-    ? '/interface wireless registration-table print terse without-paging'
-    : 'wstalist').catch(() => '');
-  const rows = brand === 'mikrotik' ? parseMikrotikTerse(out) : parseUbiquitiSsh(out);
-  return rows[0] || null;
+  if (brand !== 'mikrotik') {
+    return parseUbiquitiSsh(await sshRun(ip, login, 'wstalist').catch(() => ''))[0] || null;
+  }
+  for (const pkg of ['wireless', 'wifi', 'wifiwave2']) {
+    const out = await sshRun(ip, login, `/interface ${pkg} registration-table print terse without-paging`).catch(() => '');
+    const rows = parseMikrotikTerse(out);
+    if (rows.length) return rows[0];
+  }
+  return null;
 }
 
 async function saveLink(mikrotikId: string, mac: string, link: ApClient | null): Promise<void> {
@@ -265,12 +270,22 @@ cpeRouter.post('/:mikrotikId/probe', editRed, async (req: AuthRequest, res: Resp
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | null> =>
   Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
 
+/**
+ * Clientes de la sede, en dos pestañas del panel:
+ *  - kind=pppoe (por defecto): sesiones PPPoE activas.
+ *  - kind=dhcp: concesiones DHCP "bound" del MikroTik (clientes con IP por
+ *    DHCP), sin los APs ni equipos de infraestructura ya conocidos.
+ * En DHCP `pppoe_user` va vacío y `name` lleva host-name/comentario.
+ */
 cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
   try {
     const mikrotikId = req.params.mikrotikId;
-    const [activeRaw, devRes, aps] = await Promise.all([
-      // Sesiones PPPoE: caché; si aún no hay nada, lectura directa
-      mtCached(mikrotikId, '/rest/ppp/active', 10000).then((r: any) => (asArray(r).length ? r : activeSessions(mikrotikId))),
+    const dhcp = req.query.kind === 'dhcp';
+    const [sourceRaw, devRes, aps] = await Promise.all([
+      dhcp
+        ? mtCached(mikrotikId, '/rest/ip/dhcp-server/lease', 15000)
+        // Sesiones PPPoE: caché; si aún no hay nada, lectura directa
+        : mtCached(mikrotikId, '/rest/ppp/active', 10000).then((r: any) => (asArray(r).length ? r : activeSessions(mikrotikId))),
       pool.query(`SELECT * FROM cpe_devices WHERE mikrotik_id = $1`, [mikrotikId]),
       // La señal sale de los APs (caché 60 s). Si aún no está leída, la lista sale
       // ya y la lectura sigue en segundo plano (el panel vuelve a pedir en segundos)
@@ -278,42 +293,70 @@ cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
     ]);
     const devByMac = new Map<string, any>(devRes.rows.map((d: any) => [d.mac, d]));
     const signalByUser = new Map<string, any>();
+    const signalByMac = new Map<string, any>();
+    const signalByIp = new Map<string, any>();
+    const apIps = new Set<string>();
     for (const ap of aps?.aps || []) {
+      if (ap.ip) apIps.add(String(ap.ip));
       for (const cl of ap.clients || []) {
-        const user = cl.pppoe?.user;
-        if (!user || cl.pppoe?.match === 'sugerido') continue;
-        signalByUser.set(String(user), {
+        const sig = {
           signal: cl.signal ?? null, snr: cl.snr ?? null, ccq: cl.ccq ?? null, quality: cl.quality || 'desconocida',
           tx_rate: cl.tx_rate ?? null, rx_rate: cl.rx_rate ?? null, ap: ap.name || ap.ip, ap_ip: ap.ip,
-        });
+        };
+        const mac = formatMac(cl.mac);
+        if (mac) signalByMac.set(mac, sig);
+        if (cl.ip) signalByIp.set(String(cl.ip), sig);
+        const user = cl.pppoe?.user;
+        if (user && cl.pppoe?.match !== 'sugerido') signalByUser.set(String(user), sig);
       }
     }
-    const list = asArray(activeRaw).map((a: any) => {
-      const mac = formatMac(a['caller-id']);
-      const dev = mac ? devByMac.get(mac) : null;
-      const guess = detectBrand({ 'mac-address': mac || '' });
+
+    const rows = dhcp
+      ? asArray(sourceRaw)
+          .filter((l: any) => String(l.status) === 'bound' && l.address && !apIps.has(String(l.address)))
+          .map((l: any) => ({
+            pppoe_user: '',
+            name: String(l.comment || l['host-name'] || l.address),
+            ip: String(l['active-address'] || l.address),
+            mac: formatMac(l['active-mac-address'] || l['mac-address']),
+            uptime: null,
+            lease: String(l.dynamic) === 'true' ? 'dinamica' : 'estatica',
+          }))
+      : asArray(sourceRaw).map((a: any) => ({
+          pppoe_user: String(a.name),
+          name: String(a.name),
+          ip: a.address || null,
+          mac: formatMac(a['caller-id']),
+          uptime: a.uptime || null,
+          lease: null,
+        }));
+
+    const list = rows.map((r) => {
+      const dev = r.mac ? devByMac.get(r.mac) : null;
+      const guess = detectBrand({ 'mac-address': r.mac || '' });
+      // PPPoE: por usuario. DHCP: por MAC de la estación o por la IP que reporta.
+      const apSig = dhcp
+        ? (r.mac && signalByMac.get(r.mac)) || (r.ip && signalByIp.get(r.ip)) || null
+        : signalByUser.get(r.pppoe_user) || null;
       return {
-        pppoe_user: String(a.name),
-        ip: a.address || null,
-        mac,
-        uptime: a.uptime || null,
+        ...r,
         brand: dev?.brand || (guess === 'mikrotik' || guess === 'ubiquiti' ? guess : null),
         model: dev?.model || null,
         version: dev?.version || null,
         last_ok_at: dev?.last_ok_at || null,
         last_error: dev?.last_error || null,
-        ...(signalByUser.get(String(a.name)) || { signal: null, snr: null, quality: 'desconocida', ap: null }),
+        ...(apSig || { signal: null, snr: null, quality: 'desconocida', ap: null }),
         // Medida por la propia antena (< 30 min): tiene prioridad sobre la del AP
         ...(dev?.signal_at && Date.now() - new Date(dev.signal_at).getTime() < 30 * 60_000
           ? {
               signal: dev.signal, snr: dev.snr, ccq: dev.ccq, tx_rate: dev.tx_rate, rx_rate: dev.rx_rate,
               quality: signalQuality(dev.signal, dev.snr),
-              ap: dev.ap_name || signalByUser.get(String(a.name))?.ap || dev.ap_mac,
+              ap: dev.ap_name || apSig?.ap || dev.ap_mac,
               signal_source: 'antena', signal_at: dev.signal_at,
             }
-          : { signal_source: signalByUser.has(String(a.name)) ? 'ap' : null }),
+          : { signal_source: apSig ? 'ap' : null }),
       };
-    }).sort((x, y) => x.pppoe_user.localeCompare(y.pppoe_user, undefined, { numeric: true }));
+    }).sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true }));
     res.json({ success: true, data: { cpes: list, signal_pending: !aps } });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -322,9 +365,10 @@ cpeRouter.get('/:mikrotikId/cpes', async (req: AuthRequest, res: Response) => {
 
 // ─── Trabajos en lote ──────────────────────────────────────────
 type Action = 'identify' | 'pppoe-user' | 'password' | 'enable-api' | 'users';
-interface Target { mac: string; ip: string; pppoe_user: string; new_user?: string }
+/** `label`: nombre a mostrar (cliente DHCP, sin usuario PPPoE). */
+interface Target { mac: string; ip: string; pppoe_user: string; new_user?: string; label?: string }
 interface Result {
-  mac: string; ip: string; pppoe_user: string; new_user?: string;
+  mac: string; ip: string; pppoe_user: string; new_user?: string; label?: string;
   status: 'pendiente' | 'ok' | 'error'; message: string;
   /** Captura (JPEG base64) de lo que vio el robot de WebFig */
   shot?: string;
@@ -381,7 +425,7 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
        brand = COALESCE(EXCLUDED.brand, cpe_devices.brand), model = COALESCE(EXCLUDED.model, cpe_devices.model),
        version = COALESCE(EXCLUDED.version, cpe_devices.version), login_hash = COALESCE(EXCLUDED.login_hash, cpe_devices.login_hash),
        last_ok_at = COALESCE(EXCLUDED.last_ok_at, cpe_devices.last_ok_at), last_error = EXCLUDED.last_error, updated_at = now()`,
-    [mikrotikId, mac, patch.ip ?? null, patch.pppoe_user ?? null, patch.brand ?? null, patch.model ?? null,
+    [mikrotikId, mac, patch.ip ?? null, patch.pppoe_user || null, patch.brand ?? null, patch.model ?? null,
      patch.version ?? null, patch.login_hash ?? null, patch.last_ok_at ?? null, patch.last_error ?? null]
   ).catch(() => undefined);
 
@@ -698,10 +742,14 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
     const targets: Target[] = asArray(req.body?.targets).slice(0, 300).map((t: any) => ({
       mac: String(t?.mac || ''), ip: String(t?.ip || ''), pppoe_user: String(t?.pppoe_user || ''),
       new_user: t?.new_user ? String(t.new_user).trim() : undefined,
+      label: t?.label ? String(t.label).slice(0, 80) : undefined,
     }));
     if (!targets.length) return res.status(400).json({ success: false, error: 'Selecciona al menos una antena' });
     if (targets.some((t) => !/^(\d{1,3}\.){3}\d{1,3}$/.test(t.ip))) return res.status(400).json({ success: false, error: 'Hay antenas sin IP válida' });
     if (action === 'pppoe-user') {
+      if (targets.some((t) => !t.pppoe_user)) {
+        return res.status(400).json({ success: false, error: 'Cambiar usuario PPPoE solo aplica a clientes PPPoE' });
+      }
       const bad = targets.filter((t) => !t.new_user || !SAFE_PPPOE_USER.test(t.new_user));
       if (bad.length) return res.status(400).json({ success: false, error: `Usuario nuevo vacío o no válido para: ${bad.map((b) => b.pppoe_user).join(', ')}` });
     }
@@ -727,7 +775,7 @@ cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Respo
     }
 
     const creds = sedeCreds;
-    const results: Result[] = targets.map((t) => ({ mac: t.mac, ip: t.ip, pppoe_user: t.pppoe_user, new_user: t.new_user, status: 'pendiente', message: 'En cola' }));
+    const results: Result[] = targets.map((t) => ({ mac: t.mac, ip: t.ip, pppoe_user: t.pppoe_user, new_user: t.new_user, label: t.label, status: 'pendiente', message: 'En cola' }));
     const { rows } = await pool.query(
       `INSERT INTO cpe_jobs (tenant_id, mikrotik_id, user_id, action, results) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [req.tenantId ?? null, mikrotikId, req.userId ?? null, action, JSON.stringify(results)]
@@ -809,6 +857,11 @@ export async function refreshCpeSignals(): Promise<void> {
     for (const sede of sedes) {
       const creds = await loadCredentials(sede.mikrotik_id);
       const ipByMac = new Map<string, string>();
+      // Antenas con IP por DHCP (pestaña "Clientes DHCP") y, encima, las PPPoE
+      for (const l of asArray(await mtCached(sede.mikrotik_id, '/rest/ip/dhcp-server/lease', 15000))) {
+        const m = formatMac(l['active-mac-address'] || l['mac-address']);
+        if (m && String(l.status) === 'bound' && l.address) ipByMac.set(m, String(l['active-address'] || l.address));
+      }
       for (const a of await activeSessions(sede.mikrotik_id)) {
         const m = formatMac(a['caller-id']);
         if (m && a.address) ipByMac.set(m, String(a.address));

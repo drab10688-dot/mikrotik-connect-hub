@@ -296,7 +296,9 @@ export const cpeApi = {
   credentials: async (mikrotikId: string) => unwrapArray<any>(await apiGet<any>(`/cpe/${mikrotikId}/credentials`)),
   saveCredentials: async (mikrotikId: string, data: { brand: string; username: string; ssh_port?: number; api_port?: number; web_port?: number | null; add_password?: string; clear_passwords?: boolean }) =>
     apiPut<any>(`/cpe/${mikrotikId}/credentials`, data),
-  list: async (mikrotikId: string) => unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/cpes`)),
+  /** Clientes de la sede: sesiones PPPoE o concesiones DHCP. */
+  list: async (mikrotikId: string, kind: "pppoe" | "dhcp" = "pppoe") =>
+    unwrapData<any>(await apiGet<any>(`/cpe/${mikrotikId}/cpes?kind=${kind}`)),
   /** Prueba cada forma de entrar (API, SSH, web) a una antena por su IP. */
   probe: async (mikrotikId: string, ip: string) => unwrapData<any>(await apiPost<any>(`/cpe/${mikrotikId}/probe`, { ip })),
   startJob: async (mikrotikId: string, body: { action: string; targets: any[]; new_password?: string; allow_from?: string; webfig_port?: number }) =>

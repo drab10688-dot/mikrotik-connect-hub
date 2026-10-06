@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { AlertTriangle, KeyRound, Loader2, RefreshCw, ScanSearch, UserCog, Plus, Trash2, CheckCircle2, XCircle, PlugZap } from "lucide-react";
@@ -185,7 +186,7 @@ function JobProgress({ deviceId, jobId, action, onDone }: { deviceId: string; jo
                     : r.status === "error" ? <XCircle className="w-4 h-4 text-destructive" />
                     : <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
                 </td>
-                <td className="py-1.5 pr-3 font-medium">{r.pppoe_user}{r.new_user ? ` → ${r.new_user}` : ""}</td>
+                <td className="py-1.5 pr-3 font-medium">{r.pppoe_user || r.label || r.ip}{r.new_user ? ` → ${r.new_user}` : ""}</td>
                 <td className="py-1.5 pr-3 font-mono text-xs">{r.ip}</td>
                 <td className={`py-1.5 text-xs ${r.status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
                   {r.message}
@@ -318,10 +319,18 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const [allowFrom, setAllowFrom] = useState("");
   const [pwd, setPwd] = useState({ a: "", b: "" });
   const [job, setJob] = useState<{ id: string; action: string } | null>(null);
+  // Pestaña: clientes PPPoE o clientes con IP por DHCP
+  const [kind, setKind] = useState<"pppoe" | "dhcp">("pppoe");
+  const isDhcp = kind === "dhcp";
+  const changeKind = (k: string) => {
+    setKind(k === "dhcp" ? "dhcp" : "pppoe");
+    setSelected(new Set());
+    setPppoeMode(false);
+  };
 
   const { data, isFetching, refetch, error: listError } = useQuery({
-    queryKey: ["cpes", deviceId],
-    queryFn: () => cpeApi.list(deviceId),
+    queryKey: ["cpes", deviceId, kind],
+    queryFn: () => cpeApi.list(deviceId, kind),
     enabled: !!deviceId,
     // Mientras la señal de los APs se lee en segundo plano, se vuelve a pedir pronto
     refetchInterval: (q) => ((q.state.data as any)?.signal_pending ? 8_000 : 60_000),
@@ -342,11 +351,11 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
       if (weakOnly && !isWeak(c)) return false;
       if (brandFilter !== "todas" && (c.brand || "desconocida") !== brandFilter) return false;
       if (!term) return true;
-      return [c.pppoe_user, c.ip, c.mac, c.model, c.ap].filter(Boolean).some((v: string) => String(v).toLowerCase().includes(term));
+      return [c.pppoe_user, c.name, c.ip, c.mac, c.model, c.ap].filter(Boolean).some((v: string) => String(v).toLowerCase().includes(term));
     });
   }, [cpes, search, weakOnly, brandFilter]);
 
-  const keyOf = (c: any) => c.mac || c.pppoe_user;
+  const keyOf = (c: any) => c.mac || c.pppoe_user || c.ip;
   // Las acciones solo van a las seleccionadas que se VEN con el filtro actual:
   // antes se aplicaban también a las seleccionadas ocultas por un filtro.
   const chosen = visible.filter((c) => selected.has(keyOf(c)));
@@ -365,7 +374,10 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
       cpeApi.startJob(deviceId, {
         ...body,
         // targets explícitos (equipo de prueba) o las antenas seleccionadas
-        targets: targets ?? chosen.map((c) => ({ mac: c.mac, ip: c.ip, pppoe_user: c.pppoe_user, new_user: newUsers[keyOf(c)]?.trim() || undefined })),
+        targets: targets ?? chosen.map((c) => ({
+          mac: c.mac, ip: c.ip, pppoe_user: c.pppoe_user, label: c.name,
+          new_user: isDhcp ? undefined : newUsers[keyOf(c)]?.trim() || undefined,
+        })),
       }),
     onSuccess: (d: any, body) => {
       setJob({ id: d.job_id, action: body.action });
@@ -423,9 +435,18 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
           <div>
             <CardTitle className="text-lg">Antenas de los clientes</CardTitle>
             <CardDescription>
-              Clientes PPPoE conectados en esta sede, con la señal que les mide su AP. Selecciona antenas y aplica una acción (MikroTik por API, o SSH):
+              {isDhcp
+                ? "Clientes con IP por DHCP en esta sede (concesiones activas, sin los APs), con la señal que les mide su AP."
+                : "Clientes PPPoE conectados en esta sede, con la señal que les mide su AP."}{" "}
+              Selecciona antenas y aplica una acción (MikroTik por API, o SSH):
               antes de cambiar se guarda una copia de su configuración y después se verifica el resultado.
             </CardDescription>
+            <Tabs value={kind} onValueChange={changeKind} className="mt-3">
+              <TabsList>
+                <TabsTrigger value="pppoe">Clientes PPPoE</TabsTrigger>
+                <TabsTrigger value="dhcp">Clientes DHCP</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
           <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Actualizar
@@ -460,9 +481,11 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
               <Button size="sm" variant="outline" onClick={() => start.mutate({ action: "identify" })} disabled={start.isPending}>
                 <ScanSearch className="w-3.5 h-3.5 mr-1" /> Identificar
               </Button>
-              <Button size="sm" variant={pppoeMode ? "default" : "outline"} onClick={() => setPppoeMode((v) => !v)}>
-                <UserCog className="w-3.5 h-3.5 mr-1" /> Cambiar usuario PPPoE
-              </Button>
+              {!isDhcp && (
+                <Button size="sm" variant={pppoeMode ? "default" : "outline"} onClick={() => setPppoeMode((v) => !v)}>
+                  <UserCog className="w-3.5 h-3.5 mr-1" /> Cambiar usuario PPPoE
+                </Button>
+              )}
               {isAdmin && (
                 <Button size="sm" variant="outline" onClick={() => setPwdOpen(true)}>
                   <KeyRound className="w-3.5 h-3.5 mr-1" /> Cambiar clave de acceso
@@ -518,7 +541,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
               <thead className="text-left text-muted-foreground">
                 <tr className="border-b">
                   <th className="py-2 pr-3 w-8"><Checkbox checked={allVisibleSelected} onCheckedChange={toggleAll} aria-label="Seleccionar todas" /></th>
-                  <th className="py-2 pr-3">Cliente PPPoE</th>
+                  <th className="py-2 pr-3">{isDhcp ? "Cliente DHCP" : "Cliente PPPoE"}</th>
                   {pppoeMode && <th className="py-2 pr-3">Nuevo usuario</th>}
                   <th className="py-2 pr-3">IP</th>
                   <th className="py-2 pr-3">Antena</th>
@@ -536,7 +559,10 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                   return (
                     <tr key={k} className={`border-b last:border-0 ${isWeak(c) ? "bg-destructive/5" : ""}`}>
                       <td className="py-2 pr-3"><Checkbox checked={selected.has(k)} onCheckedChange={() => toggle(c)} /></td>
-                      <td className="py-2 pr-3 font-medium">{c.pppoe_user}</td>
+                      <td className="py-2 pr-3 font-medium">
+                        {isDhcp ? c.name : c.pppoe_user}
+                        {isDhcp && c.mac && <span className="block font-mono text-[10px] font-normal text-muted-foreground">{c.mac}{c.lease === "dinamica" ? " · dinámica" : ""}</span>}
+                      </td>
                       {pppoeMode && (
                         <td className="py-2 pr-3">
                           <Input
@@ -579,7 +605,8 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                   <tr><td colSpan={10} className="py-6 text-center text-muted-foreground">
                     {listError
                       ? <span className="text-destructive">No se pudo leer la lista: {(listError as any)?.message}</span>
-                      : isFetching ? "Cargando clientes…" : cpes.length ? "Ningún cliente coincide con esos filtros." : "No hay clientes PPPoE conectados en esta sede."}
+                      : isFetching ? "Cargando clientes…" : cpes.length ? "Ningún cliente coincide con esos filtros."
+                      : isDhcp ? "No hay clientes DHCP activos en esta sede." : "No hay clientes PPPoE conectados en esta sede."}
                   </td></tr>
                 )}
               </tbody>
