@@ -344,7 +344,10 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   }, [cpes, search, weakOnly, brandFilter]);
 
   const keyOf = (c: any) => c.mac || c.pppoe_user;
-  const chosen = cpes.filter((c) => selected.has(keyOf(c)));
+  // Las acciones solo van a las seleccionadas que se VEN con el filtro actual:
+  // antes se aplicaban también a las seleccionadas ocultas por un filtro.
+  const chosen = visible.filter((c) => selected.has(keyOf(c)));
+  const hiddenSelected = cpes.filter((c) => selected.has(keyOf(c))).length - chosen.length;
   const allVisibleSelected = visible.length > 0 && visible.every((c) => selected.has(keyOf(c)));
   const toggle = (c: any) => setSelected((s) => { const n = new Set(s); n.has(keyOf(c)) ? n.delete(keyOf(c)) : n.add(keyOf(c)); return n; });
   const toggleAll = () => setSelected((s) => {
@@ -438,7 +441,12 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
             <Button size="sm" variant={weakOnly ? "default" : "outline"} onClick={() => setWeakOnly((v) => !v)}>
               <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Señal mala
             </Button>
-            <span className="text-xs text-muted-foreground ml-auto">{visible.length} de {cpes.length} · {chosen.length} seleccionadas</span>
+            <span className="text-xs text-muted-foreground ml-auto">
+              {visible.length} de {cpes.length} · {chosen.length} seleccionadas
+              {hiddenSelected > 0 && (
+                <span className="text-amber-500"> · {hiddenSelected} seleccionadas ocultas por el filtro: no se incluyen</span>
+              )}
+            </span>
           </div>
 
           {chosen.length > 0 && (
@@ -538,7 +546,14 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                         {c.model && <span className="block text-[11px] text-muted-foreground">{c.model}{c.version ? ` · ${c.version}` : ""}</span>}
                       </td>
                       <td className="py-2 pr-3 text-xs">{c.ap || "—"}</td>
-                      <td className="py-2 pr-3 font-mono">{c.signal != null ? `${c.signal} dBm` : "—"}</td>
+                      <td className="py-2 pr-3 font-mono">
+                        {c.signal != null ? `${c.signal} dBm` : "—"}
+                        {c.signal_source && (
+                          <span className="block font-sans text-[10px] text-muted-foreground" title={c.signal_source === "antena" ? "Leída en la antena del cliente (se actualiza cada 15 min)" : "Medida por el AP"}>
+                            {c.signal_source === "antena" ? "desde la antena" : "desde el AP"}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 pr-3">{c.snr != null ? `${c.snr} dB` : "—"}</td>
                       <td className="py-2 pr-3"><Badge variant="outline" className={q.className}>{q.label}</Badge></td>
                       <td className="py-2 text-xs">
