@@ -19,6 +19,7 @@ import IspAcs from "./pages/IspAcs";
 import Network from "./pages/Network";
 import PppoeUsers from "./pages/PppoeUsers";
 import Topology from "./pages/Topology";
+import NetMonitor from "./pages/NetMonitor";
 import Permissions from "./pages/Admin/Permissions";
 import UsersAdmin from "./pages/Admin/Users";
 import RegisterUser from "./pages/Admin/RegisterUser";
@@ -50,6 +51,7 @@ const App = () => (
           <Route path="/mikrotik" element={<ProtectedRoute module="mikrotik" section="mikrotik"><Network /></ProtectedRoute>} />
           <Route path="/pppoe" element={<ProtectedRoute module="mikrotik" section="pppoe"><PppoeUsers /></ProtectedRoute>} />
           <Route path="/topology" element={<ProtectedRoute module="mikrotik" section="topology"><Topology /></ProtectedRoute>} />
+          <Route path="/monitor" element={<ProtectedRoute module="mikrotik" section="mikrotik"><NetMonitor /></ProtectedRoute>} />
           <Route path="/acs" element={<ProtectedRoute section="vpn"><IspAcs /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute section="configuracion"><Settings /></ProtectedRoute>} />
           <Route path="/diagnostics" element={<ProtectedRoute section="diagnostico"><Diagnostics /></ProtectedRoute>} />

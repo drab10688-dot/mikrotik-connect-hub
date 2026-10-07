@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import omnisyncBrand from "@/assets/omnisync-logo-full.png.asset.json";
 const omnisyncLogo = omnisyncBrand.url;
 import {
-  LayoutDashboard, Activity, Settings, LogOut, Router,
+  LayoutDashboard, Activity, Settings, LogOut, Router, Radar,
   ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound, UserPlus,
   Mail, DatabaseBackup, Lock,
 } from "lucide-react";
@@ -37,6 +37,7 @@ const menuItems: MenuEntry[] = [
   { icon: UserPlus, label: "Usuarios PPPoE", path: "/pppoe", module: "mikrotik", section: "pppoe", group: "Operación" },
   
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
+  { icon: Radar, label: "Monitor de red", path: "/monitor", module: "mikrotik", section: "mikrotik", group: "Operación" },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
   { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },

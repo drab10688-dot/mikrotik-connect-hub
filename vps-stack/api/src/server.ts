@@ -22,6 +22,8 @@ import { backupRouter, runScheduledBackups } from './routes/backup';
 import { sslRouter, renewSslIfNeeded } from './routes/ssl';
 import { securityRouter } from './routes/security';
 import { cpeRouter, refreshCpeSignals } from './routes/cpe';
+import { monitorRouter } from './routes/monitor';
+import { runNetMonitor } from './lib/net-monitor';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -76,6 +78,8 @@ app.get('/api/browser-authz-vnc', authorizeUserVnc);
 app.use('/api/browser', authMiddleware, requireSection('escritorio', 'view'), browserRouter);
 // Antenas de clientes por sede (credenciales, señal y cambios en lote por SSH)
 app.use('/api/cpe', authMiddleware, requireSection('red', 'view'), requireModule('enable_mikrotik'), cpeRouter);
+// Monitor de red: ping por MikroTik y alertas por Telegram del ISP
+app.use('/api/monitor', authMiddleware, requireSection('mikrotik', 'view'), requireModule('enable_mikrotik'), monitorRouter);
 app.use('/api/vpn', authMiddleware, requireSection('vpn'), vpnRouter);
 // Servidor de correo (SMTP) y copias de seguridad por ISP / del sistema
 app.use('/api/mail', authMiddleware, requireRole('super_admin', 'admin'), mailRouter);
@@ -121,6 +125,11 @@ cron.schedule('0 3 * * *', () => {
 // Cron: señal leída desde las antenas de los clientes (cada 15 min, sin cambiar nada)
 cron.schedule('*/15 * * * *', () => {
   refreshCpeSignals().catch((e) => console.error('[CPE] señal:', e.message));
+});
+
+// Cron: monitor de red (ping VPS→MikroTik y MikroTik→internet, alertas Telegram)
+cron.schedule('* * * * *', () => {
+  runNetMonitor().catch((e) => console.error('[MONITOR]', e.message));
 });
 
 // Cron: copias automáticas programadas desde Respaldos (revisa cada hora)

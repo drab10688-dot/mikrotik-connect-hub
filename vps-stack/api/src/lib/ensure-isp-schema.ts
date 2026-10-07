@@ -312,6 +312,39 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS lan_downs INTEGER`,
     `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS cpe_uptime_s INTEGER`,
     `ALTER TABLE cpe_devices ADD COLUMN IF NOT EXISTS health_at TIMESTAMPTZ`,
+    // Monitor de red (lib/net-monitor.ts): ping por MikroTik cada minuto, 7 días
+    `CREATE TABLE IF NOT EXISTS net_monitor_samples (
+       id BIGSERIAL PRIMARY KEY,
+       mikrotik_id UUID NOT NULL,
+       at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       vpn_rtt REAL,
+       vpn_loss SMALLINT,
+       inet_rtt REAL,
+       inet_loss SMALLINT,
+       status TEXT NOT NULL
+     )`,
+    `CREATE INDEX IF NOT EXISTS net_monitor_samples_dev_at ON net_monitor_samples(mikrotik_id, at DESC)`,
+    `CREATE TABLE IF NOT EXISTS net_monitor_state (
+       mikrotik_id UUID PRIMARY KEY,
+       status TEXT NOT NULL,
+       streak INTEGER NOT NULL DEFAULT 0,
+       since TIMESTAMPTZ NOT NULL DEFAULT now(),
+       alerted_status TEXT,
+       alerted_at TIMESTAMPTZ,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    // Alertas por ISP (tenant_id NULL = super admin: recibe las de todos)
+    `CREATE TABLE IF NOT EXISTS monitor_settings (
+       id SERIAL PRIMARY KEY,
+       tenant_id UUID UNIQUE,
+       enabled BOOLEAN NOT NULL DEFAULT false,
+       telegram_token TEXT,
+       telegram_chat TEXT,
+       rtt_ms INTEGER NOT NULL DEFAULT 150,
+       loss_pct INTEGER NOT NULL DEFAULT 20,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS monitor_settings_global ON monitor_settings ((tenant_id IS NULL)) WHERE tenant_id IS NULL`,
     // Copia de la configuración antes de cada cambio (se guardan las 3 últimas)
     `CREATE TABLE IF NOT EXISTS cpe_backups (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

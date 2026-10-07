@@ -459,6 +459,19 @@ export const vpsApi = {
   docker: (mikrotikId: string, action: string, service?: string) => apiPost('/system/vps/docker', { mikrotik_id: mikrotikId, action, service }),
 };
 
+// ─── Monitor de red (ping por MikroTik + alertas Telegram) ─
+export const monitorApi = {
+  status: async () => unwrapData<any>(await apiGet<any>('/monitor/status')),
+  history: async (mikrotikId: string, hours = 24) =>
+    unwrapArray<any>(await apiGet<any>(`/monitor/${mikrotikId}/history?hours=${hours}`)),
+  settings: async () => unwrapData<any>(await apiGet<any>('/monitor/settings')),
+  saveSettings: async (data: { enabled: boolean; telegram_token?: string; telegram_chat: string; rtt_ms: number; loss_pct: number }) =>
+    unwrapData<any>(await apiPut<any>('/monitor/settings', data)),
+  test: async () => unwrapData<any>(await apiPost<any>('/monitor/settings/test', {})),
+  detectChat: async (telegram_token?: string) =>
+    unwrapArray<any>(await apiPost<any>('/monitor/settings/detect-chat', telegram_token ? { telegram_token } : {})),
+};
+
 // ─── Recursos del servidor (super admin) ─────────────────
 export const systemResourcesApi = {
   get: async () => unwrapData<any>(await apiGet<any>('/system/resources')),
