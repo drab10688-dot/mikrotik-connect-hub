@@ -74,7 +74,7 @@ cat > "$MT" <<EOF
 remove [find name="OmniACS-VPN"]
 add name="OmniACS-VPN" connect-to=$PUBIP user="$VPN_USER" password="$VPN_PASSWORD" \\
     profile=default-encryption use-ipsec=no \\
-    add-default-route=no allow=mschap2 keepalive-timeout=30 dial-on-demand=no \\
+    add-default-route=no allow=mschap2,chap keepalive-timeout=30 dial-on-demand=no \\
     disabled=no comment="OmniACS VPN"
 
 # 2) Ruta hacia el ACS (VPS) por el túnel
