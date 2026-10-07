@@ -27,9 +27,11 @@ export const useMyPermissions = () => {
 
   const fullAccess = isSuperAdmin || data?.full_access !== false;
 
-  const can = (section?: string, edit = false) => {
+  // "a|b" = basta con tener permiso en cualquiera de las secciones
+  const can = (section?: string, edit = false): boolean => {
     if (!section) return true;
     if (fullAccess) return true;
+    if (section.includes("|")) return section.split("|").some((s) => can(s, edit));
     const perm = data?.permissions?.find((p) => p.section === section);
     if (!perm) return false;
     return edit ? !!perm.can_edit : !!perm.can_view;

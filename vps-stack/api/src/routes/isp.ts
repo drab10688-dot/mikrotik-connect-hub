@@ -28,14 +28,14 @@ export const SECTIONS = [
 export type Section = (typeof SECTIONS)[number];
 
 export const SECTION_LABELS: Record<string, string> = {
-  onus: 'Gestion de ONUs',
-  mikrotik: 'Conexion MikroTik',
-  pppoe: 'Usuarios PPPoE',
+  onus: 'Gestión de ONUs (TR-069)',
+  mikrotik: 'Conexión MikroTik: sesiones, alertas, cableado y monitor',
+  pppoe: 'Usuarios PPPoE (crear, editar, borrar)',
   topology: 'Mapa de red',
-  red: 'Red, APs y senal',
+  red: 'Antenas y APs: señal y estado',
   vpn: 'Credenciales y VPN',
-  configuracion: 'Configuracion',
-  diagnostico: 'Diagnostico API',
+  configuracion: 'Configuración',
+  diagnostico: 'Diagnóstico API',
   escritorio: 'Escritorio remoto (VNC)',
 };
 
@@ -49,14 +49,16 @@ export const ROLE_NAMES: RoleName[] = ['user'];
 
 /**
  * Permisos por defecto del técnico (view = ver | edit = modificar): ONUs por
- * TR-069 y antenas/APs con su señal y estado ("mikrotik" abre la página de
- * red). El escritorio remoto (VNC) queda apagado hasta que el admin lo dé.
+ * TR-069 y antenas/APs con su señal y estado (con "ver" puede pedir una
+ * lectura nueva de la antena; cambiarla exige "editar"). Sesiones PPPoE,
+ * usuarios PPPoE, VPN, etc. y el escritorio remoto (VNC) quedan apagados
+ * hasta que el admin los dé.
  * Se siembran solo las filas que falten, así que en un ISP existente una
  * sección nueva (p. ej. "escritorio") entra apagada sin tocar lo ya guardado.
  */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, { view: string[]; edit: string[] }> = {
   user: {
-    view: ['onus', 'mikrotik', 'red'],
+    view: ['onus', 'red'],
     edit: ['onus'],
   },
 };

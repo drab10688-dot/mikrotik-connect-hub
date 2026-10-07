@@ -48,7 +48,7 @@ const App = () => (
           {/* Panel de gestión de ONUs */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/onus" element={<ProtectedRoute module="onus" section="onus"><Onus /></ProtectedRoute>} />
-          <Route path="/mikrotik" element={<ProtectedRoute module="mikrotik" section="mikrotik"><Network /></ProtectedRoute>} />
+          <Route path="/mikrotik" element={<ProtectedRoute module="mikrotik" section="mikrotik|red"><Network /></ProtectedRoute>} />
           <Route path="/pppoe" element={<ProtectedRoute module="mikrotik" section="pppoe"><PppoeUsers /></ProtectedRoute>} />
           <Route path="/topology" element={<ProtectedRoute module="mikrotik" section="topology"><Topology /></ProtectedRoute>} />
           <Route path="/monitor" element={<ProtectedRoute module="mikrotik" section="mikrotik"><NetMonitor /></ProtectedRoute>} />

@@ -56,8 +56,16 @@ export default function Network() {
   const [browserTarget, setBrowserTarget] = useState<ProxyBrowserTarget | null>(null);
   const browserOpen = Boolean(browserTarget);
   const [signalAp, setSignalAp] = useState<ApTargetInfo | null>(null);
-  // Escritorio remoto (VNC): permiso aparte para técnicos
-  const canDesktop = useMyPermissions().can("escritorio");
+  // Permisos del técnico (admin y super admin: todo). Las sesiones PPPoE,
+  // alertas, desconexiones y cableado son del router ("Conexión MikroTik") y
+  // se leen por netaccess, que pide "Antenas y APs"; APs y antenas cliente solo
+  // "Antenas y APs". Editar en antenas/APs = "Antenas y APs" con editar.
+  const perms = useMyPermissions();
+  const canDesktop = perms.can("escritorio");
+  const canRed = perms.can("red");
+  const canEditRed = perms.can("red", true);
+  const canSessions = perms.can("mikrotik") && canRed;
+  const isFull = perms.fullAccess;
 
   const { data: devices = [] } = useQuery({
     queryKey: ["net-devices"],
@@ -71,7 +79,7 @@ export default function Network() {
   const { data: pppoe, isLoading: loadingPppoe, refetch: refetchPppoe, error: pppoeError } = useQuery({
     queryKey: ["net-pppoe", deviceId],
     queryFn: () => netAccessApi.pppoe(deviceId),
-    enabled: !!deviceId && !browserOpen,
+    enabled: !!deviceId && !browserOpen && canSessions,
     refetchInterval: browserOpen ? false : 30_000,
     refetchOnWindowFocus: false,
     // Mantiene la lista anterior si un refresco falla o llega vacío (VPN inestable)
@@ -79,12 +87,6 @@ export default function Network() {
     retry: 1,
   });
 
-  const { data: netDevices, isLoading: loadingNet, refetch: refetchNet, error: netError } = useQuery({
-    queryKey: ["net-equipos", deviceId],
-    queryFn: () => netAccessApi.devices(deviceId),
-    enabled: !!deviceId && !browserOpen,
-    refetchOnWindowFocus: false,
-  });
 
   const { data: ports } = useQuery({
     queryKey: ["net-web-ports"],
@@ -94,7 +96,7 @@ export default function Network() {
   const { data: ethernet, isLoading: loadingEth, isFetching: fetchingEth, refetch: refetchEth, error: ethError } = useQuery({
     queryKey: ["net-ethernet", deviceId],
     queryFn: () => netAccessApi.ethernet(deviceId),
-    enabled: !!deviceId && !browserOpen,
+    enabled: !!deviceId && !browserOpen && canSessions,
     refetchInterval: browserOpen ? false : 20_000,
     refetchOnWindowFocus: false,
   });
@@ -103,7 +105,7 @@ export default function Network() {
   const { data: pppoeEvents, isLoading: loadingEvents, isFetching: fetchingEvents, refetch: refetchEvents, error: eventsError } = useQuery({
     queryKey: ["net-pppoe-events", deviceId, eventDays],
     queryFn: () => netAccessApi.pppoeEvents(deviceId, Number(eventDays)),
-    enabled: !!deviceId && !browserOpen,
+    enabled: !!deviceId && !browserOpen && canSessions,
     refetchInterval: browserOpen ? false : 60_000,
     refetchOnWindowFocus: false,
   });
@@ -111,7 +113,7 @@ export default function Network() {
   const { data: lanAlerts, isFetching: fetchingAlerts, refetch: refetchAlerts } = useQuery({
     queryKey: ["net-lan-alerts", deviceId],
     queryFn: () => netAccessApi.lanAlerts(deviceId),
-    enabled: !!deviceId && !browserOpen,
+    enabled: !!deviceId && !browserOpen && canSessions,
     refetchInterval: browserOpen ? false : 30_000,
     refetchOnWindowFocus: false,
   });
@@ -148,7 +150,7 @@ export default function Network() {
   const { data: apCreds, isLoading: apCredsLoading } = useQuery({
     queryKey: ["ap-credentials", deviceId],
     queryFn: () => netAccessApi.listApCredentials(deviceId),
-    enabled: !!deviceId,
+    enabled: !!deviceId && canRed,
   });
 
   const apCredList = (apCreds || []) as any[];
@@ -158,7 +160,7 @@ export default function Network() {
   const { data: apsAuto, isFetching: apsAutoFetching, error: apsAutoError, refetch: refetchApsAuto } = useQuery({
     queryKey: ["aps-auto", deviceId],
     queryFn: () => netAccessApi.apsAuto(deviceId),
-    enabled: !!deviceId && !browserOpen,
+    enabled: !!deviceId && !browserOpen && canRed,
     refetchInterval: browserOpen ? false : 60_000,
     refetchOnWindowFocus: false,
   });
@@ -268,6 +270,7 @@ export default function Network() {
     };
     if (!cl.mac) return <span className="text-muted-foreground">—</span>;
     if (!p) {
+      if (!canEditRed) return <span className="text-muted-foreground">—</span>;
       return (
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openAssign}>
           <Plus className="w-3 h-3 mr-1" /> Asignar
@@ -286,7 +289,7 @@ export default function Network() {
           </div>
           {p.comment && <p className="text-xs text-muted-foreground truncate max-w-[220px]">{p.comment}</p>}
         </div>
-        <div className="flex gap-0.5">
+        {canEditRed && <div className="flex gap-0.5">
           {p.match === "sugerido" && (
             <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" title="Confirmar sugerencia" onClick={() => linkMut.mutate({ mac: cl.mac, user: p.user })}>
               ✓
@@ -300,7 +303,7 @@ export default function Network() {
               <Trash2 className="w-3 h-3 text-destructive" />
             </Button>
           )}
-        </div>
+        </div>}
       </div>
     );
   };
@@ -310,18 +313,12 @@ export default function Network() {
   const lastSecretsRef = useRef<any[]>([]);
   if (pppoe?.secrets?.length) lastSecretsRef.current = pppoe.secrets;
   const secrets = pppoe?.secrets?.length ? pppoe.secrets : lastSecretsRef.current;
-  const equipos = netDevices?.devices ?? [];
 
   // Buscadores independientes con paginación por sección.
   const pppoeSearch = usePagedSearch<any>(
     secrets,
     (s) => [s.name, s.profile, s.remote_address, s.comment, s.service, s.caller_id],
     { pageSize: 25 }
-  );
-  const equipoSearch = usePagedSearch<any>(
-    equipos,
-    (d) => [d.ip, d.mac, d.name, d.platform, d.brand, d.source],
-    { pageSize: 24 }
   );
 
   // Sin paginación en PPPoE: se muestran todos los resultados filtrados.
@@ -343,7 +340,6 @@ export default function Network() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pppoeSearch.filtered, ipSort]);
-  const filteredEquipos = equipoSearch.paged;
 
   // ─── Edición separada del secret PPPoE ───
   const [editSecret, setEditSecret] = useState<any | null>(null);
@@ -383,7 +379,7 @@ export default function Network() {
     onSuccess: async () => {
       toast.success("Comentario guardado y verificado en la MikroTik");
       setEditSecret(null);
-      await Promise.all([refetchPppoe(), refetchNet()]);
+      await refetchPppoe();
     },
     onError: (e: any) => toast.error("No se pudo guardar el comentario", { description: e?.message }),
   });
@@ -400,7 +396,7 @@ export default function Network() {
       if (data?.kicked) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_200));
       }
-      await Promise.all([refetchPppoe(), refetchNet(), refetchEvents()]);
+      await Promise.all([refetchPppoe(), refetchEvents()]);
     },
     onError: (e: any) => toast.error("No se pudo cambiar el perfil", { description: e?.message }),
   });
@@ -451,12 +447,14 @@ export default function Network() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={() => { refetchPppoe(); refetchNet(); }}>
+            <Button variant="outline" onClick={() => { if (canSessions) refetchPppoe(); if (canRed) refetchApsAuto(); }}>
               <RefreshCw className="w-4 h-4 mr-2" /> Actualizar
             </Button>
-            <Button onClick={openWebFig} disabled={!deviceId}>
-              <Monitor className="w-4 h-4 mr-2" /> Abrir WebFig
-            </Button>
+            {canDesktop && (
+              <Button onClick={openWebFig} disabled={!deviceId}>
+                <Monitor className="w-4 h-4 mr-2" /> Abrir WebFig
+              </Button>
+            )}
             {canDesktop && (
               <Button
                 variant="secondary"
@@ -526,23 +524,22 @@ export default function Network() {
           </Card>
         )}
 
-        <Tabs defaultValue="pppoe">
+        <Tabs defaultValue={canSessions ? "pppoe" : "cpes"}>
           <TabsList>
-            <TabsTrigger value="pppoe"><Users className="w-4 h-4 mr-2" />PPPoE</TabsTrigger>
-            <TabsTrigger value="alertas">
+            {canSessions && <TabsTrigger value="pppoe"><Users className="w-4 h-4 mr-2" />PPPoE</TabsTrigger>}
+            {canSessions && <TabsTrigger value="alertas">
               <AlertTriangle className="w-4 h-4 mr-2" />Alertas LAN
               {alertList.length > 0 && (
                 <Badge variant="outline" className="ml-2 bg-destructive/15 text-destructive border-destructive/30">
                   {alertList.length}
                 </Badge>
               )}
-            </TabsTrigger>
-            <TabsTrigger value="desconexiones"><Activity className="w-4 h-4 mr-2" />Desconexiones</TabsTrigger>
-            <TabsTrigger value="equipos"><Antenna className="w-4 h-4 mr-2" />Equipos / Antenas</TabsTrigger>
-            <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>
-            <TabsTrigger value="cpes"><Antenna className="w-4 h-4 mr-2" />Antenas cliente</TabsTrigger>
-            <TabsTrigger value="cableado"><Cable className="w-4 h-4 mr-2" />Cableado LAN</TabsTrigger>
-            <TabsTrigger value="puertos"><Wifi className="w-4 h-4 mr-2" />Puertos web</TabsTrigger>
+            </TabsTrigger>}
+            {canSessions && <TabsTrigger value="desconexiones"><Activity className="w-4 h-4 mr-2" />Desconexiones</TabsTrigger>}
+            {canRed && <TabsTrigger value="aps"><SignalHigh className="w-4 h-4 mr-2" />APs / Señal</TabsTrigger>}
+            {canRed && <TabsTrigger value="cpes"><Antenna className="w-4 h-4 mr-2" />Antenas cliente</TabsTrigger>}
+            {canSessions && <TabsTrigger value="cableado"><Cable className="w-4 h-4 mr-2" />Cableado LAN</TabsTrigger>}
+            {isFull && <TabsTrigger value="puertos"><Wifi className="w-4 h-4 mr-2" />Puertos web</TabsTrigger>}
           </TabsList>
 
           {/* ─── Alertas LAN ─── */}
@@ -705,7 +702,7 @@ export default function Network() {
                             <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[220px] truncate" title={s.comment || ""}>
                               <div className="flex items-center gap-1">
                                 <span className="truncate">{s.comment || "—"}</span>
-                                {s.source === "secret" && s.id && (
+                                {canEditRed && s.source === "secret" && s.id && (
                                   <Button size="sm" variant="ghost" title="Editar comentario" onClick={() => openEditSecret(s, "comment")}>
                                     <Pencil className="w-3.5 h-3.5" />
                                   </Button>
@@ -722,7 +719,7 @@ export default function Network() {
                             <td className="py-2 pr-4">
                               <div className="flex items-center gap-1">
                                 <span>{s.profile || "—"}</span>
-                                {s.source === "secret" && s.id && (
+                                {canEditRed && s.source === "secret" && s.id && (
                                   <Button size="sm" variant="ghost" title="Cambiar perfil" onClick={() => openEditSecret(s, "profile")}>
                                     <Pencil className="w-3.5 h-3.5" />
                                   </Button>
@@ -886,79 +883,6 @@ export default function Network() {
 
 
           {/* ─── Equipos ─── */}
-          <TabsContent value="equipos" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Equipos detectados en la red</CardTitle>
-                <CardDescription>
-                  Antenas Ubiquiti, routers MikroTik y CPEs vistos por vecinos, ARP y DHCP. Se abren con el puerto configurado por marca.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <SearchBox
-                  controls={equipoSearch}
-                  placeholder="Buscar por IP, MAC, nombre, marca o plataforma…"
-                  className="mb-3"
-                />
-
-                {netError ? (
-                  <p className="text-sm text-destructive">{(netError as any).message}</p>
-                ) : loadingNet ? (
-                  <p className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Escaneando…
-                  </p>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredEquipos.map((d: any) => (
-                      <div key={d.ip} className="rounded-lg border p-3 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{d.name}</p>
-                            <p className="text-xs font-mono text-muted-foreground">{d.ip}</p>
-                          </div>
-                          <Badge variant={d.brand === "otro" ? "secondary" : "default"} className="capitalize shrink-0">
-                            {d.brand}
-                          </Badge>
-                        </div>
-                        {d.platform && <p className="text-xs text-muted-foreground truncate">{d.platform}</p>}
-                        <p className="text-xs text-muted-foreground">
-                          {d.web_protocol}://{d.ip}:{d.web_port}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="flex-1"
-                            onClick={() => setSignalAp({ ip: d.ip, brand: d.brand, name: d.name })}
-                          >
-                            <SignalHigh className="w-3.5 h-3.5 mr-1" /> Señal
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => setBrowserTarget({
-                              title: `${d.name} — ${d.ip}:${d.web_port}`,
-                              directUrl: `${d.web_protocol || "http"}://${d.ip}:${d.web_port}/`,
-                              proxyUrl: proxyUrl(d.proxy_path),
-                              mikrotikId: deviceId,
-                            })}
-                          >
-                            <Monitor className="w-3.5 h-3.5 mr-1" /> Abrir
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    {!filteredEquipos.length && (
-                      <p className="text-muted-foreground">No se detectaron equipos.</p>
-                    )}
-                  </div>
-                )}
-                {!loadingNet && !netError && <Pager controls={equipoSearch} />}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* ─── APs / Señal (automático) ─── */}
           <TabsContent value="aps" className="mt-4 space-y-4">
             <Card>
@@ -970,7 +894,7 @@ export default function Network() {
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  {unsavedDetected > 0 && (
+                  {canEditRed && unsavedDetected > 0 && (
                     <Button size="sm" onClick={() => saveDetected.mutate(undefined)} disabled={saveDetected.isPending}>
                       {saveDetected.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
                       Guardar {unsavedDetected} en el mapa
@@ -1024,7 +948,7 @@ export default function Network() {
                             <tr key={ap.ip} className="border-b last:border-0">
                               <td className="py-2 pr-4 font-mono text-xs">
                                 {ap.ip}
-                                {ap.dhcp === "dinamica" && (
+                                {canEditRed && ap.dhcp === "dinamica" && (
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -1058,6 +982,8 @@ export default function Network() {
                               <td className="py-2">
                                 {ap.saved ? (
                                   <Badge variant="secondary">En el mapa</Badge>
+                                ) : !canEditRed ? (
+                                  <span className="text-xs text-muted-foreground">—</span>
                                 ) : ap.ok ? (
                                   <Button size="sm" variant="outline" className="h-7" onClick={() => saveDetected.mutate([ap.ip])} disabled={saveDetected.isPending}>
                                     <Save className="w-3.5 h-3.5 mr-1" /> Guardar
@@ -1145,7 +1071,7 @@ export default function Network() {
             </Card>
 
             {/* Credenciales opcionales (solo para APs con clave propia) */}
-            <Card>
+            {canEditRed && <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <div>
                   <CardTitle className="text-base flex items-center gap-2"><KeyRound className="w-4 h-4" /> APs y enlaces de esta sede (mapa de red)</CardTitle>
@@ -1288,7 +1214,7 @@ export default function Network() {
                   <p className="text-sm text-muted-foreground">Todavía no hay APs guardados en esta sede. Usa "Guardar en el mapa" arriba o agrega uno a mano.</p>
                 )}
               </CardContent>
-            </Card>
+            </Card>}
           </TabsContent>
 
           {/* ─── Antenas de clientes: acceso por SSH y cambios en lote ─── */}

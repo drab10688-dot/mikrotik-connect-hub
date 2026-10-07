@@ -20,6 +20,19 @@ const ROLES: { id: string; label: string; desc: string }[] = [
   },
 ];
 
+/** Qué permite "Ver" y "Editar" en cada sección (se muestra bajo el nombre). */
+const HINTS: Record<string, string> = {
+  onus: "Ver: estado, señal y parámetros · Editar: WiFi, PPPoE, reinicios y demás cambios en la ONU",
+  mikrotik: "Ver: sesiones PPPoE activas, alertas LAN, desconexiones, cableado y monitor de red (necesita también Antenas y APs) · Editar: cambios en el router",
+  pppoe: "Ver: lista de usuarios PPPoE · Editar: crear, cambiar, suspender y borrar usuarios",
+  topology: "Ver: mapa de torres, enlaces y clientes · Editar: mover y organizar el mapa",
+  red: "Ver: señal, LAN y estado de APs y antenas, y el botón Leer · Editar: claves de antenas, cambio de usuario PPPoE, fijar IP, guardar APs",
+  vpn: "Ver: datos TR-069, STUN y script de la VPN · Editar: crear o cambiar VPN",
+  configuracion: "Ajustes del panel y de los routers",
+  diagnostico: "Pruebas de conexión con la API de los routers",
+  escritorio: "Abrir equipos en el navegador remoto (WebFig, antenas, ONUs) desde el VPS",
+};
+
 const FALLBACK_LABELS: Record<string, string> = {
   onus: "Gestión de ONUs",
   mikrotik: "Conexión MikroTik",
@@ -185,7 +198,7 @@ const Permissions = () => {
                         >
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{labels[section] || section}</p>
-                            <p className="text-[11px] text-muted-foreground">{section}</p>
+                            <p className="text-[11px] text-muted-foreground">{HINTS[section] || section}</p>
                           </div>
                           <div className="flex items-center gap-8">
                             <div className="flex w-10 justify-center" title="Ver">

@@ -33,7 +33,7 @@ type MenuEntry = {
 const menuItems: MenuEntry[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", group: "Operación" },
   { icon: Antenna, label: "Gestión de ONUs", path: "/onus", module: "onus", section: "onus", group: "Operación" },
-  { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik", group: "Operación" },
+  { icon: Router, label: "Conexión MikroTik", path: "/mikrotik", module: "mikrotik", section: "mikrotik|red", group: "Operación" },
   { icon: UserPlus, label: "Usuarios PPPoE", path: "/pppoe", module: "mikrotik", section: "pppoe", group: "Operación" },
   
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },

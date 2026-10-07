@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cpeApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
+import { useMyPermissions } from "@/hooks/usePermissions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -339,6 +340,9 @@ function ProbeCard({ deviceId, onAction, busy }: {
 
 export function CpePanel({ deviceId }: { deviceId: string }) {
   const { isAdmin } = useAuth();
+  // Técnico con solo "ver": lista, señal, LAN y botón Leer. Con "editar":
+  // credenciales, prueba de equipo y cambio de usuario PPPoE.
+  const canEdit = useMyPermissions().can("red", true);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [weakOnly, setWeakOnly] = useState(false);
@@ -450,8 +454,8 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
 
   return (
     <div className="space-y-4">
-      <CredentialsCard deviceId={deviceId} />
-      <ProbeCard deviceId={deviceId} onAction={(action, target) => start.mutate({ action, targets: [target] })} busy={start.isPending} />
+      {canEdit && <CredentialsCard deviceId={deviceId} />}
+      {canEdit && <ProbeCard deviceId={deviceId} onAction={(action, target) => start.mutate({ action, targets: [target] })} busy={start.isPending} />}
 
       {job && (
         <JobProgress
@@ -525,9 +529,9 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
             <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2">
               <span className="text-sm font-medium mr-1">{chosen.length} seleccionadas:</span>
               <Button size="sm" variant="outline" onClick={() => start.mutate({ action: "identify" })} disabled={start.isPending}>
-                <ScanSearch className="w-3.5 h-3.5 mr-1" /> Identificar
+                <ScanSearch className="w-3.5 h-3.5 mr-1" /> Leer señal y estado
               </Button>
-              {!isDhcp && (
+              {canEdit && !isDhcp && (
                 <Button size="sm" variant={pppoeMode ? "default" : "outline"} onClick={() => setPppoeMode((v) => !v)}>
                   <UserCog className="w-3.5 h-3.5 mr-1" /> Cambiar usuario PPPoE
                 </Button>
@@ -590,13 +594,15 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                   <th className="py-2 pr-3">{isDhcp ? "Cliente DHCP" : "Cliente PPPoE"}</th>
                   {pppoeMode && <th className="py-2 pr-3">Nuevo usuario</th>}
                   <th className="py-2 pr-3">IP</th>
+                  <th className="py-2 pr-3">MAC</th>
                   <th className="py-2 pr-3">Antena</th>
                   <th className="py-2 pr-3">AP</th>
                   <th className="py-2 pr-3">Señal</th>
                   <th className="py-2 pr-3">SNR</th>
                   <th className="py-2 pr-3">Calidad</th>
                   <th className="py-2 pr-3" title="Puerto LAN de la antena hacia el router del cliente">LAN</th>
-                  <th className="py-2">Último acceso</th>
+                  <th className="py-2 pr-3">Último acceso</th>
+                  <th className="py-2"><span className="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -608,7 +614,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                       <td className="py-2 pr-3"><Checkbox checked={selected.has(k)} onCheckedChange={() => toggle(c)} /></td>
                       <td className="py-2 pr-3 font-medium">
                         {isDhcp ? c.name : c.pppoe_user}
-                        {isDhcp && c.mac && <span className="block font-mono text-[10px] font-normal text-muted-foreground">{c.mac}{c.lease === "dinamica" ? " · dinámica" : ""}</span>}
+                        {isDhcp && c.lease === "dinamica" && <span className="block text-[10px] font-normal text-muted-foreground">IP dinámica</span>}
                       </td>
                       {pppoeMode && (
                         <td className="py-2 pr-3">
@@ -624,6 +630,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                         </td>
                       )}
                       <td className="py-2 pr-3 font-mono text-xs">{c.ip || "—"}</td>
+                      <td className="py-2 pr-3 font-mono text-[11px] whitespace-nowrap">{c.mac || "—"}</td>
                       <td className="py-2 pr-3 text-xs">
                         {c.brand ? BRAND_LABEL[c.brand] : <span className="text-muted-foreground">¿?</span>}
                         {c.model && <span className="block text-[11px] text-muted-foreground">{c.model}{c.version ? ` · ${c.version}` : ""}</span>}
@@ -640,17 +647,27 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                       <td className="py-2 pr-3">{c.snr != null ? `${c.snr} dB` : "—"}</td>
                       <td className="py-2 pr-3"><Badge variant="outline" className={q.className}>{q.label}</Badge></td>
                       <td className="py-2 pr-3 text-xs"><LanCell c={c} /></td>
-                      <td className="py-2 text-xs">
+                      <td className="py-2 pr-3 text-xs">
                         {c.last_error
                           ? <span className="text-destructive" title={c.last_error}>Error: {String(c.last_error).slice(0, 60)}</span>
                           : c.last_ok_at ? <span className="text-muted-foreground">OK {new Date(c.last_ok_at).toLocaleString("es-CO")}</span>
                           : <span className="text-muted-foreground">Nunca</span>}
                       </td>
+                      <td className="py-2">
+                        <Button
+                          size="sm" variant="ghost" className="h-7 px-2"
+                          title="Leer la señal y el estado (LAN, encendido) de esta antena"
+                          disabled={start.isPending || !c.ip || !c.mac}
+                          onClick={() => start.mutate({ action: "identify", targets: [{ mac: c.mac, ip: c.ip, pppoe_user: c.pppoe_user, label: c.name }] })}
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 mr-1" /> Leer
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
                 {!visible.length && (
-                  <tr><td colSpan={11} className="py-6 text-center text-muted-foreground">
+                  <tr><td colSpan={13} className="py-6 text-center text-muted-foreground">
                     {listError
                       ? <span className="text-destructive">No se pudo leer la lista: {(listError as any)?.message}</span>
                       : isFetching ? "Cargando clientes…" : cpes.length ? "Ningún cliente coincide con esos filtros."

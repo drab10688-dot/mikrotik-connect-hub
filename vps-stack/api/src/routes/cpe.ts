@@ -846,7 +846,12 @@ async function processTarget(ctx: Ctx, t: Target, r: Result): Promise<void> {
  * body: { action: 'identify' | 'pppoe-user' | 'password', targets: [{mac, ip, pppoe_user, new_user?}], new_password? }
  * Corre en segundo plano; el panel consulta GET /jobs/:id.
  */
-cpeRouter.post('/:mikrotikId/jobs', editRed, async (req: AuthRequest, res: Response) => {
+// "Leer señal y estado" (identify) solo consulta la antena: basta con ver
+// "Antenas y APs". Cualquier cambio exige editar.
+const editUnlessIdentify = (req: AuthRequest, res: Response, next: NextFunction) =>
+  req.body?.action === 'identify' ? next() : editRed(req, res, next);
+
+cpeRouter.post('/:mikrotikId/jobs', editUnlessIdentify, async (req: AuthRequest, res: Response) => {
   try {
     const mikrotikId = req.params.mikrotikId;
     const action = req.body?.action as Action;
