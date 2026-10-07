@@ -159,7 +159,7 @@ export async function runNetMonitor(): Promise<void> {
     const { rows: devices } = await pool.query(
       `SELECT d.id, d.name, d.host, d.tenant_id, t.name AS tenant_name
          FROM mikrotik_devices d LEFT JOIN tenants t ON t.id = d.tenant_id
-        WHERE d.host IS NOT NULL AND COALESCE(t.is_active, true) = true AND COALESCE(t.enable_mikrotik, true) = true`
+        WHERE d.host IS NOT NULL AND d.status = 'active'::device_status AND COALESCE(t.is_active, true) = true AND COALESCE(t.enable_mikrotik, true) = true`
     );
     if (!devices.length) return;
     const settings = await loadAllSettings();

@@ -353,7 +353,7 @@ cpeRouter.get('/summary', async (req: AuthRequest, res: Response) => {
     const ids = await getAccessibleDeviceIds(req);
     const { rows: sedes } = await pool.query(
       `SELECT id, name FROM mikrotik_devices
-        WHERE ($1::uuid[] IS NULL OR id = ANY($1::uuid[]))
+        WHERE status = 'active'::device_status AND ($1::uuid[] IS NULL OR id = ANY($1::uuid[]))
           AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
         ORDER BY name`,
       [ids, req.tenantId || null]

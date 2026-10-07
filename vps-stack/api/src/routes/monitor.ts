@@ -16,7 +16,7 @@ async function visibleDevices(req: AuthRequest) {
   const { rows } = await pool.query(
     `SELECT d.id, d.name, d.host, t.name AS tenant_name
        FROM mikrotik_devices d LEFT JOIN tenants t ON t.id = d.tenant_id
-      WHERE ($1::uuid[] IS NULL OR d.id = ANY($1::uuid[]))
+      WHERE d.status = 'active'::device_status AND ($1::uuid[] IS NULL OR d.id = ANY($1::uuid[]))
         AND ($2::uuid IS NULL OR d.tenant_id = $2::uuid)
       ORDER BY d.name`,
     [ids, req.tenantId || null]
