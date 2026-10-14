@@ -1,0 +1,9 @@
+#!/bin/bash
+# Mantiene WinBox abierto: si el técnico lo cierra, vuelve a abrirse
+# (el escritorio solo tiene WinBox; sin esto quedaría una pantalla vacía).
+# Los ajustes y direcciones guardadas viven en el contenedor y se borran con él.
+cd /opt/winbox || exit 1
+while true; do
+  /opt/winbox/WinBox
+  sleep 2
+done

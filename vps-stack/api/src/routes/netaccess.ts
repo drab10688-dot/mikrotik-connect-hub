@@ -205,6 +205,16 @@ async function claimAp(row: any, mikrotikId: string): Promise<void> {
 const goodLogins = new Map<string, { username: string; password: string; port: number; protocol: 'http' | 'https'; accessMethod?: string; sshPort?: number }>();
 const loginKey = (tenantId: string | null | undefined, ip: string) => `${tenantId ?? 'global'}:${ip}`;
 
+/** Login que ya funcionó al leer la señal de un AP (o null si aún no se leyó). */
+export function apLoginFor(tenantId: string | null | undefined, ip: string) {
+  return goodLogins.get(loginKey(tenantId, ip)) || null;
+}
+
+/** APs guardados de una sede (para el monitor de puertos). */
+export function savedApsOf(tenantId: string | null | undefined, mikrotikId: string): Promise<any[]> {
+  return savedApsForDevice(tenantId, mikrotikId);
+}
+
 // ─── Puertos web configurados por ISP ───────────────────────────
 netAccessRouter.get('/web-ports', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await tenantWebPorts(req.tenantId) });

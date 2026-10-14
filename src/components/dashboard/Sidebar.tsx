@@ -5,7 +5,7 @@ const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router, Radar,
   ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound, UserPlus,
-  Mail, DatabaseBackup, Lock,
+  Mail, DatabaseBackup, Lock, MonitorCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -38,6 +38,7 @@ const menuItems: MenuEntry[] = [
   
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
   { icon: Radar, label: "Monitor de red", path: "/monitor", module: "mikrotik", section: "mikrotik", group: "Operación" },
+  { icon: MonitorCog, label: "WinBox remoto", path: "/winbox", module: "mikrotik", section: "winbox", group: "Operación" },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
   { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
@@ -99,6 +100,7 @@ export const Sidebar = () => {
   // El super admin usa el panel solo para administrar ISPs
   const superAdminMenu: MenuEntry[] = [
     { icon: Building2, label: "Panel de ISPs", path: "/admin/isps", group: "Administración" },
+    { icon: MonitorCog, label: "WinBox remoto", path: "/winbox", group: "Administración" },
     { icon: Users, label: "Usuarios", path: "/admin/users", group: "Administración" },
     { icon: UserPlus, label: "Crear usuario", path: "/admin/register-user", group: "Administración" },
     { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", group: "Administración" },

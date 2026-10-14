@@ -9,6 +9,7 @@ import Backups from "./pages/Admin/Backups";
 import SslSettings from "./pages/Admin/Ssl";
 import RemoteDesktop from "./pages/RemoteDesktop";
 import RemoteDesktopMobile from "./pages/RemoteDesktopMobile";
+import Winbox from "./pages/Winbox";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Isps from "./pages/Admin/Isps";
 import Dashboard from "./pages/Dashboard";
@@ -70,6 +71,7 @@ const App = () => (
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="/vnc" element={<ProtectedRoute section="escritorio"><RemoteDesktop /></ProtectedRoute>} />
           <Route path="/vnc-movil" element={<ProtectedRoute section="escritorio"><RemoteDesktopMobile /></ProtectedRoute>} />
+          <Route path="/winbox" element={<ProtectedRoute section="winbox"><Winbox /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

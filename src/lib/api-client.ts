@@ -462,6 +462,7 @@ export const vpsApi = {
 // ─── Monitor de red (ping por MikroTik + alertas Telegram) ─
 export const monitorApi = {
   status: async () => unwrapData<any>(await apiGet<any>('/monitor/status')),
+  ports: async () => unwrapArray<any>(await apiGet<any>('/monitor/ports')),
   history: async (mikrotikId: string, hours = 24) =>
     unwrapArray<any>(await apiGet<any>(`/monitor/${mikrotikId}/history?hours=${hours}`)),
   settings: async () => unwrapData<any>(await apiGet<any>('/monitor/settings')),

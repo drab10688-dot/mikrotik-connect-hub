@@ -126,7 +126,7 @@ function normalizeStringParam(value: string | string[] | undefined, paramName: s
  *  - técnico: solo los asignados (user_mikrotik_access) y de su mismo ISP.
  * Usuarios sin ISP (instalación antigua) solo ven routers sin ISP.
  */
-const VISIBLE_DEVICES_SQL = `
+export const VISIBLE_DEVICES_SQL = `
   SELECT md.id FROM mikrotik_devices md
     JOIN users u ON u.id = $1
    WHERE md.tenant_id IS NOT DISTINCT FROM u.tenant_id

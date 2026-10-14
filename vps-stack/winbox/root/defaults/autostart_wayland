@@ -1,0 +1,3 @@
+#!/bin/bash
+# El escritorio abre WinBox en lugar de Chromium.
+/usr/local/bin/winbox-loop

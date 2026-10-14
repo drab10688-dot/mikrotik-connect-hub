@@ -24,6 +24,7 @@ export const SECTIONS = [
   'configuracion',
   'diagnostico',
   'escritorio',
+  'winbox',
 ] as const;
 export type Section = (typeof SECTIONS)[number];
 
@@ -37,6 +38,7 @@ export const SECTION_LABELS: Record<string, string> = {
   configuracion: 'Configuración',
   diagnostico: 'Diagnóstico API',
   escritorio: 'Escritorio remoto (VNC)',
+  winbox: 'WinBox remoto',
 };
 
 /**

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PingChart } from "@/components/monitor/PingChart";
+import { PortsCard } from "@/components/monitor/PortsCard";
 import { toast } from "sonner";
 import { Activity, AlertTriangle, CheckCircle2, Globe, Loader2, Send, Unplug, WifiOff, Radar } from "lucide-react";
 
@@ -229,6 +230,8 @@ export default function NetMonitor() {
             <RouterCard key={r.id} r={r} hours={hours} threshold={settings?.rtt_ms ?? 150} />
           ))}
         </div>
+
+        <PortsCard />
 
         {(isAdmin || isSuperAdmin) && <AlertSettings />}
       </div>

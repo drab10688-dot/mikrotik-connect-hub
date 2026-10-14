@@ -303,7 +303,11 @@ setInterval(async () => {
     if (Date.now() - s.lastActivity > limit) await destroyUserBrowser(userId).catch(() => undefined);
   }
   // Reglas de firewall de escritorios que ya no existen (reinicio del API, etc.).
-  const running = await docker(['ps', '--filter', 'name=omnisync-ub-', '--format', '{{.Names}}'], 8000);
+  // Los WinBox remotos (omnisync-wb-*, user-winbox.ts) comparten la cadena.
+  const running = await docker(
+    ['ps', '--filter', 'name=omnisync-ub-', '--filter', 'name=omnisync-wb-', '--format', '{{.Names}}'],
+    8000,
+  );
   if (running.ok) {
     const alive = running.out.split('\n').map((n) => n.trim()).filter(Boolean);
     for (const s of sessions.values()) alive.push(s.container);

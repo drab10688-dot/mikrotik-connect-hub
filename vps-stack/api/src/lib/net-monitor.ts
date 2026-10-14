@@ -109,6 +109,15 @@ async function loadAllSettings(): Promise<MonitorSettings[]> {
   return rows;
 }
 
+/** Envía una alerta al bot del ISP y al del super admin (si están activos). */
+export async function notifyTelegram(tenantId: string | null, text: string): Promise<void> {
+  const settings = await loadAllSettings();
+  const targets = settings.filter((s) => s.enabled && s.telegram_token && s.telegram_chat && (s.tenant_id === tenantId || !s.tenant_id));
+  for (const t of targets) {
+    await sendTelegram(t.telegram_token!, t.telegram_chat!, text).catch((e) => console.warn(`[MONITOR] Telegram: ${e.message}`));
+  }
+}
+
 export async function sendTelegram(token: string, chat: string, text: string): Promise<void> {
   const res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
     method: 'POST',

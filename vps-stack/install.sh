@@ -6,8 +6,9 @@
 #
 # Servicios que levanta:
 #   PostgreSQL · API Node · Nginx · MongoDB · GenieACS · coturn (STUN) · L2TP (sin IPsec)
-#   Escritorio remoto privado por usuario (Chromium/KasmVNC bajo demanda, puerto 8081)
-# NO instala: PHPNuxBill, FreeRADIUS, Mikhmon, C-Data CMS, UISP, Winbox
+#   Escritorio remoto privado por usuario (Chromium bajo demanda, puerto 8081)
+#   WinBox remoto privado por usuario (WinBox 4 bajo demanda, puerto 8082)
+# NO instala: PHPNuxBill, FreeRADIUS, Mikhmon, C-Data CMS, UISP
 # ============================================
 
 set -e
@@ -162,14 +163,14 @@ if [ ! -s nginx/certs/remote.crt ] || [ ! -s nginx/certs/remote.key ]; then
 fi
 
 if command -v ufw >/dev/null 2>&1; then
-  # 8081 = escritorio remoto privado (HTTPS + token). Los escritorios por
-  # usuario NO publican puertos: sólo son accesibles a través de Nginx.
+  # 8081 = escritorio remoto privado y 8082 = WinBox remoto (HTTPS + token).
+  # Los escritorios por usuario NO publican puertos: sólo son accesibles a
+  # través de Nginx.
   # 3001/7557/7567 ya no se abren: son internos (UI GenieACS solo por túnel SSH).
-  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 3478/tcp 3478/udp 1701/udp 8081/tcp; do
+  for p in 80/tcp 443/tcp 7547/tcp 7547/udp 3478/tcp 3478/udp 1701/udp 8081/tcp 8082/tcp; do
     ufw allow "$p" >/dev/null 2>&1 || true
   done
-  # Restos de versiones anteriores (Winbox 8082 y escritorios por ISP 8100-8129)
-  ufw delete allow 8082/tcp >/dev/null 2>&1 || true
+  # Restos de versiones anteriores (escritorios por ISP 8100-8129)
   ufw delete allow 8100:8129/tcp >/dev/null 2>&1 || true
   echo -e "${GREEN}✓ Puertos abiertos en firewall${NC}"
 fi
@@ -185,8 +186,6 @@ for cname in omnisync-mariadb omnisync-freeradius omnisync-phpnuxbill omnisync-m
              omnisync-postgres omnisync-api omnisync-nginx omnisync-genieacs omnisync-mongo; do
   docker rm -f "$cname" 2>/dev/null || true
 done
-# Winbox remoto quedó retirado del sistema: borra también su imagen.
-docker rmi omnisync/winbox:latest >/dev/null 2>&1 || true
 
 if [ -f /opt/genieacs/docker-compose.yml ]; then
   echo -e "${YELLOW}Deteniendo GenieACS standalone en /opt/genieacs...${NC}"
@@ -210,6 +209,10 @@ chmod 700 "$INSTALL_DIR/recover-super-admin.sh" 2>/dev/null || true
 echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege tu sesión)...${NC}"
 docker compose pull remote-browser 2>&1 | tail -2 || true
 docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; se creará al primer uso${NC}"
+# WinBox remoto por usuario (WinBox 4 nativo sobre la imagen del navegador).
+echo -e "${YELLOW}Construyendo WinBox remoto...${NC}"
+docker build -q -t omnisync/winbox:latest "$INSTALL_DIR/winbox" >/dev/null 2>&1 || \
+  echo -e "${YELLOW}⚠ WinBox remoto no disponible; reintenta con update.sh${NC}"
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"
@@ -319,6 +322,14 @@ if [ "$DESK_CODE" = "000" ]; then
 else
   echo -e "  ${GREEN}✓ Escritorio remoto responde en :8081 (HTTP ${DESK_CODE})${NC}"
 fi
+WB_CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:8082/ || echo 000)
+if [ "$WB_CODE" = "000" ]; then
+  echo -e "  ${YELLOW}⚠ WinBox remoto (8082) no responde${NC}"
+elif docker image inspect omnisync/winbox:latest >/dev/null 2>&1; then
+  echo -e "  ${GREEN}✓ WinBox remoto responde en :8082 (HTTP ${WB_CODE})${NC}"
+else
+  echo -e "  ${YELLOW}⚠ WinBox remoto: falta la imagen omnisync/winbox (ejecuta update.sh)${NC}"
+fi
 
 
 echo ""
@@ -333,6 +344,7 @@ fi
 echo ""
 echo -e "  Panel web:        ${GREEN}http://${VPS_PUBLIC_IP}${NC}"
 echo -e "  Escritorio remoto: ${GREEN}https://${VPS_PUBLIC_IP}:8081${NC}  (privado por usuario, sin clave: usa tu sesión del panel)"
+echo -e "  WinBox remoto:    ${GREEN}Panel → WinBox remoto${NC}  (puerto 8082; técnicos con el permiso \"WinBox remoto\")"
 echo -e "  GenieACS UI:      ${GREEN}ssh -L 3001:127.0.0.1:3001 root@${VPS_PUBLIC_IP}${NC} → http://localhost:3001  (cambia admin/admin)"
 echo -e "  Respaldos:        ${GREEN}Panel → Respaldos → Copia automática${NC}  (sube a Dropbox)"
 echo -e "  SSH protegido:    ${GREEN}fail2ban-client status sshd${NC}"

@@ -68,9 +68,14 @@ docker compose pull remote-browser >/dev/null 2>&1 || true
 # --force-recreate aplica cambios de seguridad/red aunque la imagen sea la misma.
 docker compose up -d --force-recreate remote-browser >/dev/null 2>&1 || \
   echo -e "${YELLOW}⚠ Navegador remoto no disponible; se creará al primer uso${NC}"
-# Winbox remoto quedó retirado del sistema: elimina restos de versiones viejas.
+# WinBox remoto por usuario (WinBox 4 nativo, vps-stack/winbox). El contenedor
+# global omnisync-winbox (WinBox 3 + Wine) de versiones viejas se retira.
 docker rm -f omnisync-winbox >/dev/null 2>&1 || true
-docker rmi omnisync/winbox:latest >/dev/null 2>&1 || true
+if docker build -q -t omnisync/winbox:latest "$INSTALL_DIR/winbox" >/dev/null; then
+  echo -e "${GREEN}✓ Imagen de WinBox remoto lista${NC}"
+else
+  echo -e "${YELLOW}⚠ No se pudo construir WinBox remoto; el resto sigue funcionando${NC}"
+fi
 # Certificado autofirmado para los escritorios remotos (KasmVNC exige HTTPS)
 mkdir -p "$INSTALL_DIR/nginx/certs"
 if [ ! -f "$INSTALL_DIR/nginx/certs/remote.crt" ]; then
@@ -173,13 +178,13 @@ fi
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 7547/tcp >/dev/null 2>&1 || true
 fi
-# Firewall: escritorio remoto (Chromium 8081, HTTPS + token del panel).
+# Firewall: escritorio remoto (Chromium 8081) y WinBox (8082), HTTPS + token del panel.
 # Los escritorios por usuario no publican puertos: van por Nginx.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 8081/tcp >/dev/null 2>&1 || true
-  ufw delete allow 8082/tcp >/dev/null 2>&1 || true
+  ufw allow 8082/tcp >/dev/null 2>&1 || true
   ufw delete allow 8100:8129/tcp >/dev/null 2>&1 || true
-  echo -e "${GREEN}✓ Puerto 8081 abierto en UFW (8082/8100-8129 retirados)${NC}"
+  echo -e "${GREEN}✓ Puertos 8081 y 8082 abiertos en UFW (8100-8129 retirados)${NC}"
 fi
 
 # Recrea el navegador remoto para aplicar perfil efímero / incógnito forzado
@@ -196,7 +201,7 @@ rm -f /etc/cron.d/omnisync-backup /etc/logrotate.d/omnisync-backup
 # fail2ban/firewall en servidores existentes: sudo bash $INSTALL_DIR/seguridad.sh fail2ban
 
 # Comprobación real del escritorio remoto (HTTPS autofirmado)
-for P in 8081; do
+for P in 8081 8082; do
   CODE=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:$P/" || echo 000)
   if [ "$CODE" = "000" ]; then
     echo -e "${RED}✗ Puerto $P no responde. Mapeo publicado:${NC}"

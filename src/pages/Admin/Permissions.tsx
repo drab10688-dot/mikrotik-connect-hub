@@ -31,6 +31,7 @@ const HINTS: Record<string, string> = {
   configuracion: "Ajustes del panel y de los routers",
   diagnostico: "Pruebas de conexión con la API de los routers",
   escritorio: "Abrir equipos en el navegador remoto (WebFig, antenas, ONUs) desde el VPS",
+  winbox: "Abrir WinBox desde el VPS hacia sus routers asignados (y antenas MikroTik por RoMON). Es independiente del escritorio remoto",
 };
 
 const FALLBACK_LABELS: Record<string, string> = {
@@ -43,10 +44,11 @@ const FALLBACK_LABELS: Record<string, string> = {
   configuracion: "Configuración",
   diagnostico: "Diagnóstico API",
   escritorio: "Escritorio remoto (VNC)",
+  winbox: "WinBox remoto",
 };
 
 const GROUPS: { title: string; sections: string[] }[] = [
-  { title: "Operación", sections: ["onus", "mikrotik", "pppoe", "topology", "red", "escritorio"] },
+  { title: "Operación", sections: ["onus", "mikrotik", "pppoe", "topology", "red", "escritorio", "winbox"] },
   { title: "Infraestructura", sections: ["vpn", "configuracion", "diagnostico"] },
 ];
 

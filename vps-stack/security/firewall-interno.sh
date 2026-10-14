@@ -16,7 +16,7 @@ set -euo pipefail
 #   postgres, api, genieacs ui, genieacs nbi, genieacs fs.
 #   7547 (TR-069) queda abierto: las ONUs sin VPN informan por IP pública.
 #   Si TODAS tus ONUs entran por VPN, añade 7547 a TCP y UDP en el .conf.
-#   8081 (escritorio remoto) es público: lo protege el token del panel.
+#   8081 (escritorio remoto) y 8082 (WinBox remoto) son públicos: los protege el token del panel.
 PUB=""
 TCP="5432 3000 3001 7557 7567"
 UDP=""

@@ -345,6 +345,25 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS monitor_settings_global ON monitor_settings ((tenant_id IS NULL)) WHERE tenant_id IS NULL`,
+    // Puertos Ethernet de routers y APs (lib/port-monitor.ts, cada 5 min)
+    `CREATE TABLE IF NOT EXISTS net_port_state (
+       mikrotik_id UUID NOT NULL,
+       kind TEXT NOT NULL,
+       device TEXT,
+       ip TEXT NOT NULL,
+       port TEXT NOT NULL,
+       rate_mbps INTEGER,
+       full_duplex BOOLEAN,
+       gigabit BOOLEAN,
+       rx_bps BIGINT,
+       tx_bps BIGINT,
+       problem TEXT,
+       detail TEXT,
+       streak INTEGER NOT NULL DEFAULT 0,
+       alerted TEXT,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       PRIMARY KEY (mikrotik_id, ip, port)
+     )`,
     // Copia de la configuración antes de cada cambio (se guardan las 3 últimas)
     `CREATE TABLE IF NOT EXISTS cpe_backups (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

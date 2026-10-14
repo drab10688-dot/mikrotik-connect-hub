@@ -14,6 +14,7 @@ import { genieacsRouter } from './routes/genieacs';
 import { vpnRouter } from './routes/vpn';
 import { netAccessRouter } from './routes/netaccess';
 import { browserRouter, authorizeBrowserAccess, authorizeUserVnc } from './routes/browser';
+import { winboxRouter, authorizeUserWinbox } from './routes/winbox';
 import { prefetchBrowserImage } from './lib/user-browser';
 import { tenantsRouter, tenantsPublicRouter } from './routes/tenants';
 import { ispRouter, ispPublicRouter, requireSection, requireModule } from './routes/isp';
@@ -24,6 +25,7 @@ import { securityRouter } from './routes/security';
 import { cpeRouter, refreshCpeSignals } from './routes/cpe';
 import { monitorRouter } from './routes/monitor';
 import { runNetMonitor } from './lib/net-monitor';
+import { runPortMonitor } from './lib/port-monitor';
 import { ensureIspSchema } from './lib/ensure-isp-schema';
 import { authMiddleware, requireRole } from './middleware/auth';
 import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collect';
@@ -76,6 +78,9 @@ app.get('/api/browser-authz', authorizeBrowserAccess);
 app.get('/api/browser-authz-vnc', authorizeUserVnc);
 // Escritorio remoto: permiso propio (los técnicos lo reciben solo si el admin lo da)
 app.use('/api/browser', authMiddleware, requireSection('escritorio', 'view'), browserRouter);
+// WinBox remoto por usuario (Nginx 8082): permiso propio, aparte del escritorio
+app.get('/api/winbox-authz-vnc', authorizeUserWinbox);
+app.use('/api/winbox', authMiddleware, requireSection('winbox', 'view'), winboxRouter);
 // Antenas de clientes por sede (credenciales, señal y cambios en lote por SSH)
 app.use('/api/cpe', authMiddleware, requireSection('red', 'view'), requireModule('enable_mikrotik'), cpeRouter);
 // Monitor de red: ping por MikroTik y alertas por Telegram del ISP
@@ -130,6 +135,11 @@ cron.schedule('*/15 * * * *', () => {
 // Cron: monitor de red (ping VPS→MikroTik y MikroTik→internet, alertas Telegram)
 cron.schedule('* * * * *', () => {
   runNetMonitor().catch((e) => console.error('[MONITOR]', e.message));
+});
+
+// Cron: puertos Ethernet de routers y APs (100 Mbps en Gigabit, half-duplex, topados)
+cron.schedule('*/5 * * * *', () => {
+  runPortMonitor().catch((e) => console.error('[PUERTOS]', e.message));
 });
 
 // Cron: copias automáticas programadas desde Respaldos (revisa cada hora)

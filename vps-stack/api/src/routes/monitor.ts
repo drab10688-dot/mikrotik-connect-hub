@@ -77,6 +77,31 @@ monitorRouter.get('/status', async (req: AuthRequest, res: Response) => {
   }
 });
 
+/** Puertos Ethernet de los routers visibles y de sus APs (los con problema primero). */
+monitorRouter.get('/ports', async (req: AuthRequest, res: Response) => {
+  try {
+    const devices = await visibleDevices(req);
+    const ids = devices.map((d: any) => d.id);
+    if (!ids.length) return res.json({ data: [] });
+    const names = new Map<string, string>(devices.map((d: any) => [d.id, d.name]));
+    const { rows } = await pool.query(
+      `SELECT * FROM net_port_state WHERE mikrotik_id = ANY($1::uuid[]) AND updated_at > now() - interval '30 minutes'
+        ORDER BY (problem IS NULL), kind DESC, device, port`,
+      [ids]
+    );
+    res.json({
+      data: rows.map((r: any) => ({
+        sede: names.get(r.mikrotik_id) || '', kind: r.kind, device: r.device, ip: r.ip, port: r.port,
+        rate_mbps: r.rate_mbps, full: r.full_duplex, gigabit: r.gigabit,
+        rx_bps: r.rx_bps === null ? null : Number(r.rx_bps), tx_bps: r.tx_bps === null ? null : Number(r.tx_bps),
+        problem: r.problem, detail: r.detail, alerted: r.alerted, updated_at: r.updated_at,
+      })),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /** Historial de un router, agrupado para que la gráfica tenga ≤ ~300 puntos. */
 monitorRouter.get('/:mikrotikId/history', async (req: AuthRequest, res: Response) => {
   try {
