@@ -210,9 +210,8 @@ echo -e "${YELLOW}Descargando navegador remoto (Chromium, sin clave: lo protege 
 docker compose pull remote-browser 2>&1 | tail -2 || true
 docker compose up -d remote-browser 2>&1 | tail -3 || echo -e "${YELLOW}⚠ Navegador remoto no disponible; se creará al primer uso${NC}"
 # WinBox remoto por usuario (WinBox 4 nativo sobre la imagen del navegador).
-echo -e "${YELLOW}Construyendo WinBox remoto...${NC}"
-docker build -q -t omnisync/winbox:latest "$INSTALL_DIR/winbox" >/dev/null 2>&1 || \
-  echo -e "${YELLOW}⚠ WinBox remoto no disponible; reintenta con update.sh${NC}"
+echo -e "${YELLOW}Construyendo WinBox remoto (1-2 min)...${NC}"
+bash "$INSTALL_DIR/build-winbox.sh" || true
 ONU_NETS="$ONU_NETS" bash "$INSTALL_DIR/configure-browser-routing.sh"
 
 echo -e "${YELLOW}Esperando estabilización (20s)...${NC}"

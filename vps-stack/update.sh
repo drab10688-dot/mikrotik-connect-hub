@@ -71,11 +71,8 @@ docker compose up -d --force-recreate remote-browser >/dev/null 2>&1 || \
 # WinBox remoto por usuario (WinBox 4 nativo, vps-stack/winbox). El contenedor
 # global omnisync-winbox (WinBox 3 + Wine) de versiones viejas se retira.
 docker rm -f omnisync-winbox >/dev/null 2>&1 || true
-if docker build -q -t omnisync/winbox:latest "$INSTALL_DIR/winbox" >/dev/null; then
-  echo -e "${GREEN}✓ Imagen de WinBox remoto lista${NC}"
-else
-  echo -e "${YELLOW}⚠ No se pudo construir WinBox remoto; el resto sigue funcionando${NC}"
-fi
+echo -e "${YELLOW}Construyendo WinBox remoto (1-2 min la primera vez)...${NC}"
+bash "$INSTALL_DIR/build-winbox.sh" || true
 # Certificado autofirmado para los escritorios remotos (KasmVNC exige HTTPS)
 mkdir -p "$INSTALL_DIR/nginx/certs"
 if [ ! -f "$INSTALL_DIR/nginx/certs/remote.crt" ]; then
