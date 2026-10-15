@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Copy, Loader2, MonitorCog, Power, ExternalLink, Router } from "lucide-react";
-import { getToken, remoteDesktopUrl } from "@/lib/api-client";
-import { winboxApi } from "@/lib/winbox-api";
+import { winboxApi, openWinbox } from "@/lib/winbox-api";
 
 /**
  * WinBox remoto: cada usuario tiene su propio WinBox 4 en el VPS, que solo
@@ -26,22 +25,11 @@ export default function Winbox() {
   const routers = data?.routers || [];
 
   const open = async () => {
-    // La pestaña se abre en el clic (si no, el navegador la bloquea) y se
-    // dirige al visor cuando el WinBox está listo y aislado.
-    const tab = window.open("", "_blank");
     setOpening(true);
     try {
-      await winboxApi.session();
-      const token = getToken();
-      if (token) {
-        document.cookie = `omnisync_web_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=43200`;
-      }
-      const url = remoteDesktopUrl("winbox");
-      if (tab) tab.location.href = url;
-      else window.location.href = url;
+      await openWinbox();
       qc.invalidateQueries({ queryKey: ["winbox-status"] });
     } catch (e: any) {
-      tab?.close();
       toast.error(e?.message || "No se pudo abrir WinBox");
     } finally {
       setOpening(false);

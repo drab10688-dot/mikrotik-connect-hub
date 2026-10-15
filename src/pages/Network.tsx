@@ -14,8 +14,9 @@ import { toast } from "sonner";
 import {
   Router as RouterIcon, Users, Wifi, Search, RefreshCw, ExternalLink,
   Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
-  AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown, Pencil,
+  AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown, Pencil, MonitorCog,
 } from "lucide-react";
+import { winboxApi, openWinbox } from "@/lib/winbox-api";
 import { CpePanel } from "@/components/network/CpePanel";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 import { usePagedSearch } from "@/hooks/use-paged-search";
@@ -52,6 +53,16 @@ export default function Network() {
   // "Antenas y APs". Editar en antenas/APs = "Antenas y APs" con editar.
   const perms = useMyPermissions();
   const canDesktop = perms.can("escritorio");
+  const canWinbox = perms.can("winbox");
+  const [openingWinbox, setOpeningWinbox] = useState(false);
+  // IP de túnel de cada router (la que se escribe en WinBox)
+  const { data: winboxStatus } = useQuery({
+    queryKey: ["winbox-status"],
+    queryFn: () => winboxApi.status(),
+    enabled: canWinbox,
+    staleTime: 60_000,
+  });
+  const winboxRouters = winboxStatus?.routers || [];
   const canRed = perms.can("red");
   const canEditRed = perms.can("red", true);
   const canSessions = perms.can("mikrotik") && canRed;
@@ -293,6 +304,33 @@ export default function Network() {
                 title="Escritorio remoto (VNC) con Chromium real dentro del VPS, por la VPN"
               >
                 <Globe className="w-4 h-4 mr-2" /> Escritorio remoto (VNC)
+              </Button>
+            )}
+            {canWinbox && (
+              <Button
+                variant="secondary"
+                disabled={openingWinbox}
+                onClick={async () => {
+                  const address = winboxRouters.find((r) => r.id === deviceId)?.address;
+                  setOpeningWinbox(true);
+                  try {
+                    const copied = await openWinbox(address);
+                    if (address) {
+                      toast.success(
+                        copied
+                          ? `IP ${address} copiada: pégala en "Connect to" de WinBox`
+                          : `En WinBox, escribe ${address} en "Connect to"`,
+                      );
+                    }
+                  } catch (e: any) {
+                    toast.error(e?.message || "No se pudo abrir WinBox");
+                  } finally {
+                    setOpeningWinbox(false);
+                  }
+                }}
+                title="WinBox 4 dentro del VPS, por la VPN (con RoMON hacia las antenas)"
+              >
+                {openingWinbox ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MonitorCog className="w-4 h-4 mr-2" />} WinBox
               </Button>
             )}
           </div>
