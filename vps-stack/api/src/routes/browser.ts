@@ -148,7 +148,7 @@ function sanitizeUrl(raw: unknown): string | null {
  * sesión: en ese caso se resuelve desde el MikroTik que originó la apertura.
  * Devuelve `false` si el usuario no puede usar ese MikroTik.
  */
-async function resolveTenant(req: AuthRequest, mikrotikId?: string): Promise<string | null | false> {
+export async function resolveTenant(req: AuthRequest, mikrotikId?: string): Promise<string | null | false> {
   let tenantId = req.tenantId || null;
   if (mikrotikId) {
     const allowed = await verifyDeviceAccess(req.userId!, req.userRole!, mikrotikId);
@@ -161,7 +161,7 @@ async function resolveTenant(req: AuthRequest, mikrotikId?: string): Promise<str
   return tenantId;
 }
 
-async function prepareTenantRoute(tenantId: string | null, targetIp: string, sourceIp: string | null, mikrotikId?: string): Promise<boolean> {
+export async function prepareTenantRoute(tenantId: string | null, targetIp: string, sourceIp: string | null, mikrotikId?: string): Promise<boolean> {
   let tunnelIp: string | undefined;
   if (mikrotikId) {
     const { rows } = await pool.query(

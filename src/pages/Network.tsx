@@ -911,6 +911,22 @@ export default function Network() {
                     );
                   })}
                 </div>
+                {/* Puerto WinBox de las antenas MikroTik de los clientes (todo el ISP) */}
+                <div className="space-y-1.5 max-w-xs">
+                  <Label className="text-xs">WinBox de las antenas MikroTik (puerto)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={portDraft.winbox?.port ?? 8291}
+                    onChange={(e) =>
+                      setPortDraft({ ...portDraft, winbox: { port: Number(e.target.value), protocol: "http" } })
+                    }
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    El botón "WinBox" de Antenas cliente copia IP:puerto con este valor (8291 de fábrica).
+                  </p>
+                </div>
                 <Button onClick={() => savePorts.mutate()} disabled={savePorts.isPending}>
                   <Save className="w-4 h-4 mr-2" /> Guardar puertos
                 </Button>

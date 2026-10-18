@@ -5,6 +5,8 @@ import { pool } from '../lib/db';
 import { isolateBrowser } from '../lib/browser-fw';
 import { networkScopeFor } from '../lib/networks';
 import { userCanSection } from './isp';
+import { resolveTenant, prepareTenantRoute } from './browser';
+import { tenantWebPorts } from './netaccess';
 import {
   ensureUserWinbox,
   getWinboxSession,
@@ -98,18 +100,27 @@ async function routersFor(userId: string, role: string, tenantId: string | null)
     .filter((r) => !!r.address) as { id: string; name: string; address: string }[];
 }
 
-/** Firewall del WinBox: redes VPN del ISP + IP de túnel de sus routers. */
+/**
+ * Antenas de clientes abiertas desde el panel en el WinBox de cada usuario:
+ * cada una tiene su ruta por el túnel de su sede y se permite en el firewall.
+ */
+const winboxTargets = new Map<string, Set<string>>();
+
+/** Firewall del WinBox: redes VPN del ISP + IP de túnel de sus routers + antenas abiertas. */
 async function isolateWinbox(s: UserWinboxSession, role: string, tenantId: string | null): Promise<boolean> {
   const ip = await getWinboxIp(s);
   if (!ip) return false;
   const scope = await networkScopeFor(role === 'super_admin' ? 'super_admin' : role, tenantId);
   const routers = await routersFor(s.userId, role, tenantId);
-  return isolateBrowser(s.container, ip, scope.allow, scope.pins, routers.map((r) => r.address));
+  const targets = [...(winboxTargets.get(s.userId) || [])];
+  return isolateBrowser(s.container, ip, scope.allow, scope.pins, [...routers.map((r) => r.address), ...targets]);
 }
 
 /** Crea el WinBox del usuario si falta y le aplica el aislamiento. */
 async function prepare(userId: string): Promise<UserWinboxSession> {
   const { session, created } = await ensureUserWinbox(userId);
+  // WinBox nuevo = otra IP de origen: las rutas por antena anteriores ya no sirven
+  if (created) winboxTargets.delete(userId);
   if (created) {
     const { role, tenantId } = await userRoleTenant(userId);
     const ok = await isolateWinbox(session, role, tenantId).catch(() => false);
@@ -177,6 +188,41 @@ winboxRouter.post('/session', async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * Abre una antena de cliente en el WinBox propio. body: { mikrotikId, ip }.
+ * Fija la ruta de esa IP por el túnel de su sede (desde la IP del WinBox, así
+ * no la desvía una red repetida en otro túnel), la permite en el firewall y
+ * devuelve "IP:puerto" con el puerto WinBox del ISP (Puertos web).
+ */
+winboxRouter.post('/target', async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const ip = String((req as any).body?.ip || '').trim();
+    const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : '';
+    if (!isIp(ip) || !isPrivate(ip)) return res.status(400).json({ success: false, error: 'IP no válida (solo IPs privadas)' });
+    if (!mikrotikId) return res.status(400).json({ success: false, error: 'Falta el MikroTik de la sede' });
+    const tenant = await resolveTenant(req, mikrotikId);
+    if (tenant === false) return res.status(403).json({ success: false, error: 'No tienes acceso a ese MikroTik' });
+
+    const session = await prepare(userId);
+    const sourceIp = await getWinboxIp(session);
+    const routed = await prepareTenantRoute(tenant, ip, sourceIp, mikrotikId);
+    if (!routed) {
+      return res.status(502).json({ success: false, error: 'No se pudo preparar la ruta por el túnel de la sede; revisa que su VPN esté conectada' });
+    }
+    if (!winboxTargets.has(userId)) winboxTargets.set(userId, new Set());
+    winboxTargets.get(userId)!.add(ip);
+    const ok = await isolateWinbox(session, req.userRole || 'user', req.tenantId || null);
+    if (!ok) return res.status(502).json({ success: false, error: 'No se pudo aplicar el firewall de tu WinBox' });
+
+    waitWinboxReady(session).catch(() => undefined);
+    const port = Number((await tenantWebPorts(tenant || null)).winbox?.port) || 8291;
+    res.json({ success: true, data: { address: port === 8291 ? ip : `${ip}:${port}`, idleMinutes: userWinboxConfig.IDLE_MINUTES } });
+  } catch (e: any) {
+    res.status(503).json({ success: false, error: e?.message || 'No se pudo abrir la antena en WinBox' });
+  }
+});
+
 winboxRouter.post('/ping', (req: AuthRequest, res) => {
   touchWinbox(req.userId!);
   res.json({ success: true });
@@ -184,6 +230,7 @@ winboxRouter.post('/ping', (req: AuthRequest, res) => {
 
 /** Cierra el WinBox: se borran las direcciones y claves que se hayan guardado. */
 winboxRouter.post('/close', async (req: AuthRequest, res) => {
+  winboxTargets.delete(req.userId!);
   await destroyUserWinbox(req.userId!);
   res.json({ success: true });
 });

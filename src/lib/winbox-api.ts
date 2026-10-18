@@ -24,7 +24,37 @@ export const winboxApi = {
   session: async () => data<any>(await apiPost<any>('/winbox/session', {})),
   /** Cierra el WinBox: se borran direcciones y claves guardadas en él. */
   close: async () => data<any>(await apiPost<any>('/winbox/close', {})),
+  /**
+   * Prepara una antena de cliente: ruta por el túnel de su sede y permiso en el
+   * firewall del WinBox. Devuelve "IP:puerto" (puerto WinBox del ISP).
+   */
+  target: async (mikrotikId: string, ip: string) =>
+    data<{ address: string }>(await apiPost<any>('/winbox/target', { mikrotikId, ip })),
 };
+
+/**
+ * Abre una antena de cliente en el WinBox propio: la pestaña se abre dentro del
+ * clic (si no, el navegador la bloquea), se prepara la ruta y se copia
+ * "IP:puerto" para pegarlo en "Connect to". Devuelve la dirección y si se copió.
+ */
+export async function openWinboxTo(mikrotikId: string, ip: string): Promise<{ address: string; copied: boolean }> {
+  const tab = window.open('', '_blank');
+  try {
+    const { address } = await winboxApi.target(mikrotikId, ip);
+    const copied = await navigator.clipboard.writeText(address).then(() => true, () => false);
+    const token = getToken();
+    if (token) {
+      document.cookie = `omnisync_web_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=43200`;
+    }
+    const url = remoteDesktopUrl('winbox');
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
+    return { address, copied };
+  } catch (e) {
+    tab?.close();
+    throw e;
+  }
+}
 
 /**
  * Abre el WinBox propio en una pestaña nueva. Debe llamarse dentro del clic:

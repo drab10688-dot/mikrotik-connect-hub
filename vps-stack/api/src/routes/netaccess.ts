@@ -72,6 +72,8 @@ export const DEFAULT_WEB_PORTS: Record<string, { port: number; protocol: 'http' 
   huawei: { port: 80, protocol: 'http' },
   vsol: { port: 80, protocol: 'http' },
   otro: { port: 80, protocol: 'http' },
+  // WinBox de las antenas MikroTik de los clientes (8291 de fábrica)
+  winbox: { port: 8291, protocol: 'http' },
 };
 
 const UBIQUITI_OUIS = [

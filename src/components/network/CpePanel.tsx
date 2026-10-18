@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { AlertTriangle, KeyRound, Loader2, RefreshCw, ScanSearch, UserCog, Plus, Trash2, CheckCircle2, XCircle, PlugZap } from "lucide-react";
+import { AlertTriangle, KeyRound, Loader2, RefreshCw, ScanSearch, UserCog, Plus, Trash2, CheckCircle2, XCircle, PlugZap, MonitorCog } from "lucide-react";
+import { openWinboxTo } from "@/lib/winbox-api";
 
 const QUALITY: Record<string, { label: string; className: string }> = {
   excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
@@ -342,7 +343,10 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
   const { isAdmin } = useAuth();
   // Técnico con solo "ver": lista, señal, LAN y botón Leer. Con "editar":
   // credenciales, prueba de equipo y cambio de usuario PPPoE.
-  const canEdit = useMyPermissions().can("red", true);
+  const perms = useMyPermissions();
+  const canEdit = perms.can("red", true);
+  // WinBox remoto: permiso propio "winbox" (como en Conexión MikroTik)
+  const canWinbox = perms.can("winbox");
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [weakOnly, setWeakOnly] = useState(false);
@@ -662,6 +666,24 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                         >
                           <RefreshCw className="w-3.5 h-3.5 mr-1" /> Leer
                         </Button>
+                        {canWinbox && c.ip && c.brand !== "ubiquiti" && (
+                          <Button
+                            size="sm" variant="ghost" className="h-7 px-2"
+                            title="Abrir esta antena en tu WinBox remoto (ruta por el túnel de la sede; copia IP:puerto)"
+                            onClick={async () => {
+                              try {
+                                const r = await openWinboxTo(deviceId, c.ip);
+                                toast.success(r.copied
+                                  ? `${r.address} copiado: pégalo en "Connect to" del WinBox`
+                                  : `Escribe ${r.address} en "Connect to" del WinBox`);
+                              } catch (e: any) {
+                                toast.error(e?.message || "No se pudo abrir la antena en WinBox");
+                              }
+                            }}
+                          >
+                            <MonitorCog className="w-3.5 h-3.5 mr-1" /> WinBox
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );
