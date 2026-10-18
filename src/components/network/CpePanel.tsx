@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { AlertTriangle, KeyRound, Loader2, RefreshCw, ScanSearch, UserCog, Plus, Trash2, CheckCircle2, XCircle, PlugZap, MonitorCog } from "lucide-react";
-import { openWinboxTo } from "@/lib/winbox-api";
+import { openWinboxTo, winboxReadyText } from "@/lib/winbox-api";
 
 const QUALITY: Record<string, { label: string; className: string }> = {
   excelente: { label: "Excelente", className: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
@@ -673,9 +673,7 @@ export function CpePanel({ deviceId }: { deviceId: string }) {
                             onClick={async () => {
                               try {
                                 const r = await openWinboxTo(deviceId, c.ip);
-                                toast.success(r.copied
-                                  ? `${r.address} copiado: pégalo en "Connect to" del WinBox`
-                                  : `Escribe ${r.address} en "Connect to" del WinBox`);
+                                toast.success(winboxReadyText(r));
                               } catch (e: any) {
                                 toast.error(e?.message || "No se pudo abrir la antena en WinBox");
                               }

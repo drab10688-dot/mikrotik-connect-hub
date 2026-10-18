@@ -128,6 +128,26 @@ export async function getWinboxIp(session: UserWinboxSession): Promise<string | 
 }
 
 /** Espera a que el servidor gráfico (Selkies/Wayland) esté listo. */
+/**
+ * Pone `text` (IP:puerto) en el portapapeles DEL WinBox remoto: X11 :0 (lo usa
+ * WinBox/Qt) y Wayland (visor), así basta Ctrl+V en "Connect to". El portapapeles
+ * del PC del técnico no llega al WinBox. El texto viaja por variable de entorno,
+ * nunca dentro del comando.
+ */
+export async function setWinboxClipboard(session: UserWinboxSession, text: string): Promise<boolean> {
+  if (!/^[0-9.:]{7,21}$/.test(text)) return false;
+  const r = await docker(
+    [
+      'exec', '-u', 'abc', '-e', `WBTEXT=${text}`, session.container, 'sh', '-c',
+      'printf %s "$WBTEXT" | DISPLAY=:0 xclip -selection clipboard -i >/dev/null 2>&1; ' +
+        '(printf %s "$WBTEXT" | XDG_RUNTIME_DIR=/config/.XDG WAYLAND_DISPLAY=wayland-1 wl-copy >/dev/null 2>&1 &); ' +
+        'sleep 0.5; [ "$(DISPLAY=:0 timeout 3 xclip -selection clipboard -o 2>/dev/null)" = "$WBTEXT" ]',
+    ],
+    15000,
+  );
+  return r.ok;
+}
+
 export async function waitWinboxReady(session: UserWinboxSession, timeoutMs = 30000): Promise<boolean> {
   if (session.readyAt) return true;
   const status = await containerStatus(session.container);

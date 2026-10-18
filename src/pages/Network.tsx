@@ -16,7 +16,7 @@ import {
   Monitor, Save, Loader2, Antenna, SignalHigh, KeyRound, Plus, Trash2, Cable,
   AlertTriangle, PlugZap, Activity, Globe, ArrowUp, ArrowDown, ArrowUpDown, Pencil, MonitorCog,
 } from "lucide-react";
-import { winboxApi, openWinbox } from "@/lib/winbox-api";
+import { winboxApi, openWinbox, openWinboxTo, winboxReadyText } from "@/lib/winbox-api";
 import { CpePanel } from "@/components/network/CpePanel";
 import { ProxyBrowserDialog, type ProxyBrowserTarget } from "@/components/network/ProxyBrowserDialog";
 import { usePagedSearch } from "@/hooks/use-paged-search";
@@ -54,6 +54,15 @@ export default function Network() {
   const perms = useMyPermissions();
   const canDesktop = perms.can("escritorio");
   const canWinbox = perms.can("winbox");
+
+  /** Abre un cliente (su antena) en el WinBox remoto con la IP lista para Ctrl+V. */
+  const openWinboxClient = async (ip: string) => {
+    try {
+      toast.success(winboxReadyText(await openWinboxTo(deviceId, ip)));
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo abrir el equipo en WinBox");
+    }
+  };
   const [openingWinbox, setOpeningWinbox] = useState(false);
   // IP de túnel de cada router (la que se escribe en WinBox)
   const { data: winboxStatus } = useQuery({
@@ -314,13 +323,11 @@ export default function Network() {
                   const address = winboxRouters.find((r) => r.id === deviceId)?.address;
                   setOpeningWinbox(true);
                   try {
-                    const copied = await openWinbox(address);
                     if (address) {
-                      toast.success(
-                        copied
-                          ? `IP ${address} copiada: pégala en "Connect to" de WinBox`
-                          : `En WinBox, escribe ${address} en "Connect to"`,
-                      );
+                      // El router mismo: dirección sin el puerto WinBox de las antenas
+                      toast.success(winboxReadyText(await openWinboxTo(deviceId, address, true)));
+                    } else {
+                      await openWinbox();
                     }
                   } catch (e: any) {
                     toast.error(e?.message || "No se pudo abrir WinBox");
@@ -555,6 +562,16 @@ export default function Network() {
                                     }
                                   >
                                     <ExternalLink className="w-3.5 h-3.5 mr-1" /> Abrir
+                                  </Button>
+                                ) : null}
+                                {s.remote_address && canWinbox ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    title={`Abrir ${s.name} en tu WinBox remoto (deja ${s.remote_address} listo para Ctrl+V en "Connect to")`}
+                                    onClick={() => openWinboxClient(s.remote_address)}
+                                  >
+                                    <Monitor className="w-3.5 h-3.5 mr-1" /> WinBox
                                   </Button>
                                 ) : null}
                               </div>

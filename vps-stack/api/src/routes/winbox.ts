@@ -16,6 +16,7 @@ import {
   destroyUserWinbox,
   winboxImageReady,
   userWinboxConfig,
+  setWinboxClipboard,
   UserWinboxSession,
 } from '../lib/user-winbox';
 
@@ -199,6 +200,8 @@ winboxRouter.post('/target', async (req: AuthRequest, res) => {
     const userId = req.userId!;
     const ip = String((req as any).body?.ip || '').trim();
     const mikrotikId = typeof (req as any).body?.mikrotikId === 'string' ? (req as any).body.mikrotikId : '';
+    // plain: el router mismo (sin el puerto WinBox de las antenas)
+    const plain = (req as any).body?.plain === true;
     if (!isIp(ip) || !isPrivate(ip)) return res.status(400).json({ success: false, error: 'IP no válida (solo IPs privadas)' });
     if (!mikrotikId) return res.status(400).json({ success: false, error: 'Falta el MikroTik de la sede' });
     const tenant = await resolveTenant(req, mikrotikId);
@@ -215,9 +218,12 @@ winboxRouter.post('/target', async (req: AuthRequest, res) => {
     const ok = await isolateWinbox(session, req.userRole || 'user', req.tenantId || null);
     if (!ok) return res.status(502).json({ success: false, error: 'No se pudo aplicar el firewall de tu WinBox' });
 
-    waitWinboxReady(session).catch(() => undefined);
     const port = Number((await tenantWebPorts(tenant || null)).winbox?.port) || 8291;
-    res.json({ success: true, data: { address: port === 8291 ? ip : `${ip}:${port}`, idleMinutes: userWinboxConfig.IDLE_MINUTES } });
+    const address = plain || port === 8291 ? ip : `${ip}:${port}`;
+    // La dirección se deja en el portapapeles DEL WinBox (Ctrl+V en "Connect to")
+    const ready = await waitWinboxReady(session, 20000).catch(() => false);
+    const inWinbox = ready ? await setWinboxClipboard(session, address).catch(() => false) : false;
+    res.json({ success: true, data: { address, inWinbox, idleMinutes: userWinboxConfig.IDLE_MINUTES } });
   } catch (e: any) {
     res.status(503).json({ success: false, error: e?.message || 'No se pudo abrir la antena en WinBox' });
   }

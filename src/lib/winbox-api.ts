@@ -28,19 +28,24 @@ export const winboxApi = {
    * Prepara una antena de cliente: ruta por el túnel de su sede y permiso en el
    * firewall del WinBox. Devuelve "IP:puerto" (puerto WinBox del ISP).
    */
-  target: async (mikrotikId: string, ip: string) =>
-    data<{ address: string }>(await apiPost<any>('/winbox/target', { mikrotikId, ip })),
+  target: async (mikrotikId: string, ip: string, plain = false) =>
+    data<{ address: string; inWinbox: boolean }>(await apiPost<any>('/winbox/target', { mikrotikId, ip, plain })),
 };
 
 /**
- * Abre una antena de cliente en el WinBox propio: la pestaña se abre dentro del
- * clic (si no, el navegador la bloquea), se prepara la ruta y se copia
- * "IP:puerto" para pegarlo en "Connect to". Devuelve la dirección y si se copió.
+ * Abre un equipo en el WinBox propio: la pestaña se abre dentro del clic (si
+ * no, el navegador la bloquea) y la API prepara la ruta y deja "IP:puerto" en
+ * el portapapeles DEL WinBox (Ctrl+V en "Connect to"); también se copia en el
+ * del PC. plain = el router mismo (sin el puerto WinBox de las antenas).
  */
-export async function openWinboxTo(mikrotikId: string, ip: string): Promise<{ address: string; copied: boolean }> {
+export async function openWinboxTo(
+  mikrotikId: string,
+  ip: string,
+  plain = false,
+): Promise<{ address: string; copied: boolean; inWinbox: boolean }> {
   const tab = window.open('', '_blank');
   try {
-    const { address } = await winboxApi.target(mikrotikId, ip);
+    const { address, inWinbox } = await winboxApi.target(mikrotikId, ip, plain);
     const copied = await navigator.clipboard.writeText(address).then(() => true, () => false);
     const token = getToken();
     if (token) {
@@ -49,7 +54,7 @@ export async function openWinboxTo(mikrotikId: string, ip: string): Promise<{ ad
     const url = remoteDesktopUrl('winbox');
     if (tab) tab.location.href = url;
     else window.location.href = url;
-    return { address, copied };
+    return { address, copied, inWinbox };
   } catch (e) {
     tab?.close();
     throw e;
@@ -83,4 +88,11 @@ export async function openWinbox(address?: string): Promise<boolean> {
     tab?.close();
     throw e;
   }
+}
+
+/** Aviso tras abrir un equipo en WinBox: dónde quedó la dirección. */
+export function winboxReadyText(r: { address: string; copied: boolean; inWinbox: boolean }): string {
+  if (r.inWinbox) return `${r.address} listo: en tu WinBox haz clic en "Connect to" y pulsa Ctrl+V`;
+  if (r.copied) return `${r.address} copiado en tu PC: escríbelo o pégalo en "Connect to" del WinBox`;
+  return `Escribe ${r.address} en "Connect to" del WinBox`;
 }
