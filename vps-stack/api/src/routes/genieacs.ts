@@ -4,6 +4,16 @@ import { pool } from '../lib/db';
 import { syncAcsOwnership, tenantAcsDeviceIds } from '../lib/acs-tenant';
 import { tunnelsForIp } from '../lib/networks';
 import { connectionRequestViaTunnels } from '../lib/l2tp';
+import {
+  MODEL_PROJECTION,
+  blockMatcher,
+  deleteBlock,
+  gpvTasks,
+  hasParam,
+  listBlocks,
+  pendingTaskFaults,
+  safeReadTasks,
+} from '../lib/acs-safe';
 
 import {
   ensureAcsSignalTables,
@@ -177,6 +187,26 @@ async function queueTasksWithSingleConnectionRequest(deviceId: string, tasks: an
   return results;
 }
 
+
+// Lectura de objetos respetando lo aprendido por modelo (lib/acs-safe):
+// refreshObject si el modelo no tiene parámetros rotos ahí, si no valores sueltos.
+async function readTasksFor(deviceId: string, objectNames: string[]): Promise<any[]> {
+  let device: any = null;
+  try {
+    device = await fetchDevice(deviceId, [...MODEL_PROJECTION, ...objectNames].join(','));
+  } catch { /* sin árbol: refreshObject */ }
+  // ONU solo TR-181: las rutas InternetGatewayDevice no existen (fault 9005).
+  const tr181 = !!device?.Device && !device?.InternetGatewayDevice;
+  const targets = objectNames.flatMap((o) => {
+    if (!tr181 || !o.startsWith('InternetGatewayDevice')) return [o];
+    if (o.includes('.DeviceInfo')) return ['Device.DeviceInfo'];
+    if (o.includes('.WANDevice')) return ['Device.PPP', 'Device.Optical'];
+    return ['Device'];
+  });
+  const tasks: any[] = [];
+  for (const objectName of Array.from(new Set(targets))) tasks.push(...await safeReadTasks(device, objectName));
+  return tasks;
+}
 
 // GenieACS NBI no soporta GET /devices/:id (devuelve 405). Se consulta por query.
 async function fetchDevice(deviceId: string, projection?: string): Promise<any> {
@@ -691,6 +721,9 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
       }
     }
 
+    const radios = collectWlans(device);
+    const mainRadio = radios.find((r) => isOn(r.enabled) && r.ssid) || radios[0] || null;
+
     const monitor = {
       uptime: di?.UpTime?._value || null,
       manufacturer: di?.Manufacturer?._value || 'Desconocido',
@@ -707,8 +740,9 @@ genieacsRouter.get('/devices/:deviceId/monitor', async (req: AuthRequest, res: R
       wanIP: wan?.ExternalIPAddress?._value || '-',
       wanUptime: wan?.Uptime?._value || null,
       wifiClients,
-      wifiSSID: wlan?.['1']?.SSID?._value || '-',
-      wifiEnabled: wlan?.['1']?.Enable?._value ?? null,
+      // WLAN.1 no siempre es la red principal (en VSOL es la 5G): se toma la primera activa.
+      wifiSSID: mainRadio?.ssid || '-',
+      wifiEnabled: mainRadio ? mainRadio.enabled : null,
       lastInformTime: device?._lastInform || null,
     };
 
@@ -749,10 +783,12 @@ genieacsRouter.post('/devices/:deviceId/wifi', async (req: AuthRequest, res: Res
     let device: any = null;
     try { device = await fetchDevice(deviceId); } catch { /* sin árbol: rutas estándar */ }
     const basePath = radioPath(device, band === '5g' ? '5g' : '2.4g');
+    const blockedWrite = device ? await blockMatcher(device, 'write') : () => false;
+    const wp = wlanWritePaths(device, basePath, blockedWrite);
     const parameterValues: [string, string, string][] = [];
 
-    if (ssid) parameterValues.push([`${basePath}.SSID`, ssid, 'xsd:string']);
-    if (password) parameterValues.push([wifiKeyParam(device, basePath), password, 'xsd:string']);
+    if (ssid) parameterValues.push([wp.ssid, ssid, 'xsd:string']);
+    if (password) parameterValues.push([wp.key, password, 'xsd:string']);
 
     const task = { name: 'setParameterValues', parameterValues };
     const result = await genieFetch(
@@ -778,7 +814,7 @@ genieacsRouter.post('/devices/:deviceId/wifi-toggle', async (req: AuthRequest, r
     const task = {
       name: 'setParameterValues',
       parameterValues: [
-        [`${basePath}.Enable`, enable, 'xsd:boolean'],
+        [wlanWritePaths(device, basePath).enable, enable, 'xsd:boolean'],
       ],
     };
 
@@ -802,10 +838,11 @@ genieacsRouter.post('/devices/:deviceId/wifi-channel', async (req: AuthRequest, 
     let device: any = null;
     try { device = await fetchDevice(deviceId); } catch { /* sin árbol: rutas estándar */ }
     const basePath = radioPath(device, band === '5g' ? '5g' : '2.4g');
+    const wp = wlanWritePaths(device, basePath);
     const parameterValues: [string, string, string][] = [];
 
-    if (channel !== undefined) parameterValues.push([`${basePath}.Channel`, String(channel), 'xsd:unsignedInt']);
-    if (bandwidth) parameterValues.push([`${basePath}.OperatingChannelBandwidth`, bandwidth, 'xsd:string']);
+    if (channel !== undefined && wp.channel) parameterValues.push([wp.channel, String(channel), 'xsd:unsignedInt']);
+    if (bandwidth && wp.bandwidth) parameterValues.push([wp.bandwidth, bandwidth, 'xsd:string']);
 
     const task = { name: 'setParameterValues', parameterValues };
     const result = await genieFetch(
@@ -859,16 +896,8 @@ genieacsRouter.get('/devices/:deviceId/pppoe', async (req: AuthRequest, res: Res
 genieacsRouter.post('/devices/:deviceId/refresh-pppoe', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          name: 'refreshObject',
-          objectName: 'InternetGatewayDevice.WANDevice',
-        }),
-      }
-    );
+    const tasks = await readTasksFor(deviceId, ['InternetGatewayDevice.WANDevice']);
+    const result = await queueTasksWithSingleConnectionRequest(deviceId, tasks);
     res.json({ success: true, message: 'Leyendo configuración WAN/PPPoE de la ONU', data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -996,16 +1025,9 @@ genieacsRouter.post('/devices/:deviceId/refresh', async (req: AuthRequest, res: 
     const { deviceId } = req.params;
     const { parameterPath } = req.body;
     // refreshObject evita faults "Invalid parameter path" en ONUs que no exponen
-    // todo el árbol (getParameterValues sobre un nodo parcial suele fallar).
-    const task = {
-      name: 'refreshObject',
-      objectName: parameterPath || 'InternetGatewayDevice',
-    };
-
-    const result = await genieFetch(
-      `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-      { method: 'POST', body: JSON.stringify(task) }
-    );
+    // todo el árbol; si el modelo tiene parámetros rotos se leen sin ellos.
+    const tasks = await readTasksFor(deviceId, [parameterPath || 'InternetGatewayDevice']);
+    const result = await queueTasksWithSingleConnectionRequest(deviceId, tasks);
     res.json({ success: true, message: 'Solicitud de actualización enviada', data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1380,16 +1402,19 @@ genieacsRouter.post('/devices/:deviceId/refresh-signal', async (req: AuthRequest
     const targets = Array.from(new Set([
       ...existing,
       'InternetGatewayDevice.WANDevice',
-      'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
     ]));
-
+    const tasks = [
+      ...(await readTasksFor(deviceId, targets)),
+      ...(await wifiReadTasks(deviceId)),
+    ];
 
     const results: any[] = [];
-    for (const objectName of targets) {
+    for (const task of tasks) {
+      const objectName = task.objectName || WLAN_BASE;
       try {
         const r = await genieFetch(
           `/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`,
-          { method: 'POST', body: JSON.stringify({ name: 'refreshObject', objectName }) }
+          { method: 'POST', body: JSON.stringify(task) }
         );
         results.push({ objectName, ok: true, r });
       } catch (e: any) {
@@ -1489,17 +1514,20 @@ async function ensureInitialRead(devices: any[]): Promise<void> {
   for (const d of devices) {
     const id = d?.deviceId;
     if (!id) continue;
-    const hasData = (Array.isArray(d.radios) && d.radios.length > 0)
-      || d.rxPower != null || d.txPower != null;
+    const radios = Array.isArray(d.radios) ? d.radios : [];
+    // Radios conocidas pero sin SSID = lectura WiFi cortada a medias.
+    const wifiPending = radios.length > 0 && !radios.some((r: RadioInfo) => r.ssid);
+    const hasData = !wifiPending && (radios.length > 0 || d.rxPower != null || d.txPower != null);
     if (hasData) { autoReadAt.set(id, Number.POSITIVE_INFINITY); continue; }
     const last = autoReadAt.get(id) || 0;
     if (now - last < AUTO_READ_RETRY_MS) continue;
     autoReadAt.set(id, now);
     try {
+      await clearFaults(id);
       await queueTasksWithSingleConnectionRequest(id, [
-        { name: 'refreshObject', objectName: 'InternetGatewayDevice.DeviceInfo' },
-        { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
-        { name: 'refreshObject', objectName: 'InternetGatewayDevice.WANDevice.1' },
+        ...(await readTasksFor(id, ['InternetGatewayDevice.DeviceInfo'])),
+        ...(await wifiReadTasks(id)),
+        ...(await readTasksFor(id, ['InternetGatewayDevice.WANDevice.1'])),
       ]);
     } catch {
       // Se reintenta en el próximo listado tras el backoff.
@@ -1597,38 +1625,19 @@ export interface RadioInfo {
 }
 
 // Resumen de radios WiFi (cuál SSID está activo y en qué banda).
+// Misma lectura que el detalle de la ONU (IGD y TR-181).
 function wifiRadios(device: any): RadioInfo[] {
-  const wlan =
-    device?.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration || {};
-  const radios: RadioInfo[] = [];
-  for (const key of Object.keys(wlan)) {
-    if (key.startsWith('_')) continue;
-    const r = wlan[key] || {};
-    const ssid = r?.SSID?._value ?? null;
-    const enabledRaw = r?.Enable?._value;
-    const channel = Number(r?.Channel?._value);
-    const standard = String(r?.Standard?._value || r?.X_BandType?._value || '');
-    const freqBand = String(r?.OperatingFrequencyBand?._value || '');
-    const is5 =
-      /5/.test(freqBand) ||
-      /a$|ac|ax/i.test(standard) && Number.isFinite(channel) && channel > 14 ||
-      (Number.isFinite(channel) && channel > 14);
-    const password =
-      r?.KeyPassphrase?._value ??
-      r?.PreSharedKey?.['1']?.KeyPassphrase?._value ??
-      r?.PreSharedKey?.['1']?.PreSharedKey?._value ??
-      null;
-    if (ssid === null && enabledRaw === undefined) continue;
-    radios.push({
-      index: key,
-      ssid: ssid !== null ? String(ssid) : null,
-      enabled: enabledRaw === true || String(enabledRaw) === 'true' || String(enabledRaw) === '1',
+  return collectWlans(device).map((r) => {
+    const channel = Number(r.channel);
+    return {
+      index: String(r.index),
+      ssid: r.ssid !== null && r.ssid !== undefined ? String(r.ssid) : null,
+      enabled: isOn(r.enabled),
       channel: Number.isFinite(channel) ? channel : null,
-      band: is5 ? '5GHz' : '2.4GHz',
-      password: password !== null ? String(password) : null,
-    });
-  }
-  return radios;
+      band: r.band === '5g' ? '5GHz' : '2.4GHz',
+      password: r.password !== null && r.password !== undefined ? String(r.password) : null,
+    };
+  });
 }
 
 
@@ -1957,11 +1966,13 @@ genieacsRouter.post('/auto-provision', async (req: AuthRequest, res: Response) =
       try { wifiDevice = await fetchDevice(deviceId); } catch { /* rutas estándar */ }
     }
     const wifiPath = radioPath(wifiDevice, '2.4g');
+    const wifiBlocked = wifiDevice ? await blockMatcher(wifiDevice, 'write') : () => false;
+    const wifiWp = wlanWritePaths(wifiDevice, wifiPath, wifiBlocked);
     if (wifiSsid) {
-      parameterValues.push([`${wifiPath}.SSID`, wifiSsid, 'xsd:string']);
+      parameterValues.push([wifiWp.ssid, wifiSsid, 'xsd:string']);
     }
     if (wifiPassword) {
-      parameterValues.push([wifiKeyParam(wifiDevice, wifiPath), wifiPassword, 'xsd:string']);
+      parameterValues.push([wifiWp.key, wifiPassword, 'xsd:string']);
     }
 
     // PPPoE configuration
@@ -2632,13 +2643,131 @@ function detectBand(wc: any): '2.4g' | '5g' | 'unknown' {
   const std = String(val(wc?.Standard) || val(wc?.X_Standard) || '').toLowerCase();
   const ssid = String(val(wc?.SSID) || '').toLowerCase();
   const freq = String(val(wc?.X_ZYXEL_Band) || val(wc?.OperatingFrequencyBand) || val(wc?.X_HW_Band) || '').toLowerCase();
+  // VSOL/Realtek: 0 = 2.4G, 1 = 5G (con canal automático el Channel llega en 0)
+  const rf = String(val(wc?.['X_CT-COM_RFBand']) ?? '').toLowerCase();
   if (freq.includes('5')) return '5g';
   if (freq.includes('2.4') || freq.includes('2_4')) return '2.4g';
+  if (rf === '1' || rf.startsWith('5')) return '5g';
+  if (rf === '0' || rf.startsWith('2')) return '2.4g';
   if (!Number.isNaN(channel) && channel > 0) return channel > 14 ? '5g' : '2.4g';
-  if (std.includes('ac') || std.includes('ax')) return '5g';
-  if (std.includes('b') || std.includes('g') || std.includes('n')) return '2.4g';
+  // "b,g,n" / "11bgn" = 2.4G; "a,n,ac,ax" / "11ac" = 5G ("ax" solo no define banda)
+  if (/[bg]/.test(std)) return '2.4g';
+  if (/a/.test(std.replace(/ax/g, ''))) return '5g';
   if (ssid.includes('5g')) return '5g';
   return 'unknown';
+}
+
+// ─── Lectura WiFi por parámetros puntuales ───────────────
+// refreshObject sobre WLANConfiguration lee el árbol entero y un solo
+// parámetro roto corta la lectura: las VSOL V2804DAC con firmware V3.2.01
+// responden 9002 en PossibleChannels y nunca llegan SSID, clave ni estándar.
+// Si el árbol ya conoce las radios se piden solo las hojas que usa el panel
+// (formato InternetGatewayDevice y TR-181 Device.WiFi), sin las que el
+// modelo tiene aprendidas como rotas.
+const WLAN_BASE = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration';
+const WIFI_READ_SPECS: { base: string; leaves: string[]; clients?: string }[] = [
+  {
+    base: WLAN_BASE,
+    leaves: [
+      'SSID', 'Enable', 'Status', 'Standard', 'Channel', 'AutoChannelEnable', 'BeaconType',
+      'SSIDAdvertisementEnabled', 'TotalAssociations', 'OperatingChannelBandwidth',
+      'OperatingFrequencyBand', 'X_HW_Band', 'X_ZYXEL_Band', 'X_CT-COM_RFBand',
+      'X_VT_ChannelWidth', 'X_CT-COM_ChannelWidth',
+      'KeyPassphrase', 'PreSharedKey.1.KeyPassphrase', 'X_HW_WPAKey', 'WPAKey',
+    ],
+    clients: 'AssociatedDevice',
+  },
+  { base: 'Device.WiFi.SSID', leaves: ['SSID', 'Enable', 'Status', 'LowerLayers'] },
+  {
+    base: 'Device.WiFi.Radio',
+    leaves: [
+      'Enable', 'Status', 'OperatingFrequencyBand', 'Channel', 'AutoChannelEnable',
+      'OperatingStandards', 'OperatingChannelBandwidth', 'CurrentOperatingChannelBandwidth',
+    ],
+  },
+  {
+    base: 'Device.WiFi.AccessPoint',
+    leaves: [
+      'SSIDReference', 'Enable', 'SSIDAdvertisementEnabled', 'Security.KeyPassphrase',
+      'Security.ModeEnabled', 'AssociatedDeviceNumberOfEntries',
+    ],
+    clients: 'AssociatedDevice',
+  },
+];
+
+function isOn(v: any): boolean {
+  return v === true || String(v) === 'true' || String(v) === '1';
+}
+
+async function wifiReadTasks(deviceId: string): Promise<any[]> {
+  let device: any = null;
+  try {
+    device = await fetchDevice(deviceId, [WLAN_BASE, 'Device.WiFi', ...MODEL_PROJECTION].join(','));
+  } catch { /* sin árbol: lectura completa */ }
+  const blocked = device ? await blockMatcher(device, 'read') : () => false;
+  const names: string[] = [];
+  const clients: any[] = [];
+  for (const spec of WIFI_READ_SPECS) {
+    const container = device ? getNodeAt(device, spec.base) : undefined;
+    if (!container || typeof container !== 'object') continue;
+    for (const idx of Object.keys(container)) {
+      if (idx.startsWith('_')) continue;
+      for (const leaf of spec.leaves) {
+        const p = `${spec.base}.${idx}.${leaf}`;
+        if (hasParam(device, p) && !blocked(p)) names.push(p);
+      }
+      if (spec.clients && container[idx]?.[spec.clients] && isOn(val(container[idx]?.Enable))) {
+        clients.push(...await safeReadTasks(device, `${spec.base}.${idx}.${spec.clients}`));
+      }
+    }
+  }
+  if (names.length) return [...gpvTasks(names), ...clients];
+  // ONU nueva sin nombres de parámetros: solo refreshObject los descubre.
+  const tr181 = !!device?.Device && !device?.InternetGatewayDevice;
+  return [{ name: 'refreshObject', objectName: tr181 ? 'Device.WiFi' : WLAN_BASE }];
+}
+
+/**
+ * TR-181 reparte una red WiFi en tres objetos: SSID (nombre), Radio (banda,
+ * canal) y AccessPoint (clave, oculta, clientes). Se enlazan por LowerLayers
+ * y SSIDReference.
+ */
+function tr181Links(device: any, ssidPath: string): { radio: string | null; ap: string | null } {
+  const ssidNode = getNodeAt(device, ssidPath) || {};
+  const lower = String(val(ssidNode.LowerLayers) || '').split(',')[0].trim().replace(/\.$/, '');
+  const radio = lower.startsWith('Device.WiFi.Radio.') && getNodeAt(device, lower) ? lower : null;
+  const aps = getNodeAt(device, 'Device.WiFi.AccessPoint') || {};
+  let ap: string | null = null;
+  for (const k of Object.keys(aps)) {
+    if (k.startsWith('_')) continue;
+    if (String(val(aps[k]?.SSIDReference) || '').replace(/\.$/, '') === ssidPath) {
+      ap = `Device.WiFi.AccessPoint.${k}`;
+      break;
+    }
+  }
+  const idx = ssidPath.split('.').pop();
+  if (!ap && idx && aps[idx]) ap = `Device.WiFi.AccessPoint.${idx}`;
+  return { radio, ap };
+}
+
+// Vista unificada de una red TR-181 con los nombres de campo del formato IGD.
+function tr181View(device: any, ssidPath: string): any {
+  const ssidNode = getNodeAt(device, ssidPath) || {};
+  const { radio, ap } = tr181Links(device, ssidPath);
+  const r = radio ? getNodeAt(device, radio) || {} : {};
+  const a = ap ? getNodeAt(device, ap) || {} : {};
+  return {
+    SSID: ssidNode.SSID,
+    Enable: ssidNode.Enable,
+    Channel: r.Channel,
+    AutoChannelEnable: r.AutoChannelEnable,
+    OperatingChannelBandwidth: r.OperatingChannelBandwidth ?? r.CurrentOperatingChannelBandwidth,
+    Standard: r.OperatingStandards,
+    OperatingFrequencyBand: r.OperatingFrequencyBand,
+    SSIDAdvertisementEnabled: a.SSIDAdvertisementEnabled,
+    Security: a.Security,
+    AssociatedDevice: a.AssociatedDevice,
+  };
 }
 
 function collectWlans(device: any) {
@@ -2648,8 +2777,9 @@ function collectWlans(device: any) {
     if (!container || typeof container !== 'object') continue;
     for (const key of Object.keys(container)) {
       if (key.startsWith('_')) continue;
-      const wc = container[key];
-      if (!wc || typeof wc !== 'object') continue;
+      const raw = container[key];
+      if (!raw || typeof raw !== 'object') continue;
+      const wc = root.startsWith('Device.') ? tr181View(device, `${root}.${key}`) : raw;
       const ssid = val(wc.SSID);
       if (ssid === undefined && val(wc.Enable) === undefined) continue;
       const clients = wc.AssociatedDevice
@@ -2716,13 +2846,86 @@ genieacsRouter.get('/devices/:deviceId/onu-status', async (req: AuthRequest, res
   }
 });
 
+// ─── Salud de lectura TR-069 (aviso "lectura incompleta") ──
+// Parámetros que cada modelo + firmware no sabe leer/escribir (aprendidos por
+// lib/acs-safe.ts) y tareas que siguen fallando. Un ISP solo ve los fallos
+// de sus ONUs y no ve qué equipo de otro ISP enseñó cada regla.
+genieacsRouter.get('/read-health', async (req: AuthRequest, res: Response) => {
+  try {
+    const scope = await getAcsScope(req);
+    const [blocks, faults] = await Promise.all([listBlocks(), pendingTaskFaults()]);
+
+    const ids = Array.from(new Set(faults.map((f) => f.deviceId)));
+    const info = new Map<string, any>();
+    if (ids.length) {
+      const q = encodeURIComponent(JSON.stringify({ _id: { $in: ids } }));
+      const proj = encodeURIComponent([
+        '_id', '_deviceId',
+        'InternetGatewayDevice.ManagementServer.URL', 'Device.ManagementServer.URL',
+        'InternetGatewayDevice.WANDevice',
+        ...MODEL_PROJECTION,
+      ].join(','));
+      const list: any[] = (await genieFetch(`/devices/?query=${q}&projection=${proj}`)) || [];
+      list.forEach((d) => info.set(String(d._id), d));
+    }
+
+    const pending = faults
+      .map((f) => {
+        const d = info.get(f.deviceId);
+        const meta = d?._deviceId || {};
+        return {
+          ...f,
+          model: meta._ProductClass || null,
+          manufacturer: meta._Manufacturer || null,
+          serial: meta._SerialNumber || null,
+          firmware: d?.InternetGatewayDevice?.DeviceInfo?.SoftwareVersion?._value
+            ?? d?.Device?.DeviceInfo?.SoftwareVersion?._value ?? null,
+          pppoe: d ? firstPppoeUsername(d) : null,
+          _acsUrl: d ? deviceAcsUrl(d) : '',
+        };
+      })
+      .filter((f) => acsAllows(scope, { deviceId: f.deviceId, serial: f.serial, pppoe: f.pppoe, acsUrl: f._acsUrl }))
+      .map(({ _acsUrl, ...rest }) => rest);
+
+    res.json({
+      success: true,
+      data: {
+        canManage: scope.unrestricted,
+        blocks: blocks.map((b) => (scope.unrestricted ? b : { ...b, example_device: null })),
+        pending,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Olvidar una regla aprendida (p. ej. tras actualizar el firmware del lote).
+genieacsRouter.delete('/read-health/blocks/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const scope = await getAcsScope(req);
+    if (!scope.unrestricted) return res.status(403).json({ error: 'Solo el administrador general' });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+    await deleteBlock(id);
+    res.json({ success: true, message: 'Regla eliminada: la próxima lectura vuelve a probar ese parámetro' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * UNA sola ruta para la clave WiFi. Cada marca rechaza alguna variante con
  * fault 9003 ("Invalid arguments") y esa orden se reintenta sin fin en cada
  * Inform: VSOL/Realtek rechazan PreSharedKey.1.PreSharedKey y Huawei rechaza
  * KeyPassphrase. PreSharedKey.1.KeyPassphrase la aceptan ambas.
  */
-function wifiKeyParam(device: any, path: string): string {
+function wifiKeyParam(device: any, path: string, blocked: (p: string) => boolean = () => false): string {
+  if (path.startsWith('Device.WiFi.')) {
+    const { ap } = tr181Links(device, path);
+    return `${ap || path.replace('.SSID.', '.AccessPoint.')}.Security.KeyPassphrase`;
+  }
+  // Si el vigilante aprendió que este modelo rechaza una variante, se salta.
   const order = [
     `${path}.PreSharedKey.1.KeyPassphrase`,
     `${path}.KeyPassphrase`,
@@ -2730,28 +2933,61 @@ function wifiKeyParam(device: any, path: string): string {
     `${path}.X_HW_WPAKey`,
     `${path}.WPAKey`,
   ];
-  return (device && order.find((p) => paramExists(device, p))) || order[0];
+  return (device && order.find((p) => paramExists(device, p) && !blocked(p))) || order[0];
+}
+
+/**
+ * Rutas de escritura de una red. En IGD todo cuelga de la misma radio; en
+ * TR-181 el canal va en Radio y la clave/oculta en AccessPoint.
+ */
+function wlanWritePaths(device: any, path: string, blockedWrite: (p: string) => boolean = () => false) {
+  if (path.startsWith('Device.WiFi.')) {
+    const { radio, ap } = tr181Links(device, path);
+    return {
+      ssid: `${path}.SSID`,
+      enable: `${path}.Enable`,
+      key: wifiKeyParam(device, path),
+      hidden: ap ? `${ap}.SSIDAdvertisementEnabled` : null,
+      channel: radio ? `${radio}.Channel` : null,
+      autoChannel: radio ? `${radio}.AutoChannelEnable` : null,
+      bandwidth: radio ? `${radio}.OperatingChannelBandwidth` : null,
+    };
+  }
+  return {
+    ssid: `${path}.SSID`,
+    enable: `${path}.Enable`,
+    key: wifiKeyParam(device, path, blockedWrite),
+    hidden: `${path}.SSIDAdvertisementEnabled`,
+    channel: `${path}.Channel`,
+    autoChannel: `${path}.AutoChannelEnable`,
+    bandwidth: `${path}.OperatingChannelBandwidth`,
+  };
 }
 
 /**
  * Radio principal de una banda, detectada por estándar/canal (no por índice
  * fijo): en VSOL/Realtek 2.4G=WLAN.5 y 5G=WLAN.1; en Huawei 5G=WLAN.5.
+ * Si la ONU solo habla TR-181 se usa Device.WiFi.SSID.
  */
 function radioPath(device: any, band: '2.4g' | '5g'): string {
-  const radios = device
-    ? collectWlans(device).filter((r) => r.root.startsWith('InternetGatewayDevice') && r.band === band)
-    : [];
+  const all = device ? collectWlans(device).filter((r) => r.band === band) : [];
+  const igd = all.filter((r) => r.root.startsWith('InternetGatewayDevice'));
+  const radios = igd.length ? igd : all;
   radios.sort((a, b) => Number(a.index) - Number(b.index));
-  return radios[0]?.path || `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${band === '5g' ? '2' : '1'}`;
+  if (radios[0]?.path) return radios[0].path;
+  const tr181 = !!device?.Device?.WiFi && !getNodeAt(device, WLAN_BASE);
+  return tr181
+    ? `Device.WiFi.SSID.${band === '5g' ? '2' : '1'}`
+    : `${WLAN_BASE}.${band === '5g' ? '2' : '1'}`;
 }
 
 // Devuelve el nodo de un path dentro del árbol del dispositivo (o undefined)
 function getNodeAt(device: any, path: string): any {
   return path.split('.').reduce((acc: any, key: string) => (acc == null ? acc : acc[key]), device);
 }
+// Con valor o solo descubierto por nombre (lectura cortada por un firmware roto).
 function paramExists(device: any, path: string): boolean {
-  const node = getNodeAt(device, path);
-  return node !== undefined && node !== null && typeof node === 'object' && '_value' in node;
+  return hasParam(device, path);
 }
 
 // ─── Editar una radio concreta (2.4G / 5G / cualquiera) ──
@@ -2773,25 +3009,27 @@ genieacsRouter.post('/devices/:deviceId/wlan', async (req: AuthRequest, res: Res
     // si uno solo de los parámetros no existe en la ONU.
     let device: any = null;
     try { device = await fetchDevice(deviceId); } catch { /* seguimos sin validar */ }
-    const exists = (p: string) => (device ? paramExists(device, p) : true);
+    const exists = (p: string | null): p is string => !!p && (device ? paramExists(device, p) : true);
+    const blockedWrite = device ? await blockMatcher(device, 'write') : () => false;
+    const wp = wlanWritePaths(device, path, blockedWrite);
 
     const parameterValues: [string, any, string][] = [];
-    if (ssid && exists(`${path}.SSID`)) parameterValues.push([`${path}.SSID`, ssid, 'xsd:string']);
+    if (ssid && exists(wp.ssid)) parameterValues.push([wp.ssid, ssid, 'xsd:string']);
 
-    if (password) parameterValues.push([wifiKeyParam(device, path), password, 'xsd:string']);
+    if (password) parameterValues.push([wp.key, password, 'xsd:string']);
 
-    if (enable !== undefined && exists(`${path}.Enable`)) {
-      parameterValues.push([`${path}.Enable`, !!enable, 'xsd:boolean']);
+    if (enable !== undefined && exists(wp.enable)) {
+      parameterValues.push([wp.enable, !!enable, 'xsd:boolean']);
     }
-    if (hidden !== undefined && exists(`${path}.SSIDAdvertisementEnabled`)) {
-      parameterValues.push([`${path}.SSIDAdvertisementEnabled`, !hidden, 'xsd:boolean']);
+    if (hidden !== undefined && exists(wp.hidden)) {
+      parameterValues.push([wp.hidden, !hidden, 'xsd:boolean']);
     }
     if (channel !== undefined && channel !== null && channel !== '') {
-      if (exists(`${path}.AutoChannelEnable`)) parameterValues.push([`${path}.AutoChannelEnable`, false, 'xsd:boolean']);
-      if (exists(`${path}.Channel`)) parameterValues.push([`${path}.Channel`, Number(channel), 'xsd:unsignedInt']);
+      if (exists(wp.autoChannel)) parameterValues.push([wp.autoChannel, false, 'xsd:boolean']);
+      if (exists(wp.channel)) parameterValues.push([wp.channel, Number(channel), 'xsd:unsignedInt']);
     }
-    if (bandwidth && exists(`${path}.OperatingChannelBandwidth`)) {
-      parameterValues.push([`${path}.OperatingChannelBandwidth`, bandwidth, 'xsd:string']);
+    if (bandwidth && exists(wp.bandwidth)) {
+      parameterValues.push([wp.bandwidth, bandwidth, 'xsd:string']);
     }
 
     if (parameterValues.length === 0) {
@@ -2854,10 +3092,10 @@ genieacsRouter.post('/devices/:deviceId/catv', async (req: AuthRequest, res: Res
 genieacsRouter.post('/devices/:deviceId/refresh-onu', async (req: AuthRequest, res: Response) => {
   try {
     const { deviceId } = req.params;
+    await clearFaults(deviceId);
     const tasks = [
-      { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
-      { name: 'refreshObject', objectName: 'InternetGatewayDevice.DeviceInfo' },
-      { name: 'refreshObject', objectName: 'InternetGatewayDevice.WANDevice.1' },
+      ...(await wifiReadTasks(deviceId)),
+      ...(await readTasksFor(deviceId, ['InternetGatewayDevice.DeviceInfo', 'InternetGatewayDevice.WANDevice.1'])),
     ];
     await queueTasksWithSingleConnectionRequest(deviceId, tasks);
     res.json({

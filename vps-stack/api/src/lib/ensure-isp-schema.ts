@@ -486,6 +486,24 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        updated_at TIMESTAMPTZ DEFAULT now()
      )`,
     `INSERT INTO ssl_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
+
+    // Parámetros TR-069 que un modelo + firmware no sabe leer o escribir
+    // (aprendidos de los faults por lib/acs-safe.ts; índices en '*')
+    `CREATE TABLE IF NOT EXISTS acs_param_blocks (
+       id SERIAL PRIMARY KEY,
+       oui TEXT NOT NULL,
+       product_class TEXT NOT NULL,
+       firmware TEXT NOT NULL DEFAULT '',
+       param TEXT NOT NULL,
+       kind TEXT NOT NULL CHECK (kind IN ('read', 'write')),
+       fault_code TEXT,
+       fault_message TEXT,
+       example_device TEXT,
+       hits INTEGER NOT NULL DEFAULT 1,
+       first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+       last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+       UNIQUE (oui, product_class, firmware, param, kind)
+     )`,
   ];
 
 

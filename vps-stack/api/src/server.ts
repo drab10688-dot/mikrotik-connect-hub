@@ -32,6 +32,7 @@ import { runSignalCollectCron, runSignalCleanupCron } from './cron/signal-collec
 import { runPppoeMonitor, cleanupPppoeEvents } from './cron/pppoe-monitor';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
 import { syncAcsOwnership } from './lib/acs-tenant';
+import { runAcsFaultWatcher } from './lib/acs-safe';
 
 // Re-export pool for backward compatibility with cron jobs
 export { pool };
@@ -170,6 +171,14 @@ cron.schedule('* * * * *', () => {
       }
     })
     .catch((e: any) => console.error('[ACS] sincronización:', e.message));
+});
+
+// Cron: tareas TR-069 trabadas por un parámetro que la ONU no sabe leer o
+// escribir: se aprende el parámetro por modelo y se reintenta sin él.
+cron.schedule('* * * * *', () => {
+  runAcsFaultWatcher()
+    .then((r) => { if (r.handled) console.log(`[ACS-SEGURO] ${r.handled} tarea(s) trabada(s) resueltas`); })
+    .catch((e: any) => console.error('[ACS-SEGURO]', e.message));
 });
 
 // Red de seguridad: una promesa rechazada sin capturar en una ruta (Express 4

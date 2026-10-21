@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import OnuRadiosPanel from "@/components/onu/OnuRadiosPanel";
+import AcsReadHealth from "@/components/tr069/AcsReadHealth";
 import OpticalMeter, { opticalTone } from "@/components/onu/OpticalMeter";
 import KpiCard from "@/components/dashboard/KpiCard";
 import {
@@ -394,6 +395,8 @@ export default function SimpleOnuPanel() {
         <KpiCard label="Wi-Fi activo" value={stats.wifi} icon={Wifi} tone="info" loading={loading}
           onClick={() => setFilter("wifi")} active={filter === "wifi"} />
       </div>
+
+      <AcsReadHealth />
 
       {/* Barra de control */}
       <div className="flex flex-wrap items-center justify-between gap-3">
