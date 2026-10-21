@@ -1515,10 +1515,15 @@ async function ensureInitialRead(devices: any[]): Promise<void> {
     const id = d?.deviceId;
     if (!id) continue;
     const radios = Array.isArray(d.radios) ? d.radios : [];
-    // Radios conocidas pero sin SSID = lectura WiFi cortada a medias.
-    const wifiPending = radios.length > 0 && !radios.some((r: RadioInfo) => r.ssid);
+    // Radios conocidas pero sin SSID = lectura WiFi cortada a medias (a veces
+    // el firmware corta antes de entregar siquiera Enable: wifiUnread).
+    const wifiPending = d.wifiUnread || (radios.length > 0 && !radios.some((r: RadioInfo) => r.ssid));
     const hasData = !wifiPending && (radios.length > 0 || d.rxPower != null || d.txPower != null);
     if (hasData) { autoReadAt.set(id, Number.POSITIVE_INFINITY); continue; }
+    // Desconectada: las tareas solo se acumularían hasta que vuelva.
+    const lastInform = d.lastInform ? new Date(d.lastInform).getTime() : 0;
+    const offlineAfter = Math.max(10 * 60_000, 2 * 1000 * (Number(d.informInterval) || 300));
+    if (!lastInform || now - lastInform > offlineAfter) continue;
     const last = autoReadAt.get(id) || 0;
     if (now - last < AUTO_READ_RETRY_MS) continue;
     autoReadAt.set(id, now);
@@ -1625,6 +1630,17 @@ export interface RadioInfo {
 }
 
 // Resumen de radios WiFi (cuál SSID está activo y en qué banda).
+// Radios WiFi descubiertas por nombre pero sin ningún SSID leído.
+function wifiUnread(device: any): boolean {
+  for (const base of [WLAN_BASE, 'Device.WiFi.SSID']) {
+    const container = getNodeAt(device, base);
+    if (!container || typeof container !== 'object') continue;
+    const keys = Object.keys(container).filter((k) => !k.startsWith('_'));
+    if (keys.length && !keys.some((k) => val(container[k]?.SSID) !== undefined)) return true;
+  }
+  return false;
+}
+
 // Misma lectura que el detalle de la ONU (IGD y TR-181).
 function wifiRadios(device: any): RadioInfo[] {
   return collectWlans(device).map((r) => {
@@ -1683,6 +1699,7 @@ genieacsRouter.get('/overview', async (req: AuthRequest, res: Response) => {
         rxPower: rx,
         txPower: tx,
         radios,
+        wifiUnread: wifiUnread(device),
         activeSsids: radios.filter((r) => r.enabled && r.ssid).map((r) => `${r.ssid} (${r.band})`),
         pppoeUsername: firstPppoeUsername(device),
         alias: aliases[device._id] || null,
