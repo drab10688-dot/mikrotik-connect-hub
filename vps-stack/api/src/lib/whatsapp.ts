@@ -984,12 +984,14 @@ async function sendInvite(s: WaSettings, n: WaNumber, sub: any): Promise<{ ok: b
 
 /** Un turno de envío para un número. Devuelve lo que pasó (para logs y pruebas). */
 export async function dispatchNumber(s: WaSettings, n: WaNumber, ispName: string, now = new Date()): Promise<string> {
-  if (!s.enabled || s.paused || n.paused) return 'pausado';
   const state = await refreshState(n);
   await alertOnState(s, n, ispName);
   if (state !== 'open') return `sesión ${state}`;
 
+  // Pruebas, confirmaciones (SÍ/NO/BAJA) y respuestas del menú salen siempre;
+  // "Envíos activos" apagado o la pausa solo detienen avisos, bienvenidas y presentaciones.
   const immediate = await sendImmediate(s, n);
+  if (!s.enabled || s.paused || n.paused) return immediate ? `respuestas ${immediate}` : 'pausado';
   if (!inSendWindow(s, now)) return immediate ? `respuestas ${immediate}` : 'fuera de horario';
   if (n.next_send_at && new Date(n.next_send_at) > now) return immediate ? `respuestas ${immediate}` : 'esperando pausa';
   if ((await countToday(n, ['notice', 'invite', 'welcome'])) >= n.daily_cap) return 'tope diario';
@@ -1078,7 +1080,7 @@ export async function runWhatsappDispatcher(): Promise<void> {
     await pool.query(`UPDATE wa_queue SET status = 'pending', updated_at = now() WHERE status = 'sending' AND updated_at < now() - interval '10 minutes'`);
     const { rows: tenants } = await pool.query(
       `SELECT s.*, t.name AS isp_name FROM wa_settings s JOIN tenants t ON t.id = s.tenant_id
-        WHERE s.enabled AND COALESCE(t.enable_whatsapp, false) AND COALESCE(t.is_active, true)`
+        WHERE COALESCE(t.enable_whatsapp, false) AND COALESCE(t.is_active, true)`
     );
     for (const s of tenants) {
       try {
