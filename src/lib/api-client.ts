@@ -506,6 +506,8 @@ export const whatsappApi = {
     unwrapData<any>(await apiPut<any>(`/whatsapp/orgs/${id}${waQs(t)}`, { number_id })),
   subscribers: async (params: { number_id?: number; status?: string; q?: string; limit?: number; offset?: number }, t?: string | null) =>
     unwrapData<any>(await apiGet<any>(`/whatsapp/subscribers${waQs(t, params)}`)),
+  linkSubscriber: async (number_id: number, phone: string, client_id: number, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/subscribers/link${waQs(t)}`, { number_id, phone, client_id })),
   queue: async (params: { status?: string; q?: string; number_id?: number; limit?: number; offset?: number }, t?: string | null) =>
     unwrapData<any>(await apiGet<any>(`/whatsapp/queue${waQs(t, params)}`)),
   retry: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/queue/${id}/retry${waQs(t)}`, {})),

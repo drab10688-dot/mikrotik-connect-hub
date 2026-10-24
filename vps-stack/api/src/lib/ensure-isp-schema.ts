@@ -594,6 +594,22 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        PRIMARY KEY (number_id, phone)
      )`,
     `CREATE INDEX IF NOT EXISTS wa_subscribers_status ON wa_subscribers (number_id, status)`,
+    // Vinculación con el CRM de quien escribe: crm (vino en un aviso), phone (su teléfono está
+    // en el CRM), id (dio su ID de cliente), manual (lo vinculó el admin); asked/failed = pendiente
+    `ALTER TABLE wa_subscribers ADD COLUMN IF NOT EXISTS link_state TEXT`,
+    `ALTER TABLE wa_subscribers ADD COLUMN IF NOT EXISTS link_attempts SMALLINT NOT NULL DEFAULT 0`,
+    `ALTER TABLE wa_subscribers ADD COLUMN IF NOT EXISTS linked_at TIMESTAMPTZ`,
+    `CREATE INDEX IF NOT EXISTS wa_subscribers_client ON wa_subscribers (number_id, client_ref) WHERE client_ref IS NOT NULL`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS require_crm_link BOOLEAN NOT NULL DEFAULT true`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS admin_phone TEXT`,
+    // Dirección de consulta de cada plugin UISP (la manda el plugin en cada aviso)
+    `CREATE TABLE IF NOT EXISTS wa_lookup_sources (
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       source TEXT NOT NULL DEFAULT '',
+       url TEXT NOT NULL,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       PRIMARY KEY (tenant_id, source)
+     )`,
     // Cola: un mensaje por fila; dedupe_key evita repetir si UISP reenvía el webhook.
     // kind: notice (aviso de UISP) | invite (presentación) | reply (menú) | system | test.
     // waiting = aviso esperando que el cliente acepte la presentación.

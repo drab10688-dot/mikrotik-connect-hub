@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import type { Pool } from 'pg';
 import { pool } from './db';
-import { notifyTelegram } from './net-monitor';
 
 /**
  * WhatsApp por ISP con Evolution API (sesión por QR, sin Meta).
@@ -73,7 +72,7 @@ export interface MenuOption {
   reply_paid?: string;
   /** 'qr' = adjunta la imagen del QR de pago del número */
   media?: 'qr' | null;
-  /** Avisa por Telegram que el cliente pidió un asesor */
+  /** Avisa por WhatsApp al administrador que el cliente pidió un asesor */
   support?: boolean;
 }
 export const DEFAULT_MENU: MenuOption[] = [
@@ -98,6 +97,8 @@ export interface WaSettings {
   optin_words: string;
   decline_words: string;
   optin_any_message: boolean;
+  require_crm_link: boolean;
+  admin_phone: string | null;
   invite_wait_days: number;
   footer: string;
 }
@@ -340,6 +341,8 @@ export interface SettingsInput {
   decline_words?: string;
   optin_any_message?: boolean;
   invite_wait_days?: number;
+  require_crm_link?: boolean;
+  admin_phone?: string | null;
   footer?: string;
 }
 
@@ -379,6 +382,13 @@ export async function saveSettings(tenantId: string, input: SettingsInput): Prom
   let footer = cur.footer;
   if (input.footer !== undefined) footer = String(input.footer).slice(0, 200).trim();
   if (footer && !footer.includes('{baja}')) throw new Error('El pie debe incluir {baja} para que el cliente sepa cómo darse de baja');
+  // WhatsApp del administrador (avisos: soporte, vinculaciones, número caído). Vacío = sin avisos
+  let adminPhone: string | null | undefined;
+  if (input.admin_phone !== undefined) {
+    const raw = String(input.admin_phone ?? '').trim();
+    adminPhone = raw === '' ? null : normalizePhone(raw);
+    if (raw !== '' && !adminPhone) throw new Error('El WhatsApp del administrador no es un teléfono válido');
+  }
   let priorities = cur.priorities || {};
   if (input.priorities !== undefined) {
     priorities = {};
@@ -394,11 +404,14 @@ export async function saveSettings(tenantId: string, input: SettingsInput): Prom
        priorities = $6::jsonb, alert_disconnect = COALESCE($7::boolean, alert_disconnect),
        optout_word = $8::text, optin_words = $9::text, decline_words = $10::text,
        optin_any_message = COALESCE($11::boolean, optin_any_message), invite_wait_days = $12::int,
-       footer = $13::text, updated_at = now()
+       footer = $13::text, require_crm_link = COALESCE($14::boolean, require_crm_link),
+       admin_phone = CASE WHEN $15::boolean THEN $16::text ELSE admin_phone END, updated_at = now()
      WHERE tenant_id = $1 RETURNING *`,
     [tenantId, typeof input.enabled === 'boolean' ? input.enabled : null, hStart, hEnd, days, JSON.stringify(priorities),
      typeof input.alert_disconnect === 'boolean' ? input.alert_disconnect : null, optout, optin, decline,
-     typeof input.optin_any_message === 'boolean' ? input.optin_any_message : null, wait, footer]
+     typeof input.optin_any_message === 'boolean' ? input.optin_any_message : null, wait, footer,
+     typeof input.require_crm_link === 'boolean' ? input.require_crm_link : null,
+     adminPhone !== undefined, adminPhone ?? null]
   );
   return rows[0];
 }
@@ -719,18 +732,38 @@ async function setState(n: WaNumber, state: string, detail: string | null, numbe
   if (state === 'open' && number) n.connected_number = number;
 }
 
-/** Aviso por Telegram si el número lleva >2 min caído, y cuando vuelve. */
+/**
+ * Aviso por WhatsApp al número del administrador (Configuración → WhatsApp del administrador),
+ * enviado desde un número conectado del ISP (si se cayó uno, desde otro). Sin número de
+ * administrador o sin ningún número conectado, no se envía (el panel igual lo muestra).
+ */
+export async function notifyAdmin(tenantId: string, text: string, avoidNumberId: number | null = null): Promise<boolean> {
+  const { rows: st } = await pool.query(`SELECT admin_phone FROM wa_settings WHERE tenant_id = $1`, [tenantId]);
+  const admin = normalizePhone(st[0]?.admin_phone);
+  if (!admin) return false;
+  const { rows } = await pool.query(
+    `SELECT * FROM wa_numbers WHERE tenant_id = $1 AND connection_state = 'open' AND ($2::int IS NULL OR id <> $2)
+      ORDER BY is_default DESC, id LIMIT 1`,
+    [tenantId, avoidNumberId]
+  );
+  if (!rows[0]) return false;
+  await enqueueImmediate(rows[0], admin, 'system', text, null, 'admin');
+  flushImmediate(rows[0]).catch(() => undefined);
+  return true;
+}
+
+/** Aviso al administrador si el número lleva >2 min caído (desde otro número), y cuando vuelve. */
 async function alertOnState(s: WaSettings, n: WaNumber, ispName: string): Promise<void> {
   if (!s.alert_disconnect) return;
   const since = n.state_changed_at ? new Date(n.state_changed_at).getTime() : Date.now();
   const down = n.connection_state !== 'open';
   if (down && n.alerted_state !== 'down' && Date.now() - since > 120_000 && n.last_sent_at) {
-    await notifyTelegram(n.tenant_id,
-      `📵 <b>WhatsApp desconectado</b> — ${ispName} · ${n.label}\nLa sesión no está conectada (${n.connection_state}). ` +
-      `Los avisos quedan en cola. Entra a Omnisync → WhatsApp → Números y vuelve a escanear el QR.`).catch(() => undefined);
+    await notifyAdmin(n.tenant_id,
+      `📵 *WhatsApp desconectado* — ${ispName} · ${n.label}\nLa sesión no está conectada (${n.connection_state}). ` +
+      `Los avisos quedan en cola. Entra a Omnisync → WhatsApp → Números y vuelve a escanear el QR.`, n.id).catch(() => undefined);
     await pool.query(`UPDATE wa_numbers SET alerted_state = 'down' WHERE id = $1`, [n.id]);
   } else if (!down && n.alerted_state === 'down') {
-    await notifyTelegram(n.tenant_id, `✅ <b>WhatsApp conectado de nuevo</b> — ${ispName} · ${n.label}. La cola sigue enviando.`).catch(() => undefined);
+    await notifyAdmin(n.tenant_id, `✅ *WhatsApp conectado de nuevo* — ${ispName} · ${n.label}. La cola sigue enviando.`).catch(() => undefined);
     await pool.query(`UPDATE wa_numbers SET alerted_state = NULL WHERE id = $1`, [n.id]);
   }
 }
@@ -747,17 +780,163 @@ async function getSubscriber(n: WaNumber, phone: string): Promise<any> {
 }
 
 export async function listSubscribers(tenantId: string, opts: { number_id?: number | null; status?: string | null; q?: string | null; limit?: number; offset?: number }) {
+  // status 'unlinked' = escribieron pero no están vinculados a un cliente del CRM
+  const unlinked = opts.status === 'unlinked';
   const { rows } = await pool.query(
     `SELECT s.number_id, n.label AS number_label, s.phone, s.status, s.client_ref, s.client_name, s.invited_at,
-            s.responded_at, s.last_inbound_at, s.not_on_whatsapp, s.context, s.context_at, count(*) OVER () AS total
+            s.responded_at, s.last_inbound_at, s.not_on_whatsapp, s.context, s.context_at,
+            s.link_state, s.link_attempts, s.linked_at, count(*) OVER () AS total
        FROM wa_subscribers s JOIN wa_numbers n ON n.id = s.number_id
-      WHERE s.tenant_id = $1 AND ($2::int IS NULL OR s.number_id = $2) AND ($3::text IS NULL OR s.status = $3)
+      WHERE s.tenant_id = $1 AND ($2::int IS NULL OR s.number_id = $2)
+        AND ($3::text IS NULL OR s.status = $3) AND (NOT $7::boolean OR s.client_ref IS NULL)
         AND ($4::text IS NULL OR s.phone LIKE '%' || $4 || '%' OR s.client_ref = $4 OR s.client_name ILIKE '%' || $4 || '%')
       ORDER BY COALESCE(s.responded_at, s.invited_at, s.created_at) DESC
       LIMIT $5 OFFSET $6`,
-    [tenantId, opts.number_id ?? null, opts.status ?? null, opts.q ?? null, opts.limit ?? 50, opts.offset ?? 0]
+    [tenantId, opts.number_id ?? null, unlinked ? null : (opts.status ?? null), opts.q ?? null, opts.limit ?? 50, opts.offset ?? 0, unlinked]
   );
   return { items: rows.map(({ total, ...r }) => r), total: Number(rows[0]?.total || 0) };
+}
+
+// ───────────────────────── Vinculación con el CRM ─────────────────────────
+
+/** "Juan Pérez" → "J*** P***": confirma a quién se vinculó sin revelar el nombre. */
+export function maskName(name: string): string {
+  return String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w.charAt(0).toUpperCase() + '***').join(' ');
+}
+
+export interface LookupClient { id: number; name: string; first_name?: string; phone?: string; organization_id?: number | null; organization_name?: string | null }
+
+/** Guarda la dirección de consulta que manda el plugin UISP (?hook=lookup&s=…). */
+async function saveLookupSource(tenantId: string, source: string, url: unknown): Promise<void> {
+  const u = String(url || '');
+  if (!/^https?:\/\/\S{8,600}$/i.test(u)) return;
+  await pool.query(
+    `INSERT INTO wa_lookup_sources (tenant_id, source, url) VALUES ($1, $2, $3)
+     ON CONFLICT (tenant_id, source) DO UPDATE SET url = EXCLUDED.url, updated_at = now()
+     WHERE wa_lookup_sources.url IS DISTINCT FROM EXCLUDED.url OR wa_lookup_sources.updated_at < now() - interval '1 day'`,
+    [tenantId, source, u]
+  );
+}
+
+/**
+ * Pregunta a los plugins UISP del ISP. Devuelve el cliente, 'multiple', 'none' o
+ * 'unavailable' (ningún plugin respondió o no hay plugin con la versión que consulta).
+ */
+export async function lookupCrm(tenantId: string, query: { phone?: string; client_id?: number }): Promise<LookupClient | 'multiple' | 'none' | 'unavailable'> {
+  const { rows } = await pool.query(`SELECT url FROM wa_lookup_sources WHERE tenant_id = $1 ORDER BY updated_at DESC`, [tenantId]);
+  if (!rows.length) return 'unavailable';
+  let answered = false;
+  let multiple = false;
+  for (const { url } of rows) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(query),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const data: any = await res.json().catch(() => null);
+      if (!res.ok || !data) continue;
+      answered = true;
+      if (data.found && data.client?.id) return data.client as LookupClient;
+      if (data.multiple) multiple = true;
+    } catch (e: any) {
+      console.warn('[WA] consulta al plugin UISP:', e.message);
+    }
+  }
+  if (multiple) return 'multiple';
+  return answered ? 'none' : 'unavailable';
+}
+
+/** Vincula el WhatsApp con el cliente y le pasa sus avisos pendientes de ese número. */
+async function linkSubscriber(n: WaNumber, phone: string, client: LookupClient, how: 'phone' | 'id' | 'manual'): Promise<void> {
+  await pool.query(
+    `UPDATE wa_subscribers SET client_ref = $3, client_name = COALESCE($4, client_name), link_state = $5,
+       linked_at = now(), link_attempts = 0
+     WHERE number_id = $1 AND phone = $2`,
+    [n.id, phone, String(client.id), client.name || null, how]
+  );
+  // Avisos de ese cliente que estaban yendo a otro teléfono: ahora van a este WhatsApp
+  await pool.query(
+    `UPDATE wa_queue SET phone = $3, updated_at = now()
+      WHERE number_id = $1 AND client_ref = $2 AND phone <> $3 AND kind = 'notice' AND status IN ('pending', 'waiting')`,
+    [n.id, String(client.id), phone]
+  );
+}
+
+const ASK_ID = 'Hola 👋 Este número no está registrado en tu cuenta. Escríbeme tu *ID de cliente* (aparece en tu factura) para vincularlo y enviarte tus avisos por aquí.';
+
+/**
+ * Quien escribe y no está vinculado a un cliente: primero se busca su teléfono en el
+ * CRM; si no aparece, se le pide el ID de cliente (3 intentos). Devuelve true si quedó
+ * vinculado (y el mensaje se sigue procesando) o false si ya se respondió aquí.
+ */
+async function ensureLinked(s: WaSettings, n: WaNumber, ispName: string, phone: string, text: string, sub: any): Promise<boolean> {
+  const reply = (msg: string) => enqueueImmediate(n, phone, 'system', msg);
+  const alertAdmin = (msg: string) => notifyAdmin(n.tenant_id, `${msg}\n${ispName} · ${n.label} · +${phone}`).catch(() => undefined);
+  if (sub.link_state === 'failed') return false; // ya se le dijo que un asesor lo atiende
+
+  if (!sub.link_state) {
+    const r = await lookupCrm(n.tenant_id, { phone });
+    if (r !== 'none' && r !== 'multiple' && r !== 'unavailable') {
+      await linkSubscriber(n, phone, r, 'phone');
+      sub.client_ref = String(r.id);
+      sub.client_name = r.name || sub.client_name;
+      return true;
+    }
+    if (r === 'unavailable') {
+      await pool.query(`UPDATE wa_subscribers SET link_state = 'failed' WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+      await alertAdmin('❓ *Escribió alguien que no está vinculado* y no se pudo consultar el CRM (¿plugin UISP 4.1.6 instalado?). Vincúlalo en Omnisync → WhatsApp → Clientes.');
+      await reply('Hola 👋 Recibimos tu mensaje; un asesor te responderá pronto.');
+      return false;
+    }
+    await pool.query(`UPDATE wa_subscribers SET link_state = 'asked' WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+    await reply(ASK_ID);
+    return false;
+  }
+
+  // link_state = 'asked': esperamos el ID de cliente
+  const digits = String(text || '').match(/\d{1,10}/)?.[0];
+  const attempts = Number(sub.link_attempts || 0) + 1;
+  const r = digits ? await lookupCrm(n.tenant_id, { client_id: Number(digits) }) : 'none';
+  if (r !== 'none' && r !== 'multiple' && r !== 'unavailable') {
+    await linkSubscriber(n, phone, r, 'id');
+    await pool.query(`UPDATE wa_subscribers SET status = 'subscribed', responded_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+    await pool.query(`UPDATE wa_queue SET status = 'pending', not_before = now(), updated_at = now() WHERE number_id = $1 AND phone = $2 AND status = 'waiting'`, [n.id, phone]);
+    await logInteraction(n, phone, 'vinculo');
+    await alertAdmin(`🔗 *WhatsApp vinculado por ID de cliente*: cliente #${r.id} (${r.name || 'sin nombre'}).`);
+    await reply(`¡Listo! ✅ Vinculamos este WhatsApp a la cuenta de *${maskName(r.name)}* (cliente #${r.id}). Desde ahora recibirás tus avisos por aquí. Para dejar de recibirlos responde *${s.optout_word}*.`);
+    return false;
+  }
+  if (attempts >= 3 || r === 'unavailable') {
+    await pool.query(`UPDATE wa_subscribers SET link_state = 'failed', link_attempts = $3 WHERE number_id = $1 AND phone = $2`, [n.id, phone, attempts]);
+    await alertAdmin('❓ *No se pudo vincular un WhatsApp* con un cliente del CRM. Vincúlalo a mano en Omnisync → WhatsApp → Clientes (filtro "Sin vincular").');
+    await reply('No logré encontrar tu cuenta. Un asesor te escribirá pronto para ayudarte.');
+    return false;
+  }
+  await pool.query(`UPDATE wa_subscribers SET link_attempts = $3 WHERE number_id = $1 AND phone = $2`, [n.id, phone, attempts]);
+  await reply(digits
+    ? 'No encontré ese ID de cliente. Revisa el número que aparece en tu factura y escríbemelo de nuevo.'
+    : 'Para vincularte necesito tu *ID de cliente* (solo el número, aparece en tu factura).');
+  return false;
+}
+
+/** Vinculación manual desde el panel (cuando el cliente no supo su ID o hubo varios con su teléfono). */
+export async function manualLink(tenantId: string, numberId: number, phone: string, clientId: number): Promise<{ name: string | null }> {
+  const n = await getNumber(tenantId, numberId);
+  const p = normalizePhone(phone);
+  if (!p) throw new Error('Teléfono inválido');
+  if (!Number.isInteger(clientId) || clientId <= 0) throw new Error('ID de cliente inválido');
+  const sub = await getSubscriber(n, p);
+  const r = await lookupCrm(tenantId, { client_id: clientId });
+  if (r === 'none') throw new Error(`El cliente #${clientId} no existe en el CRM (o es un prospecto)`);
+  const client: LookupClient = typeof r === 'object' ? r : { id: clientId, name: '' };
+  await linkSubscriber(n, p, client, 'manual');
+  // Si ya escribió, queda suscrito; si no, recibirá la presentación con su primer aviso
+  if (sub.last_inbound_at && !['opted_out', 'declined'].includes(sub.status)) {
+    await pool.query(`UPDATE wa_subscribers SET status = 'subscribed', responded_at = COALESCE(responded_at, now()) WHERE number_id = $1 AND phone = $2`, [n.id, p]);
+  }
+  return { name: client.name || null };
 }
 
 // ───────────────────────── Cola ─────────────────────────
@@ -774,6 +953,8 @@ export interface EnqueueInput {
   dedupe_key?: unknown;
   source?: string;
   number_id?: number | null;
+  /** Dirección de consulta del plugin UISP (?hook=lookup&s=…) para verificar a quien escribe */
+  lookup_url?: unknown;
 }
 
 function cleanContext(c: any): InvoiceContext | null {
@@ -790,7 +971,9 @@ function cleanContext(c: any): InvoiceContext | null {
 /** Aviso desde UISP (o manual). Elige el número por la organización; el envío lo decide el despachador. */
 export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ id: number | null; status: string; duplicate: boolean; number_id: number }> {
   const s = await getSettings(tenantId);
-  const phone = normalizePhone(input.phone);
+  // Antes de validar: la prueba de conexión del plugin (sin teléfono) también deja registrada la consulta
+  if (input.lookup_url) await saveLookupSource(tenantId, String(input.uisp ?? '').slice(0, 120), input.lookup_url).catch(() => undefined);
+  let phone = normalizePhone(input.phone);
   if (!phone) throw new Error('Teléfono inválido (usa el número con indicativo, p. ej. 573001234567)');
   const event = /^[a-z_]{2,40}$/.test(String(input.event ?? '')) ? String(input.event) : 'manual';
   const dedupe = input.dedupe_key ? String(input.dedupe_key).slice(0, 200) : null;
@@ -806,12 +989,26 @@ export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ 
     ({ number: n, orgRowId } = await numberForOrg(tenantId, org));
   }
 
-  const sub = await getSubscriber(n, phone);
   const clientRef = input.client_ref == null ? null : String(input.client_ref).slice(0, 100);
+  // Si el cliente vinculó otro WhatsApp (por su ID o a mano), sus avisos van a ese número
+  if (clientRef) {
+    const { rows: linked } = await pool.query(
+      `SELECT phone FROM wa_subscribers
+        WHERE number_id = $1 AND client_ref = $2 AND link_state IN ('phone', 'id', 'manual')
+          AND status NOT IN ('opted_out', 'declined') AND NOT not_on_whatsapp
+        ORDER BY linked_at DESC NULLS LAST LIMIT 1`,
+      [n.id, clientRef]
+    );
+    if (linked[0]?.phone) phone = linked[0].phone;
+  }
+  const sub = await getSubscriber(n, phone);
   const clientName = input.client_name == null ? null : String(input.client_name).slice(0, 120);
   const ctx = cleanContext(input.context);
   await pool.query(
     `UPDATE wa_subscribers SET client_ref = COALESCE($3, client_ref), client_name = COALESCE($4, client_name),
+       link_state = CASE WHEN $3::text IS NOT NULL AND link_state IS DISTINCT FROM 'phone'
+                          AND link_state IS DISTINCT FROM 'id' AND link_state IS DISTINCT FROM 'manual'
+                         THEN 'crm' ELSE link_state END,
        context = CASE WHEN $5::jsonb IS NULL THEN context ELSE COALESCE(context, '{}'::jsonb) || $5::jsonb END,
        context_at = CASE WHEN $5::jsonb IS NULL THEN context_at ELSE now() END
      WHERE number_id = $1 AND phone = $2`,
@@ -1135,17 +1332,25 @@ async function logInteraction(n: WaNumber, phone: string, action: string): Promi
 
 /** Qué hacer con un mensaje de un cliente: SÍ / NO / BAJA / opción del menú / nada. */
 export async function handleInbound(s: WaSettings, n: WaNumber, ispName: string, phone: string, text: string): Promise<string> {
+  // El administrador recibe avisos por este número: lo que escriba no se trata como de un cliente
+  if (s.admin_phone && normalizePhone(s.admin_phone) === phone) return 'administrador';
   const sub = await getSubscriber(n, phone);
-  const ref = text.match(/cliente\s*(?:n[°º.o]?\s*)?#?\s*(\d{1,10})/i)?.[1] || null;
+  // El cliente solo se vincula verificando contra el CRM (ensureLinked), nunca por lo que escriba
   await pool.query(
-    `UPDATE wa_subscribers SET last_inbound_at = now(), not_on_whatsapp = false, client_ref = COALESCE($3, client_ref)
-      WHERE number_id = $1 AND phone = $2`, [n.id, phone, ref]
+    `UPDATE wa_subscribers SET last_inbound_at = now(), not_on_whatsapp = false WHERE number_id = $1 AND phone = $2`, [n.id, phone]
   );
   const word = firstWord(text);
-  const name = firstName(sub.client_name);
   const reply = (msg: string) => enqueueImmediate(n, phone, 'system', msg);
+  const isOptOut = Boolean(word) && word === firstWord(s.optout_word);
 
-  if (word && word === firstWord(s.optout_word)) {
+  // Solo se atiende a clientes del CRM: si este WhatsApp no está vinculado, se verifica primero
+  // (su teléfono en el CRM o su ID de cliente). La BAJA se respeta siempre.
+  if (s.require_crm_link && !sub.client_ref && !isOptOut) {
+    if (!(await ensureLinked(s, n, ispName, phone, text, sub))) return 'vinculación';
+  }
+  const name = firstName(sub.client_name);
+
+  if (isOptOut) {
     if (sub.status === 'opted_out') return 'ya estaba de baja';
     await pool.query(`UPDATE wa_subscribers SET status = 'opted_out', responded_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
     await pool.query(`UPDATE wa_queue SET status = 'skipped', last_error = 'El cliente pidió no recibir más', updated_at = now()
@@ -1181,8 +1386,8 @@ export async function handleInbound(s: WaSettings, n: WaNumber, ispName: string,
       await logInteraction(n, phone, `menu:${r.option.key}`);
       await enqueueImmediate(n, phone, 'reply', r.message, r.option.media === 'qr' && n.qr_image ? 'qr' : null);
       if (r.option.support) {
-        await notifyTelegram(n.tenant_id,
-          `🙋 <b>Cliente pide un asesor por WhatsApp</b> — ${ispName} · ${n.label}\n` +
+        await notifyAdmin(n.tenant_id,
+          `🙋 *Cliente pide un asesor por WhatsApp* — ${ispName} · ${n.label}\n` +
           `+${phone}${sub.client_name ? ' · ' + sub.client_name : ''}${sub.client_ref ? ' · cliente #' + sub.client_ref : ''}`).catch(() => undefined);
       }
       return `menú ${r.option.key}`;
@@ -1210,17 +1415,19 @@ export async function handleEvolutionEvent(instance: string, secret: string, bod
 
   if (event === 'messages.upsert') {
     const s = await getSettings(n.tenant_id);
-    const items = Array.isArray(data) ? data : [data];
-    let any = false;
-    for (const it of items) {
-      if (it?.key?.fromMe) continue;
-      if (String(it?.key?.remoteJid || '').endsWith('@g.us')) continue; // grupos no
-      const phone = inboundPhone(it?.key);
-      if (!phone) continue;
-      await handleInbound(s, n, n.isp_name, phone, messageText(it?.message));
-      any = true;
-    }
-    if (any) flushImmediate(n).catch((e) => console.warn('[WA] respuesta inmediata:', e.message));
+    const items = (Array.isArray(data) ? data : [data])
+      .filter((it: any) => !it?.key?.fromMe && !String(it?.key?.remoteJid || '').endsWith('@g.us')) // grupos no
+      .map((it: any) => ({ phone: inboundPhone(it?.key), text: messageText(it?.message) }))
+      .filter((it: any) => it.phone);
+    if (!items.length) return true;
+    // Se responde a Evolution de una vez: verificar contra el CRM puede tardar y un webhook
+    // lento haría que Evolution lo reintente (mensajes procesados dos veces).
+    (async () => {
+      for (const it of items) {
+        await handleInbound(s, n, n.isp_name, it.phone, it.text).catch((e) => console.warn('[WA] mensaje entrante:', e.message));
+      }
+      await flushImmediate(n);
+    })().catch((e) => console.warn('[WA] respuesta inmediata:', e.message));
     return true;
   }
   return true;

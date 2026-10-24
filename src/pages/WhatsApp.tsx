@@ -323,7 +323,7 @@ function NumberEditor({ open, onClose, tenantId, number, isNew }: { open: boolea
                   )}
                   <div className="flex flex-wrap gap-4 text-sm">
                     <label className="flex items-center gap-2"><Switch checked={o.media === "qr"} onCheckedChange={(v) => setOpt(i, "media", v ? "qr" : null)} /> Adjuntar QR de pago</label>
-                    <label className="flex items-center gap-2"><Switch checked={!!o.support} onCheckedChange={(v) => setOpt(i, "support", v)} /> Avisarme por Telegram (soporte)</label>
+                    <label className="flex items-center gap-2"><Switch checked={!!o.support} onCheckedChange={(v) => setOpt(i, "support", v)} /> Avisarme por WhatsApp (soporte)</label>
                   </div>
                 </div>
               ))}
@@ -544,16 +544,33 @@ function OrgsTab({ tenantId, numbers, isAdmin }: { tenantId: string | null; numb
 }
 
 // ───────────────────────── Suscriptores ─────────────────────────
-function SubscribersTab({ tenantId, numbers }: { tenantId: string | null; numbers: any[] }) {
+const LINK: Record<string, string> = {
+  crm: "Teléfono del CRM", phone: "Su teléfono está en el CRM", id: "Dio su ID de cliente", manual: "Vinculado a mano",
+  asked: "Se le pidió el ID", failed: "No se pudo vincular",
+};
+
+function SubscribersTab({ tenantId, numbers, canEdit }: { tenantId: string | null; numbers: any[]; canEdit: boolean }) {
+  const qc = useQueryClient();
   const [numberId, setNumberId] = useState<number | null>(null);
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [linking, setLinking] = useState<any | null>(null);
+  const [clientId, setClientId] = useState("");
   const limit = 50;
   const { data, isLoading } = useQuery({
     queryKey: ["wa-subs", tenantId, numberId, status, search, page],
     queryFn: () => whatsappApi.subscribers({ number_id: numberId || undefined, status: status === "all" ? undefined : status, q: search, limit, offset: page * limit }, tenantId),
+  });
+  const link = useMutation({
+    mutationFn: () => whatsappApi.linkSubscriber(linking.number_id, linking.phone, Number(clientId), tenantId),
+    onSuccess: (r: any) => {
+      toast.success(`Vinculado al cliente #${clientId}${r?.name ? ` (${r.name})` : ""}`);
+      setLinking(null); setClientId("");
+      qc.invalidateQueries({ queryKey: ["wa-subs"] });
+    },
+    onError: (e: any) => toast.error(e.message),
   });
   const items = data?.items || [];
   const total = data?.total || 0;
@@ -567,11 +584,12 @@ function SubscribersTab({ tenantId, numbers }: { tenantId: string | null; number
             <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="unlinked">Sin vincular al CRM</SelectItem>
               {Object.entries(SUBSTATUS).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
             </SelectContent>
           </Select>
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); setSearch(q); setPage(0); }}>
-            <Input className="w-56" placeholder="Teléfono, nombre o cliente" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input className="w-56" placeholder="Teléfono, nombre o ID de cliente" value={q} onChange={(e) => setQ(e.target.value)} />
             <Button type="submit" variant="outline" size="icon"><RefreshCw className="h-4 w-4" /></Button>
           </form>
         </div>
@@ -586,7 +604,18 @@ function SubscribersTab({ tenantId, numbers }: { tenantId: string | null; number
                   const k = SUBSTATUS[s.status] || SUBSTATUS.new;
                   return (
                     <TableRow key={`${s.number_id}-${s.phone}`}>
-                      <TableCell className="text-sm">{s.client_name || "—"}{s.client_ref && <p className="text-[11px] text-muted-foreground">Cliente #{s.client_ref}</p>}</TableCell>
+                      <TableCell className="text-sm">
+                        {s.client_name || "—"}
+                        {s.client_ref ? (
+                          <p className="text-[11px] text-muted-foreground">Cliente #{s.client_ref}{s.link_state && LINK[s.link_state] ? ` · ${LINK[s.link_state]}` : ""}</p>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <Badge variant="outline" className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">Sin vincular</Badge>
+                            {s.link_state && LINK[s.link_state] && <span className="text-[11px] text-muted-foreground">{LINK[s.link_state]}</span>}
+                            {canEdit && <Button size="sm" variant="outline" className="h-7" onClick={() => { setLinking(s); setClientId(""); }}>Vincular</Button>}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm tabular-nums">+{s.phone}{s.not_on_whatsapp && <p className="text-[11px] text-destructive">Sin WhatsApp</p>}</TableCell>
                       <TableCell><Badge variant="outline" className={k.className}>{k.label}</Badge></TableCell>
                       <TableCell className="text-sm">{s.number_label}</TableCell>
@@ -614,6 +643,18 @@ function SubscribersTab({ tenantId, numbers }: { tenantId: string | null; number
           </div>
         )}
       </CardContent>
+      <Dialog open={!!linking} onOpenChange={(o) => !o && setLinking(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vincular +{linking?.phone}</DialogTitle>
+            <DialogDescription>Escribe el ID de cliente de UISP. Se comprueba en el CRM y sus avisos empezarán a llegar a este WhatsApp.</DialogDescription>
+          </DialogHeader>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (clientId) link.mutate(); }}>
+            <Input autoFocus inputMode="numeric" placeholder="ID de cliente" value={clientId} onChange={(e) => setClientId(e.target.value.replace(/\D/g, ""))} />
+            <Button type="submit" disabled={!clientId || link.isPending}>{link.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Vincular</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -760,6 +801,8 @@ function SettingsTab({ tenantId, settings, isAdmin }: { tenantId: string | null;
       optin_words: settings.optin_words,
       decline_words: settings.decline_words,
       optin_any_message: settings.optin_any_message,
+      require_crm_link: settings.require_crm_link !== false,
+      admin_phone: settings.admin_phone || "",
       invite_wait_days: settings.invite_wait_days,
       footer: settings.footer,
     });
@@ -798,7 +841,12 @@ function SettingsTab({ tenantId, settings, isAdmin }: { tenantId: string | null;
               })}
             </div>
           </div>
-          <div className="flex items-center justify-between"><Label>Avisarme por Telegram si un número se cae</Label><Switch checked={f.alert_disconnect} disabled={ro} onCheckedChange={(v) => set("alert_disconnect", v)} /></div>
+          <div className="space-y-1">
+            <Label>WhatsApp del administrador</Label>
+            <Input disabled={ro} inputMode="numeric" placeholder="3001234567" value={f.admin_phone} onChange={(e) => set("admin_phone", e.target.value)} />
+            <p className="text-xs text-muted-foreground">Aquí te llegan los avisos: cliente que pide un asesor, WhatsApp vinculado o que no se pudo vincular, y número caído. Usa tu celular personal (no el del chip enlazado); lo que escribas desde él no se trata como cliente.</p>
+          </div>
+          <div className="flex items-center justify-between"><Label>Avisarme si un número se cae (llega desde otro número conectado)</Label><Switch checked={f.alert_disconnect} disabled={ro} onCheckedChange={(v) => set("alert_disconnect", v)} /></div>
         </CardContent>
       </Card>
 
@@ -814,6 +862,10 @@ function SettingsTab({ tenantId, settings, isAdmin }: { tenantId: string | null;
           <div className="flex items-start justify-between gap-3">
             <div><Label>Cualquier mensaje cuenta como aceptación</Label><p className="text-xs text-muted-foreground">Apagado: solo las palabras de aceptar. Así un mensaje de soporte no suscribe a nadie.</p></div>
             <Switch checked={f.optin_any_message} disabled={ro} onCheckedChange={(v) => set("optin_any_message", v)} />
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div><Label>Responder solo a clientes del CRM</Label><p className="text-xs text-muted-foreground">Si escribe un número que no es de un cliente, se busca en el CRM; si no aparece, se le pide su ID de cliente. Necesita el plugin UISP 4.1.6.</p></div>
+            <Switch checked={f.require_crm_link} disabled={ro} onCheckedChange={(v) => set("require_crm_link", v)} />
           </div>
           <div className="space-y-1"><Label>Pie de cada aviso (debe llevar {"{baja}"})</Label><Input disabled={ro} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></div>
         </CardContent>
@@ -943,7 +995,7 @@ export default function WhatsApp() {
             <TabsContent value="panel" className="mt-4"><PanelTab tenantId={tenantId} numbers={numbers} /></TabsContent>
             <TabsContent value="numeros" className="mt-4"><NumbersTab tenantId={tenantId} numbers={numbers} maxNumbers={settings.max_numbers || 1} isAdmin={admin} canEdit={edit} /></TabsContent>
             <TabsContent value="orgs" className="mt-4"><OrgsTab tenantId={tenantId} numbers={numbers} isAdmin={admin} /></TabsContent>
-            <TabsContent value="clientes" className="mt-4"><SubscribersTab tenantId={tenantId} numbers={numbers} /></TabsContent>
+            <TabsContent value="clientes" className="mt-4"><SubscribersTab tenantId={tenantId} numbers={numbers} canEdit={edit} /></TabsContent>
             <TabsContent value="cola" className="mt-4"><QueueTab tenantId={tenantId} numbers={numbers} isAdmin={admin} canEdit={edit} eventLabels={eventLabels} paused={settings.paused} /></TabsContent>
             <TabsContent value="config" className="mt-4"><SettingsTab tenantId={tenantId} settings={settings} isAdmin={admin} /></TabsContent>
           </Tabs>

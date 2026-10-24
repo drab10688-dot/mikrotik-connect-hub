@@ -5,7 +5,7 @@ import {
   getSettings, publicSettings, saveSettings, regenerateApiKey, tenantByApiKey,
   listNumbers, getNumber, publicNumber, createNumber, updateNumber, deleteNumber, setDefaultNumber, setNumberQr,
   connectNumber, logoutNumber, refreshState, listOrgs, assignOrg, listSubscribers,
-  enqueue, enqueueTest, getStats, getOverview, handleEvolutionEvent, MAX_ATTEMPTS,
+  enqueue, enqueueTest, getStats, getOverview, handleEvolutionEvent, manualLink, MAX_ATTEMPTS,
 } from '../lib/whatsapp';
 
 /**
@@ -107,7 +107,11 @@ whatsappRouter.put('/orgs/:id', ADMIN, route(async (t, req) => {
 }));
 
 // ── Suscriptores ──
-const SUB_STATUSES = new Set(['new', 'invited', 'subscribed', 'declined', 'no_reply', 'opted_out']);
+const SUB_STATUSES = new Set(['new', 'invited', 'subscribed', 'declined', 'no_reply', 'opted_out', 'unlinked']);
+
+/** Vincular a mano un WhatsApp con un ID de cliente del CRM (se verifica con el plugin si está). */
+whatsappRouter.post('/subscribers/link', route(async (t, req) =>
+  manualLink(t, Number(req.body?.number_id) || 0, String(req.body?.phone || ''), Number(req.body?.client_id))));
 whatsappRouter.get('/subscribers', route(async (t, req) => listSubscribers(t, {
   number_id: Number(req.query.number_id) || null,
   status: SUB_STATUSES.has(String(req.query.status)) ? String(req.query.status) : null,
@@ -196,7 +200,7 @@ whatsappPublicRouter.post('/enqueue', async (req: Request, res: Response) => {
       phone: b.phone, message: b.message, event: b.event,
       client_ref: b.client_id ?? b.client_ref, client_name: b.client_name,
       organization: org, uisp: b.uisp, context: b.context,
-      dedupe_key: b.dedupe_key, source: String(b.source || 'uisp').slice(0, 30),
+      dedupe_key: b.dedupe_key, source: String(b.source || 'uisp').slice(0, 30), lookup_url: b.lookup_url,
     });
     res.status(r.duplicate ? 200 : 201).json({ data: r });
   } catch (e: any) {
