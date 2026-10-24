@@ -53,7 +53,7 @@ const SUBSTATUS: Record<string, { label: string; className: string }> = {
   no_reply: { label: "No respondió", className: "bg-muted text-muted-foreground" },
   opted_out: { label: "De baja", className: "bg-destructive/15 text-destructive border-destructive/30" },
 };
-const KIND: Record<string, string> = { notice: "Aviso", invite: "Presentación", reply: "Respuesta", system: "Confirmación", test: "Prueba" };
+const KIND: Record<string, string> = { notice: "Aviso", invite: "Presentación", welcome: "Bienvenida", reply: "Respuesta", system: "Confirmación", test: "Prueba" };
 const ACTIONS: Record<string, string> = { si: "Aceptó (SÍ)", no: "Rechazó (NO)", baja: "Se dio de baja" };
 const DAYS = [{ v: 1, l: "Lun" }, { v: 2, l: "Mar" }, { v: 3, l: "Mié" }, { v: 4, l: "Jue" }, { v: 5, l: "Vie" }, { v: 6, l: "Sáb" }, { v: 0, l: "Dom" }];
 const VARS = "{nombre} {organizacion} {mes} {numero_factura} {fecha_vencimiento} {saldo} {valor} {medios_pago} {link_pago} {baja}";
@@ -248,6 +248,7 @@ function NumberEditor({ open, onClose, tenantId, number, isNew }: { open: boolea
       signature: n.signature || "",
       invite_template: n.invite_template || "",
       invoice_template: n.invoice_template || "",
+      welcome_template: n.welcome_template || "",
       payment_info: n.payment_info || "",
       payment_link: n.payment_link || "",
       menu: (n.menu || []).map((o: any) => ({ ...o })),
@@ -287,6 +288,10 @@ function NumberEditor({ open, onClose, tenantId, number, isNew }: { open: boolea
               <div className="space-y-1"><Label className="text-xs">Tope por día</Label><Input type="number" min={1} value={f.daily_cap} onChange={(e) => set("daily_cap", e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Presentaciones por día</Label><Input type="number" min={0} value={f.invite_daily_cap} onChange={(e) => set("invite_daily_cap", e.target.value)} /></div>
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label>Bienvenida (cuando el plugin registra al cliente en el CRM; el técnico le pide responder SÍ)</Label>
+            <Textarea rows={4} value={f.welcome_template} onChange={(e) => set("welcome_template", e.target.value)} />
           </div>
           <div className="space-y-1">
             <Label>Presentación (al primer aviso; el cliente responde SÍ o NO)</Label>

@@ -39,6 +39,7 @@ export const EVENT_LABELS: Record<string, string> = {
   service_suspended: 'Servicio suspendido',
   payment_reminder: 'Recordatorio de pago',
   invoice_created: 'Factura nueva',
+  welcome: 'Bienvenida (cliente nuevo)',
   manual: 'Manual',
 };
 export const DEFAULT_PRIORITIES: Record<string, number> = {
@@ -48,6 +49,7 @@ export const DEFAULT_PRIORITIES: Record<string, number> = {
   manual: 3,
   payment_reminder: 4,
   invoice_created: 5,
+  welcome: 1,
 };
 /** Mensajes que salen de inmediato (no esperan la pausa ni el horario). */
 const IMMEDIATE_KINDS = ['reply', 'system', 'test'];
@@ -55,6 +57,11 @@ const IMMEDIATE_KINDS = ['reply', 'system', 'test'];
 export const DEFAULT_INVITE_TEMPLATE =
   'Hola {nombre}, te escribe *{organizacion}*. Por este medio te enviaremos tus facturas, ' +
   'la confirmación de tus pagos y avisos de tu servicio.\n\nResponde *SÍ* para recibirlos o *NO* si prefieres no recibirlos.';
+/** Al registrar al cliente en el CRM (el técnico está con él): bienvenida que pide el SÍ. */
+export const DEFAULT_WELCOME_TEMPLATE =
+  '¡Hola {nombre}! Bienvenido a *{organizacion}* 🎉 Tu servicio quedó registrado.\n\n' +
+  'Por este medio te enviaremos tus facturas, la confirmación de tus pagos y avisos de tu servicio. ' +
+  'Responde *SÍ* para recibirlos o *NO* si prefieres no recibirlos.';
 export const DEFAULT_INVOICE_TEMPLATE =
   '📄 Hola {nombre}, tu factura de {mes} está lista.\n\nResponde con un número:\n{menu}';
 
@@ -110,6 +117,7 @@ export interface WaNumber {
   signature: string | null;
   invite_template: string | null;
   invoice_template: string | null;
+  welcome_template: string | null;
   menu: MenuOption[] | null;
   payment_link: string | null;
   payment_info: string | null;
@@ -281,7 +289,7 @@ export function renderTemplate(tpl: string, vars: Record<string, string>): strin
       if (!vars[k] && k !== 'nombre') drop = true;
       return vars[k];
     });
-    return drop ? null : out.replace(/\s+,/g, ',').replace(/ {2,}/g, ' ');
+    return drop ? null : out.replace(/\s+([,!])/g, '$1').replace(/ {2,}/g, ' ');
   }).filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -466,6 +474,7 @@ export function publicNumber(n: WaNumber) {
     has_qr: Boolean(qr_image),
     invite_template: n.invite_template || DEFAULT_INVITE_TEMPLATE,
     invoice_template: n.invoice_template || DEFAULT_INVOICE_TEMPLATE,
+    welcome_template: n.welcome_template || DEFAULT_WELCOME_TEMPLATE,
     menu: menuOf(n),
     wa_link: n.connected_number ? `https://wa.me/${n.connected_number}?text=${encodeURIComponent('Hola, quiero recibir mis avisos')}` : null,
   };
@@ -482,6 +491,7 @@ export interface NumberInput {
   signature?: string | null;
   invite_template?: string | null;
   invoice_template?: string | null;
+  welcome_template?: string | null;
   menu?: MenuOption[] | null;
   payment_link?: string | null;
   payment_info?: string | null;
@@ -544,6 +554,7 @@ export async function updateNumber(tenantId: string, id: number, input: NumberIn
        label = COALESCE($3::text, label), display_name = $4::text, paused = COALESCE($5::boolean, paused),
        interval_sec = $6::int, jitter_sec = $7::int, daily_cap = $8::int, invite_daily_cap = $9::int,
        signature = $10::text, invite_template = $11::text, invoice_template = $12::text, menu = $13::jsonb,
+       welcome_template = $16::text,
        payment_link = $14::text, payment_info = $15::text,
        next_send_at = CASE WHEN next_send_at > now() + make_interval(secs => $6::int + $7::int)
                            THEN now() + make_interval(secs => $6::int) ELSE next_send_at END,
@@ -552,7 +563,7 @@ export async function updateNumber(tenantId: string, id: number, input: NumberIn
     [id, tenantId, input.label === undefined ? null : textOrNull(input.label, 60), pick('display_name', 80),
      typeof input.paused === 'boolean' ? input.paused : null, interval, jitter, cap, invCap,
      pick('signature', 300), pick('invite_template', 1500), pick('invoice_template', 1500),
-     menu ? JSON.stringify(menu) : null, link, pick('payment_info', 800)]
+     menu ? JSON.stringify(menu) : null, link, pick('payment_info', 800), pick('welcome_template', 1500)]
   );
   return rows[0];
 }
@@ -809,9 +820,14 @@ export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ 
 
   // Factura nueva: se usa la plantilla del número (con el menú); el resto, el texto del plugin
   let message = String(input.message ?? '').trim();
+  const fresh = { ...sub, client_name: clientName || sub.client_name, context: { ...(sub.context || {}), ...(ctx || {}) } };
   if (event === 'invoice_created') {
-    const fresh = { ...sub, client_name: clientName || sub.client_name, context: { ...(sub.context || {}), ...(ctx || {}) } };
     message = renderTemplate(n.invoice_template || DEFAULT_INVOICE_TEMPLATE, templateVars(n, s, fresh, menuText(n)));
+  }
+  // Cliente nuevo (lo registró el plugin en el CRM): la bienvenida hace de presentación
+  const kind = event === 'welcome' ? 'welcome' : 'notice';
+  if (kind === 'welcome') {
+    message = renderTemplate(n.welcome_template || DEFAULT_WELCOME_TEMPLATE, templateVars(n, s, fresh));
   }
   if (!message) throw new Error('El mensaje está vacío');
   if (message.length > 4000) throw new Error('El mensaje supera 4000 caracteres');
@@ -823,11 +839,11 @@ export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ 
 
   const { rows } = await pool.query(
     `INSERT INTO wa_queue (tenant_id, number_id, kind, phone, message, event_type, priority, source, client_ref, dedupe_key)
-     VALUES ($1, $2, 'notice', $3, $4, $5, $6, $7, $8, $9)
+     VALUES ($1, $2, $10, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (tenant_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
      RETURNING id, status`,
     [tenantId, n.id, phone, message, event, priorityFor(s, event),
-     orgRowId ? `org:${orgRowId}` : (input.source || 'api'), clientRef, dedupe]
+     orgRowId ? `org:${orgRowId}` : (input.source || 'api'), clientRef, dedupe, kind]
   );
   if (!rows[0]) return { id: null, status: 'duplicate', duplicate: true, number_id: n.id };
   return { id: Number(rows[0].id), status: rows[0].status, duplicate: false, number_id: n.id };
@@ -877,7 +893,7 @@ function composeText(s: WaSettings, n: WaNumber, m: any): string {
 /** Envía una fila de la cola. Devuelve true si salió. */
 async function sendRow(s: WaSettings, n: WaNumber, m: any): Promise<{ ok: boolean; detail: string }> {
   const text = composeText(s, n, m);
-  const paced = m.kind === 'notice' || m.kind === 'invite';
+  const paced = m.kind === 'notice' || m.kind === 'invite' || m.kind === 'welcome';
   try {
     const delay = 1200 + Math.floor(Math.random() * 1800); // "escribiendo…" un momento: más natural
     if (m.media === 'qr' && n.qr_image) {
@@ -976,7 +992,28 @@ export async function dispatchNumber(s: WaSettings, n: WaNumber, ispName: string
   const immediate = await sendImmediate(s, n);
   if (!inSendWindow(s, now)) return immediate ? `respuestas ${immediate}` : 'fuera de horario';
   if (n.next_send_at && new Date(n.next_send_at) > now) return immediate ? `respuestas ${immediate}` : 'esperando pausa';
-  if ((await countToday(n, ['notice', 'invite'])) >= n.daily_cap) return 'tope diario';
+  if ((await countToday(n, ['notice', 'invite', 'welcome'])) >= n.daily_cap) return 'tope diario';
+
+  // Bienvenidas de clientes recién registrados: primero, y sin contar en el tope de presentaciones
+  for (let i = 0; i < MAX_SKIPS_PER_RUN; i++) {
+    const m = await claim(
+      `SELECT id FROM wa_queue WHERE number_id = $1 AND status = 'pending' AND kind = 'welcome' AND not_before <= now()
+        ORDER BY created_at`, [n.id]
+    );
+    if (!m) break;
+    const sub = await getSubscriber(n, m.phone);
+    if (sub.not_on_whatsapp) { await markSkipped(m.id, 'El número no tiene WhatsApp'); continue; }
+    if (sub.status === 'subscribed') { await markSkipped(m.id, 'El cliente ya estaba suscrito'); continue; }
+    if (['declined', 'opted_out'].includes(sub.status)) { await markSkipped(m.id, 'El cliente ya había dicho que no'); continue; }
+    const r = await sendRow(s, n, m);
+    if (r.ok) {
+      await pool.query(
+        `UPDATE wa_subscribers SET status = 'invited', invited_at = now() WHERE number_id = $1 AND phone = $2 AND status IN ('new', 'no_reply')`,
+        [n.id, m.phone]
+      );
+    }
+    return r.ok ? `bienvenida a +${m.phone}` : r.detail;
+  }
 
   for (let i = 0; i < MAX_SKIPS_PER_RUN; i++) {
     const m = await claim(
@@ -1336,12 +1373,12 @@ async function numberStats(s: WaSettings, n: WaNumber, days: number) {
     q(`SELECT
          count(*) FILTER (WHERE status = 'pending' AND kind = 'notice')::int AS pending,
          count(*) FILTER (WHERE status = 'waiting')::int AS waiting,
-         count(*) FILTER (WHERE status = 'sent' AND kind IN ('notice','invite') AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS sent_today,
+         count(*) FILTER (WHERE status = 'sent' AND kind IN ('notice','invite','welcome') AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS sent_today,
          count(*) FILTER (WHERE status = 'sent' AND sent_at > now() - interval '7 days')::int AS sent_7d,
          count(*) FILTER (WHERE status = 'sent' AND sent_at > now() - interval '30 days')::int AS sent_30d,
          count(*) FILTER (WHERE status = 'sent' AND kind = 'notice' AND sent_at > now() - interval '30 days')::int AS notices_sent_30d,
-         count(*) FILTER (WHERE status = 'sent' AND kind = 'invite' AND sent_at > now() - interval '30 days')::int AS invites_30d,
-         count(*) FILTER (WHERE status = 'sent' AND kind = 'invite' AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS invites_today,
+         count(*) FILTER (WHERE status = 'sent' AND kind IN ('invite','welcome') AND sent_at > now() - interval '30 days')::int AS invites_30d,
+         count(*) FILTER (WHERE status = 'sent' AND kind IN ('invite','welcome') AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS invites_today,
          count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - interval '7 days')::int AS failed_7d,
          count(*) FILTER (WHERE status = 'skipped' AND updated_at > now() - interval '30 days')::int AS skipped_30d,
          count(*) FILTER (WHERE status = 'skipped' AND last_error LIKE '%no tiene WhatsApp%' AND updated_at > now() - interval '30 days')::int AS not_on_wa_30d,
@@ -1350,7 +1387,7 @@ async function numberStats(s: WaSettings, n: WaNumber, days: number) {
        FROM wa_queue WHERE number_id = $1`),
     q(`SELECT to_char(d, 'YYYY-MM-DD') AS day,
               count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind = 'notice')::int AS sent,
-              count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind = 'invite')::int AS invites,
+              count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind IN ('invite','welcome'))::int AS invites,
               count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind IN ('reply','system'))::int AS replies,
               count(w.*) FILTER (WHERE w.status = 'failed')::int AS failed,
               count(w.*) FILTER (WHERE w.status = 'skipped')::int AS skipped
@@ -1360,7 +1397,7 @@ async function numberStats(s: WaSettings, n: WaNumber, days: number) {
               AND w.status IN ('sent','failed','skipped')
         GROUP BY d ORDER BY d`, [days]),
     q(`SELECT extract(hour FROM sent_at AT TIME ZONE $2)::int AS hour, count(*)::int AS sent
-         FROM wa_queue WHERE number_id = $1 AND status = 'sent' AND kind IN ('notice','invite') AND sent_at > now() - interval '7 days'
+         FROM wa_queue WHERE number_id = $1 AND status = 'sent' AND kind IN ('notice','invite','welcome') AND sent_at > now() - interval '7 days'
         GROUP BY 1 ORDER BY 1`),
     q(`SELECT event_type, count(*) FILTER (WHERE status = 'sent')::int AS sent,
               count(*) FILTER (WHERE status IN ('pending','waiting'))::int AS pending
