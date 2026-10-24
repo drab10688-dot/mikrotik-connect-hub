@@ -6,15 +6,19 @@ import { notifyTelegram } from './net-monitor';
 /**
  * WhatsApp por ISP con Evolution API (sesión por QR, sin Meta).
  *
- * - Cada ISP tiene su sesión "wa-<slug>" y su cola (wa_queue).
- * - El despachador corre cada minuto y envía UN mensaje por ISP si ya pasó la
- *   pausa configurada (por defecto 2 min ± 30 s), dentro del horario y días
- *   permitidos y sin pasar el tope diario. Primero la prioridad más baja
- *   (pagos/reactivaciones = 1), luego los más antiguos.
- * - "Solo a quien escribió primero" (opt-in) y la palabra de baja reducen el
- *   riesgo de bloqueo: WhatsApp castiga los envíos a quien no te tiene.
+ * - Un ISP puede tener varios números (uno por organización de UISP); cada
+ *   número es una sesión "wa-<slug>[-n]" con su ritmo, firma, menú y QR de pago.
+ * - Permiso primero: al primer aviso de un cliente se le manda la PRESENTACIÓN
+ *   (responde SÍ o NO). El aviso espera ("waiting") hasta que acepte; si dice
+ *   NO o no responde en N días, no se le vuelve a escribir. Los suscritos
+ *   siempre ven cómo darse de BAJA. Pocas presentaciones al día por número.
+ * - El despachador corre cada minuto: por número, primero respuestas y
+ *   confirmaciones (inmediatas), luego un aviso o una presentación si ya pasó
+ *   la pausa (2 min ± 30 s por defecto), en horario y sin pasar los topes.
+ * - Menú del aviso de factura (1 vencimiento, 2 saldo, 3 medios de pago con
+ *   la imagen del QR, 4 soporte) con los datos que manda el plugin de UISP.
  * - Evolution solo está en la red interna; avisa a la API por
- *   /api/public/whatsapp/evolution/:instancia?s=<secreto>.
+ *   /api/public/whatsapp/evolution/:instancia?s=<secreto del número>.
  */
 
 const EVO_URL = (process.env.EVOLUTION_URL || 'http://evolution:8080').replace(/\/$/, '');
@@ -25,6 +29,8 @@ const TZ = process.env.TZ || 'America/Bogota';
 export const MAX_ATTEMPTS = 3;
 const MAX_PENDING_PER_TENANT = 20000;
 const MAX_SKIPS_PER_RUN = 25;
+const MAX_IMMEDIATE_PER_RUN = 5;
+const MAX_QR_BYTES = 1_500_000;
 
 /** Eventos conocidos (los del plugin UISP) con su prioridad por defecto. */
 export const EVENT_LABELS: Record<string, string> = {
@@ -34,12 +40,8 @@ export const EVENT_LABELS: Record<string, string> = {
   payment_reminder: 'Recordatorio de pago',
   invoice_created: 'Factura nueva',
   manual: 'Manual',
-  test: 'Prueba',
-  system: 'Sistema',
 };
 export const DEFAULT_PRIORITIES: Record<string, number> = {
-  test: 0,
-  system: 0,
   payment_confirmed: 1,
   service_reactivated: 1,
   service_suspended: 2,
@@ -47,26 +49,71 @@ export const DEFAULT_PRIORITIES: Record<string, number> = {
   payment_reminder: 4,
   invoice_created: 5,
 };
-/** Estos se envían aunque el cliente no haya escrito primero o esté de baja. */
-const BYPASS_OPTIN = new Set(['test', 'system']);
+/** Mensajes que salen de inmediato (no esperan la pausa ni el horario). */
+const IMMEDIATE_KINDS = ['reply', 'system', 'test'];
+
+export const DEFAULT_INVITE_TEMPLATE =
+  'Hola {nombre}, te escribe *{organizacion}*. Por este medio te enviaremos tus facturas, ' +
+  'la confirmación de tus pagos y avisos de tu servicio.\n\nResponde *SÍ* para recibirlos o *NO* si prefieres no recibirlos.';
+export const DEFAULT_INVOICE_TEMPLATE =
+  '📄 Hola {nombre}, tu factura de {mes} está lista.\n\nResponde con un número:\n{menu}';
+
+export interface MenuOption {
+  key: string;
+  label: string;
+  reply: string;
+  /** Respuesta si el cliente no debe nada (opción de saldo) */
+  reply_paid?: string;
+  /** 'qr' = adjunta la imagen del QR de pago del número */
+  media?: 'qr' | null;
+  /** Avisa por Telegram que el cliente pidió un asesor */
+  support?: boolean;
+}
+export const DEFAULT_MENU: MenuOption[] = [
+  { key: '1', label: 'Fecha de vencimiento', reply: '🗓️ Tu factura {numero_factura} vence el *{fecha_vencimiento}*.' },
+  { key: '2', label: 'Saldo a pagar', reply: '💰 Tu saldo a pagar es *{saldo}*.', reply_paid: '✅ ¡Estás al día! No tienes saldo pendiente.' },
+  { key: '3', label: 'Medios de pago', reply: '💳 Así puedes pagar:\n{medios_pago}\nEn línea: {link_pago}', media: 'qr' },
+  { key: '4', label: 'Hablar con soporte', reply: '🙋 Listo, un asesor te escribirá pronto por este chat.', support: true },
+];
+const NO_DATA_REPLY = 'Por ahora no tengo los datos de tu factura. Responde con el número de soporte para que un asesor te ayude.';
 
 export interface WaSettings {
   tenant_id: string;
   enabled: boolean;
   paused: boolean;
-  instance_name: string | null;
-  interval_sec: number;
-  jitter_sec: number;
   hour_start: number;
   hour_end: number;
   days: string;
-  daily_cap: number;
-  require_optin: boolean;
-  optout_word: string;
-  signature: string | null;
   priorities: Record<string, number>;
   alert_disconnect: boolean;
   api_key_hint: string | null;
+  optout_word: string;
+  optin_words: string;
+  decline_words: string;
+  optin_any_message: boolean;
+  invite_wait_days: number;
+  footer: string;
+}
+
+export interface WaNumber {
+  id: number;
+  tenant_id: string;
+  label: string;
+  display_name: string | null;
+  instance_name: string;
+  is_default: boolean;
+  paused: boolean;
+  interval_sec: number;
+  jitter_sec: number;
+  daily_cap: number;
+  invite_daily_cap: number;
+  signature: string | null;
+  invite_template: string | null;
+  invoice_template: string | null;
+  menu: MenuOption[] | null;
+  payment_link: string | null;
+  payment_info: string | null;
+  qr_image: string | null;
   webhook_secret: string;
   connection_state: string;
   connected_number: string | null;
@@ -133,6 +180,14 @@ function safeEqual(a: string, b: string): boolean {
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
 
+/** Primera palabra en mayúsculas, sin tildes ni signos: "Sí, gracias" → "SI". */
+export function firstWord(text: string): string {
+  return String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').trim().split(/\s+/)[0] || '';
+}
+
+const wordList = (s: string) => new Set(String(s || '').split(',').map((w) => firstWord(w)).filter(Boolean));
+
 /** Hora y día de la semana en la zona del servidor (Colombia por defecto). */
 function localParts(d: Date): { hour: number; day: number; dateKey: string } {
   const p = new Intl.DateTimeFormat('en-CA', {
@@ -158,64 +213,147 @@ export function inSendWindow(s: Pick<WaSettings, 'days' | 'hour_start' | 'hour_e
 
 function priorityFor(s: Pick<WaSettings, 'priorities'> | null, event: string): number {
   const custom = s?.priorities?.[event];
-  if (Number.isInteger(custom) && custom >= 0 && custom <= 9) return custom;
+  if (Number.isInteger(custom) && custom >= 1 && custom <= 9) return custom;
   return DEFAULT_PRIORITIES[event] ?? 5;
 }
 
-function instanceNameFor(slug: string): string {
-  return 'wa-' + (String(slug || 'isp').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 40) || 'isp');
+const slugify = (s: string) => String(s || 'isp').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'isp';
+
+// ───────────────────────── Plantillas ─────────────────────────
+
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function parseDay(v: any): Date | null {
+  if (!v) return null;
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12) : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-// ───────────────────────── Configuración ─────────────────────────
+export function formatMoney(v: any): string {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return '$' + Math.round(n).toLocaleString('es-CO');
+}
+
+function firstName(name: any): string {
+  const w = String(name || '').trim().split(/\s+/)[0] || '';
+  return w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
+}
+
+export interface InvoiceContext {
+  invoice_number?: string;
+  due_date?: string;
+  amount?: number;
+  balance?: number;
+  month?: string;
+}
+
+/** Variables disponibles en todas las plantillas. */
+export function templateVars(n: Partial<WaNumber>, s: Partial<WaSettings>, sub: { client_name?: string | null; context?: InvoiceContext | null } | null, menuText = ''): Record<string, string> {
+  const ctx = sub?.context || {};
+  const due = parseDay(ctx.due_date);
+  const monthSrc = ctx.month ? null : due || new Date();
+  return {
+    nombre: firstName(sub?.client_name),
+    organizacion: n.display_name || n.label || '',
+    numero_factura: ctx.invoice_number ? `N° ${ctx.invoice_number}` : '',
+    fecha_vencimiento: due ? due.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }) : '',
+    saldo: ctx.balance !== undefined && ctx.balance !== null ? formatMoney(ctx.balance) : '',
+    valor: ctx.amount !== undefined && ctx.amount !== null ? formatMoney(ctx.amount) : '',
+    mes: ctx.month ? String(ctx.month) : MONTHS[monthSrc!.getMonth()],
+    medios_pago: n.payment_info || '',
+    link_pago: n.payment_link || '',
+    baja: s.optout_word || 'BAJA',
+    menu: menuText,
+  };
+}
+
+/**
+ * Reemplaza {variables}. Una línea con una variable vacía se quita (salvo
+ * {nombre}, que solo limpia la coma: "Hola ," → "Hola,").
+ */
+export function renderTemplate(tpl: string, vars: Record<string, string>): string {
+  return String(tpl || '').split('\n').map((line) => {
+    let drop = false;
+    const out = line.replace(/\{([a-z_]+)\}/g, (m, k) => {
+      if (!(k in vars)) return m;
+      if (!vars[k] && k !== 'nombre') drop = true;
+      return vars[k];
+    });
+    return drop ? null : out.replace(/\s+,/g, ',').replace(/ {2,}/g, ' ');
+  }).filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+const menuOf = (n: Partial<WaNumber>): MenuOption[] => (Array.isArray(n.menu) && n.menu.length ? n.menu : DEFAULT_MENU);
+const menuText = (n: Partial<WaNumber>) => menuOf(n).map((o) => `*${o.key}* · ${o.label}`).join('\n');
+
+/** Texto de la respuesta a una opción del menú (null = no es una opción). */
+export function menuReply(n: Partial<WaNumber>, s: Partial<WaSettings>, sub: any, text: string): { option: MenuOption; message: string } | null {
+  const t = String(text || '').trim();
+  const option = menuOf(n).find((o) => o.key === t || firstWord(o.key) === firstWord(t) && firstWord(t) !== '');
+  if (!option) return null;
+  const ctx: InvoiceContext = sub?.context || {};
+  const needsDue = option.reply.includes('{fecha_vencimiento}');
+  const needsBalance = option.reply.includes('{saldo}');
+  if (needsBalance && ctx.balance !== undefined && ctx.balance !== null && Number(ctx.balance) <= 0 && option.reply_paid) {
+    return { option, message: renderTemplate(option.reply_paid, templateVars(n, s, sub)) };
+  }
+  if ((needsDue && !ctx.due_date) || (needsBalance && (ctx.balance === undefined || ctx.balance === null))) {
+    return { option, message: NO_DATA_REPLY };
+  }
+  return { option, message: renderTemplate(option.reply, templateVars(n, s, sub)) };
+}
+
+// ───────────────────────── Configuración del ISP ─────────────────────────
 
 export async function getSettings(tenantId: string): Promise<WaSettings> {
-  const { rows: t } = await pool.query(`SELECT slug FROM tenants WHERE id = $1`, [tenantId]);
-  if (!t[0]) throw new Error('ISP no encontrado');
-  await pool.query(
-    `INSERT INTO wa_settings (tenant_id, instance_name) VALUES ($1, $2) ON CONFLICT (tenant_id) DO NOTHING`,
-    [tenantId, instanceNameFor(t[0].slug)]
-  );
+  await pool.query(`INSERT INTO wa_settings (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`, [tenantId]);
   const { rows } = await pool.query(`SELECT * FROM wa_settings WHERE tenant_id = $1`, [tenantId]);
+  if (!rows[0]) throw new Error('ISP no encontrado');
+  await ensureDefaultNumber(tenantId);
   return rows[0];
 }
 
-/** Lo que ve el panel (sin hash de la clave ni secreto del webhook). */
-export function publicSettings(s: WaSettings) {
-  const { webhook_secret: _w, ...rest } = s as any;
-  delete rest.api_key_hash;
-  return { ...rest, has_api_key: Boolean((s as any).api_key_hash), default_priorities: DEFAULT_PRIORITIES, event_labels: EVENT_LABELS };
+export function publicSettings(s: WaSettings & Record<string, any>) {
+  const { api_key_hash, ...rest } = s;
+  return { ...rest, has_api_key: Boolean(api_key_hash), default_priorities: DEFAULT_PRIORITIES, event_labels: EVENT_LABELS };
 }
 
 export interface SettingsInput {
   enabled?: boolean;
-  interval_sec?: number;
-  jitter_sec?: number;
   hour_start?: number;
   hour_end?: number;
   days?: number[] | string;
-  daily_cap?: number;
-  require_optin?: boolean;
-  optout_word?: string;
-  signature?: string | null;
   priorities?: Record<string, number>;
   alert_disconnect?: boolean;
+  optout_word?: string;
+  optin_words?: string;
+  decline_words?: string;
+  optin_any_message?: boolean;
+  invite_wait_days?: number;
+  footer?: string;
 }
 
-/** Valida y guarda. Lanza Error con un mensaje para el usuario si algo no cuadra. */
+const intIn = (v: any, min: number, max: number, name: string, fallback: number) => {
+  if (v === undefined || v === null || v === '') return fallback;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${name} debe estar entre ${min} y ${max}`);
+  return n;
+};
+
+function wordsInput(v: any, fallback: string, name: string): string {
+  if (v === undefined) return fallback;
+  const list = [...wordList(String(v))];
+  if (!list.length || list.some((w) => w.length > 20)) throw new Error(`${name}: escribe palabras separadas por coma`);
+  return list.join(',');
+}
+
 export async function saveSettings(tenantId: string, input: SettingsInput): Promise<WaSettings> {
   const cur = await getSettings(tenantId);
-  const int = (v: any, min: number, max: number, name: string, fallback: number) => {
-    if (v === undefined || v === null || v === '') return fallback;
-    const n = Math.round(Number(v));
-    if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${name} debe estar entre ${min} y ${max}`);
-    return n;
-  };
-  const interval = int(input.interval_sec, 30, 3600, 'La pausa entre mensajes (segundos)', cur.interval_sec);
-  const jitter = int(input.jitter_sec, 0, Math.floor(interval / 2), 'La variación al azar', Math.min(cur.jitter_sec, Math.floor(interval / 2)));
-  const hStart = int(input.hour_start, 0, 23, 'La hora de inicio', cur.hour_start);
-  const hEnd = int(input.hour_end, 1, 24, 'La hora de fin', cur.hour_end);
+  const hStart = intIn(input.hour_start, 0, 23, 'La hora de inicio', cur.hour_start);
+  const hEnd = intIn(input.hour_end, 1, 24, 'La hora de fin', cur.hour_end);
   if (hEnd <= hStart) throw new Error('La hora de fin debe ser mayor que la de inicio');
-  const cap = int(input.daily_cap, 1, 5000, 'El tope diario', cur.daily_cap);
   let days = cur.days;
   if (input.days !== undefined) {
     const list = (Array.isArray(input.days) ? input.days : String(input.days).split(','))
@@ -223,37 +361,36 @@ export async function saveSettings(tenantId: string, input: SettingsInput): Prom
     if (!list.length) throw new Error('Elige al menos un día de envío');
     days = [...new Set(list)].join(',');
   }
-  let word = cur.optout_word;
-  if (input.optout_word !== undefined) {
-    word = String(input.optout_word).trim().toUpperCase();
-    if (!/^[A-ZÁÉÍÓÚÑ0-9]{2,20}$/.test(word)) throw new Error('La palabra de baja debe tener de 2 a 20 letras o números, sin espacios');
-  }
-  let signature = cur.signature;
-  if (input.signature !== undefined) {
-    signature = input.signature === null ? null : String(input.signature).slice(0, 300).trim() || null;
-  }
+  const optout = input.optout_word === undefined ? cur.optout_word : firstWord(String(input.optout_word));
+  if (!/^[A-Z0-9]{2,20}$/.test(optout)) throw new Error('La palabra de baja debe tener de 2 a 20 letras o números, sin espacios');
+  const optin = wordsInput(input.optin_words, cur.optin_words, 'Palabras para aceptar');
+  const decline = wordsInput(input.decline_words, cur.decline_words, 'Palabras para rechazar');
+  const clash = [...wordList(optin)].find((w) => wordList(decline).has(w) || w === optout);
+  if (clash) throw new Error(`La palabra ${clash} no puede servir para aceptar y para rechazar o dar de baja`);
+  const wait = intIn(input.invite_wait_days, 1, 30, 'Los días de espera de la respuesta', cur.invite_wait_days);
+  let footer = cur.footer;
+  if (input.footer !== undefined) footer = String(input.footer).slice(0, 200).trim();
+  if (footer && !footer.includes('{baja}')) throw new Error('El pie debe incluir {baja} para que el cliente sepa cómo darse de baja');
   let priorities = cur.priorities || {};
   if (input.priorities !== undefined) {
     priorities = {};
     for (const [k, v] of Object.entries(input.priorities || {})) {
-      if (!(k in DEFAULT_PRIORITIES) || BYPASS_OPTIN.has(k)) continue;
+      if (!(k in DEFAULT_PRIORITIES)) continue;
       const n = Math.round(Number(v));
       if (Number.isInteger(n) && n >= 1 && n <= 9) priorities[k] = n;
     }
   }
   const { rows } = await pool.query(
     `UPDATE wa_settings SET
-       enabled = COALESCE($2::boolean, enabled), interval_sec = $3::int, jitter_sec = $4::int,
-       hour_start = $5::int, hour_end = $6::int, days = $7::text, daily_cap = $8::int,
-       require_optin = COALESCE($9::boolean, require_optin), optout_word = $10::text, signature = $11::text,
-       priorities = $12::jsonb, alert_disconnect = COALESCE($13::boolean, alert_disconnect),
-       next_send_at = CASE WHEN next_send_at > now() + make_interval(secs => $3::int + $4::int)
-                           THEN now() + make_interval(secs => $3::int) ELSE next_send_at END,
-       updated_at = now()
+       enabled = COALESCE($2::boolean, enabled), hour_start = $3::int, hour_end = $4::int, days = $5::text,
+       priorities = $6::jsonb, alert_disconnect = COALESCE($7::boolean, alert_disconnect),
+       optout_word = $8::text, optin_words = $9::text, decline_words = $10::text,
+       optin_any_message = COALESCE($11::boolean, optin_any_message), invite_wait_days = $12::int,
+       footer = $13::text, updated_at = now()
      WHERE tenant_id = $1 RETURNING *`,
-    [tenantId, typeof input.enabled === 'boolean' ? input.enabled : null, interval, jitter, hStart, hEnd, days, cap,
-     typeof input.require_optin === 'boolean' ? input.require_optin : null, word, signature,
-     JSON.stringify(priorities), typeof input.alert_disconnect === 'boolean' ? input.alert_disconnect : null]
+    [tenantId, typeof input.enabled === 'boolean' ? input.enabled : null, hStart, hEnd, days, JSON.stringify(priorities),
+     typeof input.alert_disconnect === 'boolean' ? input.alert_disconnect : null, optout, optin, decline,
+     typeof input.optin_any_message === 'boolean' ? input.optin_any_message : null, wait, footer]
   );
   return rows[0];
 }
@@ -279,10 +416,216 @@ export async function tenantByApiKey(key: string): Promise<string | null> {
   return rows[0]?.tenant_id || null;
 }
 
+// ───────────────────────── Números ─────────────────────────
+
+async function uniqueInstanceName(base: string): Promise<string> {
+  for (let i = 0; i < 50; i++) {
+    const name = i === 0 ? base : `${base}-${i + 1}`;
+    const { rows } = await pool.query(`SELECT 1 FROM wa_numbers WHERE instance_name = $1`, [name]);
+    if (!rows.length) return name;
+  }
+  return `${base}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+export async function ensureDefaultNumber(tenantId: string): Promise<WaNumber> {
+  const { rows } = await pool.query(`SELECT * FROM wa_numbers WHERE tenant_id = $1 ORDER BY is_default DESC, id LIMIT 1`, [tenantId]);
+  if (rows[0]) {
+    if (!rows[0].is_default) await pool.query(`UPDATE wa_numbers SET is_default = true WHERE id = $1`, [rows[0].id]);
+    return rows[0];
+  }
+  const { rows: t } = await pool.query(`SELECT slug, name FROM tenants WHERE id = $1`, [tenantId]);
+  if (!t[0]) throw new Error('ISP no encontrado');
+  const { rows: created } = await pool.query(
+    `INSERT INTO wa_numbers (tenant_id, label, display_name, instance_name, is_default)
+     VALUES ($1, 'Principal', $2, $3, true)
+     ON CONFLICT DO NOTHING RETURNING *`,
+    [tenantId, t[0].name, await uniqueInstanceName('wa-' + slugify(t[0].slug))]
+  );
+  if (created[0]) return created[0];
+  const { rows: again } = await pool.query(`SELECT * FROM wa_numbers WHERE tenant_id = $1 AND is_default`, [tenantId]);
+  return again[0];
+}
+
+export async function listNumbers(tenantId: string): Promise<WaNumber[]> {
+  await ensureDefaultNumber(tenantId);
+  const { rows } = await pool.query(`SELECT * FROM wa_numbers WHERE tenant_id = $1 ORDER BY is_default DESC, id`, [tenantId]);
+  return rows;
+}
+
+export async function getNumber(tenantId: string, id: number): Promise<WaNumber> {
+  const { rows } = await pool.query(`SELECT * FROM wa_numbers WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+  if (!rows[0]) throw Object.assign(new Error('Número no encontrado'), { status: 404 });
+  return rows[0];
+}
+
+/** Lo que ve el panel: valores efectivos (con los textos por defecto), sin secreto ni imagen. */
+export function publicNumber(n: WaNumber) {
+  const { webhook_secret: _s, qr_image, ...rest } = n;
+  return {
+    ...rest,
+    has_qr: Boolean(qr_image),
+    invite_template: n.invite_template || DEFAULT_INVITE_TEMPLATE,
+    invoice_template: n.invoice_template || DEFAULT_INVOICE_TEMPLATE,
+    menu: menuOf(n),
+    wa_link: n.connected_number ? `https://wa.me/${n.connected_number}?text=${encodeURIComponent('Hola, quiero recibir mis avisos')}` : null,
+  };
+}
+
+export interface NumberInput {
+  label?: string;
+  display_name?: string | null;
+  paused?: boolean;
+  interval_sec?: number;
+  jitter_sec?: number;
+  daily_cap?: number;
+  invite_daily_cap?: number;
+  signature?: string | null;
+  invite_template?: string | null;
+  invoice_template?: string | null;
+  menu?: MenuOption[] | null;
+  payment_link?: string | null;
+  payment_info?: string | null;
+}
+
+const textOrNull = (v: any, max: number) => (v === null || v === undefined ? null : String(v).slice(0, max).trim() || null);
+
+function validMenu(menu: any): MenuOption[] | null {
+  if (menu === null) return null;
+  if (!Array.isArray(menu) || menu.length > 9) throw new Error('El menú admite hasta 9 opciones');
+  const keys = new Set<string>();
+  return menu.map((o: any) => {
+    const key = String(o?.key ?? '').trim().toUpperCase().slice(0, 12);
+    const label = String(o?.label ?? '').trim().slice(0, 60);
+    const reply = String(o?.reply ?? '').trim().slice(0, 1000);
+    if (!key || !label || !reply) throw new Error('Cada opción del menú necesita número, texto y respuesta');
+    if (keys.has(key)) throw new Error(`La opción ${key} está repetida`);
+    keys.add(key);
+    return {
+      key, label, reply,
+      reply_paid: o?.reply_paid ? String(o.reply_paid).trim().slice(0, 500) : undefined,
+      media: o?.media === 'qr' ? 'qr' : null,
+      support: Boolean(o?.support),
+    } as MenuOption;
+  });
+}
+
+export async function createNumber(tenantId: string, input: NumberInput): Promise<WaNumber> {
+  await ensureDefaultNumber(tenantId);
+  const { rows: lim } = await pool.query(
+    `SELECT COALESCE(t.wa_max_numbers, 1) AS max, (SELECT count(*) FROM wa_numbers n WHERE n.tenant_id = t.id)::int AS used, t.slug
+       FROM tenants t WHERE t.id = $1`, [tenantId]
+  );
+  if (!lim[0]) throw new Error('ISP no encontrado');
+  if (lim[0].used >= lim[0].max) {
+    throw Object.assign(new Error(`Este ISP puede tener ${lim[0].max} número(s) de WhatsApp. Pide al administrador de Omnisync que amplíe el límite.`), { status: 403 });
+  }
+  const label = textOrNull(input.label, 60);
+  if (!label) throw new Error('Ponle un nombre al número (p. ej. "Suros Empresas")');
+  const { rows } = await pool.query(
+    `INSERT INTO wa_numbers (tenant_id, label, display_name, instance_name) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [tenantId, label, textOrNull(input.display_name, 80) || label, await uniqueInstanceName(`wa-${slugify(lim[0].slug)}-${slugify(label).slice(0, 16)}`)]
+  );
+  return updateNumber(tenantId, rows[0].id, input);
+}
+
+export async function updateNumber(tenantId: string, id: number, input: NumberInput): Promise<WaNumber> {
+  const cur = await getNumber(tenantId, id);
+  const interval = intIn(input.interval_sec, 30, 3600, 'La pausa entre mensajes (segundos)', cur.interval_sec);
+  const jitter = intIn(input.jitter_sec, 0, Math.floor(interval / 2), 'La variación al azar', Math.min(cur.jitter_sec, Math.floor(interval / 2)));
+  const cap = intIn(input.daily_cap, 1, 5000, 'El tope diario', cur.daily_cap);
+  const invCap = intIn(input.invite_daily_cap, 0, 500, 'El tope de presentaciones por día', cur.invite_daily_cap);
+  const pick = <K extends keyof NumberInput>(k: K, max: number) =>
+    input[k] === undefined ? (cur as any)[k] : textOrNull(input[k], max);
+  const link = pick('payment_link', 300);
+  if (link && !/^https?:\/\/\S+$/i.test(link)) throw new Error('El link de pago debe empezar por http:// o https://');
+  const menu = input.menu === undefined ? cur.menu : validMenu(input.menu);
+  const { rows } = await pool.query(
+    `UPDATE wa_numbers SET
+       label = COALESCE($3::text, label), display_name = $4::text, paused = COALESCE($5::boolean, paused),
+       interval_sec = $6::int, jitter_sec = $7::int, daily_cap = $8::int, invite_daily_cap = $9::int,
+       signature = $10::text, invite_template = $11::text, invoice_template = $12::text, menu = $13::jsonb,
+       payment_link = $14::text, payment_info = $15::text,
+       next_send_at = CASE WHEN next_send_at > now() + make_interval(secs => $6::int + $7::int)
+                           THEN now() + make_interval(secs => $6::int) ELSE next_send_at END,
+       updated_at = now()
+     WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+    [id, tenantId, input.label === undefined ? null : textOrNull(input.label, 60), pick('display_name', 80),
+     typeof input.paused === 'boolean' ? input.paused : null, interval, jitter, cap, invCap,
+     pick('signature', 300), pick('invite_template', 1500), pick('invoice_template', 1500),
+     menu ? JSON.stringify(menu) : null, link, pick('payment_info', 800)]
+  );
+  return rows[0];
+}
+
+/** Imagen del QR de pago (data URL png/jpeg/webp). null la quita. */
+export async function setNumberQr(tenantId: string, id: number, dataUrl: string | null): Promise<void> {
+  await getNumber(tenantId, id);
+  if (dataUrl !== null) {
+    const m = String(dataUrl).match(/^data:(image\/(png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if (!m) throw new Error('Sube una imagen PNG, JPG o WEBP');
+    if (Buffer.byteLength(m[3], 'base64') > MAX_QR_BYTES) throw new Error('La imagen supera 1,5 MB');
+  }
+  await pool.query(`UPDATE wa_numbers SET qr_image = $3, updated_at = now() WHERE id = $1 AND tenant_id = $2`, [id, tenantId, dataUrl]);
+}
+
+export async function setDefaultNumber(tenantId: string, id: number): Promise<void> {
+  await getNumber(tenantId, id);
+  await pool.query(`UPDATE wa_numbers SET is_default = false WHERE tenant_id = $1 AND is_default AND id <> $2`, [tenantId, id]);
+  await pool.query(`UPDATE wa_numbers SET is_default = true WHERE id = $1`, [id]);
+}
+
+/** Borra un número (no el por defecto): cierra su sesión y pasa sus pendientes al por defecto. */
+export async function deleteNumber(tenantId: string, id: number): Promise<void> {
+  const n = await getNumber(tenantId, id);
+  if (n.is_default) throw new Error('No se puede borrar el número por defecto; marca otro como por defecto primero');
+  const def = await ensureDefaultNumber(tenantId);
+  await evo(`/instance/delete/${encodeURIComponent(n.instance_name)}`, 'DELETE').catch(() => undefined);
+  await pool.query(`UPDATE wa_queue SET number_id = $2 WHERE number_id = $1 AND status IN ('pending', 'waiting')`, [id, def.id]);
+  await pool.query(`DELETE FROM wa_numbers WHERE id = $1`, [id]);
+}
+
+// ───────────────────────── Organizaciones ─────────────────────────
+
+export async function listOrgs(tenantId: string) {
+  const { rows } = await pool.query(
+    `SELECT o.*, n.label AS number_label,
+            (SELECT count(*) FROM wa_queue q WHERE q.tenant_id = o.tenant_id AND q.client_ref IS NOT NULL
+               AND q.source = 'org:' || o.id)::int AS messages
+       FROM wa_orgs o LEFT JOIN wa_numbers n ON n.id = o.number_id
+      WHERE o.tenant_id = $1 ORDER BY o.name NULLS LAST, o.org_id`,
+    [tenantId]
+  );
+  return rows;
+}
+
+export async function assignOrg(tenantId: string, orgId: number, numberId: number | null): Promise<void> {
+  if (numberId !== null) await getNumber(tenantId, numberId);
+  const { rowCount } = await pool.query(`UPDATE wa_orgs SET number_id = $3 WHERE id = $1 AND tenant_id = $2`, [orgId, tenantId, numberId]);
+  if (!rowCount) throw Object.assign(new Error('Organización no encontrada'), { status: 404 });
+}
+
+/** Registra la organización y devuelve el número que le toca (asignado o el por defecto). */
+async function numberForOrg(tenantId: string, org: { source?: string; id?: string; name?: string } | null): Promise<{ number: WaNumber; orgRowId: number | null }> {
+  if (org?.id) {
+    const { rows } = await pool.query(
+      `INSERT INTO wa_orgs (tenant_id, source, org_id, name) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tenant_id, source, org_id) DO UPDATE SET name = COALESCE(EXCLUDED.name, wa_orgs.name), last_seen = now()
+       RETURNING id, number_id`,
+      [tenantId, org.source || '', org.id, org.name || null]
+    );
+    if (rows[0]?.number_id) {
+      const { rows: n } = await pool.query(`SELECT * FROM wa_numbers WHERE id = $1`, [rows[0].number_id]);
+      if (n[0]) return { number: n[0], orgRowId: rows[0].id };
+    }
+    return { number: await ensureDefaultNumber(tenantId), orgRowId: rows[0]?.id ?? null };
+  }
+  return { number: await ensureDefaultNumber(tenantId), orgRowId: null };
+}
+
 // ───────────────────────── Sesión (QR) ─────────────────────────
 
-function webhookUrl(s: WaSettings): string {
-  return `${API_INTERNAL_URL}/api/public/whatsapp/evolution/${encodeURIComponent(s.instance_name!)}?s=${s.webhook_secret}`;
+function webhookUrl(n: WaNumber): string {
+  return `${API_INTERNAL_URL}/api/public/whatsapp/evolution/${encodeURIComponent(n.instance_name)}?s=${n.webhook_secret}`;
 }
 
 const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'MESSAGES_UPSERT'];
@@ -296,9 +639,9 @@ async function instanceExists(name: string): Promise<boolean> {
 }
 
 /** Crea la sesión si no existe, deja el webhook apuntando a Omnisync y devuelve el QR. */
-export async function connectSession(tenantId: string): Promise<{ state: string; qr: string | null; pairing_code: string | null }> {
-  const s = await getSettings(tenantId);
-  const name = s.instance_name!;
+export async function connectNumber(tenantId: string, id: number): Promise<{ state: string; qr: string | null; pairing_code: string | null }> {
+  const n = await getNumber(tenantId, id);
+  const name = n.instance_name;
   if (!(await instanceExists(name))) {
     await evo('/instance/create', 'POST', {
       instanceName: name,
@@ -313,119 +656,207 @@ export async function connectSession(tenantId: string): Promise<{ state: string;
     });
   }
   await evo(`/webhook/set/${encodeURIComponent(name)}`, 'POST', {
-    webhook: { enabled: true, url: webhookUrl(s), byEvents: false, base64: false, events: WEBHOOK_EVENTS },
+    webhook: { enabled: true, url: webhookUrl(n), byEvents: false, base64: false, events: WEBHOOK_EVENTS },
   }).catch((e) => console.warn(`[WA] webhook ${name}: ${e.message}`));
-  const state = await refreshState(tenantId, s);
+  const state = await refreshState(n);
   if (state === 'open') return { state, qr: null, pairing_code: null };
   const c = await evo(`/instance/connect/${encodeURIComponent(name)}`);
   return { state, qr: c?.base64 || null, pairing_code: c?.pairingCode || null };
 }
 
-export async function logoutSession(tenantId: string): Promise<void> {
-  const s = await getSettings(tenantId);
-  await evo(`/instance/logout/${encodeURIComponent(s.instance_name!)}`, 'DELETE').catch((e) => {
+export async function logoutNumber(tenantId: string, id: number): Promise<void> {
+  const n = await getNumber(tenantId, id);
+  await evo(`/instance/logout/${encodeURIComponent(n.instance_name)}`, 'DELETE').catch((e) => {
     if (!(e instanceof EvolutionError && (e.status === 404 || e.status === 400))) throw e;
   });
-  await setState(s, 'close', 'Sesión cerrada desde el panel');
+  await setState(n, 'close', 'Sesión cerrada desde el panel');
 }
 
-/** Pregunta a Evolution el estado y lo guarda (con historial y aviso por Telegram). */
-export async function refreshState(tenantId: string, s?: WaSettings): Promise<string> {
-  s = s || (await getSettings(tenantId));
+/** Pregunta a Evolution el estado del número y lo guarda (con historial). */
+export async function refreshState(n: WaNumber): Promise<string> {
   let state = 'close';
-  let number: string | null = s.connected_number;
+  let number: string | null = n.connected_number;
   try {
-    const r = await evo(`/instance/connectionState/${encodeURIComponent(s.instance_name!)}`, 'GET', undefined, 8000);
+    const r = await evo(`/instance/connectionState/${encodeURIComponent(n.instance_name)}`, 'GET', undefined, 8000);
     state = r?.instance?.state || r?.state || 'close';
     if (state === 'open' && !number) {
-      const list = await evo(`/instance/fetchInstances?instanceName=${encodeURIComponent(s.instance_name!)}`).catch(() => []);
+      const list = await evo(`/instance/fetchInstances?instanceName=${encodeURIComponent(n.instance_name)}`).catch(() => []);
       const owner = Array.isArray(list) ? (list[0]?.ownerJid || list[0]?.owner || list[0]?.number) : null;
       number = owner ? String(owner).split('@')[0].split(':')[0] : null;
     }
   } catch (e: any) {
     state = e instanceof EvolutionError && e.status === 404 ? 'close' : 'error';
   }
-  await setState(s, state, null, number);
+  await setState(n, state, null, number);
   return state;
 }
 
-async function setState(s: WaSettings, state: string, detail: string | null, number?: string | null): Promise<void> {
-  const changed = s.connection_state !== state;
+async function setState(n: WaNumber, state: string, detail: string | null, number?: string | null): Promise<void> {
+  const changed = n.connection_state !== state;
   await pool.query(
-    `UPDATE wa_settings SET connection_state = $2,
+    `UPDATE wa_numbers SET connection_state = $2,
        connected_number = CASE WHEN $2 = 'open' THEN COALESCE($3, connected_number) ELSE connected_number END,
        state_changed_at = CASE WHEN connection_state IS DISTINCT FROM $2 THEN now() ELSE state_changed_at END
-     WHERE tenant_id = $1`,
-    [s.tenant_id, state, number ?? null]
+     WHERE id = $1`,
+    [n.id, state, number ?? null]
   );
   if (changed) {
-    await pool.query(`INSERT INTO wa_session_events (tenant_id, state, detail) VALUES ($1, $2, $3)`, [s.tenant_id, state, detail]);
-    s.state_changed_at = new Date().toISOString();
+    await pool.query(`INSERT INTO wa_session_events (tenant_id, number_id, state, detail) VALUES ($1, $2, $3, $4)`, [n.tenant_id, n.id, state, detail]);
+    n.state_changed_at = new Date().toISOString();
   }
-  s.connection_state = state;
+  n.connection_state = state;
+  if (state === 'open' && number) n.connected_number = number;
 }
 
-/** Aviso por Telegram si la sesión lleva >2 min caída, y cuando vuelve. */
-async function alertOnState(s: WaSettings, ispName: string): Promise<void> {
+/** Aviso por Telegram si el número lleva >2 min caído, y cuando vuelve. */
+async function alertOnState(s: WaSettings, n: WaNumber, ispName: string): Promise<void> {
   if (!s.alert_disconnect) return;
-  const since = s.state_changed_at ? new Date(s.state_changed_at).getTime() : Date.now();
-  const down = s.connection_state !== 'open';
-  if (down && s.alerted_state !== 'down' && Date.now() - since > 120_000 && s.last_sent_at) {
-    await notifyTelegram(s.tenant_id,
-      `📵 <b>WhatsApp desconectado</b> — ${ispName}\nLa sesión no está conectada (${s.connection_state}). ` +
-      `Los avisos quedan en cola. Entra a Omnisync → WhatsApp y vuelve a escanear el QR.`).catch(() => undefined);
-    await pool.query(`UPDATE wa_settings SET alerted_state = 'down' WHERE tenant_id = $1`, [s.tenant_id]);
-  } else if (!down && s.alerted_state === 'down') {
-    await notifyTelegram(s.tenant_id, `✅ <b>WhatsApp conectado de nuevo</b> — ${ispName}. La cola sigue enviando.`).catch(() => undefined);
-    await pool.query(`UPDATE wa_settings SET alerted_state = NULL WHERE tenant_id = $1`, [s.tenant_id]);
+  const since = n.state_changed_at ? new Date(n.state_changed_at).getTime() : Date.now();
+  const down = n.connection_state !== 'open';
+  if (down && n.alerted_state !== 'down' && Date.now() - since > 120_000 && n.last_sent_at) {
+    await notifyTelegram(n.tenant_id,
+      `📵 <b>WhatsApp desconectado</b> — ${ispName} · ${n.label}\nLa sesión no está conectada (${n.connection_state}). ` +
+      `Los avisos quedan en cola. Entra a Omnisync → WhatsApp → Números y vuelve a escanear el QR.`).catch(() => undefined);
+    await pool.query(`UPDATE wa_numbers SET alerted_state = 'down' WHERE id = $1`, [n.id]);
+  } else if (!down && n.alerted_state === 'down') {
+    await notifyTelegram(n.tenant_id, `✅ <b>WhatsApp conectado de nuevo</b> — ${ispName} · ${n.label}. La cola sigue enviando.`).catch(() => undefined);
+    await pool.query(`UPDATE wa_numbers SET alerted_state = NULL WHERE id = $1`, [n.id]);
   }
+}
+
+// ───────────────────────── Suscriptores ─────────────────────────
+
+async function getSubscriber(n: WaNumber, phone: string): Promise<any> {
+  await pool.query(
+    `INSERT INTO wa_subscribers (number_id, phone, tenant_id) VALUES ($1, $2, $3) ON CONFLICT (number_id, phone) DO NOTHING`,
+    [n.id, phone, n.tenant_id]
+  );
+  const { rows } = await pool.query(`SELECT * FROM wa_subscribers WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+  return rows[0];
+}
+
+export async function listSubscribers(tenantId: string, opts: { number_id?: number | null; status?: string | null; q?: string | null; limit?: number; offset?: number }) {
+  const { rows } = await pool.query(
+    `SELECT s.number_id, n.label AS number_label, s.phone, s.status, s.client_ref, s.client_name, s.invited_at,
+            s.responded_at, s.last_inbound_at, s.not_on_whatsapp, s.context, s.context_at, count(*) OVER () AS total
+       FROM wa_subscribers s JOIN wa_numbers n ON n.id = s.number_id
+      WHERE s.tenant_id = $1 AND ($2::int IS NULL OR s.number_id = $2) AND ($3::text IS NULL OR s.status = $3)
+        AND ($4::text IS NULL OR s.phone LIKE '%' || $4 || '%' OR s.client_ref = $4 OR s.client_name ILIKE '%' || $4 || '%')
+      ORDER BY COALESCE(s.responded_at, s.invited_at, s.created_at) DESC
+      LIMIT $5 OFFSET $6`,
+    [tenantId, opts.number_id ?? null, opts.status ?? null, opts.q ?? null, opts.limit ?? 50, opts.offset ?? 0]
+  );
+  return { items: rows.map(({ total, ...r }) => r), total: Number(rows[0]?.total || 0) };
 }
 
 // ───────────────────────── Cola ─────────────────────────
 
 export interface EnqueueInput {
   phone: unknown;
-  message: unknown;
+  message?: unknown;
   event?: unknown;
   client_ref?: unknown;
+  client_name?: unknown;
+  organization?: { id?: unknown; name?: unknown } | null;
+  uisp?: unknown;
+  context?: any;
   dedupe_key?: unknown;
   source?: string;
+  number_id?: number | null;
 }
 
-export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ id: number | null; status: string; duplicate: boolean }> {
+function cleanContext(c: any): InvoiceContext | null {
+  if (!c || typeof c !== 'object') return null;
+  const out: InvoiceContext = {};
+  if (c.invoice_number != null) out.invoice_number = String(c.invoice_number).slice(0, 40);
+  if (c.due_date && parseDay(c.due_date)) out.due_date = String(c.due_date).slice(0, 30);
+  if (c.amount != null && Number.isFinite(Number(c.amount))) out.amount = Number(c.amount);
+  if (c.balance != null && Number.isFinite(Number(c.balance))) out.balance = Number(c.balance);
+  if (c.month) out.month = String(c.month).slice(0, 20);
+  return Object.keys(out).length ? out : null;
+}
+
+/** Aviso desde UISP (o manual). Elige el número por la organización; el envío lo decide el despachador. */
+export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ id: number | null; status: string; duplicate: boolean; number_id: number }> {
   const s = await getSettings(tenantId);
   const phone = normalizePhone(input.phone);
   if (!phone) throw new Error('Teléfono inválido (usa el número con indicativo, p. ej. 573001234567)');
-  const message = String(input.message ?? '').trim();
-  if (!message) throw new Error('El mensaje está vacío');
-  if (message.length > 4000) throw new Error('El mensaje supera 4000 caracteres');
   const event = /^[a-z_]{2,40}$/.test(String(input.event ?? '')) ? String(input.event) : 'manual';
   const dedupe = input.dedupe_key ? String(input.dedupe_key).slice(0, 200) : null;
 
+  let n: WaNumber;
+  let orgRowId: number | null = null;
+  if (input.number_id) {
+    n = await getNumber(tenantId, Number(input.number_id));
+  } else {
+    const org = input.organization?.id != null
+      ? { source: String(input.uisp ?? '').slice(0, 120), id: String(input.organization.id).slice(0, 60), name: input.organization.name ? String(input.organization.name).slice(0, 120) : undefined }
+      : null;
+    ({ number: n, orgRowId } = await numberForOrg(tenantId, org));
+  }
+
+  const sub = await getSubscriber(n, phone);
+  const clientRef = input.client_ref == null ? null : String(input.client_ref).slice(0, 100);
+  const clientName = input.client_name == null ? null : String(input.client_name).slice(0, 120);
+  const ctx = cleanContext(input.context);
+  await pool.query(
+    `UPDATE wa_subscribers SET client_ref = COALESCE($3, client_ref), client_name = COALESCE($4, client_name),
+       context = CASE WHEN $5::jsonb IS NULL THEN context ELSE COALESCE(context, '{}'::jsonb) || $5::jsonb END,
+       context_at = CASE WHEN $5::jsonb IS NULL THEN context_at ELSE now() END
+     WHERE number_id = $1 AND phone = $2`,
+    [n.id, phone, clientRef, clientName, ctx ? JSON.stringify(ctx) : null]
+  );
+
+  // Factura nueva: se usa la plantilla del número (con el menú); el resto, el texto del plugin
+  let message = String(input.message ?? '').trim();
+  if (event === 'invoice_created') {
+    const fresh = { ...sub, client_name: clientName || sub.client_name, context: { ...(sub.context || {}), ...(ctx || {}) } };
+    message = renderTemplate(n.invoice_template || DEFAULT_INVOICE_TEMPLATE, templateVars(n, s, fresh, menuText(n)));
+  }
+  if (!message) throw new Error('El mensaje está vacío');
+  if (message.length > 4000) throw new Error('El mensaje supera 4000 caracteres');
+
   const { rows: cnt } = await pool.query(
-    `SELECT count(*)::int AS n FROM wa_queue WHERE tenant_id = $1 AND status = 'pending'`, [tenantId]
+    `SELECT count(*)::int AS n FROM wa_queue WHERE tenant_id = $1 AND status IN ('pending', 'waiting')`, [tenantId]
   );
   if (cnt[0].n >= MAX_PENDING_PER_TENANT) throw new Error('La cola está llena; revisa el panel de WhatsApp');
 
   const { rows } = await pool.query(
-    `INSERT INTO wa_queue (tenant_id, phone, message, event_type, priority, source, client_ref, dedupe_key)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO wa_queue (tenant_id, number_id, kind, phone, message, event_type, priority, source, client_ref, dedupe_key)
+     VALUES ($1, $2, 'notice', $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (tenant_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
      RETURNING id, status`,
-    [tenantId, phone, message, event, priorityFor(s, event), input.source || 'api',
-     input.client_ref == null ? null : String(input.client_ref).slice(0, 100), dedupe]
+    [tenantId, n.id, phone, message, event, priorityFor(s, event),
+     orgRowId ? `org:${orgRowId}` : (input.source || 'api'), clientRef, dedupe]
   );
-  if (!rows[0]) return { id: null, status: 'duplicate', duplicate: true };
-  return { id: Number(rows[0].id), status: rows[0].status, duplicate: false };
+  if (!rows[0]) return { id: null, status: 'duplicate', duplicate: true, number_id: n.id };
+  return { id: Number(rows[0].id), status: rows[0].status, duplicate: false, number_id: n.id };
+}
+
+/** Mensaje inmediato (respuesta del menú, confirmación o prueba). */
+async function enqueueImmediate(n: WaNumber, phone: string, kind: 'reply' | 'system' | 'test', message: string, media: string | null = null, source = 'auto'): Promise<number> {
+  const { rows } = await pool.query(
+    `INSERT INTO wa_queue (tenant_id, number_id, kind, phone, message, event_type, priority, source, media)
+     VALUES ($1, $2, $3, $4, $5, $3, 0, $6, $7) RETURNING id`,
+    [n.tenant_id, n.id, kind, phone, message, source, media]
+  );
+  return Number(rows[0].id);
+}
+
+export async function enqueueTest(tenantId: string, numberId: number, phone: unknown, message: string): Promise<number> {
+  const n = await getNumber(tenantId, numberId);
+  const p = normalizePhone(phone);
+  if (!p) throw new Error('Teléfono inválido');
+  return enqueueImmediate(n, p, 'test', message || '✅ Mensaje de prueba de Omnisync. Si lo recibes, WhatsApp está funcionando.', null, 'panel');
 }
 
 async function markSkipped(id: number, reason: string): Promise<void> {
   await pool.query(`UPDATE wa_queue SET status = 'skipped', last_error = $2, updated_at = now() WHERE id = $1`, [id, reason]);
 }
 
-function nextSendAt(s: WaSettings): Date {
-  const jitter = s.jitter_sec > 0 ? Math.round((Math.random() * 2 - 1) * s.jitter_sec) : 0;
-  return new Date(Date.now() + Math.max(15, s.interval_sec + jitter) * 1000);
+function nextSendAt(n: WaNumber): Date {
+  const jitter = n.jitter_sec > 0 ? Math.round((Math.random() * 2 - 1) * n.jitter_sec) : 0;
+  return new Date(Date.now() + Math.max(15, n.interval_sec + jitter) * 1000);
 }
 
 /** ¿El error de Evolution dice que el número no tiene WhatsApp? */
@@ -435,94 +866,191 @@ function notOnWhatsapp(e: any): boolean {
   return /exists["']?\s*:\s*false|not.*whatsapp/i.test(String(e?.message || ''));
 }
 
-/** Un intento de envío para un ISP. Devuelve lo que pasó (para logs/simulación). */
-export async function dispatchTenant(s: WaSettings, ispName: string, now = new Date()): Promise<string> {
-  if (!s.enabled || s.paused) return 'pausado';
-  const state = await refreshState(s.tenant_id, s);
-  await alertOnState(s, ispName);
-  if (state !== 'open') return `sesión ${state}`;
-  if (!inSendWindow(s, now)) return 'fuera de horario';
-  if (s.next_send_at && new Date(s.next_send_at) > now) return 'esperando pausa';
+/** Texto final: aviso + pie de BAJA (solo avisos) + firma (todo menos respuestas). */
+function composeText(s: WaSettings, n: WaNumber, m: any): string {
+  let text = m.message;
+  if (m.kind === 'notice' && s.footer) text += `\n\n_${renderTemplate(s.footer, { baja: s.optout_word })}_`;
+  if (n.signature && m.kind !== 'reply') text += `\n\n${n.signature}`;
+  return text;
+}
 
-  const { rows: today } = await pool.query(
-    `SELECT count(*)::int AS n FROM wa_queue
-      WHERE tenant_id = $1 AND status = 'sent' AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date`,
-    [s.tenant_id, TZ]
+/** Envía una fila de la cola. Devuelve true si salió. */
+async function sendRow(s: WaSettings, n: WaNumber, m: any): Promise<{ ok: boolean; detail: string }> {
+  const text = composeText(s, n, m);
+  const paced = m.kind === 'notice' || m.kind === 'invite';
+  try {
+    const delay = 1200 + Math.floor(Math.random() * 1800); // "escribiendo…" un momento: más natural
+    if (m.media === 'qr' && n.qr_image) {
+      const [, mime, b64] = n.qr_image.match(/^data:([^;]+);base64,(.+)$/) || [];
+      await evo(`/message/sendMedia/${encodeURIComponent(n.instance_name)}`, 'POST',
+        { number: m.phone, mediatype: 'image', mimetype: mime, media: b64, fileName: 'qr-pago.png', caption: text, delay }, 45_000);
+    } else {
+      await evo(`/message/sendText/${encodeURIComponent(n.instance_name)}`, 'POST', { number: m.phone, text, delay }, 30_000);
+    }
+    await pool.query(`UPDATE wa_queue SET status = 'sent', sent_at = now(), attempts = attempts + 1, last_error = NULL, updated_at = now() WHERE id = $1`, [m.id]);
+    await pool.query(
+      `UPDATE wa_numbers SET last_sent_at = now(), next_send_at = CASE WHEN $2 THEN $3::timestamptz ELSE next_send_at END WHERE id = $1`,
+      [n.id, paced, nextSendAt(n).toISOString()]
+    );
+    return { ok: true, detail: `enviado #${m.id}` };
+  } catch (e: any) {
+    if (notOnWhatsapp(e)) {
+      await pool.query(`UPDATE wa_subscribers SET not_on_whatsapp = true WHERE number_id = $1 AND phone = $2`, [n.id, m.phone]);
+      await markSkipped(m.id, 'El número no tiene WhatsApp');
+      return { ok: false, detail: 'sin WhatsApp' };
+    }
+    const attempts = Number(m.attempts) + 1;
+    await pool.query(
+      `UPDATE wa_queue SET status = $2, attempts = $3, last_error = $4,
+         not_before = now() + make_interval(mins => $5::int), updated_at = now() WHERE id = $1`,
+      [m.id, attempts >= MAX_ATTEMPTS ? 'failed' : 'pending', attempts, String(e.message || e).slice(0, 500), 5 * attempts]
+    );
+    // Tras un error también se respeta la pausa: no martillar a WhatsApp
+    if (paced) await pool.query(`UPDATE wa_numbers SET next_send_at = $2 WHERE id = $1`, [n.id, nextSendAt(n).toISOString()]);
+    return { ok: false, detail: `error #${m.id}: ${e.message}` };
+  }
+}
+
+async function claim(sql: string, params: any[]): Promise<any | null> {
+  const { rows } = await pool.query(
+    `UPDATE wa_queue SET status = 'sending', updated_at = now()
+      WHERE id = (${sql} LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`, params
   );
-  if (today[0].n >= s.daily_cap) return 'tope diario';
+  return rows[0] || null;
+}
+
+/** Respuestas, confirmaciones y pruebas: salen ya, sin pausa ni horario. */
+async function sendImmediate(s: WaSettings, n: WaNumber): Promise<number> {
+  let sent = 0;
+  for (let i = 0; i < MAX_IMMEDIATE_PER_RUN; i++) {
+    const m = await claim(
+      `SELECT id FROM wa_queue WHERE number_id = $1 AND status = 'pending' AND kind = ANY($2::text[]) AND not_before <= now()
+        ORDER BY created_at`, [n.id, IMMEDIATE_KINDS]
+    );
+    if (!m) break;
+    if ((await sendRow(s, n, m)).ok) sent++;
+  }
+  return sent;
+}
+
+async function countToday(n: WaNumber, kinds: string[]): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS n FROM wa_queue
+      WHERE number_id = $1 AND kind = ANY($2::text[]) AND status = 'sent'
+        AND (sent_at AT TIME ZONE $3)::date = (now() AT TIME ZONE $3)::date`,
+    [n.id, kinds, TZ]
+  );
+  return rows[0].n;
+}
+
+/** Presentación a un cliente que todavía no ha aceptado (tiene avisos esperando). */
+async function sendInvite(s: WaSettings, n: WaNumber, sub: any): Promise<{ ok: boolean; detail: string }> {
+  const text = renderTemplate(n.invite_template || DEFAULT_INVITE_TEMPLATE, templateVars(n, s, sub));
+  const { rows } = await pool.query(
+    `INSERT INTO wa_queue (tenant_id, number_id, kind, phone, message, event_type, priority, status, source, client_ref)
+     VALUES ($1, $2, 'invite', $3, $4, 'invite', 0, 'sending', 'auto', $5) RETURNING *`,
+    [n.tenant_id, n.id, sub.phone, text, sub.client_ref]
+  );
+  const r = await sendRow(s, n, rows[0]);
+  if (r.ok) {
+    await pool.query(`UPDATE wa_subscribers SET status = 'invited', invited_at = now() WHERE number_id = $1 AND phone = $2 AND status = 'new'`, [n.id, sub.phone]);
+    return { ok: true, detail: `presentación a +${sub.phone}` };
+  }
+  if (r.detail === 'sin WhatsApp') {
+    await pool.query(`UPDATE wa_queue SET status = 'skipped', last_error = 'El número no tiene WhatsApp', updated_at = now()
+                       WHERE number_id = $1 AND phone = $2 AND status = 'waiting'`, [n.id, sub.phone]);
+  } else {
+    // La presentación fallida no se reintenta como fila: el cliente sigue "new" y se le presenta en otro turno
+    await pool.query(`UPDATE wa_queue SET status = 'failed', updated_at = now() WHERE id = $1`, [rows[0].id]);
+  }
+  return r;
+}
+
+/** Un turno de envío para un número. Devuelve lo que pasó (para logs y pruebas). */
+export async function dispatchNumber(s: WaSettings, n: WaNumber, ispName: string, now = new Date()): Promise<string> {
+  if (!s.enabled || s.paused || n.paused) return 'pausado';
+  const state = await refreshState(n);
+  await alertOnState(s, n, ispName);
+  if (state !== 'open') return `sesión ${state}`;
+
+  const immediate = await sendImmediate(s, n);
+  if (!inSendWindow(s, now)) return immediate ? `respuestas ${immediate}` : 'fuera de horario';
+  if (n.next_send_at && new Date(n.next_send_at) > now) return immediate ? `respuestas ${immediate}` : 'esperando pausa';
+  if ((await countToday(n, ['notice', 'invite'])) >= n.daily_cap) return 'tope diario';
 
   for (let i = 0; i < MAX_SKIPS_PER_RUN; i++) {
-    const { rows } = await pool.query(
-      `UPDATE wa_queue SET status = 'sending', updated_at = now()
-        WHERE id = (SELECT id FROM wa_queue
-                     WHERE tenant_id = $1 AND status = 'pending' AND not_before <= now()
-                     ORDER BY priority, created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-        RETURNING *`,
-      [s.tenant_id]
+    const m = await claim(
+      `SELECT id FROM wa_queue WHERE number_id = $1 AND status = 'pending' AND kind = 'notice' AND not_before <= now()
+        ORDER BY priority, created_at`, [n.id]
     );
-    const m = rows[0];
-    if (!m) return 'cola vacía';
-
-    if (!BYPASS_OPTIN.has(m.event_type)) {
-      const { rows: c } = await pool.query(
-        `SELECT first_inbound_at, opted_out_at, not_on_whatsapp FROM wa_contacts WHERE tenant_id = $1 AND phone = $2`,
-        [s.tenant_id, m.phone]
-      );
-      const contact = c[0];
-      if (contact?.opted_out_at) { await markSkipped(m.id, `El cliente pidió no recibir más (${s.optout_word})`); continue; }
-      if (contact?.not_on_whatsapp) { await markSkipped(m.id, 'El número no tiene WhatsApp'); continue; }
-      if (s.require_optin && !contact?.first_inbound_at) { await markSkipped(m.id, 'El cliente nunca escribió (opción "solo a quien escribió primero")'); continue; }
+    if (!m) break;
+    const sub = await getSubscriber(n, m.phone);
+    if (sub.not_on_whatsapp) { await markSkipped(m.id, 'El número no tiene WhatsApp'); continue; }
+    if (sub.status === 'opted_out') { await markSkipped(m.id, `El cliente pidió no recibir más (${s.optout_word})`); continue; }
+    if (sub.status === 'declined') { await markSkipped(m.id, 'El cliente respondió NO a la presentación'); continue; }
+    if (sub.status === 'no_reply') { await markSkipped(m.id, 'El cliente no respondió la presentación'); continue; }
+    if (sub.status !== 'subscribed') {
+      // new / invited: el aviso espera a que acepte
+      await pool.query(`UPDATE wa_queue SET status = 'waiting', updated_at = now() WHERE id = $1`, [m.id]);
+      continue;
     }
-
-    const text = s.signature ? `${m.message}\n\n${s.signature}` : m.message;
-    try {
-      // "delay" muestra "escribiendo…" un momento antes de enviar: más natural
-      await evo(`/message/sendText/${encodeURIComponent(s.instance_name!)}`, 'POST',
-        { number: m.phone, text, delay: 1200 + Math.floor(Math.random() * 1800) }, 30_000);
-      await pool.query(`UPDATE wa_queue SET status = 'sent', sent_at = now(), attempts = attempts + 1, last_error = NULL, updated_at = now() WHERE id = $1`, [m.id]);
-      await pool.query(`UPDATE wa_settings SET last_sent_at = now(), next_send_at = $2 WHERE tenant_id = $1`, [s.tenant_id, nextSendAt(s)]);
-      return `enviado #${m.id}`;
-    } catch (e: any) {
-      if (notOnWhatsapp(e)) {
-        await pool.query(
-          `INSERT INTO wa_contacts (tenant_id, phone, not_on_whatsapp) VALUES ($1, $2, true)
-           ON CONFLICT (tenant_id, phone) DO UPDATE SET not_on_whatsapp = true`,
-          [s.tenant_id, m.phone]
-        );
-        await markSkipped(m.id, 'El número no tiene WhatsApp');
-        continue;
-      }
-      const attempts = Number(m.attempts) + 1;
-      await pool.query(
-        `UPDATE wa_queue SET status = $2, attempts = $3, last_error = $4,
-           not_before = now() + make_interval(mins => $5::int), updated_at = now() WHERE id = $1`,
-        [m.id, attempts >= MAX_ATTEMPTS ? 'failed' : 'pending', attempts, String(e.message || e).slice(0, 500), 5 * attempts]
-      );
-      // Tras un error también se respeta la pausa: no martillar a WhatsApp
-      await pool.query(`UPDATE wa_settings SET next_send_at = $2 WHERE tenant_id = $1`, [s.tenant_id, nextSendAt(s)]);
-      return `error #${m.id}: ${e.message}`;
-    }
+    return (await sendRow(s, n, m)).detail;
   }
-  return 'muchos omitidos; sigue en la próxima vuelta';
+
+  // Sin avisos para suscritos: presentación al cliente con el aviso en espera más antiguo
+  if ((await countToday(n, ['invite'])) < n.invite_daily_cap) {
+    const { rows } = await pool.query(
+      `SELECT s.* FROM wa_subscribers s
+         JOIN LATERAL (SELECT min(q.created_at) AS first_wait FROM wa_queue q
+                        WHERE q.number_id = s.number_id AND q.phone = s.phone AND q.status = 'waiting') w ON w.first_wait IS NOT NULL
+        WHERE s.number_id = $1 AND s.status = 'new' AND NOT s.not_on_whatsapp
+        ORDER BY w.first_wait LIMIT 1`,
+      [n.id]
+    );
+    if (rows[0]) return (await sendInvite(s, n, rows[0])).detail;
+  }
+  return 'cola vacía';
+}
+
+/** Vence presentaciones sin respuesta y avisos que esperaron demasiado. */
+export async function expireWaiting(s: WaSettings): Promise<void> {
+  await pool.query(
+    `UPDATE wa_subscribers SET status = 'no_reply'
+      WHERE tenant_id = $1 AND status = 'invited' AND invited_at < now() - make_interval(days => $2::int)`,
+    [s.tenant_id, s.invite_wait_days]
+  );
+  await pool.query(
+    `UPDATE wa_queue q SET status = 'skipped', updated_at = now(),
+       last_error = CASE WHEN sb.status = 'no_reply' THEN 'El cliente no respondió la presentación'
+                         ELSE 'No alcanzó a recibir la presentación (tope diario)' END
+       FROM wa_subscribers sb
+      WHERE q.tenant_id = $1 AND q.status = 'waiting' AND sb.number_id = q.number_id AND sb.phone = q.phone
+        AND (sb.status = 'no_reply' OR (sb.status = 'new' AND q.created_at < now() - make_interval(days => $2::int)))`,
+    [s.tenant_id, s.invite_wait_days]
+  );
 }
 
 let running = false;
 
-/** Cron cada minuto: un envío como máximo por ISP con el módulo activo. */
+/** Cron cada minuto: por número, respuestas inmediatas y como máximo un aviso o presentación. */
 export async function runWhatsappDispatcher(): Promise<void> {
   if (running || !EVO_KEY) return;
   running = true;
   try {
     // Mensajes que quedaron "enviando" por un reinicio vuelven a la cola
     await pool.query(`UPDATE wa_queue SET status = 'pending', updated_at = now() WHERE status = 'sending' AND updated_at < now() - interval '10 minutes'`);
-    const { rows } = await pool.query(
+    const { rows: tenants } = await pool.query(
       `SELECT s.*, t.name AS isp_name FROM wa_settings s JOIN tenants t ON t.id = s.tenant_id
         WHERE s.enabled AND COALESCE(t.enable_whatsapp, false) AND COALESCE(t.is_active, true)`
     );
-    for (const s of rows) {
+    for (const s of tenants) {
       try {
-        const r = await dispatchTenant(s, s.isp_name);
-        if (r.startsWith('enviado') || r.startsWith('error')) console.log(`[WA] ${s.isp_name}: ${r}`);
+        await expireWaiting(s);
+        const { rows: numbers } = await pool.query(`SELECT * FROM wa_numbers WHERE tenant_id = $1 ORDER BY id`, [s.tenant_id]);
+        for (const n of numbers) {
+          const r = await dispatchNumber(s, n, s.isp_name).catch((e: any) => `error: ${e.message}`);
+          if (/^(enviado|error|presentación|respuestas)/.test(r)) console.log(`[WA] ${s.isp_name} · ${n.label}: ${r}`);
+        }
       } catch (e: any) {
         console.error(`[WA] ${s.isp_name}:`, e.message);
       }
@@ -532,14 +1060,23 @@ export async function runWhatsappDispatcher(): Promise<void> {
   }
 }
 
+/** Envía ya las respuestas de un número (tras un mensaje del cliente), sin esperar al cron. */
+async function flushImmediate(n: WaNumber): Promise<void> {
+  const { rows } = await pool.query(`SELECT * FROM wa_settings WHERE tenant_id = $1`, [n.tenant_id]);
+  if (!rows[0]) return;
+  const { rows: fresh } = await pool.query(`SELECT * FROM wa_numbers WHERE id = $1`, [n.id]);
+  if (fresh[0]?.connection_state === 'open') await sendImmediate(rows[0], fresh[0]);
+}
+
 /** Limpieza diaria: historial de más de 90 días. */
 export async function cleanupWhatsapp(): Promise<number> {
   const a = await pool.query(`DELETE FROM wa_queue WHERE status IN ('sent','skipped','cancelled','failed') AND created_at < now() - interval '90 days'`);
   await pool.query(`DELETE FROM wa_session_events WHERE at < now() - interval '90 days'`);
+  await pool.query(`DELETE FROM wa_interactions WHERE at < now() - interval '180 days'`);
   return a.rowCount || 0;
 }
 
-// ───────────────────────── Eventos de Evolution ─────────────────────────
+// ───────────────────────── Mensajes de los clientes ─────────────────────────
 
 function inboundPhone(key: any): string | null {
   const candidates = [key?.senderPn, key?.remoteJidAlt, key?.participantPn, key?.remoteJid];
@@ -553,49 +1090,98 @@ function messageText(msg: any): string {
   return String(msg?.conversation ?? msg?.extendedTextMessage?.text ?? msg?.buttonsResponseMessage?.selectedDisplayText ?? '').trim();
 }
 
+async function logInteraction(n: WaNumber, phone: string, action: string): Promise<void> {
+  await pool.query(`INSERT INTO wa_interactions (tenant_id, number_id, phone, action) VALUES ($1, $2, $3, $4)`, [n.tenant_id, n.id, phone, action]);
+}
+
+/** Qué hacer con un mensaje de un cliente: SÍ / NO / BAJA / opción del menú / nada. */
+export async function handleInbound(s: WaSettings, n: WaNumber, ispName: string, phone: string, text: string): Promise<string> {
+  const sub = await getSubscriber(n, phone);
+  const ref = text.match(/cliente\s*(?:n[°º.o]?\s*)?#?\s*(\d{1,10})/i)?.[1] || null;
+  await pool.query(
+    `UPDATE wa_subscribers SET last_inbound_at = now(), not_on_whatsapp = false, client_ref = COALESCE($3, client_ref)
+      WHERE number_id = $1 AND phone = $2`, [n.id, phone, ref]
+  );
+  const word = firstWord(text);
+  const name = firstName(sub.client_name);
+  const reply = (msg: string) => enqueueImmediate(n, phone, 'system', msg);
+
+  if (word && word === firstWord(s.optout_word)) {
+    if (sub.status === 'opted_out') return 'ya estaba de baja';
+    await pool.query(`UPDATE wa_subscribers SET status = 'opted_out', responded_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+    await pool.query(`UPDATE wa_queue SET status = 'skipped', last_error = 'El cliente pidió no recibir más', updated_at = now()
+                       WHERE number_id = $1 AND phone = $2 AND status IN ('pending', 'waiting') AND kind = 'notice'`, [n.id, phone]);
+    await logInteraction(n, phone, 'baja');
+    await reply(`Listo, no te enviaremos más avisos por este medio. Si cambias de opinión responde *SÍ*.`);
+    return 'baja';
+  }
+  if (word && wordList(s.decline_words).has(word) && ['new', 'invited'].includes(sub.status)) {
+    await pool.query(`UPDATE wa_subscribers SET status = 'declined', responded_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+    await pool.query(`UPDATE wa_queue SET status = 'skipped', last_error = 'El cliente respondió NO a la presentación', updated_at = now()
+                       WHERE number_id = $1 AND phone = $2 AND status IN ('pending', 'waiting') AND kind = 'notice'`, [n.id, phone]);
+    await logInteraction(n, phone, 'no');
+    await reply(`Entendido${name ? ', ' + name : ''}. No te enviaremos avisos por aquí. Si cambias de opinión responde *SÍ*.`);
+    return 'rechazó';
+  }
+  const accepts = (word && wordList(s.optin_words).has(word)) || (s.optin_any_message && ['new', 'invited'].includes(sub.status));
+  if (accepts && sub.status !== 'subscribed') {
+    await pool.query(`UPDATE wa_subscribers SET status = 'subscribed', responded_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+    const { rowCount } = await pool.query(
+      `UPDATE wa_queue SET status = 'pending', not_before = now(), updated_at = now()
+        WHERE number_id = $1 AND phone = $2 AND status = 'waiting'`, [n.id, phone]
+    );
+    // Si tenía avisos esperando, que salgan pronto: el primero no espera la pausa completa
+    if (rowCount) await pool.query(`UPDATE wa_numbers SET next_send_at = LEAST(next_send_at, now() + interval '20 seconds') WHERE id = $1`, [n.id]);
+    await logInteraction(n, phone, 'si');
+    await reply(`¡Listo${name ? ', ' + name : ''}! ✅ Desde ahora recibirás tus avisos por aquí. Para dejar de recibirlos responde *${s.optout_word}*.`);
+    return 'aceptó';
+  }
+  if (sub.status === 'subscribed') {
+    const r = menuReply(n, s, sub, text);
+    if (r) {
+      await logInteraction(n, phone, `menu:${r.option.key}`);
+      await enqueueImmediate(n, phone, 'reply', r.message, r.option.media === 'qr' && n.qr_image ? 'qr' : null);
+      if (r.option.support) {
+        await notifyTelegram(n.tenant_id,
+          `🙋 <b>Cliente pide un asesor por WhatsApp</b> — ${ispName} · ${n.label}\n` +
+          `+${phone}${sub.client_name ? ' · ' + sub.client_name : ''}${sub.client_ref ? ' · cliente #' + sub.client_ref : ''}`).catch(() => undefined);
+      }
+      return `menú ${r.option.key}`;
+    }
+  }
+  return 'mensaje libre';
+}
+
 /** Webhook interno de Evolution: conexión y mensajes que escriben los clientes. */
 export async function handleEvolutionEvent(instance: string, secret: string, body: any): Promise<boolean> {
-  const { rows } = await pool.query(`SELECT s.*, t.name AS isp_name FROM wa_settings s JOIN tenants t ON t.id = s.tenant_id WHERE s.instance_name = $1`, [instance]);
-  const s: WaSettings & { isp_name: string } = rows[0];
-  if (!s || !secret || !safeEqual(secret, s.webhook_secret)) return false;
+  const { rows } = await pool.query(
+    `SELECT n.*, t.name AS isp_name FROM wa_numbers n JOIN tenants t ON t.id = n.tenant_id WHERE n.instance_name = $1`, [instance]
+  );
+  const n: WaNumber & { isp_name: string } = rows[0];
+  if (!n || !secret || !safeEqual(secret, n.webhook_secret)) return false;
   const event = String(body?.event || '').toLowerCase().replace(/_/g, '.');
   const data = body?.data || {};
 
   if (event === 'connection.update') {
     const state = String(data.state || 'close');
     const number = data.wuid ? String(data.wuid).split('@')[0].split(':')[0] : null;
-    await setState(s, state, data.statusReason ? `Motivo ${data.statusReason}` : null, number);
+    await setState(n, state, data.statusReason ? `Motivo ${data.statusReason}` : null, number);
     return true;
   }
 
   if (event === 'messages.upsert') {
+    const s = await getSettings(n.tenant_id);
     const items = Array.isArray(data) ? data : [data];
+    let any = false;
     for (const it of items) {
       if (it?.key?.fromMe) continue;
       if (String(it?.key?.remoteJid || '').endsWith('@g.us')) continue; // grupos no
       const phone = inboundPhone(it?.key);
       if (!phone) continue;
-      const text = messageText(it?.message).toUpperCase();
-      const optOut = text === s.optout_word;
-      const optIn = text === 'ALTA';
-      await pool.query(
-        `INSERT INTO wa_contacts (tenant_id, phone, first_inbound_at, last_inbound_at, opted_out_at)
-         VALUES ($1, $2, now(), now(), CASE WHEN $3 THEN now() END)
-         ON CONFLICT (tenant_id, phone) DO UPDATE SET
-           first_inbound_at = COALESCE(wa_contacts.first_inbound_at, now()),
-           last_inbound_at = now(), not_on_whatsapp = false,
-           opted_out_at = CASE WHEN $3 THEN now() WHEN $4 THEN NULL ELSE wa_contacts.opted_out_at END`,
-        [s.tenant_id, phone, optOut, optIn]
-      );
-      if (optOut || optIn) {
-        await enqueue(s.tenant_id, {
-          phone, event: 'system', source: 'auto',
-          message: optOut
-            ? `Listo, no te enviaremos más avisos por este medio. Si cambias de opinión escribe ALTA.`
-            : `¡Listo! Volverás a recibir tus avisos por WhatsApp. Para dejar de recibirlos escribe ${s.optout_word}.`,
-        }).catch(() => undefined);
-      }
+      await handleInbound(s, n, n.isp_name, phone, messageText(it?.message));
+      any = true;
     }
+    if (any) flushImmediate(n).catch((e) => console.warn('[WA] respuesta inmediata:', e.message));
     return true;
   }
   return true;
@@ -609,7 +1195,7 @@ export async function handleEvolutionEvent(instance: string, secret: string, bod
  */
 export function estimateFinish(
   pending: number,
-  s: Pick<WaSettings, 'interval_sec' | 'hour_start' | 'hour_end' | 'days' | 'daily_cap' | 'next_send_at'>,
+  s: { interval_sec: number; hour_start: number; hour_end: number; days: string; daily_cap: number; next_send_at: string | null },
   sentToday: number,
   now = new Date()
 ): Date | null {
@@ -651,10 +1237,17 @@ export interface WaMetrics {
   max_sent_day_30d: number;
   pending: number;
   eta: Date | null;
-  failure_rate_7d: number;      // 0..1 sobre intentos terminados
-  non_optin_share_30d: number;  // 0..1 de destinatarios enviados que nunca escribieron
-  not_on_wa_share_30d: number;  // 0..1 de omitidos por no tener WhatsApp
-  optout_share_30d: number;     // 0..1 de destinatarios que pidieron la baja
+  waiting: number;
+  failure_rate_7d: number;     // 0..1 sobre intentos terminados
+  not_on_wa_share_30d: number; // 0..1 de omitidos por no tener WhatsApp
+  invited_30d: number;         // presentaciones enviadas
+  accepted_30d: number;
+  declined_30d: number;
+  no_reply_30d: number;
+  optout_30d: number;
+  subscribed: number;
+  notices_sent_30d: number;
+  menu_uses_30d: number;
   disconnects_7d: number;
   cap_hits_7d: number;
 }
@@ -662,50 +1255,69 @@ export interface WaMetrics {
 const RANK: Record<RiskLevel, number> = { ok: 0, info: 1, warn: 2, high: 3 };
 
 /** Reglas de recomendación (puras, se pueden probar sin base). */
-export function recommend(s: Pick<WaSettings, 'interval_sec' | 'require_optin' | 'hour_start' | 'hour_end' | 'daily_cap'>, m: WaMetrics, now = new Date()): { risk: RiskLevel; items: Recommendation[] } {
+export function recommend(
+  n: { interval_sec: number; daily_cap: number; invite_daily_cap: number },
+  s: { hour_start: number; hour_end: number },
+  m: WaMetrics,
+  now = new Date()
+): { risk: RiskLevel; items: Recommendation[] } {
   const items: Recommendation[] = [];
   const fmt = (d: Date) => d.toLocaleString('es-CO', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   const pct = (x: number) => `${Math.round(x * 100)}%`;
 
   if (m.pending > 0) {
     if (!m.eta) {
-      items.push({ level: 'high', title: 'La cola no alcanza a salir', detail: `Hay ${m.pending} mensajes en cola y con la configuración actual no terminarían en 60 días. Revisa el horario, los días y el tope diario.` });
+      items.push({ level: 'high', title: 'La cola no alcanza a salir', detail: `Hay ${m.pending} avisos en cola y con la configuración actual no terminarían en 60 días. Revisa el horario, los días y el tope diario.` });
     } else if (localParts(m.eta).dateKey !== localParts(now).dateKey) {
-      items.push({ level: 'warn', title: 'La cola terminará otro día', detail: `Hay ${m.pending} mensajes en cola; con la pausa de ${Math.round(s.interval_sec / 60 * 10) / 10} min terminarán el ${fmt(m.eta)}; si son facturas, considera enviarlas por correo o no mandar recordatorios ese día. No bajes la pausa: sube el riesgo de bloqueo.` });
+      items.push({ level: 'warn', title: 'La cola terminará otro día', detail: `Hay ${m.pending} avisos en cola; con la pausa de ${Math.round(n.interval_sec / 60 * 10) / 10} min terminarán el ${fmt(m.eta)}; si son facturas, considera enviarlas por correo o no mandar recordatorios ese día. No bajes la pausa: sube el riesgo de bloqueo.` });
     }
   }
-  if (s.interval_sec < 60) {
-    items.push({ level: 'high', title: 'Pausa muy corta', detail: `Enviar cada ${s.interval_sec} s parece un robot para WhatsApp. Usa 2 minutos o más.` });
-  } else if (s.interval_sec < 90) {
+  if (n.interval_sec < 60) {
+    items.push({ level: 'high', title: 'Pausa muy corta', detail: `Enviar cada ${n.interval_sec} s parece un robot para WhatsApp. Usa 2 minutos o más.` });
+  } else if (n.interval_sec < 90) {
     items.push({ level: 'warn', title: 'Pausa corta', detail: 'Menos de 90 s entre mensajes aumenta el riesgo. Lo recomendado son 2 minutos con variación al azar.' });
+  }
+  if (n.invite_daily_cap > 60) {
+    items.push({ level: 'high', title: 'Demasiadas presentaciones al día', detail: `Escribirle a ${n.invite_daily_cap} desconocidos al día es lo que más bloquea números. Lo recomendado son 20 a 30.` });
   }
   if (m.avg_sent_per_day_7d > 500) {
     items.push({ level: 'high', title: 'Volumen alto para WhatsApp por QR', detail: `Promedio de ${Math.round(m.avg_sent_per_day_7d)} mensajes al día. Con este volumen conviene la API oficial de Meta (se paga por conversación, sin riesgo de bloqueo).` });
   } else if (m.avg_sent_per_day_7d > 200) {
-    items.push({ level: 'warn', title: 'Volumen considerable', detail: `Promedio de ${Math.round(m.avg_sent_per_day_7d)} mensajes al día. Manténlo así solo si el número tiene meses de uso y los clientes te escriben; ten un segundo chip calentado de respaldo.` });
+    items.push({ level: 'warn', title: 'Volumen considerable', detail: `Promedio de ${Math.round(m.avg_sent_per_day_7d)} mensajes al día. Manténlo así solo si el número tiene meses de uso; ten un segundo chip calentado de respaldo.` });
   }
   if (m.max_sent_day_30d > 300) {
     items.push({ level: 'info', title: 'Picos de envío', detail: `El día con más envíos del último mes llegó a ${m.max_sent_day_30d}. Si es el día de facturación, reparte la generación de facturas en varios días.` });
   }
-  if (!s.require_optin && m.non_optin_share_30d > 0.3) {
-    items.push({ level: 'high', title: 'Muchos destinatarios nunca te escribieron', detail: `${pct(m.non_optin_share_30d)} de los mensajes fueron a números que nunca te escribieron. Es la causa más común de bloqueo: activa "solo a quien escribió primero" y pide a tus clientes que te escriban (pon el número en la factura).` });
-  } else if (!s.require_optin && m.non_optin_share_30d > 0.1) {
-    items.push({ level: 'warn', title: 'Envíos a quien no te escribió', detail: `${pct(m.non_optin_share_30d)} de los mensajes fueron a números que nunca te escribieron.` });
+  const answered = m.accepted_30d + m.declined_30d + m.no_reply_30d;
+  if (answered >= 20) {
+    const acc = m.accepted_30d / answered;
+    if (acc < 0.3) {
+      items.push({ level: 'warn', title: 'Pocos clientes aceptan la presentación', detail: `Solo ${pct(acc)} respondió SÍ. Revisa el texto (que diga quién eres y qué ganan), pon el número en la factura y pide a los técnicos que el cliente escriba al instalar.` });
+    }
+    if (m.declined_30d / answered > 0.2) {
+      items.push({ level: 'warn', title: 'Muchos responden NO', detail: `${pct(m.declined_30d / answered)} rechazó la presentación. Baja el tope de presentaciones y revisa el texto: los rechazos y reportes llevan a bloqueos.` });
+    }
+  }
+  if (m.subscribed > 0 && m.optout_30d / m.subscribed > 0.05) {
+    items.push({ level: 'warn', title: 'Clientes dándose de baja', detail: `${m.optout_30d} suscritos pidieron la baja este mes. Revisa cuántos avisos mandas y su tono.` });
+  }
+  if (m.waiting > 0 && n.invite_daily_cap > 0 && m.waiting / n.invite_daily_cap > 3) {
+    items.push({ level: 'info', title: 'Avisos esperando presentación', detail: `${m.waiting} avisos esperan que el cliente acepte. Con ${n.invite_daily_cap} presentaciones al día tardarías unos ${Math.ceil(m.waiting / n.invite_daily_cap)} días; los que pasen del plazo se omiten. Invitar por SMS o en la factura acelera esto sin riesgo.` });
+  }
+  if (m.notices_sent_30d >= 30 && m.menu_uses_30d / m.notices_sent_30d < 0.05) {
+    items.push({ level: 'info', title: 'Casi nadie usa el menú', detail: 'Menos del 5% de los avisos recibe respuesta. Prueba opciones más útiles (saldo, QR de pago): las conversaciones mantienen sano el número.' });
   }
   if (m.failure_rate_7d > 0.1) {
     items.push({ level: 'warn', title: 'Muchos envíos fallan', detail: `${pct(m.failure_rate_7d)} de los envíos de la semana fallaron. Revisa la conexión y los teléfonos de los clientes en el CRM.` });
   }
   if (m.not_on_wa_share_30d > 0.05) {
-    items.push({ level: 'info', title: 'Teléfonos sin WhatsApp', detail: `${pct(m.not_on_wa_share_30d)} de los mensajes iban a números sin WhatsApp. Corrige esos teléfonos en el CRM.` });
-  }
-  if (m.optout_share_30d > 0.02) {
-    items.push({ level: 'warn', title: 'Clientes pidiendo la baja', detail: `${pct(m.optout_share_30d)} de los destinatarios escribió la palabra de baja. Revisa el tono y la cantidad de avisos: las bajas y reportes llevan a bloqueos.` });
+    items.push({ level: 'info', title: 'Teléfonos sin WhatsApp', detail: `${pct(m.not_on_wa_share_30d)} de los avisos iban a números sin WhatsApp. Corrige esos teléfonos en el CRM.` });
   }
   if (m.disconnects_7d >= 3) {
     items.push({ level: 'high', title: 'La sesión se cae seguido', detail: `${m.disconnects_7d} desconexiones esta semana. Puede ser un aviso de WhatsApp antes de un bloqueo: baja el volumen unos días y revisa el teléfono vinculado.` });
   }
   if (m.cap_hits_7d > 0) {
-    items.push({ level: 'info', title: 'Se alcanzó el tope diario', detail: `${m.cap_hits_7d} día(s) de esta semana llegaron al tope de ${s.daily_cap}. Lo que falte sale al día siguiente.` });
+    items.push({ level: 'info', title: 'Se alcanzó el tope diario', detail: `${m.cap_hits_7d} día(s) de esta semana llegaron al tope de ${n.daily_cap}. Lo que falte sale al día siguiente.` });
   }
   if (s.hour_start < 7 || s.hour_end > 21) {
     items.push({ level: 'info', title: 'Horario amplio', detail: 'Mensajes muy temprano o de noche generan reportes. Lo recomendado es de 7 a. m. a 8 p. m.' });
@@ -718,86 +1330,149 @@ export function recommend(s: Pick<WaSettings, 'interval_sec' | 'require_optin' |
   return { risk: risk === 'info' ? 'ok' : risk, items };
 }
 
-export async function getStats(tenantId: string, days = 30) {
-  days = Math.min(90, Math.max(7, Math.round(days) || 30));
-  const s = await getSettings(tenantId);
-  const q = (sql: string, params: any[] = []) => pool.query(sql, [tenantId, TZ, ...params]).then((r) => r.rows);
-
-  const [totals, perDay, perHour, byEvent, contacts, disc, nonOptin] = await Promise.all([
+async function numberStats(s: WaSettings, n: WaNumber, days: number) {
+  const q = (sql: string, params: any[] = []) => pool.query(sql, [n.id, TZ, ...params]).then((r) => r.rows);
+  const [totals, perDay, perHour, byEvent, funnel, menu, disc] = await Promise.all([
     q(`SELECT
-         count(*) FILTER (WHERE status = 'pending')::int AS pending,
-         count(*) FILTER (WHERE status = 'sent' AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS sent_today,
-         count(*) FILTER (WHERE (created_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS queued_today,
+         count(*) FILTER (WHERE status = 'pending' AND kind = 'notice')::int AS pending,
+         count(*) FILTER (WHERE status = 'waiting')::int AS waiting,
+         count(*) FILTER (WHERE status = 'sent' AND kind IN ('notice','invite') AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS sent_today,
          count(*) FILTER (WHERE status = 'sent' AND sent_at > now() - interval '7 days')::int AS sent_7d,
          count(*) FILTER (WHERE status = 'sent' AND sent_at > now() - interval '30 days')::int AS sent_30d,
+         count(*) FILTER (WHERE status = 'sent' AND kind = 'notice' AND sent_at > now() - interval '30 days')::int AS notices_sent_30d,
+         count(*) FILTER (WHERE status = 'sent' AND kind = 'invite' AND sent_at > now() - interval '30 days')::int AS invites_30d,
+         count(*) FILTER (WHERE status = 'sent' AND kind = 'invite' AND (sent_at AT TIME ZONE $2)::date = (now() AT TIME ZONE $2)::date)::int AS invites_today,
          count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - interval '7 days')::int AS failed_7d,
          count(*) FILTER (WHERE status = 'skipped' AND updated_at > now() - interval '30 days')::int AS skipped_30d,
          count(*) FILTER (WHERE status = 'skipped' AND last_error LIKE '%no tiene WhatsApp%' AND updated_at > now() - interval '30 days')::int AS not_on_wa_30d,
-         count(*) FILTER (WHERE status IN ('sent','skipped','failed') AND updated_at > now() - interval '30 days')::int AS finished_30d,
+         count(*) FILTER (WHERE status IN ('sent','skipped','failed') AND kind = 'notice' AND updated_at > now() - interval '30 days')::int AS finished_30d,
          count(*) FILTER (WHERE status IN ('sent','failed') AND updated_at > now() - interval '7 days')::int AS attempted_7d
-       FROM wa_queue WHERE tenant_id = $1`),
+       FROM wa_queue WHERE number_id = $1`),
     q(`SELECT to_char(d, 'YYYY-MM-DD') AS day,
-              count(w.*) FILTER (WHERE w.status = 'sent')::int AS sent,
+              count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind = 'notice')::int AS sent,
+              count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind = 'invite')::int AS invites,
+              count(w.*) FILTER (WHERE w.status = 'sent' AND w.kind IN ('reply','system'))::int AS replies,
               count(w.*) FILTER (WHERE w.status = 'failed')::int AS failed,
               count(w.*) FILTER (WHERE w.status = 'skipped')::int AS skipped
          FROM generate_series((now() AT TIME ZONE $2)::date - ($3::int - 1), (now() AT TIME ZONE $2)::date, interval '1 day') d
-         LEFT JOIN wa_queue w ON w.tenant_id = $1
+         LEFT JOIN wa_queue w ON w.number_id = $1
               AND (COALESCE(w.sent_at, w.updated_at) AT TIME ZONE $2)::date = d::date
               AND w.status IN ('sent','failed','skipped')
         GROUP BY d ORDER BY d`, [days]),
     q(`SELECT extract(hour FROM sent_at AT TIME ZONE $2)::int AS hour, count(*)::int AS sent
-         FROM wa_queue WHERE tenant_id = $1 AND status = 'sent' AND sent_at > now() - interval '7 days'
+         FROM wa_queue WHERE number_id = $1 AND status = 'sent' AND kind IN ('notice','invite') AND sent_at > now() - interval '7 days'
         GROUP BY 1 ORDER BY 1`),
-    q(`SELECT event_type, count(*) FILTER (WHERE status = 'sent')::int AS sent, count(*) FILTER (WHERE status = 'pending')::int AS pending
-         FROM wa_queue WHERE tenant_id = $1 AND $2::text IS NOT NULL AND created_at > now() - interval '30 days'
+    q(`SELECT event_type, count(*) FILTER (WHERE status = 'sent')::int AS sent,
+              count(*) FILTER (WHERE status IN ('pending','waiting'))::int AS pending
+         FROM wa_queue WHERE number_id = $1 AND $2::text IS NOT NULL AND kind = 'notice' AND created_at > now() - interval '30 days'
         GROUP BY 1 ORDER BY 2 DESC`),
-    q(`SELECT count(*) FILTER (WHERE first_inbound_at IS NOT NULL)::int AS optin,
-              count(*) FILTER (WHERE opted_out_at IS NOT NULL)::int AS optout,
-              count(*) FILTER (WHERE opted_out_at > now() - interval '30 days')::int AS optout_30d
-         FROM wa_contacts WHERE tenant_id = $1 AND $2::text IS NOT NULL`),
+    q(`SELECT count(*) FILTER (WHERE status = 'subscribed')::int AS subscribed,
+              count(*) FILTER (WHERE status = 'invited')::int AS invited_now,
+              count(*) FILTER (WHERE status = 'declined')::int AS declined,
+              count(*) FILTER (WHERE status = 'no_reply')::int AS no_reply,
+              count(*) FILTER (WHERE status = 'opted_out')::int AS opted_out,
+              count(*) FILTER (WHERE status = 'subscribed' AND responded_at > now() - interval '30 days')::int AS accepted_30d,
+              count(*) FILTER (WHERE status = 'declined' AND responded_at > now() - interval '30 days')::int AS declined_30d,
+              count(*) FILTER (WHERE status = 'no_reply' AND invited_at > now() - interval '40 days')::int AS no_reply_30d,
+              count(*) FILTER (WHERE status = 'opted_out' AND responded_at > now() - interval '30 days')::int AS optout_30d
+         FROM wa_subscribers WHERE number_id = $1 AND $2::text IS NOT NULL`),
+    q(`SELECT action, count(*)::int AS n FROM wa_interactions
+        WHERE number_id = $1 AND $2::text IS NOT NULL AND at > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC`),
     q(`SELECT count(*)::int AS n FROM wa_session_events
-        WHERE tenant_id = $1 AND $2::text IS NOT NULL AND state <> 'open' AND at > now() - interval '7 days'`),
-    q(`SELECT count(DISTINCT w.phone)::int AS recipients,
-              count(DISTINCT w.phone) FILTER (WHERE c.first_inbound_at IS NULL)::int AS without_optin
-         FROM wa_queue w LEFT JOIN wa_contacts c ON c.tenant_id = w.tenant_id AND c.phone = w.phone
-        WHERE w.tenant_id = $1 AND $2::text IS NOT NULL AND w.status = 'sent' AND w.sent_at > now() - interval '30 days'`),
+        WHERE number_id = $1 AND $2::text IS NOT NULL AND state <> 'open' AND at > now() - interval '7 days'`),
   ]);
-
-  const t = totals[0];
+  const t = totals[0], f = funnel[0];
   const last7 = perDay.slice(-7);
+  const menuUses = menu.filter((r: any) => String(r.action).startsWith('menu:')).reduce((a: number, r: any) => a + r.n, 0);
   const metrics: WaMetrics = {
-    avg_sent_per_day_7d: last7.reduce((a: number, d: any) => a + d.sent, 0) / 7,
-    max_sent_day_30d: perDay.slice(-30).reduce((a: number, d: any) => Math.max(a, d.sent), 0),
+    avg_sent_per_day_7d: last7.reduce((a: number, d: any) => a + d.sent + d.invites, 0) / 7,
+    max_sent_day_30d: perDay.slice(-30).reduce((a: number, d: any) => Math.max(a, d.sent + d.invites), 0),
     pending: t.pending,
-    eta: estimateFinish(t.pending, s, t.sent_today),
+    eta: estimateFinish(t.pending, { ...n, hour_start: s.hour_start, hour_end: s.hour_end, days: s.days }, t.sent_today),
+    waiting: t.waiting,
     failure_rate_7d: t.attempted_7d ? t.failed_7d / t.attempted_7d : 0,
-    non_optin_share_30d: nonOptin[0].recipients ? nonOptin[0].without_optin / nonOptin[0].recipients : 0,
     not_on_wa_share_30d: t.finished_30d ? t.not_on_wa_30d / t.finished_30d : 0,
-    optout_share_30d: nonOptin[0].recipients ? contacts[0].optout_30d / nonOptin[0].recipients : 0,
+    invited_30d: t.invites_30d,
+    accepted_30d: f.accepted_30d,
+    declined_30d: f.declined_30d,
+    no_reply_30d: f.no_reply_30d,
+    optout_30d: f.optout_30d,
+    subscribed: f.subscribed,
+    notices_sent_30d: t.notices_sent_30d,
+    menu_uses_30d: menuUses,
     disconnects_7d: disc[0].n,
-    cap_hits_7d: last7.filter((d: any) => d.sent >= s.daily_cap).length,
+    cap_hits_7d: last7.filter((d: any) => d.sent + d.invites >= n.daily_cap).length,
   };
-  const rec = recommend(s, metrics);
+  const rec = recommend(n, s, metrics);
+  return { totals: t, funnel: f, per_day: perDay, per_hour: perHour, by_event: byEvent, interactions: menu, metrics, risk: rec.risk, recommendations: rec.items };
+}
+
+/** Panel: un número o todos los del ISP (sumados, con recomendaciones de cada uno). */
+export async function getStats(tenantId: string, days = 30, numberId: number | null = null) {
+  days = Math.min(90, Math.max(7, Math.round(days) || 30));
+  const s = await getSettings(tenantId);
+  const numbers = numberId ? [await getNumber(tenantId, numberId)] : await listNumbers(tenantId);
+  const per = await Promise.all(numbers.map((n) => numberStats(s, n, days)));
+
+  const sumObj = (list: any[]) => list.reduce((acc, o) => {
+    for (const [k, v] of Object.entries(o || {})) if (typeof v === 'number') acc[k] = (acc[k] || 0) + v;
+    return acc;
+  }, {} as Record<string, number>);
+  const perDay = per[0].per_day.map((d: any, i: number) => {
+    const out: any = { day: d.day };
+    for (const k of ['sent', 'invites', 'replies', 'failed', 'skipped']) out[k] = per.reduce((a, p) => a + (p.per_day[i]?.[k] || 0), 0);
+    return out;
+  });
+  const perHour = Array.from({ length: 24 }, (_, h) => ({
+    hour: h, sent: per.reduce((a, p) => a + (p.per_hour.find((r: any) => r.hour === h)?.sent || 0), 0),
+  }));
+  const merge = (key: 'by_event' | 'interactions', id: string) => {
+    const m = new Map<string, any>();
+    for (const p of per) for (const r of p[key]) {
+      const cur = m.get(r[id]) || { [id]: r[id] };
+      for (const [k, v] of Object.entries(r)) if (typeof v === 'number') cur[k] = (cur[k] || 0) + v;
+      m.set(r[id], cur);
+    }
+    return [...m.values()];
+  };
+  const RANK_ORDER = ['high', 'warn', 'info', 'ok'];
+  const recs = per.flatMap((p, i) => p.recommendations
+    .filter((r) => numbers.length === 1 || r.level !== 'ok')
+    .map((r) => ({ ...r, number: numbers.length > 1 ? numbers[i].label : undefined })));
+  const risk = per.map((p) => p.risk).sort((a, b) => RANK_ORDER.indexOf(a) - RANK_ORDER.indexOf(b))[0] || 'ok';
+  const etas = per.map((p) => p.metrics.eta).filter(Boolean) as Date[];
+
   return {
-    totals: t,
+    totals: sumObj(per.map((p) => p.totals)),
+    funnel: sumObj(per.map((p) => p.funnel)),
     per_day: perDay,
-    per_hour: Array.from({ length: 24 }, (_, h) => ({ hour: h, sent: perHour.find((r: any) => r.hour === h)?.sent || 0 })),
-    by_event: byEvent.map((r: any) => ({ ...r, label: EVENT_LABELS[r.event_type] || r.event_type })),
-    contacts: contacts[0],
-    metrics: { ...metrics, eta: metrics.eta ? metrics.eta.toISOString() : null },
-    risk: rec.risk,
-    recommendations: rec.items,
-    session: { state: s.connection_state, number: s.connected_number, since: s.state_changed_at },
-    settings: { interval_sec: s.interval_sec, hour_start: s.hour_start, hour_end: s.hour_end, daily_cap: s.daily_cap, paused: s.paused, enabled: s.enabled },
+    per_hour: perHour,
+    by_event: merge('by_event', 'event_type').map((r: any) => ({ ...r, label: EVENT_LABELS[r.event_type] || r.event_type })),
+    interactions: merge('interactions', 'action').sort((a: any, b: any) => b.n - a.n),
+    metrics: {
+      ...sumObj(per.map((p) => ({ ...p.metrics, eta: 0 }))),
+      eta: etas.length ? new Date(Math.max(...etas.map((d) => d.getTime()))).toISOString() : null,
+      failure_rate_7d: Math.max(...per.map((p) => p.metrics.failure_rate_7d)),
+    },
+    risk,
+    recommendations: recs.length ? recs : [{ level: 'ok', title: 'Volumen saludable', detail: 'La cola va al día y el ritmo de envío es seguro.' }],
+    numbers: numbers.map((n, i) => ({
+      id: n.id, label: n.label, state: n.connection_state, number: n.connected_number, risk: per[i].risk,
+      daily_cap: n.daily_cap, invite_daily_cap: n.invite_daily_cap, interval_sec: n.interval_sec, paused: n.paused,
+    })),
+    settings: { hour_start: s.hour_start, hour_end: s.hour_end, paused: s.paused, enabled: s.enabled },
   };
 }
 
-/** Resumen de todos los ISP con el módulo activo (solo super admin). */
+/** Resumen de todos los ISP con el módulo (solo super admin). */
 export async function getOverview() {
   const { rows } = await pool.query(
-    `SELECT t.id, t.name, COALESCE(t.enable_whatsapp, false) AS module, s.enabled, s.paused,
-            s.connection_state, s.connected_number, s.interval_sec, s.daily_cap,
+    `SELECT t.id, t.name, COALESCE(t.enable_whatsapp, false) AS module, COALESCE(t.wa_max_numbers, 1) AS max_numbers,
+            s.enabled, s.paused,
+            (SELECT count(*) FROM wa_numbers n WHERE n.tenant_id = t.id)::int AS numbers,
+            (SELECT count(*) FROM wa_numbers n WHERE n.tenant_id = t.id AND n.connection_state = 'open')::int AS connected,
             (SELECT count(*) FROM wa_queue w WHERE w.tenant_id = t.id AND w.status = 'pending')::int AS pending,
+            (SELECT count(*) FROM wa_queue w WHERE w.tenant_id = t.id AND w.status = 'waiting')::int AS waiting,
             (SELECT count(*) FROM wa_queue w WHERE w.tenant_id = t.id AND w.status = 'sent' AND w.sent_at > now() - interval '24 hours')::int AS sent_24h,
             (SELECT count(*) FROM wa_queue w WHERE w.tenant_id = t.id AND w.status = 'failed' AND w.updated_at > now() - interval '7 days')::int AS failed_7d
        FROM tenants t LEFT JOIN wa_settings s ON s.tenant_id = t.id

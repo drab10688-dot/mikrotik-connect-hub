@@ -506,27 +506,50 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
      )`,
 
     // ── WhatsApp (Evolution API, lib/whatsapp.ts) ──
-    // Módulo apagado por defecto: el super admin lo activa por ISP.
+    // Módulo apagado por defecto: el super admin lo activa y fija cuántos números tiene el ISP.
     `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_whatsapp BOOLEAN NOT NULL DEFAULT false`,
-    // Configuración por ISP (una fila por ISP; la sesión de Evolution es wa-<slug>)
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS wa_max_numbers INTEGER NOT NULL DEFAULT 1`,
+    // Reglas comunes del ISP (horario, prioridades, palabras de respuesta, clave del plugin)
     `CREATE TABLE IF NOT EXISTS wa_settings (
        tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
        enabled BOOLEAN NOT NULL DEFAULT false,
        paused BOOLEAN NOT NULL DEFAULT false,
-       instance_name TEXT UNIQUE,
-       interval_sec INTEGER NOT NULL DEFAULT 120,
-       jitter_sec INTEGER NOT NULL DEFAULT 30,
        hour_start SMALLINT NOT NULL DEFAULT 7,
        hour_end SMALLINT NOT NULL DEFAULT 20,
        days TEXT NOT NULL DEFAULT '1,2,3,4,5,6,0',
-       daily_cap INTEGER NOT NULL DEFAULT 300,
-       require_optin BOOLEAN NOT NULL DEFAULT true,
-       optout_word TEXT NOT NULL DEFAULT 'BAJA',
-       signature TEXT,
        priorities JSONB NOT NULL DEFAULT '{}'::jsonb,
        alert_disconnect BOOLEAN NOT NULL DEFAULT true,
        api_key_hash TEXT,
        api_key_hint TEXT,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS optout_word TEXT NOT NULL DEFAULT 'BAJA'`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS optin_words TEXT NOT NULL DEFAULT 'SI,ALTA,ACEPTO'`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS decline_words TEXT NOT NULL DEFAULT 'NO'`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS optin_any_message BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS invite_wait_days SMALLINT NOT NULL DEFAULT 3`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS footer TEXT NOT NULL DEFAULT 'Para no recibir más avisos responde {baja}.'`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS wa_settings_api_key ON wa_settings (api_key_hash) WHERE api_key_hash IS NOT NULL`,
+    // Un número de WhatsApp (sesión de Evolution) por organización; uno es el por defecto
+    `CREATE TABLE IF NOT EXISTS wa_numbers (
+       id SERIAL PRIMARY KEY,
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       label TEXT NOT NULL,
+       display_name TEXT,
+       instance_name TEXT NOT NULL UNIQUE,
+       is_default BOOLEAN NOT NULL DEFAULT false,
+       paused BOOLEAN NOT NULL DEFAULT false,
+       interval_sec INTEGER NOT NULL DEFAULT 120,
+       jitter_sec INTEGER NOT NULL DEFAULT 30,
+       daily_cap INTEGER NOT NULL DEFAULT 300,
+       invite_daily_cap INTEGER NOT NULL DEFAULT 25,
+       signature TEXT,
+       invite_template TEXT,
+       invoice_template TEXT,
+       menu JSONB,
+       payment_link TEXT,
+       payment_info TEXT,
+       qr_image TEXT,
        webhook_secret TEXT NOT NULL DEFAULT encode(gen_random_bytes(24), 'hex'),
        connection_state TEXT NOT NULL DEFAULT 'close',
        connected_number TEXT,
@@ -534,10 +557,45 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        alerted_state TEXT,
        last_sent_at TIMESTAMPTZ,
        next_send_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS wa_settings_api_key ON wa_settings (api_key_hash) WHERE api_key_hash IS NOT NULL`,
-    // Cola: un mensaje por fila; dedupe_key evita repetir si UISP reenvía el webhook
+    `CREATE UNIQUE INDEX IF NOT EXISTS wa_numbers_default ON wa_numbers (tenant_id) WHERE is_default`,
+    // Organizaciones de UISP vistas en los avisos (source = UISP de origen) y su número asignado
+    `CREATE TABLE IF NOT EXISTS wa_orgs (
+       id SERIAL PRIMARY KEY,
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       source TEXT NOT NULL DEFAULT '',
+       org_id TEXT NOT NULL,
+       name TEXT,
+       number_id INTEGER REFERENCES wa_numbers(id) ON DELETE SET NULL,
+       first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+       last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+       UNIQUE (tenant_id, source, org_id)
+     )`,
+    // Suscripción por número: new → invited → subscribed | declined | no_reply; opted_out = BAJA.
+    // context = datos de la última factura/saldo que mandó el plugin (para el menú).
+    `CREATE TABLE IF NOT EXISTS wa_subscribers (
+       number_id INTEGER NOT NULL REFERENCES wa_numbers(id) ON DELETE CASCADE,
+       phone TEXT NOT NULL,
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       status TEXT NOT NULL DEFAULT 'new'
+         CHECK (status IN ('new', 'invited', 'subscribed', 'declined', 'no_reply', 'opted_out')),
+       client_ref TEXT,
+       client_name TEXT,
+       invited_at TIMESTAMPTZ,
+       responded_at TIMESTAMPTZ,
+       last_inbound_at TIMESTAMPTZ,
+       not_on_whatsapp BOOLEAN NOT NULL DEFAULT false,
+       context JSONB,
+       context_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       PRIMARY KEY (number_id, phone)
+     )`,
+    `CREATE INDEX IF NOT EXISTS wa_subscribers_status ON wa_subscribers (number_id, status)`,
+    // Cola: un mensaje por fila; dedupe_key evita repetir si UISP reenvía el webhook.
+    // kind: notice (aviso de UISP) | invite (presentación) | reply (menú) | system | test.
+    // waiting = aviso esperando que el cliente acepte la presentación.
     `CREATE TABLE IF NOT EXISTS wa_queue (
        id BIGSERIAL PRIMARY KEY,
        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -545,8 +603,7 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        message TEXT NOT NULL,
        event_type TEXT NOT NULL DEFAULT 'manual',
        priority SMALLINT NOT NULL DEFAULT 5,
-       status TEXT NOT NULL DEFAULT 'pending'
-         CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled', 'skipped')),
+       status TEXT NOT NULL DEFAULT 'pending',
        attempts SMALLINT NOT NULL DEFAULT 0,
        last_error TEXT,
        source TEXT,
@@ -557,20 +614,28 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        sent_at TIMESTAMPTZ,
        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
-    `CREATE INDEX IF NOT EXISTS wa_queue_next ON wa_queue (tenant_id, priority, created_at) WHERE status = 'pending'`,
+    `ALTER TABLE wa_queue ADD COLUMN IF NOT EXISTS number_id INTEGER REFERENCES wa_numbers(id) ON DELETE CASCADE`,
+    `ALTER TABLE wa_queue ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'notice'`,
+    `ALTER TABLE wa_queue ADD COLUMN IF NOT EXISTS media TEXT`,
+    `ALTER TABLE wa_queue DROP CONSTRAINT IF EXISTS wa_queue_status_check`,
+    `ALTER TABLE wa_queue ADD CONSTRAINT wa_queue_status_check
+       CHECK (status IN ('pending', 'waiting', 'sending', 'sent', 'failed', 'cancelled', 'skipped'))`,
+    `DROP INDEX IF EXISTS wa_queue_next`,
+    `CREATE INDEX IF NOT EXISTS wa_queue_next_n ON wa_queue (number_id, priority, created_at) WHERE status = 'pending'`,
+    `CREATE INDEX IF NOT EXISTS wa_queue_wait ON wa_queue (number_id, phone) WHERE status = 'waiting'`,
     `CREATE INDEX IF NOT EXISTS wa_queue_stats ON wa_queue (tenant_id, created_at)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS wa_queue_dedupe ON wa_queue (tenant_id, dedupe_key) WHERE dedupe_key IS NOT NULL`,
-    // Quién escribió primero (opt-in) y quién pidió no recibir más (BAJA)
-    `CREATE TABLE IF NOT EXISTS wa_contacts (
+    // Qué responden los clientes (SÍ/NO/BAJA y opciones del menú): mide la interacción
+    `CREATE TABLE IF NOT EXISTS wa_interactions (
+       id BIGSERIAL PRIMARY KEY,
        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       number_id INTEGER REFERENCES wa_numbers(id) ON DELETE CASCADE,
        phone TEXT NOT NULL,
-       first_inbound_at TIMESTAMPTZ,
-       last_inbound_at TIMESTAMPTZ,
-       opted_out_at TIMESTAMPTZ,
-       not_on_whatsapp BOOLEAN NOT NULL DEFAULT false,
-       PRIMARY KEY (tenant_id, phone)
+       action TEXT NOT NULL,
+       at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
-    // Historial de conexión de la sesión (caídas = señal de riesgo)
+    `CREATE INDEX IF NOT EXISTS wa_interactions_t ON wa_interactions (number_id, at)`,
+    // Historial de conexión de cada número (caídas = señal de riesgo)
     `CREATE TABLE IF NOT EXISTS wa_session_events (
        id BIGSERIAL PRIMARY KEY,
        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -578,6 +643,7 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        detail TEXT,
        at TIMESTAMPTZ NOT NULL DEFAULT now()
      )`,
+    `ALTER TABLE wa_session_events ADD COLUMN IF NOT EXISTS number_id INTEGER REFERENCES wa_numbers(id) ON DELETE CASCADE`,
     `CREATE INDEX IF NOT EXISTS wa_session_events_t ON wa_session_events (tenant_id, at)`,
   ];
 

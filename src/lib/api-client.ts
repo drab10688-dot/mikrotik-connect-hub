@@ -488,18 +488,32 @@ export const whatsappApi = {
   saveSettings: async (data: any, t?: string | null) => unwrapData<any>(await apiPut<any>(`/whatsapp/settings${waQs(t)}`, data)),
   pause: async (paused: boolean, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/pause${waQs(t)}`, { paused })),
   regenerateKey: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/api-key${waQs(t)}`, {})),
-  session: async (t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/session${waQs(t)}`)),
-  connect: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/session/connect${waQs(t)}`, {}, { timeoutMs: 60000 })),
-  logout: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/session/logout${waQs(t)}`, {})),
-  queue: async (params: { status?: string; q?: string; limit?: number; offset?: number }, t?: string | null) =>
+  numbers: async (t?: string | null) => unwrapArray<any>(await apiGet<any>(`/whatsapp/numbers${waQs(t)}`)),
+  createNumber: async (data: any, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/numbers${waQs(t)}`, data)),
+  updateNumber: async (id: number, data: any, t?: string | null) => unwrapData<any>(await apiPut<any>(`/whatsapp/numbers/${id}${waQs(t)}`, data)),
+  deleteNumber: async (id: number, t?: string | null) => unwrapData<any>(await apiDelete<any>(`/whatsapp/numbers/${id}${waQs(t)}`)),
+  setDefault: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/numbers/${id}/default${waQs(t)}`, {})),
+  pauseNumber: async (id: number, paused: boolean, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/numbers/${id}/pause${waQs(t)}`, { paused })),
+  getQr: async (id: number, t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/numbers/${id}/qr${waQs(t)}`)),
+  setQr: async (id: number, image: string | null, t?: string | null) => unwrapData<any>(await apiPut<any>(`/whatsapp/numbers/${id}/qr${waQs(t)}`, { image })),
+  session: async (id: number, t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/numbers/${id}/session${waQs(t)}`)),
+  connect: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/numbers/${id}/connect${waQs(t)}`, {}, { timeoutMs: 60000 })),
+  logout: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/numbers/${id}/logout${waQs(t)}`, {})),
+  test: async (id: number, phone: string, message: string, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/numbers/${id}/test${waQs(t)}`, { phone, message })),
+  orgs: async (t?: string | null) => unwrapArray<any>(await apiGet<any>(`/whatsapp/orgs${waQs(t)}`)),
+  assignOrg: async (id: number, number_id: number | null, t?: string | null) =>
+    unwrapData<any>(await apiPut<any>(`/whatsapp/orgs/${id}${waQs(t)}`, { number_id })),
+  subscribers: async (params: { number_id?: number; status?: string; q?: string; limit?: number; offset?: number }, t?: string | null) =>
+    unwrapData<any>(await apiGet<any>(`/whatsapp/subscribers${waQs(t, params)}`)),
+  queue: async (params: { status?: string; q?: string; number_id?: number; limit?: number; offset?: number }, t?: string | null) =>
     unwrapData<any>(await apiGet<any>(`/whatsapp/queue${waQs(t, params)}`)),
   retry: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/queue/${id}/retry${waQs(t)}`, {})),
   cancel: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/queue/${id}/cancel${waQs(t)}`, {})),
-  cancelPending: async (event_type: string | null, t?: string | null) =>
-    unwrapData<any>(await apiPost<any>(`/whatsapp/queue/cancel-pending${waQs(t)}`, { event_type })),
-  test: async (phone: string, message: string, t?: string | null) =>
-    unwrapData<any>(await apiPost<any>(`/whatsapp/test${waQs(t)}`, { phone, message })),
-  stats: async (days: number, t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/stats${waQs(t, { days })}`)),
+  cancelPending: async (event_type: string | null, number_id: number | null, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/queue/cancel-pending${waQs(t)}`, { event_type, number_id })),
+  stats: async (days: number, numberId: number | null, t?: string | null) =>
+    unwrapData<any>(await apiGet<any>(`/whatsapp/stats${waQs(t, { days, number_id: numberId })}`)),
 };
 
 // ─── Recursos del servidor (super admin) ─────────────────

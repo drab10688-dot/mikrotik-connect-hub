@@ -30,6 +30,7 @@ interface Isp {
   enable_mikrotik?: boolean;
   enable_tr069?: boolean;
   enable_whatsapp?: boolean;
+  wa_max_numbers?: number;
   enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
   landing?: any;
@@ -496,6 +497,22 @@ function IspCard({
               onCheckedChange={(v) => onSave({ enable_whatsapp: v })}
             />
           </div>
+          {isp.enable_whatsapp === true && (
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm font-normal">Números de WhatsApp permitidos</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                className="w-20 h-8"
+                defaultValue={isp.wa_max_numbers ?? 1}
+                onBlur={(e) => {
+                  const v = Math.min(20, Math.max(1, Math.floor(Number(e.target.value)) || 1));
+                  if (v !== (isp.wa_max_numbers ?? 1)) onSave({ wa_max_numbers: v });
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border p-3 space-y-2">

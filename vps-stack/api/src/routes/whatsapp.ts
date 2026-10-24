@@ -3,8 +3,9 @@ import { pool } from '../lib/db';
 import { AuthRequest, requireRole } from '../middleware/auth';
 import {
   getSettings, publicSettings, saveSettings, regenerateApiKey, tenantByApiKey,
-  connectSession, logoutSession, refreshState, enqueue, getStats, getOverview,
-  handleEvolutionEvent, normalizePhone, MAX_ATTEMPTS,
+  listNumbers, getNumber, publicNumber, createNumber, updateNumber, deleteNumber, setDefaultNumber, setNumberQr,
+  connectNumber, logoutNumber, refreshState, listOrgs, assignOrg, listSubscribers,
+  enqueue, enqueueTest, getStats, getOverview, handleEvolutionEvent, MAX_ATTEMPTS,
 } from '../lib/whatsapp';
 
 /**
@@ -17,6 +18,7 @@ export const whatsappRouter = Router();
 export const whatsappPublicRouter = Router();
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ADMIN = requireRole('super_admin', 'admin');
 
 /** ISP sobre el que se actúa: el del usuario o, para el super admin, el elegido. */
 function tenantOf(req: AuthRequest, res: Response): string | null {
@@ -27,146 +29,159 @@ function tenantOf(req: AuthRequest, res: Response): string | null {
   return null;
 }
 
-const fail = (res: Response, e: any, status = 400) =>
-  res.status(e?.status && e.status >= 400 && e.status < 600 ? (e.status === 404 ? 502 : e.status) : status)
+const fail = (res: Response, e: any, status = 400) => {
+  const code = Number(e?.status);
+  res.status(code >= 400 && code < 600 ? (code === 404 && e?.body !== undefined ? 502 : code) : status)
     .json({ error: e?.message || String(e) });
+};
+
+/** Envuelve una ruta: resuelve el ISP y captura errores (Express 4 no captura async). */
+const route = (fn: (t: string, req: AuthRequest, res: Response) => Promise<any>, status = 400) =>
+  async (req: AuthRequest, res: Response) => {
+    const t = tenantOf(req, res);
+    if (!t) return;
+    try {
+      const data = await fn(t, req, res);
+      if (!res.headersSent) res.json({ data });
+    } catch (e) { fail(res, e, status); }
+  };
+
+const numId = (req: AuthRequest) => Number(req.params.id) || 0;
 
 // ── Resumen de todos los ISP (super admin) ──
 whatsappRouter.get('/overview', requireRole('super_admin'), async (_req: AuthRequest, res: Response) => {
   try { res.json({ data: await getOverview() }); } catch (e) { fail(res, e, 500); }
 });
 
-// ── Configuración ──
-whatsappRouter.get('/settings', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try { res.json({ data: publicSettings(await getSettings(t)) }); } catch (e) { fail(res, e, 500); }
-});
+// ── Reglas del ISP ──
+whatsappRouter.get('/settings', route(async (t) => {
+  const s = publicSettings(await getSettings(t) as any);
+  const { rows } = await pool.query(`SELECT COALESCE(wa_max_numbers, 1) AS max_numbers FROM tenants WHERE id = $1`, [t]);
+  return { ...s, max_numbers: rows[0]?.max_numbers ?? 1 };
+}, 500));
+whatsappRouter.put('/settings', ADMIN, route(async (t, req) => publicSettings(await saveSettings(t, req.body || {}) as any)));
+whatsappRouter.post('/pause', route(async (t, req) => {
+  await getSettings(t);
+  const paused = req.body?.paused !== false;
+  await pool.query(`UPDATE wa_settings SET paused = $2, updated_at = now() WHERE tenant_id = $1`, [t, paused]);
+  return { paused };
+}, 500));
+whatsappRouter.post('/api-key', ADMIN, route(async (t) => ({ api_key: await regenerateApiKey(t) }), 500));
 
-whatsappRouter.put('/settings', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try { res.json({ data: publicSettings(await saveSettings(t, req.body || {})) }); } catch (e) { fail(res, e); }
-});
+// ── Números ──
+whatsappRouter.get('/numbers', route(async (t) => (await listNumbers(t)).map(publicNumber), 500));
+whatsappRouter.post('/numbers', ADMIN, route(async (t, req) => publicNumber(await createNumber(t, req.body || {}))));
+whatsappRouter.put('/numbers/:id', ADMIN, route(async (t, req) => publicNumber(await updateNumber(t, numId(req), req.body || {}))));
+whatsappRouter.delete('/numbers/:id', ADMIN, route(async (t, req) => { await deleteNumber(t, numId(req)); return { ok: true }; }));
+whatsappRouter.post('/numbers/:id/default', ADMIN, route(async (t, req) => { await setDefaultNumber(t, numId(req)); return { ok: true }; }));
+whatsappRouter.post('/numbers/:id/pause', route(async (t, req) =>
+  publicNumber(await updateNumber(t, numId(req), { paused: req.body?.paused !== false }))));
 
-whatsappRouter.post('/pause', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try {
-    await getSettings(t);
-    const paused = req.body?.paused !== false;
-    await pool.query(`UPDATE wa_settings SET paused = $2, updated_at = now() WHERE tenant_id = $1`, [t, paused]);
-    res.json({ data: { paused } });
-  } catch (e) { fail(res, e, 500); }
-});
+/** Imagen del QR de pago (para el menú "Medios de pago"). */
+whatsappRouter.get('/numbers/:id/qr', route(async (t, req) => ({ image: (await getNumber(t, numId(req))).qr_image }), 500));
+whatsappRouter.put('/numbers/:id/qr', ADMIN, route(async (t, req) => {
+  await setNumberQr(t, numId(req), req.body?.image ?? null);
+  return { ok: true };
+}));
 
-whatsappRouter.post('/api-key', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try { res.json({ data: { api_key: await regenerateApiKey(t) } }); } catch (e) { fail(res, e, 500); }
-});
+// Sesión del número (QR de WhatsApp)
+whatsappRouter.get('/numbers/:id/session', route(async (t, req) => {
+  const n = await getNumber(t, numId(req));
+  const state = await refreshState(n);
+  return { state, number: n.connected_number, since: n.state_changed_at, instance: n.instance_name };
+}, 500));
+whatsappRouter.post('/numbers/:id/connect', ADMIN, route(async (t, req) => connectNumber(t, numId(req)), 502));
+whatsappRouter.post('/numbers/:id/logout', ADMIN, route(async (t, req) => { await logoutNumber(t, numId(req)); return { state: 'close' }; }, 502));
 
-// ── Sesión / QR ──
-whatsappRouter.get('/session', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try {
-    const state = await refreshState(t);
-    const s = await getSettings(t);
-    res.json({ data: { state, number: s.connected_number, since: s.state_changed_at, instance: s.instance_name } });
-  } catch (e) { fail(res, e, 500); }
-});
+/** Mensaje de prueba: sale de inmediato y no exige que el número haya aceptado. */
+whatsappRouter.post('/numbers/:id/test', route(async (t, req) => ({
+  id: await enqueueTest(t, numId(req), req.body?.phone, String(req.body?.message || '').trim()),
+})));
 
-whatsappRouter.post('/session/connect', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try { res.json({ data: await connectSession(t) }); } catch (e) { fail(res, e, 502); }
-});
+// ── Organizaciones de UISP ──
+whatsappRouter.get('/orgs', route(async (t) => listOrgs(t), 500));
+whatsappRouter.put('/orgs/:id', ADMIN, route(async (t, req) => {
+  const n = req.body?.number_id;
+  await assignOrg(t, numId(req), n === null || n === '' || n === undefined ? null : Number(n));
+  return { ok: true };
+}));
 
-whatsappRouter.post('/session/logout', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try { await logoutSession(t); res.json({ data: { state: 'close' } }); } catch (e) { fail(res, e, 502); }
-});
+// ── Suscriptores ──
+const SUB_STATUSES = new Set(['new', 'invited', 'subscribed', 'declined', 'no_reply', 'opted_out']);
+whatsappRouter.get('/subscribers', route(async (t, req) => listSubscribers(t, {
+  number_id: Number(req.query.number_id) || null,
+  status: SUB_STATUSES.has(String(req.query.status)) ? String(req.query.status) : null,
+  q: String(req.query.q || '').trim().slice(0, 60) || null,
+  limit: Math.min(200, Math.max(10, Number(req.query.limit) || 50)),
+  offset: Math.max(0, Number(req.query.offset) || 0),
+}), 500));
 
 // ── Cola ──
-const STATUSES = new Set(['pending', 'sending', 'sent', 'failed', 'cancelled', 'skipped']);
+const STATUSES = new Set(['pending', 'waiting', 'sending', 'sent', 'failed', 'cancelled', 'skipped']);
 
-whatsappRouter.get('/queue', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try {
-    const status = STATUSES.has(String(req.query.status)) ? String(req.query.status) : null;
-    const search = String(req.query.q || '').trim().slice(0, 60) || null;
-    const limit = Math.min(200, Math.max(10, Number(req.query.limit) || 50));
-    const offset = Math.max(0, Number(req.query.offset) || 0);
-    const { rows } = await pool.query(
-      `SELECT id, phone, message, event_type, priority, status, attempts, last_error, source, client_ref,
-              created_at, sent_at, not_before, count(*) OVER () AS total
-         FROM wa_queue
-        WHERE tenant_id = $1 AND ($2::text IS NULL OR status = $2)
-          AND ($3::text IS NULL OR phone LIKE '%' || $3 || '%' OR client_ref = $3 OR message ILIKE '%' || $3 || '%')
-        ORDER BY CASE WHEN status IN ('pending','sending') THEN 0 ELSE 1 END,
-                 CASE WHEN status IN ('pending','sending') THEN priority END,
-                 CASE WHEN status IN ('pending','sending') THEN created_at END,
-                 COALESCE(sent_at, created_at) DESC
-        LIMIT $4 OFFSET $5`,
-      [t, status, search, limit, offset]
-    );
-    res.json({ data: { items: rows.map(({ total, ...r }) => r), total: Number(rows[0]?.total || 0), max_attempts: MAX_ATTEMPTS } });
-  } catch (e) { fail(res, e, 500); }
-});
+whatsappRouter.get('/queue', route(async (t, req) => {
+  const status = STATUSES.has(String(req.query.status)) ? String(req.query.status) : null;
+  const search = String(req.query.q || '').trim().slice(0, 60) || null;
+  const limit = Math.min(200, Math.max(10, Number(req.query.limit) || 50));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const { rows } = await pool.query(
+    `SELECT q.id, q.number_id, n.label AS number_label, q.kind, q.phone, q.message, q.event_type, q.priority, q.status,
+            q.attempts, q.last_error, q.source, q.client_ref, q.created_at, q.sent_at, q.not_before, count(*) OVER () AS total
+       FROM wa_queue q LEFT JOIN wa_numbers n ON n.id = q.number_id
+      WHERE q.tenant_id = $1 AND ($2::text IS NULL OR q.status = $2) AND ($6::int IS NULL OR q.number_id = $6)
+        AND ($3::text IS NULL OR q.phone LIKE '%' || $3 || '%' OR q.client_ref = $3 OR q.message ILIKE '%' || $3 || '%')
+      ORDER BY CASE WHEN q.status IN ('pending','sending','waiting') THEN 0 ELSE 1 END,
+               CASE WHEN q.status IN ('pending','sending','waiting') THEN q.priority END,
+               CASE WHEN q.status IN ('pending','sending','waiting') THEN q.created_at END,
+               COALESCE(q.sent_at, q.created_at) DESC
+      LIMIT $4 OFFSET $5`,
+    [t, status, search, limit, offset, Number(req.query.number_id) || null]
+  );
+  return { items: rows.map(({ total, ...r }) => r), total: Number(rows[0]?.total || 0), max_attempts: MAX_ATTEMPTS };
+}, 500));
 
-whatsappRouter.post('/queue/:id/retry', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
+whatsappRouter.post('/queue/:id/retry', route(async (t, req, res) => {
   const { rowCount } = await pool.query(
     `UPDATE wa_queue SET status = 'pending', attempts = 0, last_error = NULL, not_before = now(), updated_at = now()
-      WHERE id = $1 AND tenant_id = $2 AND status IN ('failed','cancelled','skipped')`,
-    [Number(req.params.id) || 0, t]
-  ).catch(() => ({ rowCount: 0 }) as any);
-  if (!rowCount) return res.status(404).json({ error: 'No se puede reintentar ese mensaje' });
-  res.json({ data: { ok: true } });
-});
+      WHERE id = $1 AND tenant_id = $2 AND kind = 'notice' AND status IN ('failed','cancelled','skipped')`,
+    [numId(req), t]
+  );
+  if (!rowCount) return void res.status(404).json({ error: 'No se puede reintentar ese mensaje' });
+  return { ok: true };
+}));
 
-whatsappRouter.post('/queue/:id/cancel', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
+whatsappRouter.post('/queue/:id/cancel', route(async (t, req, res) => {
   const { rowCount } = await pool.query(
-    `UPDATE wa_queue SET status = 'cancelled', updated_at = now() WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
-    [Number(req.params.id) || 0, t]
-  ).catch(() => ({ rowCount: 0 }) as any);
-  if (!rowCount) return res.status(404).json({ error: 'Ese mensaje ya no está pendiente' });
-  res.json({ data: { ok: true } });
-});
+    `UPDATE wa_queue SET status = 'cancelled', updated_at = now() WHERE id = $1 AND tenant_id = $2 AND status IN ('pending','waiting')`,
+    [numId(req), t]
+  );
+  if (!rowCount) return void res.status(404).json({ error: 'Ese mensaje ya no está pendiente' });
+  return { ok: true };
+}));
 
-/** Cancela en bloque los pendientes (opcional: solo de un tipo de evento). */
-whatsappRouter.post('/queue/cancel-pending', requireRole('super_admin', 'admin'), async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
+/** Cancela en bloque los pendientes (opcional: solo de un tipo de aviso o de un número). */
+whatsappRouter.post('/queue/cancel-pending', ADMIN, route(async (t, req) => {
   const event = /^[a-z_]{2,40}$/.test(String(req.body?.event_type || '')) ? String(req.body.event_type) : null;
-  try {
-    const { rowCount } = await pool.query(
-      `UPDATE wa_queue SET status = 'cancelled', updated_at = now()
-        WHERE tenant_id = $1 AND status = 'pending' AND ($2::text IS NULL OR event_type = $2)`,
-      [t, event]
-    );
-    res.json({ data: { cancelled: rowCount || 0 } });
-  } catch (e) { fail(res, e, 500); }
-});
-
-/** Mensaje de prueba: entra con prioridad máxima y sin exigir que el número haya escrito. */
-whatsappRouter.post('/test', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try {
-    const phone = normalizePhone(req.body?.phone);
-    if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
-    const r = await enqueue(t, {
-      phone, event: 'test', source: 'panel',
-      message: String(req.body?.message || '').trim() || '✅ Mensaje de prueba de Omnisync. Si lo recibes, WhatsApp está funcionando.',
-    });
-    res.json({ data: r });
-  } catch (e) { fail(res, e); }
-});
+  const { rowCount } = await pool.query(
+    `UPDATE wa_queue SET status = 'cancelled', updated_at = now()
+      WHERE tenant_id = $1 AND status IN ('pending','waiting') AND kind = 'notice'
+        AND ($2::text IS NULL OR event_type = $2) AND ($3::int IS NULL OR number_id = $3)`,
+    [t, event, Number(req.body?.number_id) || null]
+  );
+  return { cancelled: rowCount || 0 };
+}, 500));
 
 // ── Estadísticas, panel y recomendaciones ──
-whatsappRouter.get('/stats', async (req: AuthRequest, res: Response) => {
-  const t = tenantOf(req, res); if (!t) return;
-  try { res.json({ data: await getStats(t, Number(req.query.days) || 30) }); } catch (e) { fail(res, e, 500); }
-});
+whatsappRouter.get('/stats', route(async (t, req) =>
+  getStats(t, Number(req.query.days) || 30, Number(req.query.number_id) || null), 500));
 
 // ───────────────────────── Públicas ─────────────────────────
 
-/** Plugin UISP: encola un aviso. Clave del ISP en X-Api-Key (o Bearer). */
+/**
+ * Plugin UISP: encola un aviso. Clave del ISP en X-Api-Key (o Bearer).
+ * Cuerpo: { phone, message, event, client_id, client_name, organization: { id, name },
+ *           uisp, context: { invoice_number, due_date, amount, balance, month }, dedupe_key }
+ */
 whatsappPublicRouter.post('/enqueue', async (req: Request, res: Response) => {
   const key = String(req.headers['x-api-key'] || '').trim()
     || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -174,9 +189,14 @@ whatsappPublicRouter.post('/enqueue', async (req: Request, res: Response) => {
     const tenantId = await tenantByApiKey(key);
     if (!tenantId) return res.status(401).json({ error: 'Clave de API inválida o módulo WhatsApp apagado' });
     const b = req.body || {};
+    const org = b.organization && typeof b.organization === 'object'
+      ? b.organization
+      : (b.organization_id != null ? { id: b.organization_id, name: b.organization_name } : null);
     const r = await enqueue(tenantId, {
       phone: b.phone, message: b.message, event: b.event,
-      client_ref: b.client_id ?? b.client_ref, dedupe_key: b.dedupe_key, source: String(b.source || 'uisp').slice(0, 30),
+      client_ref: b.client_id ?? b.client_ref, client_name: b.client_name,
+      organization: org, uisp: b.uisp, context: b.context,
+      dedupe_key: b.dedupe_key, source: String(b.source || 'uisp').slice(0, 30),
     });
     res.status(r.duplicate ? 200 : 201).json({ data: r });
   } catch (e: any) {
@@ -184,7 +204,7 @@ whatsappPublicRouter.post('/enqueue', async (req: Request, res: Response) => {
   }
 });
 
-/** Eventos de Evolution (solo red interna; protegido por el secreto de cada ISP). */
+/** Eventos de Evolution (solo red interna; protegido por el secreto de cada número). */
 whatsappPublicRouter.post('/evolution/:instance', async (req: Request, res: Response) => {
   try {
     const ok = await handleEvolutionEvent(String(req.params.instance), String(req.query.s || ''), req.body);
