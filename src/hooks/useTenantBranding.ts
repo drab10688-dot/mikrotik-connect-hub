@@ -12,6 +12,7 @@ export interface TenantBranding {
   enable_mikrotik?: boolean;
   enable_tr069?: boolean;
   enable_onu_web?: boolean;
+  enable_whatsapp?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
 }
 
@@ -48,7 +49,7 @@ export function useMyTenant() {
   return { tenant: (data as TenantBranding | null) || null, isLoading };
 }
 
-export type TenantModule = 'onus' | 'mikrotik' | 'onu_web' | 'tr069';
+export type TenantModule = 'onus' | 'mikrotik' | 'onu_web' | 'tr069' | 'whatsapp';
 
 /** ¿Está habilitado el módulo para el ISP del usuario? */
 export function useModuleEnabled() {
@@ -60,6 +61,7 @@ export function useModuleEnabled() {
     if (module === 'onus') return tenant.enable_onus !== false;
     if (module === 'onu_web') return tenant.enable_onu_web !== false;
     if (module === 'tr069') return tenant.enable_tr069 !== false;
+    if (module === 'whatsapp') return tenant.enable_whatsapp === true;
     return tenant.enable_mikrotik !== false;
   };
 

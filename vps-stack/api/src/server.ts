@@ -33,6 +33,8 @@ import { runPppoeMonitor, cleanupPppoeEvents } from './cron/pppoe-monitor';
 import { collectAcsSignals, cleanupAcsSignals } from './lib/acs-signal';
 import { syncAcsOwnership } from './lib/acs-tenant';
 import { runAcsFaultWatcher } from './lib/acs-safe';
+import { whatsappRouter, whatsappPublicRouter } from './routes/whatsapp';
+import { runWhatsappDispatcher, cleanupWhatsapp, ensureEvolutionDatabase } from './lib/whatsapp';
 
 // Re-export pool for backward compatibility with cron jobs
 export { pool };
@@ -57,6 +59,8 @@ app.get('/api/health', (_, res) => {
 // Public routes
 app.use('/api/auth', authRouter);
 app.use('/api/tenants/public', tenantsPublicRouter); // branding público por ISP
+// WhatsApp: el plugin UISP encola con la clave de su ISP; Evolution avisa por la red interna
+app.use('/api/public/whatsapp', whatsappPublicRouter);
 app.use('/api/public', ispPublicRouter); // resolución del token TR-069 por ISP
 
 
@@ -92,6 +96,8 @@ app.use('/api/mail', authMiddleware, requireRole('super_admin', 'admin'), mailRo
 app.use('/api/ssl', authMiddleware, requireRole('super_admin'), sslRouter);
 app.use('/api/security', authMiddleware, requireRole('super_admin'), securityRouter);
 app.use('/api/backup', authMiddleware, requireRole('super_admin', 'admin'), backupRouter);
+// WhatsApp por ISP (Evolution): sesión QR, cola, panel y recomendaciones
+app.use('/api/whatsapp', authMiddleware, requireSection('whatsapp'), requireModule('enable_whatsapp'), whatsappRouter);
 
 
 // Aliases for frontend compatibility
@@ -181,6 +187,18 @@ cron.schedule('* * * * *', () => {
     .catch((e: any) => console.error('[ACS-SEGURO]', e.message));
 });
 
+// Cron: WhatsApp — como máximo un mensaje por ISP en cada vuelta (pausa, horario y tope por ISP)
+cron.schedule('* * * * *', () => {
+  runWhatsappDispatcher().catch((e: any) => console.error('[WA]', e.message));
+});
+
+// Cron: limpieza del historial de WhatsApp (90 días), diaria 3:20 AM
+cron.schedule('20 3 * * *', () => {
+  cleanupWhatsapp()
+    .then((n) => { if (n) console.log(`[WA] limpieza: ${n} mensajes viejos`); })
+    .catch((e: any) => console.error('[WA] limpieza:', e.message));
+});
+
 // Red de seguridad: una promesa rechazada sin capturar en una ruta (Express 4
 // no captura errores async) ya no tumba toda la API para todos los ISP.
 process.on('unhandledRejection', (reason: any) => {
@@ -203,7 +221,10 @@ app.listen(PORT, () => {
       );
     })
     .catch((e: any) => console.error('[SCHEMA/ACS] inicio:', e.message));
-  
+
+  // Base "evolution" (WhatsApp) en el mismo Postgres; update.sh ya la crea, esto es respaldo
+  ensureEvolutionDatabase(pool).catch((e: any) => console.warn('[WA] base evolution:', e.message));
+
   // Auto-configure WireGuard route after a short delay (wait for DNS)
   setTimeout(async () => {
     try {

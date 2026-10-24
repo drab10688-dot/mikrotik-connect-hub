@@ -5,7 +5,7 @@ const omnisyncLogo = omnisyncBrand.url;
 import {
   LayoutDashboard, Activity, Settings, LogOut, Router, Radar,
   ImagePlus, X, Radio, Antenna, Building2, Globe, Network, ShieldCheck, Users, KeyRound, UserPlus,
-  Mail, DatabaseBackup, Lock, MonitorCog,
+  Mail, DatabaseBackup, Lock, MonitorCog, MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -22,7 +22,7 @@ type MenuEntry = {
   icon: any;
   label: string;
   path: string;
-  module?: "onus" | "mikrotik" | "onu_web";
+  module?: "onus" | "mikrotik" | "onu_web" | "whatsapp";
   /** Sección de permisos del técnico */
   section?: string;
   /** Solo para administradores del ISP */
@@ -39,6 +39,7 @@ const menuItems: MenuEntry[] = [
   { icon: Network, label: "Mapa de red", path: "/topology", module: "mikrotik", section: "topology", group: "Operación" },
   { icon: Radar, label: "Monitor de red", path: "/monitor", module: "mikrotik", section: "mikrotik", group: "Operación" },
   { icon: MonitorCog, label: "WinBox remoto", path: "/winbox", module: "mikrotik", section: "winbox", group: "Operación" },
+  { icon: MessageCircle, label: "WhatsApp", path: "/whatsapp", module: "whatsapp", section: "whatsapp", group: "Operación" },
   { icon: Radio, label: "Credenciales y VPN", path: "/acs", section: "vpn", group: "Infraestructura" },
   { icon: Settings, label: "Configuración", path: "/settings", section: "configuracion", group: "Infraestructura" },
   { icon: Activity, label: "Diagnóstico API", path: "/diagnostics", section: "diagnostico", group: "Infraestructura" },
@@ -89,11 +90,12 @@ export const Sidebar = () => {
   };
 
   // Módulos habilitados por el super admin para este ISP
-  const moduleEnabled = (module?: "onus" | "mikrotik" | "onu_web") => {
+  const moduleEnabled = (module?: "onus" | "mikrotik" | "onu_web" | "whatsapp") => {
     if (!module) return true;
     if (!tenant) return true;
     if (module === "onus") return tenant.enable_onus !== false;
     if (module === "onu_web") return tenant.enable_onu_web !== false;
+    if (module === "whatsapp") return tenant.enable_whatsapp === true;
     return tenant.enable_mikrotik !== false;
   };
 
@@ -101,6 +103,7 @@ export const Sidebar = () => {
   const superAdminMenu: MenuEntry[] = [
     { icon: Building2, label: "Panel de ISPs", path: "/admin/isps", group: "Administración" },
     { icon: MonitorCog, label: "WinBox remoto", path: "/winbox", group: "Administración" },
+    { icon: MessageCircle, label: "WhatsApp (todos los ISP)", path: "/whatsapp", group: "Administración" },
     { icon: Users, label: "Usuarios", path: "/admin/users", group: "Administración" },
     { icon: UserPlus, label: "Crear usuario", path: "/admin/register-user", group: "Administración" },
     { icon: Mail, label: "Correo (SMTP)", path: "/admin/correo", group: "Administración" },

@@ -61,8 +61,17 @@ fi
 
 echo -e "${YELLOW}3/5 Reconstruyendo API (sin caché)...${NC}"
 cd "$INSTALL_DIR"
+# WhatsApp (Evolution API): clave interna API↔Evolution y su base en el mismo Postgres
+grep -q '^EVOLUTION_API_KEY=.' "$INSTALL_DIR/.env" || echo "EVOLUTION_API_KEY=$(openssl rand -hex 24)" >> "$INSTALL_DIR/.env"
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAc \
+  "SELECT 1 FROM pg_database WHERE datname = 'evolution'" 2>/dev/null | grep -q 1 \
+  || docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "CREATE DATABASE evolution" >/dev/null 2>&1 \
+  || echo -e "${YELLOW}⚠ No se pudo crear la base de Evolution (WhatsApp)${NC}"
 docker compose build --no-cache api
 docker compose up -d api
+docker compose pull evolution >/dev/null 2>&1 || true
+docker compose up -d evolution >/dev/null 2>&1 || \
+  echo -e "${YELLOW}⚠ Evolution (WhatsApp) no arrancó: docker logs omnisync-evolution${NC}"
 # Navegador remoto: se actualiza/levanta SIN tocar el túnel L2TP.
 docker compose pull remote-browser >/dev/null 2>&1 || true
 # --force-recreate aplica cambios de seguridad/red aunque la imagen sea la misma.

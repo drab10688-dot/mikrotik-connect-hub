@@ -35,6 +35,7 @@ const TENANT_COLUMNS = [
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_mikrotik BOOLEAN NOT NULL DEFAULT true`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_tr069 BOOLEAN NOT NULL DEFAULT true`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_onu_web BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_whatsapp BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS web_ports JSONB`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS landing JSONB`,
   `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()`,
@@ -78,6 +79,7 @@ tenantsRouter.get('/me', async (req: AuthRequest, res: Response) => {
               COALESCE(enable_mikrotik, true) AS enable_mikrotik,
               COALESCE(enable_tr069, true) AS enable_tr069,
               COALESCE(enable_onu_web, true) AS enable_onu_web,
+              COALESCE(enable_whatsapp, false) AS enable_whatsapp,
               web_ports, landing
          FROM tenants WHERE id = $1`,
       [req.tenantId]
@@ -234,7 +236,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
   try {
     await ensureTenantColumns();
     const { name, slug, logo_url, primary_color, is_active, onu_limit, user_limit,
-            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing, onu_networks } = req.body;
+            enable_onus, enable_mikrotik, web_ports, enable_tr069, enable_onu_web, landing, onu_networks,
+            enable_whatsapp } = req.body;
     const { rows } = await pool.query(
       `UPDATE tenants SET
          name = COALESCE($2, name),
@@ -254,6 +257,7 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
          enable_onu_web = COALESCE($12::boolean, enable_onu_web),
          landing = COALESCE($13::jsonb, landing),
          onu_networks = COALESCE($15::text, onu_networks),
+         enable_whatsapp = COALESCE($16::boolean, enable_whatsapp),
          updated_at = now()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name || null, slug ? slugify(slug) : null,
@@ -268,7 +272,8 @@ tenantsRouter.put('/:id', requireRole('super_admin'), async (req: AuthRequest, r
        landing ? JSON.stringify(landing) : null,
        user_limit === undefined || user_limit === null || user_limit === '' ? null : Math.floor(Number(user_limit)),
        onu_networks === undefined || onu_networks === null || onu_networks === ''
-         ? null : String(onu_networks).replace(/[^0-9a-fA-F:.,/ ]/g, '')]
+         ? null : String(onu_networks).replace(/[^0-9a-fA-F:.,/ ]/g, ''),
+       typeof enable_whatsapp === 'boolean' ? enable_whatsapp : null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'ISP no encontrado' });
     await applyTenantOnuLimit(rows[0].id).catch(() => undefined);

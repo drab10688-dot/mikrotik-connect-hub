@@ -29,6 +29,7 @@ interface Isp {
   enable_onus?: boolean;
   enable_mikrotik?: boolean;
   enable_tr069?: boolean;
+  enable_whatsapp?: boolean;
   enable_onu_web?: boolean;
   web_ports?: Record<string, { port: number; protocol: 'http' | 'https' }> | null;
   landing?: any;
@@ -486,6 +487,13 @@ function IspCard({
             <Switch
               checked={isp.enable_tr069 !== false}
               onCheckedChange={(v) => onSave({ enable_tr069: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">WhatsApp (avisos por QR con Evolution)</Label>
+            <Switch
+              checked={isp.enable_whatsapp === true}
+              onCheckedChange={(v) => onSave({ enable_whatsapp: v })}
             />
           </div>
         </div>

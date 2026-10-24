@@ -504,6 +504,81 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
        last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
        UNIQUE (oui, product_class, firmware, param, kind)
      )`,
+
+    // ── WhatsApp (Evolution API, lib/whatsapp.ts) ──
+    // Módulo apagado por defecto: el super admin lo activa por ISP.
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS enable_whatsapp BOOLEAN NOT NULL DEFAULT false`,
+    // Configuración por ISP (una fila por ISP; la sesión de Evolution es wa-<slug>)
+    `CREATE TABLE IF NOT EXISTS wa_settings (
+       tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+       enabled BOOLEAN NOT NULL DEFAULT false,
+       paused BOOLEAN NOT NULL DEFAULT false,
+       instance_name TEXT UNIQUE,
+       interval_sec INTEGER NOT NULL DEFAULT 120,
+       jitter_sec INTEGER NOT NULL DEFAULT 30,
+       hour_start SMALLINT NOT NULL DEFAULT 7,
+       hour_end SMALLINT NOT NULL DEFAULT 20,
+       days TEXT NOT NULL DEFAULT '1,2,3,4,5,6,0',
+       daily_cap INTEGER NOT NULL DEFAULT 300,
+       require_optin BOOLEAN NOT NULL DEFAULT true,
+       optout_word TEXT NOT NULL DEFAULT 'BAJA',
+       signature TEXT,
+       priorities JSONB NOT NULL DEFAULT '{}'::jsonb,
+       alert_disconnect BOOLEAN NOT NULL DEFAULT true,
+       api_key_hash TEXT,
+       api_key_hint TEXT,
+       webhook_secret TEXT NOT NULL DEFAULT encode(gen_random_bytes(24), 'hex'),
+       connection_state TEXT NOT NULL DEFAULT 'close',
+       connected_number TEXT,
+       state_changed_at TIMESTAMPTZ,
+       alerted_state TEXT,
+       last_sent_at TIMESTAMPTZ,
+       next_send_at TIMESTAMPTZ,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS wa_settings_api_key ON wa_settings (api_key_hash) WHERE api_key_hash IS NOT NULL`,
+    // Cola: un mensaje por fila; dedupe_key evita repetir si UISP reenvía el webhook
+    `CREATE TABLE IF NOT EXISTS wa_queue (
+       id BIGSERIAL PRIMARY KEY,
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       phone TEXT NOT NULL,
+       message TEXT NOT NULL,
+       event_type TEXT NOT NULL DEFAULT 'manual',
+       priority SMALLINT NOT NULL DEFAULT 5,
+       status TEXT NOT NULL DEFAULT 'pending'
+         CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled', 'skipped')),
+       attempts SMALLINT NOT NULL DEFAULT 0,
+       last_error TEXT,
+       source TEXT,
+       client_ref TEXT,
+       dedupe_key TEXT,
+       not_before TIMESTAMPTZ NOT NULL DEFAULT now(),
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       sent_at TIMESTAMPTZ,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS wa_queue_next ON wa_queue (tenant_id, priority, created_at) WHERE status = 'pending'`,
+    `CREATE INDEX IF NOT EXISTS wa_queue_stats ON wa_queue (tenant_id, created_at)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS wa_queue_dedupe ON wa_queue (tenant_id, dedupe_key) WHERE dedupe_key IS NOT NULL`,
+    // Quién escribió primero (opt-in) y quién pidió no recibir más (BAJA)
+    `CREATE TABLE IF NOT EXISTS wa_contacts (
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       phone TEXT NOT NULL,
+       first_inbound_at TIMESTAMPTZ,
+       last_inbound_at TIMESTAMPTZ,
+       opted_out_at TIMESTAMPTZ,
+       not_on_whatsapp BOOLEAN NOT NULL DEFAULT false,
+       PRIMARY KEY (tenant_id, phone)
+     )`,
+    // Historial de conexión de la sesión (caídas = señal de riesgo)
+    `CREATE TABLE IF NOT EXISTS wa_session_events (
+       id BIGSERIAL PRIMARY KEY,
+       tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+       state TEXT NOT NULL,
+       detail TEXT,
+       at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    `CREATE INDEX IF NOT EXISTS wa_session_events_t ON wa_session_events (tenant_id, at)`,
   ];
 
 

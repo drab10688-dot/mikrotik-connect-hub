@@ -32,6 +32,7 @@ const HINTS: Record<string, string> = {
   diagnostico: "Pruebas de conexión con la API de los routers",
   escritorio: "Abrir equipos en el navegador remoto (WebFig, antenas, ONUs) desde el VPS",
   winbox: "Abrir WinBox desde el VPS hacia sus routers asignados (y antenas MikroTik por RoMON). Es independiente del escritorio remoto",
+  whatsapp: "Ver: estado de la sesión, cola y panel de envíos · Editar: reintentar o cancelar mensajes, pausar y enviar pruebas (conectar el QR y la configuración son solo del admin)",
 };
 
 const FALLBACK_LABELS: Record<string, string> = {
@@ -45,6 +46,7 @@ const FALLBACK_LABELS: Record<string, string> = {
   diagnostico: "Diagnóstico API",
   escritorio: "Escritorio remoto (VNC)",
   winbox: "WinBox remoto",
+  whatsapp: "WhatsApp",
 };
 
 const GROUPS: { title: string; sections: string[] }[] = [

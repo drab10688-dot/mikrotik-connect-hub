@@ -82,6 +82,9 @@ services:
       # Minutos sin actividad del visor antes de cerrar pestañas y borrar datos
       BROWSER_IDLE_MINUTES: ${BROWSER_IDLE_MINUTES:-10}
       TZ: ${TZ:-America/Bogota}
+      # WhatsApp por ISP (lib/whatsapp.ts): Evolution solo en la red interna
+      EVOLUTION_URL: ${EVOLUTION_URL:-http://evolution:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
     # Solo local: desde fuera se entra por Nginx (/api/).
     ports:
       - "127.0.0.1:3000:3000"
@@ -91,6 +94,53 @@ services:
       - ./nginx/certs:/opt/omnisync/nginx/certs
       - ./frontend/dist:/opt/omnisync/frontend/dist
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - omnisync-net
+
+  # ============================================
+  # Evolution API - WhatsApp por QR (una sesión por ISP)
+  # ============================================
+  # Sin puertos publicados: solo la API de Omnisync le habla por omnisync-net.
+  # Su base es "evolution" dentro del mismo Postgres (la crea la API al arrancar).
+  # Límite de RAM/CPU para no quitarle recursos a GenieACS y al resto.
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: omnisync-evolution
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 1g
+    cpus: 1.0
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: 8080
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${DB_USER:-omnisync}:${DB_PASSWORD:-changeme_postgres}@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: omnisync
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      DEL_INSTANCE: "false"
+      CONFIG_SESSION_PHONE_CLIENT: Omnisync
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: 30
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      TELEMETRY_ENABLED: "false"
+      LOG_LEVEL: ERROR,WARN
+      TZ: ${TZ:-America/Bogota}
+    volumes:
+      - evolution_instances:/evolution/instances
     depends_on:
       postgres:
         condition: service_healthy
@@ -267,6 +317,7 @@ volumes:
   wireguard_config:
   browser_config:
   mongo_data:
+  evolution_instances:
 
 networks:
   omnisync-net:

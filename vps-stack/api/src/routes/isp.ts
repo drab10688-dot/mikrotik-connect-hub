@@ -25,6 +25,7 @@ export const SECTIONS = [
   'diagnostico',
   'escritorio',
   'winbox',
+  'whatsapp',
 ] as const;
 export type Section = (typeof SECTIONS)[number];
 
@@ -39,6 +40,7 @@ export const SECTION_LABELS: Record<string, string> = {
   diagnostico: 'Diagnóstico API',
   escritorio: 'Escritorio remoto (VNC)',
   winbox: 'WinBox remoto',
+  whatsapp: 'WhatsApp: conexión, cola y avisos a clientes',
 };
 
 /**
@@ -492,7 +494,7 @@ export async function userCanSection(userId: string, section: Section, edit = fa
 }
 
 /** Middleware: exige que el ISP tenga activo el módulo (TR-069 / web ONU). */
-export function requireModule(column: 'enable_tr069' | 'enable_onu_web' | 'enable_onus' | 'enable_mikrotik') {
+export function requireModule(column: 'enable_tr069' | 'enable_onu_web' | 'enable_onus' | 'enable_mikrotik' | 'enable_whatsapp') {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.tenantId) return next();
     try {
@@ -508,6 +510,8 @@ export function requireModule(column: 'enable_tr069' | 'enable_onu_web' | 'enabl
             ? 'La gestión de ONUs está desactivada para este ISP'
             : column === 'enable_mikrotik'
             ? 'El módulo MikroTik está desactivado para este ISP'
+            : column === 'enable_whatsapp'
+            ? 'El módulo WhatsApp no está activado para este ISP (lo activa el super admin)'
             : 'El acceso web directo a ONUs está desactivado para este ISP',
         });
       }

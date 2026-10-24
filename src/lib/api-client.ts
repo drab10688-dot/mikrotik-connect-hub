@@ -473,6 +473,35 @@ export const monitorApi = {
     unwrapArray<any>(await apiPost<any>('/monitor/settings/detect-chat', telegram_token ? { telegram_token } : {})),
 };
 
+// ─── WhatsApp por ISP (Evolution: QR, cola, panel y recomendaciones) ─
+// tenantId solo lo usa el super admin para elegir un ISP; el resto usa el suyo.
+const waQs = (tenantId?: string | null, extra: Record<string, any> = {}) => {
+  const p = new URLSearchParams();
+  if (tenantId) p.set('tenant_id', tenantId);
+  Object.entries(extra).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') p.set(k, String(v)); });
+  const s = p.toString();
+  return s ? `?${s}` : '';
+};
+export const whatsappApi = {
+  overview: async () => unwrapArray<any>(await apiGet<any>('/whatsapp/overview')),
+  settings: async (t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/settings${waQs(t)}`)),
+  saveSettings: async (data: any, t?: string | null) => unwrapData<any>(await apiPut<any>(`/whatsapp/settings${waQs(t)}`, data)),
+  pause: async (paused: boolean, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/pause${waQs(t)}`, { paused })),
+  regenerateKey: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/api-key${waQs(t)}`, {})),
+  session: async (t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/session${waQs(t)}`)),
+  connect: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/session/connect${waQs(t)}`, {}, { timeoutMs: 60000 })),
+  logout: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/session/logout${waQs(t)}`, {})),
+  queue: async (params: { status?: string; q?: string; limit?: number; offset?: number }, t?: string | null) =>
+    unwrapData<any>(await apiGet<any>(`/whatsapp/queue${waQs(t, params)}`)),
+  retry: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/queue/${id}/retry${waQs(t)}`, {})),
+  cancel: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/queue/${id}/cancel${waQs(t)}`, {})),
+  cancelPending: async (event_type: string | null, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/queue/cancel-pending${waQs(t)}`, { event_type })),
+  test: async (phone: string, message: string, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/test${waQs(t)}`, { phone, message })),
+  stats: async (days: number, t?: string | null) => unwrapData<any>(await apiGet<any>(`/whatsapp/stats${waQs(t, { days })}`)),
+};
+
 // ─── Recursos del servidor (super admin) ─────────────────
 export const systemResourcesApi = {
   get: async () => unwrapData<any>(await apiGet<any>('/system/resources')),

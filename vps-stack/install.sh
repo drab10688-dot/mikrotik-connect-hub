@@ -135,6 +135,7 @@ MIKROTIK_USER=
 MIKROTIK_PASS=
 GENIEACS_JWT_SECRET=$(openssl rand -hex 24)
 GENIEACS_NBI_URL=http://genieacs:7557
+EVOLUTION_API_KEY=$(openssl rand -hex 24)
 BROWSER_HOME_URL=about:blank
 VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
 ONU_NETS=${ONU_NETS}
@@ -146,6 +147,7 @@ else
   grep -q '^VPS_PUBLIC_IP=' .env && sed -i "s|^VPS_PUBLIC_IP=.*|VPS_PUBLIC_IP=${VPS_PUBLIC_IP}|" .env \
     || echo "VPS_PUBLIC_IP=${VPS_PUBLIC_IP}" >> .env
   grep -q '^ONU_NETS=' .env || echo "ONU_NETS=${ONU_NETS}" >> .env
+  grep -q '^EVOLUTION_API_KEY=.' .env || echo "EVOLUTION_API_KEY=$(openssl rand -hex 24)" >> .env
   echo -e "${GREEN}✓ .env existente conservado${NC}"
 fi
 
@@ -200,6 +202,11 @@ echo -e "${YELLOW}Construyendo API...${NC}"
 docker compose build api
 
 docker compose up -d postgres mongo genieacs coturn api nginx 2>&1 | tail -5
+# WhatsApp (Evolution API): su base vive en el mismo Postgres (ya sano: la API depende de él)
+docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -tAc \
+  "SELECT 1 FROM pg_database WHERE datname = 'evolution'" 2>/dev/null | grep -q 1 \
+  || docker exec omnisync-postgres psql -U "${DB_USER:-omnisync}" -d "${DB_NAME:-omnisync}" -c "CREATE DATABASE evolution" >/dev/null 2>&1 || true
+docker compose up -d evolution 2>&1 | tail -2 || echo -e "${YELLOW}⚠ Evolution (WhatsApp) no arrancó: docker logs omnisync-evolution${NC}"
 # TR-069 TCP :7547 lo publica NGINX (valida /tr069/<token>/ y añade X-Tenant-Token).
 # --force-recreate garantiza el mapeo correcto aunque exista un despliegue previo.
 docker compose up -d --force-recreate genieacs nginx 2>&1 | tail -3
