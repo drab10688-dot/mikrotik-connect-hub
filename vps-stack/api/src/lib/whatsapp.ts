@@ -99,6 +99,7 @@ export interface WaSettings {
   optin_any_message: boolean;
   require_crm_link: boolean;
   admin_phone: string | null;
+  new_orgs_muted: boolean;
   invite_wait_days: number;
   footer: string;
 }
@@ -344,6 +345,7 @@ export interface SettingsInput {
   invite_wait_days?: number;
   require_crm_link?: boolean;
   admin_phone?: string | null;
+  new_orgs_muted?: boolean;
   footer?: string;
 }
 
@@ -406,13 +408,15 @@ export async function saveSettings(tenantId: string, input: SettingsInput): Prom
        optout_word = $8::text, optin_words = $9::text, decline_words = $10::text,
        optin_any_message = COALESCE($11::boolean, optin_any_message), invite_wait_days = $12::int,
        footer = $13::text, require_crm_link = COALESCE($14::boolean, require_crm_link),
-       admin_phone = CASE WHEN $15::boolean THEN $16::text ELSE admin_phone END, updated_at = now()
+       admin_phone = CASE WHEN $15::boolean THEN $16::text ELSE admin_phone END,
+       new_orgs_muted = COALESCE($17::boolean, new_orgs_muted), updated_at = now()
      WHERE tenant_id = $1 RETURNING *`,
     [tenantId, typeof input.enabled === 'boolean' ? input.enabled : null, hStart, hEnd, days, JSON.stringify(priorities),
      typeof input.alert_disconnect === 'boolean' ? input.alert_disconnect : null, optout, optin, decline,
      typeof input.optin_any_message === 'boolean' ? input.optin_any_message : null, wait, footer,
      typeof input.require_crm_link === 'boolean' ? input.require_crm_link : null,
-     adminPhone !== undefined, adminPhone ?? null]
+     adminPhone !== undefined, adminPhone ?? null,
+     typeof input.new_orgs_muted === 'boolean' ? input.new_orgs_muted : null]
   );
   return rows[0];
 }
@@ -631,9 +635,24 @@ export async function listOrgs(tenantId: string) {
   return rows;
 }
 
+/**
+ * Asigna la organización a un número (o al por defecto con null). Si estaba en "No enviar"
+ * y se le pone un número nuevo, se activa (las nuevas esperan a que les asignes número).
+ */
 export async function assignOrg(tenantId: string, orgId: number, numberId: number | null): Promise<void> {
   if (numberId !== null) await getNumber(tenantId, numberId);
-  const { rowCount } = await pool.query(`UPDATE wa_orgs SET number_id = $3 WHERE id = $1 AND tenant_id = $2`, [orgId, tenantId, numberId]);
+  const { rowCount } = await pool.query(
+    `UPDATE wa_orgs SET muted = CASE WHEN $3::int IS NOT NULL AND number_id IS DISTINCT FROM $3::int THEN false ELSE muted END,
+            number_id = $3::int
+      WHERE id = $1 AND tenant_id = $2`,
+    [orgId, tenantId, numberId]
+  );
+  if (!rowCount) throw Object.assign(new Error('Organización no encontrada'), { status: 404 });
+}
+
+/** "No enviar" de una organización (tenga o no número): sus avisos se omiten mientras esté así. */
+export async function setOrgMuted(tenantId: string, orgId: number, muted: boolean): Promise<void> {
+  const { rowCount } = await pool.query(`UPDATE wa_orgs SET muted = $3 WHERE id = $1 AND tenant_id = $2`, [orgId, tenantId, muted]);
   if (!rowCount) throw Object.assign(new Error('Organización no encontrada'), { status: 404 });
 }
 
@@ -657,7 +676,14 @@ export async function setNumberOrgs(tenantId: string, numberId: number, orgIds: 
     }
   }
   await pool.query(`UPDATE wa_orgs SET number_id = NULL WHERE tenant_id = $1 AND number_id = $2 AND NOT (id = ANY($3::int[]))`, [tenantId, numberId, ids]);
-  if (ids.length) await pool.query(`UPDATE wa_orgs SET number_id = $2 WHERE tenant_id = $1 AND id = ANY($3::int[])`, [tenantId, numberId, ids]);
+  // Las que se agregan a este número se activan; las que ya estaban conservan su "No enviar"
+  if (ids.length) {
+    await pool.query(
+      `UPDATE wa_orgs SET muted = CASE WHEN number_id IS DISTINCT FROM $2::int THEN false ELSE muted END, number_id = $2::int
+        WHERE tenant_id = $1 AND id = ANY($3::int[])`,
+      [tenantId, numberId, ids]
+    );
+  }
 }
 
 /** Trae del plugin UISP la lista completa de organizaciones (para asignarlas antes del primer aviso). */
@@ -712,21 +738,24 @@ export async function announceToNumber(tenantId: string, numberId: number, messa
 }
 
 /** Registra la organización y devuelve el número que le toca (asignado o el por defecto). */
-async function numberForOrg(tenantId: string, org: { source?: string; id?: string; name?: string } | null): Promise<{ number: WaNumber; orgRowId: number | null }> {
+async function numberForOrg(tenantId: string, org: { source?: string; id?: string; name?: string } | null): Promise<{ number: WaNumber; orgRowId: number | null; muted: boolean }> {
   if (org?.id) {
+    // Organización nueva: entra en "No enviar" si así lo pide la configuración del ISP
     const { rows } = await pool.query(
-      `INSERT INTO wa_orgs (tenant_id, source, org_id, name) VALUES ($1, $2, $3, $4)
+      `INSERT INTO wa_orgs (tenant_id, source, org_id, name, muted)
+       VALUES ($1, $2, $3, $4, COALESCE((SELECT new_orgs_muted FROM wa_settings WHERE tenant_id = $1), false))
        ON CONFLICT (tenant_id, source, org_id) DO UPDATE SET name = COALESCE(EXCLUDED.name, wa_orgs.name), last_seen = now()
-       RETURNING id, number_id`,
+       RETURNING id, number_id, muted`,
       [tenantId, org.source || '', org.id, org.name || null]
     );
+    const muted = Boolean(rows[0]?.muted);
     if (rows[0]?.number_id) {
       const { rows: n } = await pool.query(`SELECT * FROM wa_numbers WHERE id = $1`, [rows[0].number_id]);
-      if (n[0]) return { number: n[0], orgRowId: rows[0].id };
+      if (n[0]) return { number: n[0], orgRowId: rows[0].id, muted };
     }
-    return { number: await ensureDefaultNumber(tenantId), orgRowId: rows[0]?.id ?? null };
+    return { number: await ensureDefaultNumber(tenantId), orgRowId: rows[0]?.id ?? null, muted };
   }
-  return { number: await ensureDefaultNumber(tenantId), orgRowId: null };
+  return { number: await ensureDefaultNumber(tenantId), orgRowId: null, muted: false };
 }
 
 // ───────────────────────── Sesión (QR) ─────────────────────────
@@ -975,22 +1004,31 @@ async function linkSubscriber(n: WaNumber, phone: string, client: LookupClient, 
 const ASK_ID = 'Hola 👋 Este número no está registrado en tu cuenta. Escríbeme tu *ID de cliente* (aparece en tu factura) para vincularlo y enviarte tus avisos por aquí.';
 
 /** Número que atiende la organización del cliente (asignado o, si no, el por defecto). */
-async function numberForClientOrg(tenantId: string, orgId: number | null | undefined): Promise<WaNumber | null> {
+async function numberForClientOrg(tenantId: string, orgId: number | null | undefined): Promise<WaNumber | 'muted' | null> {
   if (orgId == null) return null;
   const { rows } = await pool.query(
-    `SELECT n.* FROM wa_orgs o JOIN wa_numbers n ON n.id = o.number_id
-      WHERE o.tenant_id = $1 AND o.org_id = $2 ORDER BY o.last_seen DESC LIMIT 1`,
+    `SELECT o.muted, o.number_id FROM wa_orgs o WHERE o.tenant_id = $1 AND o.org_id = $2 ORDER BY o.last_seen DESC LIMIT 1`,
     [tenantId, String(orgId)]
   );
-  return rows[0] || (await ensureDefaultNumber(tenantId));
+  if (rows[0]?.muted) return 'muted';
+  if (rows[0]?.number_id) {
+    const { rows: n } = await pool.query(`SELECT * FROM wa_numbers WHERE id = $1`, [rows[0].number_id]);
+    if (n[0]) return n[0];
+  }
+  return ensureDefaultNumber(tenantId);
 }
 
 /**
  * Si el cliente es de una organización que atiende otro número, se le indica ese número
- * (no se suscribe aquí: sus avisos salen por el otro). Devuelve true si se redirigió.
+ * (no se suscribe aquí: sus avisos salen por el otro). Si su organización está en
+ * "No enviar", no se le responde nada automático. Devuelve true si ya se resolvió aquí.
  */
 async function redirectIfOtherOrg(n: WaNumber, phone: string, client: LookupClient, reply: (m: string) => Promise<unknown>): Promise<boolean> {
   const target = await numberForClientOrg(n.tenant_id, client.organization_id);
+  if (target === 'muted') {
+    await pool.query(`UPDATE wa_subscribers SET link_state = 'muted_org', linked_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
+    return true;
+  }
   if (!target || target.id === n.id) return false;
   await pool.query(`UPDATE wa_subscribers SET link_state = 'redirected', linked_at = now() WHERE number_id = $1 AND phone = $2`, [n.id, phone]);
   const org = client.organization_name || target.display_name || target.label;
@@ -1009,6 +1047,11 @@ async function ensureLinked(s: WaSettings, n: WaNumber, ispName: string, phone: 
   const reply = (msg: string) => enqueueImmediate(n, phone, 'system', msg);
   const alertAdmin = (msg: string) => notifySupport(n, `${msg}\n${ispName} · ${n.label} · +${phone}`).catch(() => undefined);
   if (sub.link_state === 'failed') return false; // ya se le dijo que un asesor lo atiende
+  if (sub.link_state === 'muted_org') {
+    // Su organización está en "No enviar": se revisa de nuevo por si ya se le asignó número
+    if (sub.linked_at && new Date(sub.linked_at).getTime() > Date.now() - 3600_000) return false;
+    sub.link_state = null;
+  }
   if (sub.link_state === 'redirected') {
     // Ya se le indicó el otro número: no se repite más de una vez al día
     if (sub.linked_at && new Date(sub.linked_at).getTime() > Date.now() - 86400_000) return false;
@@ -1162,13 +1205,26 @@ export async function enqueue(tenantId: string, input: EnqueueInput): Promise<{ 
 
   let n: WaNumber;
   let orgRowId: number | null = null;
+  let muted = false;
   if (input.number_id) {
     n = await getNumber(tenantId, Number(input.number_id));
   } else {
     const org = input.organization?.id != null
       ? { source: String(input.uisp ?? '').slice(0, 120), id: String(input.organization.id).slice(0, 60), name: input.organization.name ? String(input.organization.name).slice(0, 120) : undefined }
       : null;
-    ({ number: n, orgRowId } = await numberForOrg(tenantId, org));
+    ({ number: n, orgRowId, muted } = await numberForOrg(tenantId, org));
+  }
+  // Organización en "No enviar": el aviso queda registrado como omitido y no sale
+  // (al asignarle número no se mandan los viejos de golpe).
+  if (muted) {
+    const { rows } = await pool.query(
+      `INSERT INTO wa_queue (tenant_id, number_id, kind, phone, message, event_type, priority, status, last_error, source, client_ref, dedupe_key)
+       VALUES ($1, $2, $3, $4, $5, $6, 5, 'skipped', 'La organización está en "No enviar"', $7, $8, $9)
+       ON CONFLICT (tenant_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING id`,
+      [tenantId, n.id, event === 'welcome' ? 'welcome' : 'notice', phone, String(input.message ?? '').trim() || `[${EVENT_LABELS[event] || event}]`,
+       event, orgRowId ? `org:${orgRowId}` : (input.source || 'api'), input.client_ref == null ? null : String(input.client_ref).slice(0, 100), dedupe]
+    );
+    return { id: rows[0] ? Number(rows[0].id) : null, status: 'skipped', duplicate: !rows[0], number_id: n.id };
   }
 
   const clientRef = input.client_ref == null ? null : String(input.client_ref).slice(0, 100);

@@ -6,7 +6,7 @@ import {
   listNumbers, getNumber, publicNumber, createNumber, updateNumber, deleteNumber, setDefaultNumber, setNumberQr,
   connectNumber, logoutNumber, refreshState, listOrgs, assignOrg, listSubscribers,
   enqueue, enqueueTest, getStats, getOverview, handleEvolutionEvent, manualLink, MAX_ATTEMPTS,
-  unlinkSubscriber, resetSubscriber, setNumberOrgs, syncOrgs, announceToNumber,
+  unlinkSubscriber, resetSubscriber, setNumberOrgs, syncOrgs, announceToNumber, setOrgMuted,
 } from '../lib/whatsapp';
 
 /**
@@ -111,8 +111,12 @@ whatsappRouter.put('/numbers/:id/orgs', ADMIN, route(async (t, req) => {
 whatsappRouter.post('/numbers/:id/announce', ADMIN, route(async (t, req) =>
   announceToNumber(t, numId(req), String(req.body?.message || ''))));
 whatsappRouter.put('/orgs/:id', ADMIN, route(async (t, req) => {
-  const n = req.body?.number_id;
-  await assignOrg(t, numId(req), n === null || n === '' || n === undefined ? null : Number(n));
+  // { number_id } asigna número (o null = por defecto); { muted } pausa o activa la organización
+  if (typeof req.body?.muted === 'boolean') await setOrgMuted(t, numId(req), req.body.muted);
+  if (req.body && 'number_id' in req.body) {
+    const n = req.body.number_id;
+    await assignOrg(t, numId(req), n === null || n === '' || n === undefined ? null : Number(n));
+  }
   return { ok: true };
 }));
 

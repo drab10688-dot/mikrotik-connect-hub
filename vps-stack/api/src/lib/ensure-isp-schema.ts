@@ -603,6 +603,9 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
     `CREATE INDEX IF NOT EXISTS wa_subscribers_client ON wa_subscribers (number_id, client_ref) WHERE client_ref IS NOT NULL`,
     `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS require_crm_link BOOLEAN NOT NULL DEFAULT true`,
     `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS admin_phone TEXT`,
+    // "No enviar": la organización no manda avisos hasta asignarle un número
+    `ALTER TABLE wa_orgs ADD COLUMN IF NOT EXISTS muted BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE wa_settings ADD COLUMN IF NOT EXISTS new_orgs_muted BOOLEAN NOT NULL DEFAULT false`,
     // Dirección de consulta de cada plugin UISP (la manda el plugin en cada aviso)
     `CREATE TABLE IF NOT EXISTS wa_lookup_sources (
        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

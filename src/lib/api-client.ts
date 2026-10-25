@@ -512,6 +512,8 @@ export const whatsappApi = {
     unwrapData<any>(await apiPost<any>(`/whatsapp/subscribers/unlink${waQs(t)}`, { number_id, phone })),
   resetSubscriber: async (number_id: number, phone: string, t?: string | null) =>
     unwrapData<any>(await apiPost<any>(`/whatsapp/subscribers/reset${waQs(t)}`, { number_id, phone })),
+  setOrgMuted: async (id: number, muted: boolean, t?: string | null) =>
+    unwrapData<any>(await apiPut<any>(`/whatsapp/orgs/${id}${waQs(t)}`, { muted })),
   syncOrgs: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/orgs/sync${waQs(t)}`, {}, { timeoutMs: 60000 })),
   setNumberOrgs: async (id: number, org_ids: number[], t?: string | null) =>
     unwrapData<any>(await apiPut<any>(`/whatsapp/numbers/${id}/orgs${waQs(t)}`, { org_ids })),

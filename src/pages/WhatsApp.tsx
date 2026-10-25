@@ -572,8 +572,14 @@ function OrgsTab({ tenantId, numbers, isAdmin }: { tenantId: string | null; numb
     onSuccess: (r: any) => { toast.success(`${r.total} organizaciones de UISP (${r.added} nuevas)`); qc.invalidateQueries({ queryKey: ["wa-orgs"] }); },
     onError: (e: any) => toast.error(e.message),
   });
+  const mute = useMutation({
+    mutationFn: ({ id, muted }: { id: number; muted: boolean }) => whatsappApi.setOrgMuted(id, muted, tenantId),
+    onSuccess: (_r, v) => { toast.success(v.muted ? "Organización en pausa: no se le envía nada" : "Organización activa"); qc.invalidateQueries({ queryKey: ["wa-orgs"] }); },
+    onError: (e: any) => toast.error(e.message),
+  });
   const def = numbers.find((n) => n.is_default);
-  const unassigned = orgs.filter((o: any) => !o.number_id).length;
+  const unassigned = orgs.filter((o: any) => !o.number_id && !o.muted).length;
+  const paused = orgs.filter((o: any) => o.muted).length;
   return (
     <Card>
       <CardHeader>
@@ -591,20 +597,23 @@ function OrgsTab({ tenantId, numbers, isAdmin }: { tenantId: string | null; numb
         {numbers.length > 1 && unassigned > 0 && (
           <p className="text-sm text-destructive">{unassigned} organización(es) sin número asignado: sus avisos salen por {def?.label}.</p>
         )}
+        {paused > 0 && <p className="text-sm text-amber-600 dark:text-amber-400">{paused} organización(es) en pausa: sus avisos se omiten y no se les responde automáticamente.</p>}
       </CardHeader>
       <CardContent>
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : orgs.length === 0 ? (
           <p className="text-sm text-muted-foreground">Todavía no hay organizaciones. Pulsa "Traer organizaciones de UISP".</p>
         ) : (
           <Table>
-            <TableHeader><TableRow><TableHead>Organización</TableHead><TableHead>UISP</TableHead><TableHead>Último aviso</TableHead><TableHead>Número</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Organización</TableHead><TableHead>UISP</TableHead><TableHead>Último aviso</TableHead><TableHead>Número</TableHead><TableHead>Envía</TableHead></TableRow></TableHeader>
             <TableBody>
               {orgs.map((o: any) => (
-                <TableRow key={o.id} className={numbers.length > 1 && !o.number_id ? "bg-destructive/5" : undefined}>
+                <TableRow key={o.id} className={o.muted ? "bg-amber-500/5" : numbers.length > 1 && !o.number_id ? "bg-destructive/5" : undefined}>
                   <TableCell>
                     {o.name || `Organización ${o.org_id}`}
                     <p className="text-[11px] text-muted-foreground">ID {o.org_id}</p>
-                    {numbers.length > 1 && !o.number_id && <p className="text-[11px] text-destructive">Sin asignar: saldrá por {def?.label}</p>}
+                    {o.muted
+                      ? <p className="text-[11px] text-amber-600 dark:text-amber-400">En pausa: no se envía nada</p>
+                      : numbers.length > 1 && !o.number_id && <p className="text-[11px] text-destructive">Sin asignar: saldrá por {def?.label}</p>}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{o.source || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{fmtDate(o.last_seen)}</TableCell>
@@ -617,6 +626,10 @@ function OrgsTab({ tenantId, numbers, isAdmin }: { tenantId: string | null; numb
                         {numbers.map((n) => <SelectItem key={n.id} value={String(n.id)}>{n.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Switch checked={!o.muted} disabled={!isAdmin} aria-label="Envía avisos"
+                      onCheckedChange={(v) => mute.mutate({ id: o.id, muted: !v })} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -908,6 +921,7 @@ function SettingsTab({ tenantId, settings, isAdmin }: { tenantId: string | null;
       optin_any_message: settings.optin_any_message,
       require_crm_link: settings.require_crm_link !== false,
       admin_phone: settings.admin_phone || "",
+      new_orgs_muted: settings.new_orgs_muted === true,
       invite_wait_days: settings.invite_wait_days,
       footer: settings.footer,
     });
@@ -971,6 +985,10 @@ function SettingsTab({ tenantId, settings, isAdmin }: { tenantId: string | null;
           <div className="flex items-start justify-between gap-3">
             <div><Label>Responder solo a clientes del CRM</Label><p className="text-xs text-muted-foreground">Si escribe un número que no es de un cliente, se busca en el CRM; si no aparece, se le pide su ID de cliente. Necesita el plugin UISP 4.1.6.</p></div>
             <Switch checked={f.require_crm_link} disabled={ro} onCheckedChange={(v) => set("require_crm_link", v)} />
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div><Label>Organizaciones nuevas: no enviar hasta asignarles número</Label><p className="text-xs text-muted-foreground">Si en UISP aparece una organización nueva, empieza en pausa. Se activa al asignarle un número (o con su interruptor "Envía").</p></div>
+            <Switch checked={f.new_orgs_muted} disabled={ro} onCheckedChange={(v) => set("new_orgs_muted", v)} />
           </div>
           <div className="space-y-1"><Label>Pie de cada aviso (debe llevar {"{baja}"})</Label><Input disabled={ro} value={f.footer} onChange={(e) => set("footer", e.target.value)} /></div>
         </CardContent>
