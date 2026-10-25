@@ -235,10 +235,13 @@ function fileToDataUrl(file: File): Promise<string> {
 function NumberEditor({ open, onClose, tenantId, number, isNew }: { open: boolean; onClose: () => void; tenantId: string | null; number: any | null; isNew: boolean }) {
   const qc = useQueryClient();
   const [f, setF] = useState<any>(null);
+  const { data: orgs = [], isSuccess: orgsReady } = useQuery({ queryKey: ["wa-orgs", tenantId], queryFn: () => whatsappApi.orgs(tenantId), enabled: open });
   useEffect(() => {
     if (!open) return;
     const n = number || {};
     setF({
+      support_phone: n.support_phone || "",
+      org_ids: orgs.filter((o: any) => number && o.number_id === number.id).map((o: any) => o.id),
       label: n.label || "",
       display_name: n.display_name || "",
       interval_min: n.interval_sec ? Math.round((n.interval_sec / 60) * 10) / 10 : 2,
@@ -253,14 +256,21 @@ function NumberEditor({ open, onClose, tenantId, number, isNew }: { open: boolea
       payment_link: n.payment_link || "",
       menu: (n.menu || []).map((o: any) => ({ ...o })),
     });
-  }, [open, number]);
+  }, [open, number, orgsReady]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const body = { ...f, interval_sec: Math.round(Number(f.interval_min) * 60) };
       delete body.interval_min;
-      return isNew ? whatsappApi.createNumber(body, tenantId) : whatsappApi.updateNumber(number.id, body, tenantId);
+      delete body.org_ids;
+      const saved = isNew ? await whatsappApi.createNumber(body, tenantId) : await whatsappApi.updateNumber(number.id, body, tenantId);
+      await whatsappApi.setNumberOrgs(saved.id, f.org_ids, tenantId);
+      return saved;
     },
-    onSuccess: () => { toast.success(isNew ? "Número creado: ahora conéctalo con el QR" : "Número guardado"); qc.invalidateQueries({ queryKey: ["wa-numbers"] }); onClose(); },
+    onSuccess: () => {
+      toast.success(isNew ? "Número creado: ahora conéctalo con el QR" : "Número guardado");
+      ["wa-numbers", "wa-orgs"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      onClose();
+    },
     onError: (e: any) => toast.error(e.message),
   });
   if (!f) return null;
@@ -336,6 +346,35 @@ function NumberEditor({ open, onClose, tenantId, number, isNew }: { open: boolea
               <Label className="pt-2 block">Firma al final</Label><Input value={f.signature} onChange={(e) => set("signature", e.target.value)} placeholder="— Suros Comunicaciones" />
             </div>
           </div>
+          <div className="space-y-1">
+            <Label>WhatsApp de soporte de este número</Label>
+            <Input inputMode="numeric" placeholder="Vacío = el WhatsApp del administrador" value={f.support_phone} onChange={(e) => set("support_phone", e.target.value)} />
+            <p className="text-xs text-muted-foreground">Le llegan los avisos de sus clientes: piden asesor, se vinculan o el número se cae.</p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Organizaciones de UISP que atiende</p>
+            {orgs.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Todavía no hay organizaciones: en la pestaña Organizaciones pulsa "Traer organizaciones de UISP".</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {orgs.map((o: any) => {
+                  const mine = f.org_ids.includes(o.id);
+                  const other = o.number_id && (!number || o.number_id !== number.id);
+                  return (
+                    <label key={o.id} className={`flex items-start gap-2 rounded-lg border p-2 text-sm ${other ? "opacity-60" : "cursor-pointer"}`}>
+                      <input type="checkbox" className="mt-1" checked={mine} disabled={!!other}
+                        onChange={(e) => set("org_ids", e.target.checked ? [...f.org_ids, o.id] : f.org_ids.filter((x: number) => x !== o.id))} />
+                      <span>
+                        {o.name || `Organización ${o.org_id}`}
+                        <span className="block text-[11px] text-muted-foreground">ID {o.org_id}{o.source ? ` · ${o.source}` : ""}{other ? ` · asignada a ${o.number_label}` : ""}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">Una organización solo puede estar en un número. Para moverla, quítala primero del número que la tiene.</p>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -350,6 +389,7 @@ function NumberCard({ n, tenantId, isAdmin, canEdit, onEdit }: { n: any; tenantI
   const qc = useQueryClient();
   const [qr, setQr] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
+  const [announce, setAnnounce] = useState<string | null>(null);
   const [linkQr, setLinkQr] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["wa-numbers"] });
   const { data: session } = useQuery({
@@ -420,7 +460,30 @@ function NumberCard({ n, tenantId, isAdmin, canEdit, onEdit }: { n: any; tenantI
               <Trash2 className="h-4 w-4 mr-1" /> Borrar
             </Button>
           )}
+          {isAdmin && session?.state === "open" && (
+            <Button size="sm" variant="ghost" onClick={() => setAnnounce(
+              `Hola 👋 Este es el nuevo WhatsApp de *${n.display_name || n.label}*. Por aquí seguirás recibiendo tus facturas y avisos. ¡Guárdanos en tus contactos! 😉`)}>
+              <Send className="h-4 w-4 mr-1" /> Anunciar cambio de número
+            </Button>
+          )}
         </div>
+        <Dialog open={announce !== null} onOpenChange={(o) => !o && setAnnounce(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Anunciar a los suscritos de {n.label}</DialogTitle>
+              <DialogDescription>Se envía a todos los clientes suscritos de este número, de a uno con la pausa normal y respetando el horario y el tope diario. Úsalo una sola vez tras cambiar el chip.</DialogDescription>
+            </DialogHeader>
+            <Textarea rows={4} value={announce || ""} onChange={(e) => setAnnounce(e.target.value)} />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAnnounce(null)}>Cancelar</Button>
+              <Button onClick={() => act(async () => {
+                const r = await whatsappApi.announce(n.id, announce || "", tenantId);
+                toast.success(`${r.queued} mensaje(s) en cola`);
+                setAnnounce(null);
+              })}>Poner en cola</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
@@ -504,23 +567,45 @@ function OrgsTab({ tenantId, numbers, isAdmin }: { tenantId: string | null; numb
     onSuccess: () => { toast.success("Organización asignada"); qc.invalidateQueries({ queryKey: ["wa-orgs"] }); },
     onError: (e: any) => toast.error(e.message),
   });
+  const sync = useMutation({
+    mutationFn: () => whatsappApi.syncOrgs(tenantId),
+    onSuccess: (r: any) => { toast.success(`${r.total} organizaciones de UISP (${r.added} nuevas)`); qc.invalidateQueries({ queryKey: ["wa-orgs"] }); },
+    onError: (e: any) => toast.error(e.message),
+  });
   const def = numbers.find((n) => n.is_default);
+  const unassigned = orgs.filter((o: any) => !o.number_id).length;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Organizaciones de UISP</CardTitle>
-        <CardDescription>Aparecen solas cuando el plugin de UISP manda el primer aviso de cada una. Las que no asignes salen por el número por defecto ({def?.label}).</CardDescription>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="space-y-1">
+            <CardTitle className="text-base">Organizaciones de UISP</CardTitle>
+            <CardDescription>Cada organización sale por el número que la atiende; las que no asignes, por el número por defecto ({def?.label}). Una organización no puede estar en dos números.</CardDescription>
+          </div>
+          {isAdmin && (
+            <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={sync.isPending}>
+              {sync.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />} Traer organizaciones de UISP
+            </Button>
+          )}
+        </div>
+        {numbers.length > 1 && unassigned > 0 && (
+          <p className="text-sm text-destructive">{unassigned} organización(es) sin número asignado: sus avisos salen por {def?.label}.</p>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : orgs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Todavía no ha llegado ningún aviso con organización.</p>
+          <p className="text-sm text-muted-foreground">Todavía no hay organizaciones. Pulsa "Traer organizaciones de UISP".</p>
         ) : (
           <Table>
             <TableHeader><TableRow><TableHead>Organización</TableHead><TableHead>UISP</TableHead><TableHead>Último aviso</TableHead><TableHead>Número</TableHead></TableRow></TableHeader>
             <TableBody>
               {orgs.map((o: any) => (
-                <TableRow key={o.id}>
-                  <TableCell>{o.name || `Organización ${o.org_id}`}<p className="text-[11px] text-muted-foreground">ID {o.org_id}</p></TableCell>
+                <TableRow key={o.id} className={numbers.length > 1 && !o.number_id ? "bg-destructive/5" : undefined}>
+                  <TableCell>
+                    {o.name || `Organización ${o.org_id}`}
+                    <p className="text-[11px] text-muted-foreground">ID {o.org_id}</p>
+                    {numbers.length > 1 && !o.number_id && <p className="text-[11px] text-destructive">Sin asignar: saldrá por {def?.label}</p>}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{o.source || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{fmtDate(o.last_seen)}</TableCell>
                   <TableCell>
@@ -546,10 +631,11 @@ function OrgsTab({ tenantId, numbers, isAdmin }: { tenantId: string | null; numb
 // ───────────────────────── Suscriptores ─────────────────────────
 const LINK: Record<string, string> = {
   crm: "Teléfono del CRM", phone: "Su teléfono está en el CRM", id: "Dio su ID de cliente", manual: "Vinculado a mano",
-  asked: "Se le pidió el ID", failed: "No se pudo vincular",
+  asked: "Se le pidió el ID", failed: "No se pudo vincular", unavailable: "Sin consulta al CRM (se reintenta)",
+  redirected: "Se le indicó el número de su organización",
 };
 
-function SubscribersTab({ tenantId, numbers, canEdit }: { tenantId: string | null; numbers: any[]; canEdit: boolean }) {
+function SubscribersTab({ tenantId, numbers, canEdit, isAdmin }: { tenantId: string | null; numbers: any[]; canEdit: boolean; isAdmin: boolean }) {
   const qc = useQueryClient();
   const [numberId, setNumberId] = useState<number | null>(null);
   const [status, setStatus] = useState("all");
@@ -569,6 +655,16 @@ function SubscribersTab({ tenantId, numbers, canEdit }: { tenantId: string | nul
       toast.success(`Vinculado al cliente #${clientId}${r?.name ? ` (${r.name})` : ""}`);
       setLinking(null); setClientId("");
       qc.invalidateQueries({ queryKey: ["wa-subs"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const subAction = useMutation({
+    mutationFn: ({ s, kind }: { s: any; kind: "unlink" | "reset" }) =>
+      kind === "unlink" ? whatsappApi.unlinkSubscriber(s.number_id, s.phone, tenantId) : whatsappApi.resetSubscriber(s.number_id, s.phone, tenantId),
+    onSuccess: (r: any, v) => {
+      toast.success(v.kind === "unlink" ? "Desvinculado: se verificará de nuevo con su próximo mensaje"
+        : `Reiniciado${r?.requeued ? `: ${r.requeued} aviso(s) otra vez en cola` : ""}`);
+      ["wa-subs", "wa-queue"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -607,7 +703,12 @@ function SubscribersTab({ tenantId, numbers, canEdit }: { tenantId: string | nul
                       <TableCell className="text-sm">
                         {s.client_name || "—"}
                         {s.client_ref ? (
-                          <p className="text-[11px] text-muted-foreground">Cliente #{s.client_ref}{s.link_state && LINK[s.link_state] ? ` · ${LINK[s.link_state]}` : ""}</p>
+                          <div>
+                            <p className="text-[11px] text-muted-foreground">Cliente #{s.client_ref}{s.link_state && LINK[s.link_state] ? ` · ${LINK[s.link_state]}` : ""}</p>
+                            {canEdit && ["id", "manual", "phone"].includes(s.link_state) && (
+                              <button className="text-[11px] text-primary underline" onClick={() => confirm(`¿Desvincular +${s.phone} del cliente #${s.client_ref}?`) && subAction.mutate({ s, kind: "unlink" })}>Desvincular</button>
+                            )}
+                          </div>
                         ) : (
                           <div className="flex flex-wrap items-center gap-2 mt-1">
                             <Badge variant="outline" className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">Sin vincular</Badge>
@@ -627,6 +728,10 @@ function SubscribersTab({ tenantId, numbers, canEdit }: { tenantId: string | nul
                         {s.invited_at && <p>Presentado {fmtDate(s.invited_at)}</p>}
                         {s.responded_at && <p>Respondió {fmtDate(s.responded_at)}</p>}
                         {s.last_inbound_at && <p>Último mensaje {fmtDate(s.last_inbound_at)}</p>}
+                        {isAdmin && (
+                          <button className="text-[11px] text-primary underline mt-1" title="Para pruebas: queda como nuevo y sus avisos omitidos de los últimos 3 días vuelven a la cola"
+                            onClick={() => confirm(`¿Reiniciar +${s.phone}? Queda como si nunca hubiera aceptado (para pruebas).`) && subAction.mutate({ s, kind: "reset" })}>Reiniciar</button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -995,7 +1100,7 @@ export default function WhatsApp() {
             <TabsContent value="panel" className="mt-4"><PanelTab tenantId={tenantId} numbers={numbers} /></TabsContent>
             <TabsContent value="numeros" className="mt-4"><NumbersTab tenantId={tenantId} numbers={numbers} maxNumbers={settings.max_numbers || 1} isAdmin={admin} canEdit={edit} /></TabsContent>
             <TabsContent value="orgs" className="mt-4"><OrgsTab tenantId={tenantId} numbers={numbers} isAdmin={admin} /></TabsContent>
-            <TabsContent value="clientes" className="mt-4"><SubscribersTab tenantId={tenantId} numbers={numbers} canEdit={edit} /></TabsContent>
+            <TabsContent value="clientes" className="mt-4"><SubscribersTab tenantId={tenantId} numbers={numbers} canEdit={edit} isAdmin={admin} /></TabsContent>
             <TabsContent value="cola" className="mt-4"><QueueTab tenantId={tenantId} numbers={numbers} isAdmin={admin} canEdit={edit} eventLabels={eventLabels} paused={settings.paused} /></TabsContent>
             <TabsContent value="config" className="mt-4"><SettingsTab tenantId={tenantId} settings={settings} isAdmin={admin} /></TabsContent>
           </Tabs>

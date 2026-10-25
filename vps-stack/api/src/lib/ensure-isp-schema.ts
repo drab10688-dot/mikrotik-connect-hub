@@ -562,6 +562,7 @@ export async function ensureIspSchema(pool: Pool): Promise<void> {
      )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS wa_numbers_default ON wa_numbers (tenant_id) WHERE is_default`,
     `ALTER TABLE wa_numbers ADD COLUMN IF NOT EXISTS welcome_template TEXT`,
+    `ALTER TABLE wa_numbers ADD COLUMN IF NOT EXISTS support_phone TEXT`,
     // Organizaciones de UISP vistas en los avisos (source = UISP de origen) y su número asignado
     `CREATE TABLE IF NOT EXISTS wa_orgs (
        id SERIAL PRIMARY KEY,

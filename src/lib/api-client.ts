@@ -508,6 +508,15 @@ export const whatsappApi = {
     unwrapData<any>(await apiGet<any>(`/whatsapp/subscribers${waQs(t, params)}`)),
   linkSubscriber: async (number_id: number, phone: string, client_id: number, t?: string | null) =>
     unwrapData<any>(await apiPost<any>(`/whatsapp/subscribers/link${waQs(t)}`, { number_id, phone, client_id })),
+  unlinkSubscriber: async (number_id: number, phone: string, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/subscribers/unlink${waQs(t)}`, { number_id, phone })),
+  resetSubscriber: async (number_id: number, phone: string, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/subscribers/reset${waQs(t)}`, { number_id, phone })),
+  syncOrgs: async (t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/orgs/sync${waQs(t)}`, {}, { timeoutMs: 60000 })),
+  setNumberOrgs: async (id: number, org_ids: number[], t?: string | null) =>
+    unwrapData<any>(await apiPut<any>(`/whatsapp/numbers/${id}/orgs${waQs(t)}`, { org_ids })),
+  announce: async (id: number, message: string, t?: string | null) =>
+    unwrapData<any>(await apiPost<any>(`/whatsapp/numbers/${id}/announce${waQs(t)}`, { message })),
   queue: async (params: { status?: string; q?: string; number_id?: number; limit?: number; offset?: number }, t?: string | null) =>
     unwrapData<any>(await apiGet<any>(`/whatsapp/queue${waQs(t, params)}`)),
   retry: async (id: number, t?: string | null) => unwrapData<any>(await apiPost<any>(`/whatsapp/queue/${id}/retry${waQs(t)}`, {})),

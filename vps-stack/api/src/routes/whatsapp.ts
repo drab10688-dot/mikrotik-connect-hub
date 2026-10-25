@@ -6,6 +6,7 @@ import {
   listNumbers, getNumber, publicNumber, createNumber, updateNumber, deleteNumber, setDefaultNumber, setNumberQr,
   connectNumber, logoutNumber, refreshState, listOrgs, assignOrg, listSubscribers,
   enqueue, enqueueTest, getStats, getOverview, handleEvolutionEvent, manualLink, MAX_ATTEMPTS,
+  unlinkSubscriber, resetSubscriber, setNumberOrgs, syncOrgs, announceToNumber,
 } from '../lib/whatsapp';
 
 /**
@@ -100,6 +101,15 @@ whatsappRouter.post('/numbers/:id/test', route(async (t, req) => ({
 
 // ── Organizaciones de UISP ──
 whatsappRouter.get('/orgs', route(async (t) => listOrgs(t), 500));
+whatsappRouter.post('/orgs/sync', ADMIN, route(async (t) => syncOrgs(t)));
+/** Organizaciones que atiende un número (no se puede repetir una organización en dos números). */
+whatsappRouter.put('/numbers/:id/orgs', ADMIN, route(async (t, req) => {
+  await setNumberOrgs(t, numId(req), Array.isArray(req.body?.org_ids) ? req.body.org_ids : []);
+  return { ok: true };
+}));
+/** Anuncio a todos los suscritos del número (p. ej. cambio de número), con la pausa normal. */
+whatsappRouter.post('/numbers/:id/announce', ADMIN, route(async (t, req) =>
+  announceToNumber(t, numId(req), String(req.body?.message || ''))));
 whatsappRouter.put('/orgs/:id', ADMIN, route(async (t, req) => {
   const n = req.body?.number_id;
   await assignOrg(t, numId(req), n === null || n === '' || n === undefined ? null : Number(n));
@@ -112,6 +122,14 @@ const SUB_STATUSES = new Set(['new', 'invited', 'subscribed', 'declined', 'no_re
 /** Vincular a mano un WhatsApp con un ID de cliente del CRM (se verifica con el plugin si está). */
 whatsappRouter.post('/subscribers/link', route(async (t, req) =>
   manualLink(t, Number(req.body?.number_id) || 0, String(req.body?.phone || ''), Number(req.body?.client_id))));
+/** Quitar la vinculación (se verifica de nuevo con su próximo mensaje). */
+whatsappRouter.post('/subscribers/unlink', route(async (t, req) => {
+  await unlinkSubscriber(t, Number(req.body?.number_id) || 0, String(req.body?.phone || ''));
+  return { ok: true };
+}));
+/** Reiniciar para pruebas: queda como nuevo y sus avisos omitidos recientes vuelven a la cola. */
+whatsappRouter.post('/subscribers/reset', ADMIN, route(async (t, req) =>
+  resetSubscriber(t, Number(req.body?.number_id) || 0, String(req.body?.phone || ''))));
 whatsappRouter.get('/subscribers', route(async (t, req) => listSubscribers(t, {
   number_id: Number(req.query.number_id) || null,
   status: SUB_STATUSES.has(String(req.query.status)) ? String(req.query.status) : null,
