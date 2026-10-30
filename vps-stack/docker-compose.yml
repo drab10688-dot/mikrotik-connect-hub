@@ -94,6 +94,8 @@ services:
       - ./nginx/certs:/opt/omnisync/nginx/certs
       - ./frontend/dist:/opt/omnisync/frontend/dist
       - /var/run/docker.sock:/var/run/docker.sock
+      # WhatsApp: teléfono de quien escribe con ID anónimo (…@lid), solo lectura
+      - evolution_instances:/evolution/instances:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 import type { Pool } from 'pg';
 import { pool } from './db';
 
@@ -23,6 +25,8 @@ import { pool } from './db';
 const EVO_URL = (process.env.EVOLUTION_URL || 'http://evolution:8080').replace(/\/$/, '');
 const EVO_KEY = process.env.EVOLUTION_API_KEY || '';
 const API_INTERNAL_URL = process.env.WA_WEBHOOK_BASE || 'http://api:3000';
+// Sesiones de Evolution (volumen montado solo lectura): de ahí sale el teléfono de un …@lid
+const EVO_INSTANCES_DIR = process.env.EVOLUTION_INSTANCES_DIR || '/evolution/instances';
 const TZ = process.env.TZ || 'America/Bogota';
 
 export const MAX_ATTEMPTS = 3;
@@ -1553,10 +1557,43 @@ export async function cleanupWhatsapp(): Promise<number> {
 
 // ───────────────────────── Mensajes de los clientes ─────────────────────────
 
-function inboundPhone(key: any): string | null {
+const lidCache = new Map<string, string>();
+
+/**
+ * WhatsApp entrega muchos mensajes con un ID anónimo (…@lid) y sin el teléfono.
+ * Baileys guarda la relación en la sesión: lid-mapping-<lid>_reverse.json = "57300…".
+ */
+async function phoneFromLid(jid: string): Promise<string | null> {
+  const lid = jid.split('@')[0].split(':')[0];
+  if (!/^\d{5,20}$/.test(lid)) return null;
+  const hit = lidCache.get(lid);
+  if (hit) return hit;
+  let dirs: string[] = [];
+  try { dirs = await fs.readdir(EVO_INSTANCES_DIR); } catch { return null; }
+  for (const d of dirs) {
+    try {
+      const raw = JSON.parse(await fs.readFile(path.join(EVO_INSTANCES_DIR, d, `lid-mapping-${lid}_reverse.json`), 'utf8'));
+      const phone = normalizePhone(String(raw).split('@')[0].split(':')[0]);
+      if (phone) {
+        if (lidCache.size > 5000) lidCache.clear();
+        lidCache.set(lid, phone);
+        return phone;
+      }
+    } catch { /* no está en esta sesión */ }
+  }
+  return null;
+}
+
+async function inboundPhone(key: any): Promise<string | null> {
   const candidates = [key?.senderPn, key?.remoteJidAlt, key?.participantPn, key?.remoteJid];
   for (const c of candidates) {
     if (typeof c === 'string' && c.endsWith('@s.whatsapp.net')) return normalizePhone(c.split('@')[0].split(':')[0]);
+  }
+  for (const c of [key?.remoteJid, key?.senderLid, key?.participant]) {
+    if (typeof c === 'string' && c.endsWith('@lid')) {
+      const phone = await phoneFromLid(c);
+      if (phone) return phone;
+    }
   }
   return null;
 }
@@ -1654,10 +1691,15 @@ export async function handleEvolutionEvent(instance: string, secret: string, bod
 
   if (event === 'messages.upsert') {
     const s = await getSettings(n.tenant_id);
-    const items = (Array.isArray(data) ? data : [data])
-      .filter((it: any) => !it?.key?.fromMe && !String(it?.key?.remoteJid || '').endsWith('@g.us')) // grupos no
-      .map((it: any) => ({ phone: inboundPhone(it?.key), text: messageText(it?.message) }))
-      .filter((it: any) => it.phone);
+    const items: { phone: string; text: string }[] = [];
+    for (const it of Array.isArray(data) ? data : [data]) {
+      if (it?.key?.fromMe || String(it?.key?.remoteJid || '').endsWith('@g.us')) continue; // grupos no
+      const phone = await inboundPhone(it?.key);
+      if (phone) items.push({ phone, text: messageText(it?.message) });
+      else if (String(it?.key?.remoteJid || '').endsWith('@lid')) {
+        console.warn(`[WA] ${n.label}: mensaje de ${it.key.remoteJid} sin teléfono (la sesión no tiene su LID); se ignora`);
+      }
+    }
     if (!items.length) return true;
     // Se responde a Evolution de una vez: verificar contra el CRM puede tardar y un webhook
     // lento haría que Evolution lo reintente (mensajes procesados dos veces).
